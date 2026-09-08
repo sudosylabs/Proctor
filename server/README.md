@@ -808,6 +808,13 @@ suite with:
 make -C server integration-postgres
 ```
 
+This includes Desktop preflight/Connect, native and Browser delivery, quota and
+control boundaries, independent retention and Review conformance. The complete
+integration and PostgreSQL Store commands allow 25 minutes per Go package because
+the SQL package also runs the three Store decorator conformance suites. Individual
+operation/fixture deadlines still bound each test.
+
+
 Run Redis cache adapter tests with:
 
 ```sh

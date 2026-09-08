@@ -29,7 +29,7 @@ func TestInitialRetentionPolicyDoesNotEnableExpiryOrDeletion(t *testing.T) {
 		t.Fatalf("initial policy = %#v", policy)
 	}
 	want := map[string]any{"institution_id": institutionID.String(), "revision": int64(1),
-		"submission_retention_days": 0, "integrity_retention_days": 0, "audit_retention_days": 0,
+		"submission_retention_days": 0, "integrity_retention_days": 0, "browser_activity_retention_days": 0, "security_operational_retention_days": 0, "audit_retention_days": 0,
 		"export_retention_days": 0, "deletion_grace_days": 0, "candidate_notices": false, "automatic_deletion_enabled": false}
 	if got := policy.Auditable(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("initial audit projection = %#v", got)

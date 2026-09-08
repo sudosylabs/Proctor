@@ -53,8 +53,8 @@ revision. It supports review but is never a frozen deletion instruction.
 _Avoid_: Export, deletion queue, records completion
 
 **Record Retirement**:
-A scheduled irreversible removal of one Submission's work or integrity
-category after its retention deadline and positive grace period. Once
+A scheduled irreversible removal of one Submission's work, integrity, ordinary
+Browser Activity, or native security operational category after its retention deadline and positive grace period. Once
 committed, permanent retirement markers prevent restoration through ordinary
 reads or retries; its minimal receipt follows audit-retention rules.
 _Avoid_: Archive, immediate physical erasure, account deletion

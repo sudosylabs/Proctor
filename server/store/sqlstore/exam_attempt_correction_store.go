@@ -19,9 +19,12 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func hasPendingCandidateCorrectionAcknowledgement(ctx context.Context, executor sqlxExecutor, attemptID, sittingID,
-	admissionRevisionID, currentRevisionID string,
+func hasPendingCandidateCorrectionCapability(ctx context.Context, executor sqlxExecutor, attemptID, sittingID,
+	admissionRevisionID, currentRevisionID string, capability model.CandidateCapability,
 ) (bool, error) {
+	if !capability.IsValid() {
+		return false, errors.New("invalid candidate correction capability")
+	}
 	var pending bool
 	err := executor.Get(ctx, &pending, `SELECT EXISTS (
 		SELECT 1 FROM exam_sitting_live_corrections live
@@ -31,9 +34,10 @@ func hasPendingCandidateCorrectionAcknowledgement(ctx context.Context, executor 
 		WHERE live.exam_sitting_id=? AND correction.number>admission.number
 		AND correction.number<=current_revision.number AND correction.publication_kind='live_correction'
 		AND correction.candidate_correction_acknowledgement_required=true
+		AND ? = ANY(correction.candidate_correction_affected_capabilities)
 		AND NOT EXISTS (SELECT 1 FROM exam_attempt_correction_acknowledgements acknowledgement
 			WHERE acknowledgement.exam_attempt_id=? AND acknowledgement.correction_revision_id=correction.id))`,
-		admissionRevisionID, currentRevisionID, sittingID, attemptID)
+		admissionRevisionID, currentRevisionID, sittingID, string(capability), attemptID)
 	if err != nil {
 		return false, fmt.Errorf("inspect pending Exam correction acknowledgement: %w", err)
 	}
@@ -281,17 +285,18 @@ type candidateLiveCorrectionRow struct {
 	EffectiveAt             time.Time      `db:"effective_at"`
 	Summary                 string         `db:"candidate_correction_summary"`
 	ChangedAreas            pq.StringArray `db:"candidate_correction_changed_areas"`
+	AffectedCapabilities    pq.StringArray `db:"candidate_correction_affected_capabilities"`
 	AcknowledgementRequired bool           `db:"candidate_correction_acknowledgement_required"`
 	AcknowledgedAt          sql.NullTime   `db:"acknowledged_at"`
 }
 
 func listCandidateLiveCorrections(ctx context.Context, executor sqlxExecutor, attemptID model.ExamAttemptID,
 	currentRevisionID model.ExamRevisionID,
-) ([]model.CandidateLiveCorrection, bool, error) {
+) ([]model.CandidateLiveCorrection, []model.CandidateCapability, error) {
 	var rows []candidateLiveCorrectionRow
 	if err := executor.Select(ctx, &rows, `SELECT correction.id AS revision_id,correction.number AS revision_number,
 		correction.published_at AS effective_at,correction.candidate_correction_summary,
-		correction.candidate_correction_changed_areas,correction.candidate_correction_acknowledgement_required,
+		correction.candidate_correction_changed_areas,correction.candidate_correction_affected_capabilities,correction.candidate_correction_acknowledgement_required,
 		acknowledgement.acknowledged_at
 		FROM exam_attempts attempt_record
 		JOIN exam_revisions admission ON admission.id=attempt_record.admission_revision_id AND admission.exam_id=attempt_record.exam_id
@@ -302,20 +307,24 @@ func listCandidateLiveCorrections(ctx context.Context, executor sqlxExecutor, at
 			AND acknowledgement.correction_revision_id=correction.id
 		WHERE attempt_record.id=? AND correction.number>admission.number AND correction.number<=current_revision.number
 		ORDER BY correction.number LIMIT ?`, currentRevisionID.String(), attemptID.String(), model.ExamSittingMaximumLiveCorrections+1); err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	if len(rows) > model.ExamSittingMaximumLiveCorrections {
-		return nil, false, invalidPersistedState("exam_correction", "candidate_projection", errors.New("correction limit exceeded"))
+		return nil, nil, invalidPersistedState("exam_correction", "candidate_projection", errors.New("correction limit exceeded"))
 	}
 	result := make([]model.CandidateLiveCorrection, len(rows))
 	for index, row := range rows {
 		revisionID, err := model.ParseExamRevisionID(row.RevisionID)
 		if err != nil {
-			return nil, false, invalidPersistedState("exam_correction", "revision_id", err)
+			return nil, nil, invalidPersistedState("exam_correction", "revision_id", err)
 		}
 		areas := make([]model.ExamCorrectionChangedArea, len(row.ChangedAreas))
 		for areaIndex, area := range row.ChangedAreas {
 			areas[areaIndex] = model.ExamCorrectionChangedArea(area)
+		}
+		capabilities := make([]model.CandidateCapability, len(row.AffectedCapabilities))
+		for capabilityIndex, capability := range row.AffectedCapabilities {
+			capabilities[capabilityIndex] = model.CandidateCapability(capability)
 		}
 		state := model.CorrectionAcknowledgementNotRequired
 		acknowledgedAt := model.OptionalTime{}
@@ -326,22 +335,15 @@ func listCandidateLiveCorrections(ctx context.Context, executor sqlxExecutor, at
 				acknowledgedAt = model.OptionalTimeFrom(row.AcknowledgedAt.Time)
 			}
 		} else if row.AcknowledgedAt.Valid {
-			return nil, false, invalidPersistedState("exam_correction", "acknowledgement", errors.New("notice-only correction was acknowledged"))
+			return nil, nil, invalidPersistedState("exam_correction", "acknowledgement", errors.New("notice-only correction was acknowledged"))
 		}
 		correction := model.CandidateLiveCorrection{RevisionID: revisionID, RevisionNumber: row.RevisionNumber,
-			EffectiveAt: model.TimeUTC(row.EffectiveAt), Summary: row.Summary, ChangedAreas: areas,
+			EffectiveAt: model.TimeUTC(row.EffectiveAt), Summary: row.Summary, ChangedAreas: areas, AffectedCapabilities: capabilities,
 			AcknowledgementRequired: row.AcknowledgementRequired, AcknowledgementState: state, AcknowledgedAt: acknowledgedAt}
 		if err = correction.Validate(); err != nil {
-			return nil, false, invalidPersistedState("exam_correction", "candidate_projection", err)
+			return nil, nil, invalidPersistedState("exam_correction", "candidate_projection", err)
 		}
 		result[index] = correction
 	}
-	pending := false
-	for _, correction := range result {
-		if correction.AcknowledgementState == model.CorrectionAcknowledgementPending {
-			pending = true
-			break
-		}
-	}
-	return result, pending, nil
+	return result, model.PendingCorrectionCapabilities(result), nil
 }

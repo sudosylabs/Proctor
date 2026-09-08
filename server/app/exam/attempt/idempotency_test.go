@@ -106,14 +106,15 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 	credential := model.NewCredentialToken()
 
 	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
-	connected, err := prepareConnectIdempotency(call, ConnectCommand{SittingID: sittingID,
-		ContinuityCredential: credential, SupportedConfigurationManifests: []string{manifest}, IdempotencyKey: "connect-key"})
+	security := model.ConnectSecurity{Kind: "preflight", PreflightID: "fixture-preflight", ReportDigest: model.SHA256Fingerprint([]byte("fixture-report"))}
+	connected, err := prepareConnectIdempotency(call, ConnectCommand{Security: security, SittingID: sittingID,
+		ContinuityCredential: credential, ConfigurationManifestFingerprint: manifest, IdempotencyKey: "connect-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertPreparedIdempotency(t, connected, userID, store.ExamAttemptConnectOperation, "connect-key",
-		fmt.Sprintf(`{"exam_sitting_id":%q,"session_id":%q,"continuity_credential_hash":%q,"supported_attempt_configuration_manifests":[%q],"initial_configuration":null}`,
-			sittingID, sessionID, model.HashToken(credential), manifest))
+		fmt.Sprintf(`{"exam_sitting_id":%q,"session_id":%q,"continuity_credential_hash":%q,"configuration_manifest_fingerprint":%q,"initial_configuration":null,"security":{"kind":"preflight","preflight_id":"fixture-preflight","report_digest":%q}}`,
+			sittingID, sessionID, model.HashToken(credential), manifest, security.ReportDigest))
 
 	examID, suspensionID := model.NewExamID(), model.NewAttemptSuspensionID()
 	reallowed, err := prepareReallowIdempotency(call, ReallowCommand{ExamID: examID, SittingID: sittingID,
@@ -127,13 +128,12 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 			examID, sittingID, attemptID, suspensionID))
 
 	revisionID := model.NewExamRevisionID()
-	submitted, err := prepareSubmissionIdempotency(call, "submit-key", attemptID, revisionID, 11, 7,
-		model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable})
+	submitted, err := prepareSubmissionIdempotency(call, "submit-key", attemptID, revisionID, 11, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertPreparedIdempotency(t, submitted, userID, store.ExamSubmissionSealOperation, "submit-key",
-		fmt.Sprintf(`{"exam_attempt_id":%q,"expected_current_revision_id":%q,"expected_workspace_cursor":11,"final_focus_loss_sequence":7,"browser_activity_state":"not_applicable","browser_source_session_id":"","browser_final_sequence":null,"browser_gap_reason":""}`,
+		fmt.Sprintf(`{"exam_attempt_id":%q,"expected_current_revision_id":%q,"expected_workspace_cursor":11,"final_focus_loss_sequence":7}`,
 			attemptID, revisionID))
 }
 

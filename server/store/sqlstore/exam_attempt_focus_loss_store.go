@@ -514,6 +514,9 @@ func suspendForFocusLoss(ctx context.Context, tx *sqlxTxWrapper, row focusLossAc
 		}
 		return false, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	}
+	if err := closeNativeDelivery(ctx, tx, participation.ID, model.DeliveryClosedSuspension, participation.EndedAt.Time); err != nil {
+		return false, err
+	}
 	result, err = tx.Exec(ctx, `UPDATE exam_attempt_connections SET state=?,closed_at=?,close_reason=?
 		WHERE id=? AND exam_attempt_id=? AND participation_id=? AND state=?`, connection.State, connection.ClosedAt.Time,
 		connection.CloseReason, connection.ID.String(), attempt.ID.String(), participation.ID.String(), model.AttemptConnectionOpen)

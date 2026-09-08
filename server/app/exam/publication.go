@@ -42,22 +42,23 @@ type PublicationEffects interface {
 // Publication owns the authorization, audit, persistence and after-commit
 // effect recipe for freezing Drafts into immutable Exam Revisions.
 type Publication struct {
-	store       store.ExamRevisionStore
-	access      store.ExamAuthoringStore
-	memberships manageraccess.Memberships
-	authorizer  Authorizer
-	auditor     Auditor
-	effects     PublicationEffects
-	failures    EffectFailures
-	now         func() time.Time
-	newID       func() model.ExamRevisionID
+	institutionOrigin string
+	store             store.ExamRevisionStore
+	access            store.ExamAuthoringStore
+	memberships       manageraccess.Memberships
+	authorizer        Authorizer
+	auditor           Auditor
+	effects           PublicationEffects
+	failures          EffectFailures
+	now               func() time.Time
+	newID             func() model.ExamRevisionID
 }
 
-func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthoringStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects PublicationEffects, failures EffectFailures, now func() time.Time, newID func() model.ExamRevisionID) (*Publication, error) {
+func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthoringStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects PublicationEffects, failures EffectFailures, now func() time.Time, newID func() model.ExamRevisionID, institutionOrigin string) (*Publication, error) {
 	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("Exam Revision publication dependencies are required")
 	}
-	return &Publication{store: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Publication{institutionOrigin: institutionOrigin, store: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
 func (p *Publication) Publish(ctx context.Context, call Call, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
@@ -98,7 +99,7 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	if err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	result, err := p.store.Publish(ctx, &store.ExamRevisionPublication{RevisionID: revisionID, ExamID: command.ExamID,
+	result, err := p.store.Publish(ctx, &store.ExamRevisionPublication{InstitutionOrigin: p.institutionOrigin, RevisionID: revisionID, ExamID: command.ExamID,
 		ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamPublishOverride,
 		ExpectedDraftRevision: command.ExpectedDraftRevision, Kind: model.ExamRevisionPublicationStandard,
 		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)

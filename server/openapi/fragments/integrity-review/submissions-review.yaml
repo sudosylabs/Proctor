@@ -15,7 +15,9 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Returns the current manager-authorized Review, decision set, bounded counts, and integrity state for one Submission. The response includes private review fields and is never the candidate-facing released result projection.
+        Returns the current manager-authorized Review, decision set, bounded counts, and integrity state for
+        one Submission. The response includes private review fields and is never the candidate-facing released
+        result projection.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -39,19 +41,19 @@ paths:
         - dpopAuth: []
         - sessionCookie: []
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityReviewOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
     put:
       operationId: updateExamIntegrityReview
@@ -59,7 +61,9 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Creates the Review or conditionally replaces its private manager notes and approved student remarks under an exact review revision. Finalized Reviews are immutable, and an idempotent replay does not repeat audit or publication effects.
+        Creates the Review or conditionally replaces its private manager notes and approved student remarks
+        under an exact review revision. Finalized Reviews are immutable, and an idempotent replay does not
+        repeat audit or publication effects.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -98,21 +102,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/UpdateExamIntegrityReview'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/submissions/{submission_id}/review/decisions/{integrity_flag_id}:
     parameters:
@@ -124,7 +128,8 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Creates or revision-fences the single current manager decision for one exact Flag. The outcome is a non-academic integrity disposition, never a grade or guilt verdict, and its rationale remains private.
+        Creates or revision-fences the single current manager decision for one exact Flag. The outcome is a
+        non-academic integrity disposition, never a grade or guilt verdict, and its rationale remains private.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -163,21 +168,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/SaveExamIntegrityDecision'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/submissions/{submission_id}/review/finalize:
     parameters:
@@ -188,7 +193,9 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Finalizes one exact Review revision only after required decisions and integrity completeness checks succeed, freezing its private content and bounded evidence inventory digest. Late records remain explicit Discrepancies and cannot rewrite the finalized inventory.
+        Finalizes one exact Review revision only after required decisions and integrity completeness checks
+        succeed, freezing its private content and bounded evidence inventory digest. Late records remain
+        explicit Discrepancies and cannot rewrite the finalized inventory.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -227,21 +234,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/TerminalExamIntegrityReview'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/submissions/{submission_id}/review/release:
     parameters:
@@ -252,7 +259,8 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Releases the narrow approved candidate result from one finalized Review revision. The transition does not expose manager notes, rationales, Flags, evidence, Discrepancies, or other private review state.
+        Releases the narrow approved candidate result from one finalized Review revision. The transition does
+        not expose manager notes, rationales, Flags, evidence, Discrepancies, or other private review state.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -291,21 +299,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/TerminalExamIntegrityReview'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
@@ -331,7 +339,7 @@ components:
           example:
             expected_review_revision: 0
             manager_notes: Review opened; evidence assessment is pending.
-            student_remarks_markdown: ""
+            student_remarks_markdown: ''
     TerminalExamIntegrityReview:
       description: Exact existing Review identity and revision to finalize or release.
       required: true
@@ -383,7 +391,9 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Zero when creating the first Review through this command; otherwise the exact current Review revision.
+          description: >-
+            Zero when creating the first Review through this command; otherwise the exact current Review
+            revision.
         expected_decision_revision:
           type: integer
           format: int64
@@ -400,7 +410,9 @@ components:
           type: string
           minLength: 1
           maxLength: 1000
-          description: Required already-trimmed manager-only UTF-8 rationale, at most 1000 Unicode scalar values and 4000 bytes.
+          description: >-
+            Required already-trimmed manager-only UTF-8 rationale, at most 1000 Unicode scalar values and 4000
+            bytes.
     UpdateExamIntegrityReviewRequest:
       description: Conditional complete replacement of the Review's mutable text fields.
       type: object
@@ -425,7 +437,8 @@ components:
           type: string
           maxLength: 8192
           description: >-
-            Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8 bytes; sanitized again on candidate projection.
+            Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8
+            bytes; sanitized again on candidate projection.
     TerminalExamIntegrityReviewRequest:
       description: Existing Review identity and exact revision for a terminal transition.
       type: object
@@ -452,6 +465,7 @@ components:
         - actor_user_id
         - private_rationale
         - decided_at
+        - inventory_stale
       properties:
         id:
           $ref: '#/components/schemas/ID'
@@ -477,8 +491,13 @@ components:
         decided_at:
           type: string
           format: date-time
+        inventory_stale:
+          type: boolean
+          description: New accepted evidence arrived after this decision; a fresh decision revision is required.
     ExamSubmissionReviewResponse:
-      description: Private manager Review state and bounded immutable inventory metadata.
+      description: >-
+        Current revision of the private manager Review. Newly accepted delivery inventory reopens it as a
+        withheld draft. Earlier finalization inventories remain immutable integrity records.
       type: object
       additionalProperties: false
       required:
@@ -527,11 +546,11 @@ components:
         flag_count:
           type: integer
           minimum: 0
-          maximum: 200
+          maximum: 456
         evidence_count:
           type: integer
           minimum: 0
-          maximum: 20000
+          maximum: 30000
         discrepancy_count:
           type: integer
           minimum: 0
@@ -568,6 +587,9 @@ components:
         - integrity_state
         - unresolved_integrity_count
         - decisions
+        - browser_activity
+        - delivery_inventory_revision
+        - native_conditions
       properties:
         submission_id:
           $ref: '#/components/schemas/ID'
@@ -596,6 +618,20 @@ components:
           maxItems: 200
           items:
             $ref: '#/components/schemas/ExamIntegrityReviewDecisionResponse'
+        browser_activity:
+          $ref: '#/components/schemas/BrowserSubmissionSettlement'
+        browser_evidence_overflow:
+          $ref: '#/components/schemas/BrowserIntegrityOverflow'
+        delivery_inventory_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+          description: >-
+            Server revision of accepted late delivery, used to fence a Review waiver even before drafting a
+            Review.
+        native_conditions:
+          $ref: '#/components/schemas/NativeConditionInventory'
     ExamIntegrityReviewMutationResponse:
       description: Committed Review state and optional decision returned by a mutation or exact replay.
       type: object

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -44,7 +45,7 @@ type inboundTestApplication struct {
 	focusLossResult     app.ExamAttemptFocusLossEvaluation
 	focusLossCalls      []app.EvaluateExamAttemptFocusLossCommand
 	browserStartErr     error
-	browserStartResult  app.BrowserActivityAcknowledgement
+	browserStartResult  model.BrowserSourceStatus
 	browserStartCalls   []app.StartBrowserActivityCommand
 	browserAppendErr    error
 	browserAppendResult app.BrowserActivityAcknowledgement
@@ -84,7 +85,7 @@ func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Inv
 
 func (a *inboundTestApplication) StartExamAttemptBrowserActivity(_ context.Context, _ app.Invocation,
 	command app.StartBrowserActivityCommand,
-) (app.BrowserActivityAcknowledgement, error) {
+) (model.BrowserSourceStatus, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.browserStartCalls = append(a.browserStartCalls, command)
@@ -492,6 +493,7 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(20 * time.Second),
 		}, Connection: *connection, ClassID: classID, FirstAdmission: true,
 	}}
+	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
 	runtime.principal.UserID = attempt.CandidateUserID
 	runtime.principal.SessionID = connection.SessionID
@@ -611,10 +613,11 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 			ID: participationID, AttemptID: attempt.ID, State: model.AttemptParticipationActive, Generation: 4,
 			StartedAt: at, UpdatedAt: at, LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease),
 		}, Connection: *connection, ClassID: model.NewClassID(), FirstAdmission: true,
-	}, renewResult: app.ExamAttemptParticipationRenewal{
+	}, renewResult: app.ExamAttemptParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(),
 		AttemptID: attempt.ID, ParticipationID: participationID, Generation: 4, AcceptedSequence: 1,
 		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
 	}}
+	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
 	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
@@ -633,7 +636,7 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 		t.Fatal("WebSocket ping renewed the Participation")
 	}
 	application.mu.Unlock()
-	runtime.handleRequest(context.Background(), requestWithData(t, 42, examAttemptRenewAction, examAttemptRenewRequest{
+	runtime.handleRequest(context.Background(), requestWithData(t, 42, examAttemptRenewAction, examAttemptRenewRequest{SecurityCoverage: renewalCoverageFixture(),
 		Generation: 4, Sequence: 1, ContinuityCredential: credential,
 	}))
 	response := nextInboundResponse(t, runtime)
@@ -672,7 +675,7 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	sourceID := model.BrowserSourceSessionID("018f47a0-6e53-4cc4-9d0b-97c9b6d98011")
 	credential := model.NewCredentialToken()
 	application := &inboundTestApplication{
-		browserStartResult: app.BrowserActivityAcknowledgement{SourceSessionID: sourceID, MissingRanges: []model.BrowserActivityMissingRange{}, ServerTime: at},
+		browserStartResult: model.BrowserSourceStatus{SourceSessionID: sourceID, BrowserDeliveryProgress: model.BrowserDeliveryProgress{MissingRanges: []model.SequenceRange{}}, ServerTime: at},
 		browserAppendResult: app.BrowserActivityAcknowledgement{SourceSessionID: sourceID, HighestContiguous: 1, HighestSeen: 4,
 			MissingRanges: []model.BrowserActivityMissingRange{{First: 2, Last: 3}}, ServerTime: at.Add(time.Second)},
 	}
@@ -680,7 +683,7 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	runtime.attempt = &examAttemptBinding{attemptID: attemptID, sittingID: sittingID, classID: classID,
 		connectionID: connectionID, participationID: participationID, generation: 2}
 
-	start := examAttemptBrowserStartRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 2,
+	start := examAttemptBrowserStartRequest{Generation: 2, PolicyRevisionID: model.NewExamRevisionID().String(), PolicyDigest: "sha256:" + strings.Repeat("a", 64), Transition: model.BrowserStartTransition{Kind: "initial"},
 		ContinuityCredential: credential, ParticipationID: participationID.String(), SourceSessionID: string(sourceID)}
 	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptBrowserStartAction, start))
 	response := nextInboundResponse(t, runtime)
@@ -700,12 +703,11 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	}
 
 	eventDocument, err := json.Marshal(examAttemptBrowserEventRequest{Sequence: 1, Kind: string(model.BrowserActivityOpened),
-		PolicyRevisionID: model.NewExamRevisionID().String(), ClientOccurredAt: at.Format(time.RFC3339Nano),
-		Location: json.RawMessage("null"), MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage("null")})
+		PolicyRevisionID: start.PolicyRevisionID, ClientOccurredAt: at.Format(time.RFC3339Nano)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	appendRequest := examAttemptBrowserAppendRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 2,
+	appendRequest := examAttemptBrowserAppendRequest{Generation: 2, PolicyRevisionID: start.PolicyRevisionID, PolicyDigest: start.PolicyDigest,
 		ContinuityCredential: credential, ParticipationID: participationID.String(), SourceSessionID: string(sourceID),
 		Events: []json.RawMessage{eventDocument}}
 	runtime.handleRequest(context.Background(), requestWithData(t, 41, examAttemptBrowserAppendAction, appendRequest))
@@ -765,13 +767,13 @@ func TestDecodeBrowserActivityAppendAcceptsSafeBlockedLocations(t *testing.T) {
 	blocked := []examAttemptBrowserEventRequest{
 		{Sequence: 1, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
 			ClientOccurredAt: at.Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"http","host":"example.edu","path":"/outside"}`),
-			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
+			BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
 		{Sequence: 2, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
 			ClientOccurredAt: at.Add(time.Millisecond).Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"file","host":"","path":""}`),
-			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
+			BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
 		{Sequence: 3, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
 			ClientOccurredAt: at.Add(2 * time.Millisecond).Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"","host":"","path":""}`),
-			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"invalid_url"`)},
+			BlockReason: json.RawMessage(`"invalid_url"`)},
 	}
 	documents := make([]json.RawMessage, len(blocked))
 	for index := range blocked {
@@ -781,7 +783,7 @@ func TestDecodeBrowserActivityAppendAcceptsSafeBlockedLocations(t *testing.T) {
 		}
 		documents[index] = encoded
 	}
-	request := examAttemptBrowserAppendRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 1,
+	request := examAttemptBrowserAppendRequest{Generation: 1, PolicyRevisionID: revisionID, PolicyDigest: "sha256:" + strings.Repeat("a", 64),
 		ContinuityCredential: model.NewCredentialToken(), ParticipationID: model.NewAttemptParticipationID().String(),
 		SourceSessionID: "018f47a0-6e53-4cc4-9d0b-97c9b6d98011", Events: documents}
 	encoded, err := json.Marshal(request)
@@ -852,7 +854,7 @@ func TestConnectionRuntimeRenewalUsesStrictPayloadAndSafeConnectionLossMessage(t
 	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), participationID: model.NewAttemptParticipationID(),
 		connectionID: model.NewAttemptConnectionID(), generation: 1}
 	credential := model.NewCredentialToken()
-	runtime.handleRequest(context.Background(), requestWithData(t, 51, examAttemptRenewAction, examAttemptRenewRequest{
+	runtime.handleRequest(context.Background(), requestWithData(t, 51, examAttemptRenewAction, examAttemptRenewRequest{SecurityCoverage: renewalCoverageFixture(),
 		Generation: 1, Sequence: 2, ContinuityCredential: credential,
 	}))
 	response := nextInboundResponse(t, runtime)
@@ -894,6 +896,7 @@ func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t
 		focusLossResult: app.ExamAttemptFocusLossEvaluation{AttemptID: attempt.ID, ParticipationID: participationID,
 			Generation: 4, AcceptedSequence: 3, ReceivedAt: receivedAt, Qualified: true,
 			FlagCreated: true, SuspensionCreated: true, ConnectionClosed: true}}
+	application.connectResult.Security = inboundSecurityFixture(t, application.connectResult)
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
 	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
@@ -933,7 +936,7 @@ func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t
 		t.Fatalf("Focus Loss calls=%#v", calls)
 	}
 
-	runtime.handleRequest(context.Background(), requestWithData(t, 62, examAttemptRenewAction, examAttemptRenewRequest{
+	runtime.handleRequest(context.Background(), requestWithData(t, 62, examAttemptRenewAction, examAttemptRenewRequest{SecurityCoverage: renewalCoverageFixture(),
 		Generation: 4, Sequence: 4, ContinuityCredential: credential,
 	}))
 	if rejected := nextInboundResponse(t, runtime); rejected.Status != "error" || rejected.Error == nil ||
@@ -1180,7 +1183,7 @@ func TestConnectionRuntimeBridgesBoundCandidateTerminal(t *testing.T) {
 	runtime.attempt = binding
 	credential := model.NewCredentialToken()
 	runtime.handleRequest(context.Background(), requestWithData(t, 100, examAttemptTerminalOpenAction,
-		examAttemptTerminalOpenRequest{Generation: 3, ContinuityCredential: credential, Cols: 120, Rows: 40}))
+		examAttemptTerminalOpenRequest{ExpectedWorkspaceCursor: new(int64), Generation: 3, ContinuityCredential: credential, Cols: 120, Rows: 40}))
 	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
 		t.Fatalf("terminal open response = %#v", response)
 	}
@@ -1194,12 +1197,12 @@ func TestConnectionRuntimeBridgesBoundCandidateTerminal(t *testing.T) {
 		t.Fatalf("terminal command = %#v", command)
 	}
 	runtime.handleRequest(context.Background(), requestWithData(t, 101, examAttemptTerminalInputAction,
-		examAttemptTerminalInputRequest{Data: base64.StdEncoding.EncodeToString([]byte("go test\n"))}))
+		examAttemptTerminalInputRequest{TerminalID: runtime.terminalID, Data: base64.StdEncoding.EncodeToString([]byte("go test\n"))}))
 	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
 		t.Fatalf("terminal input response = %#v", response)
 	}
 	runtime.handleRequest(context.Background(), requestWithData(t, 102, examAttemptTerminalResizeAction,
-		examAttemptTerminalResizeRequest{Cols: 90, Rows: 30}))
+		examAttemptTerminalResizeRequest{TerminalID: runtime.terminalID, Cols: 90, Rows: 30}))
 	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
 		t.Fatalf("terminal resize response = %#v", response)
 	}
@@ -1261,18 +1264,185 @@ var _ connectionSocket = (*inboundTestSocket)(nil)
 func validExamAttemptConnectRequest(t *testing.T, sittingID model.ExamSittingID, key, credential string) examAttemptConnectRequest {
 	t.Helper()
 	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
-	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest,
-		model.NewUserSettingsRevision(), "sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
-			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
-			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
-			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
-			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
-			CandidateCommandBindings: []model.AttemptCommandBinding{},
-		})
+	configuration := model.AttemptConfigurationCandidate{ManifestFingerprint: manifest, RegistryFingerprint: "fnv1a64:" + strings.Repeat("b", 16), UserSettingsRevision: model.NewUserSettingsRevision(), DesktopBuild: "test-build", DesktopTarget: "darwin-arm64", Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}
+	err := configuration.Validate()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return examAttemptConnectRequest{ExamSittingID: sittingID.String(), IdempotencyKey: key,
-		ContinuityCredential: credential, SupportedAttemptConfigurationManifests: []string{manifest},
+	return examAttemptConnectRequest{Security: model.ConnectSecurity{Kind: "preflight", PreflightID: "fixture-preflight", ReportDigest: model.SHA256Fingerprint([]byte("fixture-report"))}, ExamSittingID: sittingID.String(), IdempotencyKey: key,
+		ContinuityCredential: credential, ConfigurationManifestFingerprint: manifest,
 		InitialConfiguration: &configuration}
+}
+
+func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *model.DesktopNativeAgreement {
+	t.Helper()
+	digest := model.SHA256Fingerprint([]byte("synthetic-source-schema"))
+	definitions := []model.NativeCoverageDefinition{}
+	matrix := model.NativeCapabilityMatrix{RegistryDigest: model.NativeRegistryDigest, MatrixID: build.CapabilityMatrixIdentity, ReleaseID: "synthetic-release", TargetTuple: build.DesktopTarget}
+	for _, item := range []struct {
+		key    string
+		source model.NativeSourceID
+	}{{"baseline.capture", model.NativeSourceCapture}, {"baseline.display", model.NativeSourceDisplay}, {"baseline.window", model.NativeSourceWindow}} {
+		definitions = append(definitions, model.NativeCoverageDefinition{CoverageKey: item.key, CapabilityID: "baseline", SourceID: item.source, SourceSchemaDigest: digest, PermittedClaims: []model.NativeCapabilityClaim{model.NativeClaimEnforce}, RequiredPermissions: []string{}, Baseline: true})
+		matrix.Entries = append(matrix.Entries, model.NativeCapabilityMatrixEntry{CoverageKey: item.key, SourceSchemaDigest: digest, Claim: model.NativeClaimEnforce, ComponentID: "synthetic-component", AdapterVersion: "synthetic-adapter", RequiredPermissions: []string{}, Limitations: []string{}, Verification: "passed"})
+	}
+	agreement, err := model.NewDesktopNativeAgreement(model.NativeRegistryDigest, model.SHA256Fingerprint([]byte("synthetic-manifest")), model.SHA256Fingerprint([]byte("synthetic-matrix")), model.SHA256Fingerprint([]byte("synthetic-detectors")), definitions, matrix, []model.NativeDetectorDefinition{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agreement
+}
+
+func inboundSecurityFixture(t *testing.T, result app.ExamAttemptConnection) model.AdmittedSecurity {
+	t.Helper()
+	manifest := model.EmptyAttemptConfigurationManifest()
+	build := model.DesktopBuildTuple{DesktopRelease: "1.0.0", DesktopBuildID: "synthetic-build", Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64, RealtimeProtocol: 1, AttemptConfigurationManifestFingerprint: manifest.Fingerprint(), DesktopSettingsRegistryFingerprint: "fnv1a64:aaaaaaaaaaaaaaaa", ConfigurationManifest: manifest, DesktopTarget: "darwin-arm64", CapabilityMatrixIdentity: "synthetic-matrix"}
+	build.NativeAgreement = syntheticNativeAgreement(t, build)
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: "fixture-policy", Revision: result.Attempt.AdmissionRevisionID.String(), Ordinal: result.Participation.Generation, InstitutionID: model.NewInstitutionID(), ExamRevisionID: result.Attempt.AdmissionRevisionID, SittingID: result.Attempt.SittingID, Scope: model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: "fixture-preflight"}, IssuedAt: result.Participation.StartedAt, ActiveFrom: result.Participation.StartedAt, ActivationTime: result.Participation.StartedAt, Selections: model.DefaultExamPolicySet(), Build: build})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := resolved.Policy.RebindAttempt(result.Attempt.ID, result.Participation.StartedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model.AdmittedSecurity{Policy: policy, PolicyContentDigest: resolved.PolicyContentDigest, PreflightID: "fixture-preflight", PreflightReportDigest: model.SHA256Fingerprint([]byte("fixture-report")), PreflightPolicyDigest: resolved.Policy.Digest, ParticipationID: result.Participation.ID, Generation: result.Participation.Generation, SecuritySessionID: "fixture-security-session", DeliveryStreamID: "fixture-delivery", RenewalIntervalSeconds: 5}
+}
+
+func (a *inboundTestApplication) UpdateExamSecurityCoverage(context.Context, app.Invocation, app.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
+}
+
+func renewalCoverageFixture() model.SecurityCoverageRenewal {
+	return model.SecurityCoverageRenewal{ControlSequence: 1, PolicyDigest: model.SHA256Fingerprint([]byte("renewal-policy")), SecuritySessionID: model.NewId(), StreamID: model.NewId(), Posture: "compliant", Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, SourceResets: []model.NativeSourceReset{}, DeliveryWatermarks: []model.DeliveryWatermark{}}
+}
+func renewalCoverageResultFixture() model.SecurityCoverageResult {
+	digest := model.SHA256Fingerprint([]byte("renewal-control"))
+	return model.SecurityCoverageResult{ProcessedControlSequence: 1, ProcessedControlDigest: &digest, CoverageResult: "accepted", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: true, ExecutionState: "not_allocated", DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
+}
+
+type deliveryRecoveryTestError struct {
+	error
+	value *model.DeliveryRecovery
+}
+
+func (e *deliveryRecoveryTestError) DeliveryRecovery() *model.DeliveryRecovery { return e.value }
+func TestDeliveryErrorHasBoundedPrivateRecoveryAndRetryDelay(t *testing.T) {
+	for _, name := range []string{"valid", "invalid", "unrelated"} {
+		t.Run(name, func(t *testing.T) {
+			at := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+			runtime := newInboundRuntime(&inboundTestApplication{}, newInboundTestSocket(), newRuntimeTestClock(at))
+			state := &model.DeliveryRecovery{Family: "browser", Budget: model.DeliveryBudgetSnapshot{ParticipationID: model.NewAttemptParticipationID(), Generation: 1, ServerTime: at, Native: model.DeliveryFamilyBudget{Participation: model.NewDeliveryQuotaUsage(true, false), Attempt: model.NewDeliveryQuotaUsage(true, true), PendingByteLimit: model.DeliveryPendingByteLimit}, Browser: model.DeliveryFamilyBudget{Participation: model.NewDeliveryQuotaUsage(false, false), Attempt: model.NewDeliveryQuotaUsage(false, true), PendingByteLimit: model.DeliveryPendingByteLimit}}}
+			code := "exam.delivery.pending_capacity"
+			if name == "invalid" {
+				state.Budget.Native.PendingBytes = -1
+			}
+			if name == "unrelated" {
+				code = "exam.attempt.not_found"
+			}
+			runtime.enqueueDeliveryError(3, code, app.NewError(code).Wrap(&deliveryRecoveryTestError{error: errors.New("private-native-payload"), value: state}))
+			response := nextInboundResponse(t, runtime)
+			if response.Error == nil || response.Sequence != 3 || (response.Error.Delivery != nil) != (name == "valid") {
+				t.Fatal("invalid delivery error extension")
+			}
+			if name != "unrelated" && response.Error.RetryAfterSeconds != 1 {
+				t.Fatal("missing retry delay")
+			}
+			raw, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(raw), "private-native-payload") {
+				t.Fatal("private cause leaked")
+			}
+		})
+	}
+}
+
+// A transport-level blocked append must not monopolize the renewal reader.
+type blockedAppendApplication struct {
+	*inboundTestApplication
+	entered  chan struct{}
+	finished chan struct{}
+}
+
+func (a *blockedAppendApplication) AppendExamAttemptBrowserActivity(ctx context.Context, _ app.Invocation, _ app.AppendBrowserActivityCommand) (app.BrowserActivityAcknowledgement, error) {
+	close(a.entered)
+	<-ctx.Done()
+	close(a.finished)
+	return app.BrowserActivityAcknowledgement{}, ctx.Err()
+}
+
+func TestConnectionRuntimeAppendBackpressurePreservesRenewalAndCancelsWorker(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.September, 8, 1, 0, 0, 0, time.UTC)
+	socket := newInboundTestSocket()
+	application := &blockedAppendApplication{inboundTestApplication: &inboundTestApplication{}, entered: make(chan struct{}), finished: make(chan struct{})}
+	runtime := newInboundRuntime(application.inboundTestApplication, socket, newRuntimeTestClock(at))
+	runtime.application = application
+	attemptID, participationID := model.NewExamAttemptID(), model.NewAttemptParticipationID()
+	runtime.attempt = &examAttemptBinding{attemptID: attemptID, participationID: participationID, connectionID: model.NewAttemptConnectionID(), generation: 1}
+	application.renewResult = app.ExamAttemptParticipationRenewal{SecurityCoverage: renewalCoverageResultFixture(), AttemptID: attemptID,
+		ParticipationID: participationID, Generation: 1, AcceptedSequence: 1, DatabaseTime: at, LeaseExpiresAt: at.Add(model.AttemptParticipationInitialLease)}
+	credential, revision := model.NewCredentialToken(), model.NewExamRevisionID().String()
+	event, err := json.Marshal(examAttemptBrowserEventRequest{Sequence: 1, Kind: string(model.BrowserActivityOpened), PolicyRevisionID: revision, ClientOccurredAt: at.Format(time.RFC3339Nano)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := examAttemptBrowserAppendRequest{Generation: 1, PolicyRevisionID: revision, PolicyDigest: "sha256:" + strings.Repeat("a", 64),
+		ContinuityCredential: credential, ParticipationID: participationID.String(), SourceSessionID: "018f47a0-6e53-4cc4-9d0b-97c9b6d98011", Events: []json.RawMessage{event}}
+	done := make(chan struct{})
+	go func() { runtime.readPump(context.Background()); close(done) }()
+	t.Cleanup(func() {
+		_ = socket.Close()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("append worker did not stop")
+		}
+	})
+	socket.reads <- inboundReadResult{request: *requestWithData(t, 1, examAttemptBrowserAppendAction, body)}
+	select {
+	case <-application.entered:
+	case <-time.After(time.Second):
+		t.Fatal("append did not enter application")
+	}
+	// The second request occupies the single waiting slot; the third is refused.
+	socket.reads <- inboundReadResult{request: *requestWithData(t, 2, examAttemptBrowserAppendAction, body)}
+	socket.reads <- inboundReadResult{request: *requestWithData(t, 3, examAttemptBrowserAppendAction, body)}
+	socket.reads <- inboundReadResult{request: *requestWithData(t, 4, examAttemptRenewAction, examAttemptRenewRequest{Generation: 1, Sequence: 1, ContinuityCredential: credential, SecurityCoverage: renewalCoverageFixture()})}
+	refused := nextInboundResponse(t, runtime)
+	if refused.Sequence != 3 || refused.Error == nil || refused.Error.Code != "exam.delivery.append_rate_limited" || refused.Error.RetryAfterSeconds != 1 || refused.Error.Delivery != nil {
+		t.Fatalf("append saturation = %#v", refused)
+	}
+	renewed := nextInboundResponse(t, runtime)
+	if renewed.Sequence != 4 || renewed.Status != "ok" {
+		t.Fatalf("renewal blocked by append = %#v", renewed)
+	}
+	_ = socket.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reader failed to join canceled append")
+	}
+	select {
+	case <-application.finished:
+	default:
+		t.Fatal("reader returned before append cancellation completed")
+	}
+}
+
+func TestControlRateRefusalHasRetryAdviceWithoutClosingBinding(t *testing.T) {
+	runtime := newInboundRuntime(&inboundTestApplication{}, newInboundTestSocket(), newRuntimeTestClock(time.Now()))
+	binding := &examAttemptBinding{attemptID: model.NewExamAttemptID()}
+	runtime.attempt = binding
+	runtime.enqueueError(77, "exam.delivery.control_rate_limited", websocketErrorAttemptRenewalFailed)
+	response := nextInboundResponse(t, runtime)
+	if response.Sequence != 77 || response.Error == nil || response.Error.RetryAfterSeconds != 1 || response.Error.Delivery != nil || runtime.attempt != binding {
+		t.Fatal("control retry refusal changed authority or lost retry advice")
+	}
+}
+
+func (terminal *inboundTerminalFake) ProjectionStatus() appexecution.ProjectionStatus {
+	return appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: "ready"}
 }

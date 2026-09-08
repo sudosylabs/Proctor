@@ -11,13 +11,15 @@ components:
       type: http
       scheme: bearer
       description: >-
-        A Proctor session access credential or Personal Access Token, subject to the route's x-proctor-auth requirement.
+        A Proctor session access credential or Personal Access Token, subject to the route's x-proctor-auth
+        requirement.
     dpopAuth:
       type: apiKey
       in: header
       name: Authorization
       description: >-
-        A Desktop Session access credential accompanied by a fresh RFC 9449 DPoP proof and server nonce in the DPoP header.
+        A Desktop Session access credential accompanied by a fresh RFC 9449 DPoP proof and server nonce in the
+        DPoP header.
     sessionCookie:
       type: apiKey
       in: cookie
@@ -48,7 +50,8 @@ components:
       in: header
       required: true
       description: >-
-        Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.
+        Required opaque client key. Identical semantic commands replay the committed outcome for at least 24
+        hours; reuse with different input is a conflict.
       schema:
         type: string
         minLength: 1
@@ -101,7 +104,8 @@ components:
       in: header
       required: true
       description: >-
-        Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL.
+        Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation.
+        Never log, persist, cache, or place this value in a URL.
       schema:
         type: string
         minLength: 43
@@ -252,16 +256,14 @@ components:
             request_id: req_docs_rate_limited
     ServiceUnavailable:
       description: >-
-        Service unavailable. The service.busy code means this node's bounded
-        password or content-processing capacity is currently full. No password
-        proof or completed content publication is issued by that refused
-        operation; retry after the indicated delay, preserving any required
-        idempotency key.
+        Service unavailable. The service.busy code means this node's bounded password or content-processing
+        capacity is currently full. No password proof or completed content publication is issued by that
+        refused operation; retry after the indicated delay, preserving any required idempotency key.
       headers:
         Retry-After:
           description: >-
-            Present with value 1 for service.busy. Wait at least this many
-            seconds before retrying the operation.
+            Present with value 1 for service.busy. Wait at least this many seconds before retrying the
+            operation.
           schema:
             type: integer
             minimum: 1
@@ -327,12 +329,15 @@ components:
       minLength: 1
       maxLength: 1024
       description: >-
-        An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control characters, and the reserved .proctor root are rejected.
+        An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per
+        segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control
+        characters, and the reserved .proctor root are rejected.
     WorkspaceContentVersion:
       type: string
       pattern: ^[A-Za-z0-9_-]{26}$
       description: >-
-        Opaque comparison token for one acknowledged Workspace file content state. It is not an entity identifier and must be returned unchanged.
+        Opaque comparison token for one acknowledged Workspace file content state. It is not an entity
+        identifier and must be returned unchanged.
     SHA256:
       type: string
       pattern: ^[0-9a-f]{64}$
@@ -405,7 +410,8 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority.
+        User directory projection. Email, verification, locale, timezone, activity, and disabled state are
+        present only for self or institution-wide user.view authority.
       required:
         - id
         - create_at
@@ -783,7 +789,294 @@ components:
           type: string
         request_id:
           type: string
+        control_metadata_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+          description: Present only on an exam.delivery.metadata_capacity refusal.
+        control_metadata_limit_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+          description: Present only on an exam.delivery.metadata_capacity refusal.
+        required_reservation_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+          description: Present only on an exam.delivery.metadata_capacity refusal.
+        remaining_reservable_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+          description: Present only on an exam.delivery.metadata_capacity refusal.
         fields:
           type: object
           additionalProperties:
             type: string
+        delivery:
+          $ref: '#/components/schemas/DeliveryRecovery'
+    BrowserSourceSessionID:
+      type: string
+      format: uuid
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+    BrowserDeliveryRecord:
+      description: >-
+        Strict closed record. Lifecycle records omit navigation members; optional members are omitted rather
+        than null. Redirect selectors must reference an earlier successful hop in the same source and policy.
+        Policy validation, canonical URL minimization, safe integer spelling and UTC millisecond precision are
+        enforced by the server.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - sequence
+            - kind
+            - policy_revision_id
+            - client_occurred_at
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            kind:
+              type: string
+              const: browser_opened
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            client_occurred_at:
+              type: string
+              format: date-time
+              pattern: Z$
+        - type: object
+          additionalProperties: false
+          required:
+            - sequence
+            - kind
+            - policy_revision_id
+            - client_occurred_at
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            kind:
+              type: string
+              const: browser_closed
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            client_occurred_at:
+              type: string
+              format: date-time
+              pattern: Z$
+        - type: object
+          additionalProperties: false
+          required:
+            - sequence
+            - kind
+            - policy_revision_id
+            - client_occurred_at
+            - location
+            - matched_rule_id
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            kind:
+              type: string
+              const: top_level_navigation
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            client_occurred_at:
+              type: string
+              format: date-time
+              pattern: Z$
+            location:
+              type: object
+              additionalProperties: false
+              required:
+                - scheme
+                - host
+                - path
+              properties:
+                scheme:
+                  type: string
+                  maxLength: 32
+                host:
+                  type: string
+                  maxLength: 2048
+                port:
+                  type: string
+                  minLength: 1
+                  maxLength: 5
+                path:
+                  type: string
+                  maxLength: 2048
+            matched_rule_id:
+              type: string
+              minLength: 1
+              maxLength: 64
+              pattern: ^[a-z0-9_-]{1,64}$
+        - type: object
+          additionalProperties: false
+          required:
+            - sequence
+            - kind
+            - policy_revision_id
+            - client_occurred_at
+            - location
+            - matched_rule_id
+            - redirect_from_sequence
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            kind:
+              type: string
+              const: top_level_redirect
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            client_occurred_at:
+              type: string
+              format: date-time
+              pattern: Z$
+            location:
+              type: object
+              additionalProperties: false
+              required:
+                - scheme
+                - host
+                - path
+              properties:
+                scheme:
+                  type: string
+                  maxLength: 32
+                host:
+                  type: string
+                  maxLength: 2048
+                port:
+                  type: string
+                  minLength: 1
+                  maxLength: 5
+                path:
+                  type: string
+                  maxLength: 2048
+            matched_rule_id:
+              type: string
+              minLength: 1
+              maxLength: 64
+              pattern: ^[a-z0-9_-]{1,64}$
+            redirect_from_sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+        - type: object
+          additionalProperties: false
+          required:
+            - sequence
+            - kind
+            - policy_revision_id
+            - client_occurred_at
+            - location
+            - block_reason
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            kind:
+              type: string
+              const: blocked_top_level_navigation
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            client_occurred_at:
+              type: string
+              format: date-time
+              pattern: Z$
+            location:
+              type: object
+              additionalProperties: false
+              required:
+                - scheme
+                - host
+                - path
+              properties:
+                scheme:
+                  type: string
+                  maxLength: 32
+                host:
+                  type: string
+                  maxLength: 2048
+                port:
+                  type: string
+                  minLength: 1
+                  maxLength: 5
+                path:
+                  type: string
+                  maxLength: 2048
+            matched_rule_id:
+              type: string
+              minLength: 1
+              maxLength: 64
+              pattern: ^[a-z0-9_-]{1,64}$
+            block_reason:
+              type: string
+              enum:
+                - scheme_not_allowed
+                - origin_not_allowed
+                - path_not_allowed
+                - redirect_not_allowed
+                - invalid_url
+            redirect_from_sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+    DeliveryRecovery:
+      type: object
+      additionalProperties: false
+      description: >-
+        Current authorized progress and budget after a delivery refusal, bounded at 32 KiB. These observations
+        do not acknowledge rejected bytes. Independent reads may reflect concurrent progress. Omitted when
+        fresh ownership cannot be established or the family has retired. Available on pending_capacity,
+        replay_window_exceeded, detail_budget_exhausted, sequence_limit, declaration_conflict, upload_expired
+        and delivery rate-limit errors.
+      required:
+        - family
+        - budget
+      properties:
+        family:
+          type: string
+          enum:
+            - native
+            - browser
+        budget:
+          $ref: '#/components/schemas/DeliveryBudgetSnapshot'
+        native_status:
+          $ref: '#/components/schemas/NativeSecurityStreamStatus'
+        browser_status:
+          $ref: '#/components/schemas/BrowserSourceStatus'
+      oneOf:
+        - properties:
+            family:
+              const: native
+          not:
+            required:
+              - browser_status
+        - properties:
+            family:
+              const: browser
+          not:
+            required:
+              - native_status

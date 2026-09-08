@@ -137,6 +137,9 @@ func (c *connectionRuntime) enqueueError(sequence int64, code string, presentati
 		Status: "error", Sequence: sequence,
 		Error: &Error{Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))},
 	}
+	if code == "exam.delivery.control_rate_limited" {
+		response.Error.RetryAfterSeconds = 1
+	}
 	c.enqueueOutbound(outboundMessage{response: response})
 }
 

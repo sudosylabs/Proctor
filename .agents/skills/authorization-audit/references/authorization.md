@@ -234,6 +234,13 @@ operation resolves the canonical Submission first, audits that resource and
 resolved Academic Unit scope, and conceals a denied or mismatched target as not
 found. An identical idempotent mutation replay repeats current authorization
 and audit before returning its retained result.
+Browser Activity history always requires current exact Exam Manager membership
+plus `exam.attempt.browser_activity.view`. It has no
+administrator override action. Each page and history-bearing export repeats
+these checks; a generic integrity, teacher, administrator or export permission
+never grants the surrounding history. Relationship denials are durably audited
+and concealed. The obsolete override is absent from the live/grantable catalog;
+inert old permission strings grant no authority and never create membership.
 Further lifecycle and visibility rules are in
 [examinations](../../exam-lifecycle/references/examinations.md#authorization-effects-and-persistence).
 
@@ -311,8 +318,9 @@ revision, and idempotency; success commits with the policy and retained outcome.
 
 `exam.records.export` and `exam.records.export_override` grant no standalone
 read access. Creation and retrieval also require Submission read; Sitting
-exports require Sitting read, and integrity requires Browser Activity read,
-all under the same ordinary/override scope. SQL rechecks credentials,
+exports require Sitting read, and integrity requires Browser Activity read.
+The latter requires exact Manager membership independently of
+the general export/Submission override. SQL rechecks credentials,
 bindings, Exam Manager/exact-unit membership, nested ownership and requester
 under authoritative locks. Critical creation audit, the exact ID-only retry
 outcome, source protections and build Job commit atomically. Archive bytes,

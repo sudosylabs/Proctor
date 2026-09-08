@@ -83,14 +83,16 @@ type retentionExpiryCountsResponse struct {
 }
 
 type retentionPreviewResponse struct {
-	Audit          retentionExpiryCountsResponse  `json:"audit"`
-	Receipts       retentionExpiryCountsResponse  `json:"receipts"`
-	ID             string                         `json:"id"`
-	PolicyRevision int64                          `json:"policy_revision"`
-	CreatedAt      string                         `json:"created_at"`
-	ExpiresAt      string                         `json:"expires_at"`
-	Work           retentionPreviewCountsResponse `json:"work"`
-	Integrity      retentionPreviewCountsResponse `json:"integrity"`
+	Audit               retentionExpiryCountsResponse  `json:"audit"`
+	Receipts            retentionExpiryCountsResponse  `json:"receipts"`
+	ID                  string                         `json:"id"`
+	PolicyRevision      int64                          `json:"policy_revision"`
+	CreatedAt           string                         `json:"created_at"`
+	ExpiresAt           string                         `json:"expires_at"`
+	Work                retentionPreviewCountsResponse `json:"work"`
+	Integrity           retentionPreviewCountsResponse `json:"integrity"`
+	BrowserActivity     retentionPreviewCountsResponse `json:"browser_activity"`
+	SecurityOperational retentionPreviewCountsResponse `json:"security_operational"`
 }
 type retirementResponse struct {
 	ID                 string  `json:"id"`
@@ -259,7 +261,7 @@ func retentionPreviewDTO(p *model.RetentionPreview) retentionPreviewResponse {
 	if p == nil {
 		return retentionPreviewResponse{}
 	}
-	return retentionPreviewResponse{Audit: retentionExpiryCountsDTO(p.Audit), Receipts: retentionExpiryCountsDTO(p.Receipts), ID: p.ID.String(), PolicyRevision: p.PolicyRevision, CreatedAt: retentionTime(p.CreatedAt), ExpiresAt: retentionTime(p.ExpiresAt), Work: retentionPreviewCountsDTO(p.Work), Integrity: retentionPreviewCountsDTO(p.Integrity)}
+	return retentionPreviewResponse{Audit: retentionExpiryCountsDTO(p.Audit), Receipts: retentionExpiryCountsDTO(p.Receipts), ID: p.ID.String(), PolicyRevision: p.PolicyRevision, CreatedAt: retentionTime(p.CreatedAt), ExpiresAt: retentionTime(p.ExpiresAt), Work: retentionPreviewCountsDTO(p.Work), Integrity: retentionPreviewCountsDTO(p.Integrity), BrowserActivity: retentionPreviewCountsDTO(p.BrowserActivity), SecurityOperational: retentionPreviewCountsDTO(p.SecurityOperational)}
 }
 
 func retentionExpiryCountsDTO(c model.RetentionExpiryCounts) retentionExpiryCountsResponse {

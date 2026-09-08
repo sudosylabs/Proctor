@@ -35,7 +35,10 @@ type OpenedExamAttemptContent = examattempt.OpenedContent
 type ExamAttemptWorkspaceMutationAccess = examattempt.WorkspaceMutationAccess
 type ExamAttemptWorkspaceMutationResult = examattempt.WorkspaceMutationResult
 type CandidateExamWorkspaceJournalPage = examattempt.WorkspaceJournalPage
-type CandidateExamTerminal = appexecution.Terminal
+type CandidateExamTerminal interface {
+	appexecution.Terminal
+	ProjectionStatus() appexecution.ProjectionStatus
+}
 type CandidateExamTerminalWindow = appexecution.Window
 type CandidateExamActivityPage = examattempt.CandidateActivityPage
 type SittingCandidateStatusesPage = examattempt.SittingCandidateStatusesPage
@@ -43,6 +46,7 @@ type SittingCandidatePresenceState = store.SittingCandidatePresenceState
 type CandidateRuntimeCapabilities = store.CandidateRuntimeCapabilities
 type CandidateBrowserPolicy = store.CandidateBrowserPolicy
 type BrowserActivityAcknowledgement = model.BrowserActivityAcknowledgement
+type BrowserSourceRefusal = store.BrowserSourceRefusal
 type BrowserActivityRecord = store.BrowserActivityRecord
 
 type StartBrowserActivityCommand = examattempt.StartBrowserActivityCommand
@@ -53,10 +57,10 @@ type AcknowledgeExamCorrectionCommand = examattempt.AcknowledgeCorrectionCommand
 type ExamCorrectionAcknowledgementResult = examattempt.CorrectionAcknowledgementResult
 type EndExamAttemptByManagerCommand = examattempt.ManagerEndCommand
 
-func (a *App) StartExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command StartBrowserActivityCommand) (BrowserActivityAcknowledgement, error) {
+func (a *App) StartExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
 	result, err := a.examAttempts.StartBrowserActivity(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
-		return BrowserActivityAcknowledgement{}, examAttemptError(err, true)
+		return model.BrowserSourceStatus{}, examAttemptError(err, true)
 	}
 	return result, nil
 }
@@ -96,20 +100,22 @@ func (a *App) EndExamAttemptByManager(ctx context.Context, invocation Invocation
 }
 
 type OpenCandidateExamTerminalCommand struct {
-	Access          CandidateExamAttemptAccess
-	SittingID       model.ExamSittingID
-	ClassID         model.ClassID
-	ParticipationID model.AttemptParticipationID
-	Generation      int64
-	Window          appexecution.Window
+	ExpectedWorkspaceCursor int64
+	Access                  CandidateExamAttemptAccess
+	SittingID               model.ExamSittingID
+	ClassID                 model.ClassID
+	ParticipationID         model.AttemptParticipationID
+	Generation              int64
+	Window                  appexecution.Window
 }
 
 type ConnectExamAttemptCommand struct {
-	SittingID                       model.ExamSittingID
-	ContinuityCredential            string
-	SupportedConfigurationManifests []string
-	InitialConfiguration            *model.AttemptConfiguration
-	IdempotencyKey                  string
+	Security                         model.ConnectSecurity
+	SittingID                        model.ExamSittingID
+	ContinuityCredential             string
+	ConfigurationManifestFingerprint string
+	InitialConfiguration             *model.AttemptConfigurationCandidate
+	IdempotencyKey                   string
 }
 
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
@@ -222,11 +228,32 @@ type ExamAttemptManagerPage struct {
 }
 
 type examAttemptUseCases interface {
+	AppendNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error)
+	BrowserSourceStatus(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error)
+	BrowserDeliveryReceipts(context.Context, examattempt.Call, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error)
+	DeclareBrowserDeliveryGaps(context.Context, examattempt.Call, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error)
+	SealBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error)
+	UpdateBrowserDeliverySummary(context.Context, examattempt.Call, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error)
+	AppendHistoricalBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error)
+
+	BrowserSourceList(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error)
+	DeliveryBudget(context.Context, examattempt.Call, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error)
+	StopDeliveryDetails(context.Context, examattempt.Call, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error)
+	NativeDeliveryStatus(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error)
+	NativeDeliveryReceipt(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error)
+	DeclareNativeDeliveryGaps(context.Context, examattempt.Call, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error)
+	SealNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error)
+	UpdateNativeDeliverySummary(context.Context, examattempt.Call, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error)
+	RecoverSecurityPolicy(context.Context, examattempt.Call, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error)
+	PrepareSecurityPreflight(context.Context, examattempt.Call, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error)
+	ReportSecurityPreflight(context.Context, examattempt.Call, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error)
 	Connect(context.Context, examattempt.Call, examattempt.ConnectCommand) (examattempt.ConnectionResult, error)
+	UpdateSecurityCoverage(context.Context, examattempt.Call, examattempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error)
 	RenewParticipation(context.Context, examattempt.Call, examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error)
 	EvaluateFocusLoss(context.Context, examattempt.Call, examattempt.FocusLossCommand) (examattempt.FocusLossEvaluation, error)
 	Reallow(context.Context, examattempt.Call, examattempt.ReallowCommand) (examattempt.ReallowResult, error)
 	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
+	ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error)
 	CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
 	GetPresentation(context.Context, examattempt.Call, examattempt.CandidateAccess) (examattempt.Presentation, error)
 	ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error)
@@ -242,7 +269,7 @@ type examAttemptUseCases interface {
 	ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
 	ListCandidateActivity(context.Context, examattempt.Call, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error)
 	ListSittingCandidateStatuses(context.Context, examattempt.Call, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error)
-	StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
+	StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error)
 	AppendBrowserActivity(context.Context, examattempt.Call, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
 	ListBrowserActivity(context.Context, examattempt.Call, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error)
 	AcknowledgeCorrection(context.Context, examattempt.Call, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error)
@@ -367,11 +394,11 @@ func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invoc
 
 func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
-	result, err := a.examAttempts.Connect(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ConnectCommand{
+	result, err := a.examAttempts.Connect(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ConnectCommand{Security: command.Security,
 		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential,
-		SupportedConfigurationManifests: append([]string(nil), command.SupportedConfigurationManifests...),
-		InitialConfiguration:            command.InitialConfiguration,
-		IdempotencyKey:                  command.IdempotencyKey,
+		ConfigurationManifestFingerprint: command.ConfigurationManifestFingerprint,
+		InitialConfiguration:             command.InitialConfiguration,
+		IdempotencyKey:                   command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamAttemptConnection{}, examAttemptError(err, true)
@@ -528,16 +555,16 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx
 	return false, err
 }
 
-func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityView(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (model.AcademicUnitID, bool, error) {
-	unitID, override, err := adapter.sittings.AuthorizeBrowserActivityView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityView(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
+	unitID, err := adapter.sittings.AuthorizeBrowserActivityView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
 	if err == nil {
-		return unitID, override, nil
+		return unitID, nil
 	}
 	var fault *examsitting.Fault
 	if errors.As(err, &fault) {
-		return "", false, &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
+		return "", &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
 	}
-	return "", false, err
+	return "", err
 }
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ctx context.Context, call examattempt.Call,
@@ -605,6 +632,7 @@ func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id, code string
 type examAttemptRealtimeEffects struct {
 	realtime  *realtimeService
 	execution interface {
+		ReconcileAttempt(context.Context, model.ExamAttemptID) error
 		Release(context.Context, model.ExamAttemptID) error
 		SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
 		AcknowledgeChange(context.Context, model.ExamAttemptID, model.ExecutionGrantID, model.AttemptWorkspaceJournalEntry) error
@@ -732,7 +760,7 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 	if effects.execution != nil {
 		if result.Origin == examattempt.WorkspaceMutationOriginCandidate {
 			executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
-		} else {
+		} else if result.SourceHostSequence == 0 {
 			executionErr = effects.execution.AcknowledgeChange(ctx, result.AttemptID, result.SourceGrantID, result.Change)
 		}
 	}
@@ -869,3 +897,139 @@ var _ examattempt.ManagerAuthorizer = examAttemptManagerAuthorizationAdapter{}
 var _ examattempt.Auditor = examAttemptAuditAdapter{}
 var _ examattempt.Effects = examAttemptRealtimeEffects{}
 var _ examattempt.EffectFailures = examAttemptRealtimeEffects{}
+
+type PrepareSecurityPreflightCommand = examattempt.PrepareSecurityPreflightCommand
+type ReportSecurityPreflightCommand = examattempt.ReportSecurityPreflightCommand
+type PreparedSecurityPreflight = store.SecurityPreflightPrepared
+
+func (a *App) PrepareExamSecurityPreflight(ctx context.Context, invocation Invocation, command PrepareSecurityPreflightCommand) (*PreparedSecurityPreflight, error) {
+	result, err := a.examAttempts.PrepareSecurityPreflight(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+func (a *App) ReportExamSecurityPreflight(ctx context.Context, invocation Invocation, command ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+	result, err := a.examAttempts.ReportSecurityPreflight(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+type RecoveredSecurityPolicy = store.SecurityPolicyRecovery
+
+func (a *App) RecoverExamSecurityPolicy(ctx context.Context, invocation Invocation, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+	result, err := a.examAttempts.RecoverSecurityPolicy(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), attemptID)
+	if err != nil {
+		return nil, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+type UpdateSecurityCoverageCommand = examattempt.UpdateSecurityCoverageCommand
+
+func (a *App) UpdateExamSecurityCoverage(ctx context.Context, invocation Invocation, command UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+	result, err := a.examAttempts.UpdateSecurityCoverage(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return model.SecurityCoverageResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+type BrowserSourceQuery = examattempt.BrowserSourceQuery
+
+type NativeDeliveryQuery = examattempt.NativeDeliveryQuery
+
+type NativeDeliveryGapsCommand = examattempt.NativeDeliveryGapsCommand
+
+type NativeDeliveryFinalCommand = examattempt.NativeDeliveryFinalCommand
+
+type NativeDeliverySummaryCommand = examattempt.NativeDeliverySummaryCommand
+
+func (a *App) NativeDeliveryStatus(ctx context.Context, invocation Invocation, query NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+	result, err := a.examAttempts.NativeDeliveryStatus(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) NativeDeliveryReceipt(ctx context.Context, invocation Invocation, query NativeDeliveryQuery, sequence int64) (*model.NativeBatchReceipt, error) {
+	result, err := a.examAttempts.NativeDeliveryReceipt(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query, sequence)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) DeclareNativeDeliveryGaps(ctx context.Context, invocation Invocation, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+	result, err := a.examAttempts.DeclareNativeDeliveryGaps(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) SealNativeDelivery(ctx context.Context, invocation Invocation, command NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+	result, err := a.examAttempts.SealNativeDelivery(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) UpdateNativeDeliverySummary(ctx context.Context, invocation Invocation, command NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+	result, err := a.examAttempts.UpdateNativeDeliverySummary(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+type NativeDeliveryAppendCommand = examattempt.NativeDeliveryAppendCommand
+
+func (a *App) AppendNativeDelivery(ctx context.Context, invocation Invocation, command NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+	result, err := a.examAttempts.AppendNativeDelivery(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) BrowserSourceStatus(ctx context.Context, invocation Invocation, query BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+	result, err := a.examAttempts.BrowserSourceStatus(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	return result, examAttemptError(err, true)
+}
+func (a *App) BrowserSourceList(ctx context.Context, invocation Invocation, query BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+	result, err := a.examAttempts.BrowserSourceList(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	return result, examAttemptError(err, true)
+}
+
+type BrowserDeliveryGapsCommand = examattempt.BrowserDeliveryGapsCommand
+type BrowserDeliveryFinalCommand = examattempt.BrowserDeliveryFinalCommand
+type BrowserDeliverySummaryCommand = examattempt.BrowserDeliverySummaryCommand
+type BrowserDeliveryAppendCommand = examattempt.BrowserDeliveryAppendCommand
+
+func (a *App) BrowserDeliveryReceipts(ctx context.Context, invocation Invocation, command BrowserSourceQuery, first int64, limit int) (*model.BrowserReceiptPage, error) {
+	result, err := a.examAttempts.BrowserDeliveryReceipts(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command, first, limit)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) DeclareBrowserDeliveryGaps(ctx context.Context, invocation Invocation, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+	result, err := a.examAttempts.DeclareBrowserDeliveryGaps(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) SealBrowserDelivery(ctx context.Context, invocation Invocation, command BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+	result, err := a.examAttempts.SealBrowserDelivery(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) UpdateBrowserDeliverySummary(ctx context.Context, invocation Invocation, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+	result, err := a.examAttempts.UpdateBrowserDeliverySummary(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+func (a *App) AppendHistoricalBrowserDelivery(ctx context.Context, invocation Invocation, command BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+	result, err := a.examAttempts.AppendHistoricalBrowserDelivery(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return result, examAttemptError(err, true)
+}
+
+type DeliveryBudgetQuery = examattempt.DeliveryBudgetQuery
+type StopDeliveryDetailsCommand = examattempt.StopDeliveryDetailsCommand
+
+func (a *App) DeliveryBudget(ctx context.Context, invocation Invocation, query DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+	value, err := a.examAttempts.DeliveryBudget(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	return value, examAttemptError(err, true)
+}
+func (a *App) StopDeliveryDetails(ctx context.Context, invocation Invocation, command StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+	value, err := a.examAttempts.StopDeliveryDetails(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	return value, examAttemptError(err, true)
+}
+
+// SupportsDeliveryRecovery reports whether a failure can carry delivery repair context.
+func SupportsDeliveryRecovery(code string) bool { return examattempt.SupportsDeliveryRecovery(code) }
+
+func (effects examAttemptRealtimeEffects) SecurityCoverageChanged(ctx context.Context, attemptID model.ExamAttemptID) error {
+	if effects.execution == nil {
+		return nil
+	}
+	return effects.execution.ReconcileAttempt(ctx, attemptID)
+}

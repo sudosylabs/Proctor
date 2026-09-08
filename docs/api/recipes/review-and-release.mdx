@@ -110,19 +110,20 @@ Fetch a fresh snapshot and verify that integrity collection is terminal as
 ```
 
 Finalization locks the Submission and freezes stable identities and decision
-revisions into a canonical digest. The inventory is bounded to 200 Flags,
-20,000 evidence rows, and 200 explicit discrepancies. A limit error is not
-permission to omit records. After finalization, Review text and decisions are
-immutable.
+revisions into a canonical digest, including Browser groups and overflow plus the
+ordered native-condition inventory. A limit error is not permission to omit records.
+Every historical finalization snapshot remains immutable.
 
-Late integrity records remain append-only manager-visible discrepancies. Rows
-committed before finalization enter the frozen inventory; later rows do not
-rewrite the finalized or released Review.
+New qualifying Browser or native condition records withdraw current approval and
+withhold the released result. The Review returns to draft; affected Browser Flag
+decisions become stale. Refetch the Review, inspect the updated inventory, refresh
+those decisions, then finalize and release again. Exact receipt replay cannot
+invalidate approval repeatedly.
 
 ## 6. Release Explicitly
 
 <Link to="/api/reference/release-student-exam-result">Release student result</Link>
-is a separate one-way, revision-fenced, idempotent transition using the same
+is a separate revision-fenced, idempotent transition for the approved snapshot using the same
 terminal request shape:
 
 ```json

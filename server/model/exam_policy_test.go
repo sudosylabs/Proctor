@@ -9,6 +9,7 @@ package model
 
 import (
 	"bytes"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,7 +32,10 @@ func TestDefaultExamPolicySet(t *testing.T) {
 
 func TestExamPolicySetCanonicalRoundTrip(t *testing.T) {
 	t.Parallel()
-	want := []byte(`{"schema_version":1,"connection_loss":{"outcome":"flag_and_suspend"},"focus_loss":{"enabled":true,"minimum_duration_milliseconds":2000,"incident_count":3,"window_milliseconds":300000,"outcome":"flag_and_warn"}}`)
+	want, err := os.ReadFile("testdata/default_exam_policy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	encoded, err := EncodeExamPolicySet(DefaultExamPolicySet())
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -43,18 +47,22 @@ func TestExamPolicySetCanonicalRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if decoded != DefaultExamPolicySet() {
+	if !decoded.Equal(DefaultExamPolicySet()) {
 		t.Fatalf("round trip = %#v", decoded)
 	}
 }
 
 func TestExamPolicySetRejectsUnsafeDocuments(t *testing.T) {
 	t.Parallel()
-	valid := `{"schema_version":1,"connection_loss":{"outcome":"flag_and_suspend"},"focus_loss":{"enabled":true,"minimum_duration_milliseconds":2000,"incident_count":3,"window_milliseconds":300000,"outcome":"flag_and_warn"}}`
+	validBytes, err := os.ReadFile("testdata/default_exam_policy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := string(validBytes)
 	tests := map[string]string{
-		"unknown version":      strings.Replace(valid, `"schema_version":1`, `"schema_version":2`, 1),
-		"unknown field":        strings.Replace(valid, `"schema_version":1`, `"schema_version":1,"future":true`, 1),
-		"duplicate field":      strings.Replace(valid, `"schema_version":1`, `"schema_version":1,"schema_version":1`, 1),
+		"unknown version":      strings.Replace(valid, `"native":`, `"schema_version":2,"native":`, 1),
+		"unknown field":        strings.Replace(valid, `"native":`, `"future":true,"native":`, 1),
+		"duplicate field":      strings.Replace(valid, `"connection_loss":`, `"connection_loss":{},"connection_loss":`, 1),
 		"missing policy":       `{"schema_version":1,"connection_loss":{"outcome":"flag_and_suspend"}}`,
 		"trailing JSON":        valid + `{}`,
 		"zero focus duration":  strings.Replace(valid, `2000`, `0`, 1),

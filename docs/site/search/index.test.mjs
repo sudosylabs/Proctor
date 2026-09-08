@@ -21,7 +21,7 @@ test('the tracked search index is current', async () => {
 
 test('search covers authored pages, product areas, and every operation', async () => {
   const entries = await buildSearchIndex();
-  assert.equal(entries.filter((entry) => entry.kind === 'endpoint').length, 260);
+  assert.equal(entries.filter((entry) => entry.kind === 'endpoint').length, 280);
   assert.equal(entries.filter((entry) => entry.kind === 'product-area').length, 17);
   assert(entries.some((entry) => entry.href === '/operator/'));
   assert(entries.some((entry) => entry.href === '/glossary/'));

@@ -54,6 +54,7 @@ type openAPIReference struct {
 }
 
 type openAPISchema struct {
+	OneOf                []openAPISchemaShape       `json:"oneOf,omitempty"`
 	Type                 any                        `json:"type"`
 	Required             []string                   `json:"required"`
 	Properties           map[string]json.RawMessage `json:"properties"`

@@ -1,0 +1,1636 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/exam-sittings/{exam_sitting_id}/security-preflights:
+    parameters:
+      - $ref: '#/components/parameters/ExamSittingID'
+    post:
+      operationId: prepareSecurityPreflight
+      summary: Prepare a secure Desktop admission challenge
+      description: >-
+        Requires an eligible registered Desktop Session and an exact admitted build, registry, source manifest
+        and configuration manifest. Stores one pending 120-second challenge per Session and Sitting; a
+        successor supersedes it. Does not create an Attempt, Workspace or Participation. Ready rejoin returns
+        frozen configuration; active and suspended Attempts cannot obtain a replacement preflight. Unavailable
+        Institution catalogs or enforced native coverage fail closed.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.desktop_incompatible
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.management_authority_conflict
+        - exam.attempt.configuration_unsupported
+        - exam.attempt.unavailable
+        - exam.security.preflight_expired
+        - exam.security.preflight_superseded
+        - exam.security.preflight_consumed
+        - exam.delivery.control_rate_limited
+        - exam.security.preflight_rate_limited
+        - exam.security.policy_changed
+        - exam.security.session_changed
+        - exam.security.configuration_unsupported
+        - exam.security.attempt_not_ready
+        - exam.security.catalog_unavailable
+        - exam.security.unsupported_capability
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/PrepareSecurityPreflightRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecurityPolicyResponseOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/security-preflights/{security_preflight_id}/report:
+    parameters:
+      - $ref: '#/components/parameters/SecurityPreflightID'
+    post:
+      operationId: reportSecurityPreflight
+      summary: Report minimized privileged preflight results
+      description: >-
+        Rechecks the same registered Session, candidate, build, Sitting and policy before storing the bounded
+        report and its canonical digest. Enforced and baseline requirements must be ready; truthful degraded
+        observe-only coverage can remain eligible. A blocked report creates no Attempt or misconduct Flag.
+        Retry preserves the original receipt time; Connect must consume a current eligible report within 30
+        seconds.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.desktop_incompatible
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.management_authority_conflict
+        - exam.attempt.configuration_unsupported
+        - exam.attempt.unavailable
+        - exam.security.preflight_expired
+        - exam.security.preflight_superseded
+        - exam.security.preflight_consumed
+        - exam.delivery.control_rate_limited
+        - exam.security.preflight_rate_limited
+        - exam.security.policy_changed
+        - exam.security.session_changed
+        - exam.security.configuration_unsupported
+        - exam.security.attempt_not_ready
+        - exam.security.catalog_unavailable
+        - exam.security.unsupported_capability
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/SecurityPreflightReport'
+      responses:
+        '200':
+          $ref: '#/components/responses/SecurityPreflightResultOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-policy:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: recoverExamSecurityPolicy
+      summary: Recover the active Desktop security receipt
+      description: >-
+        Returns the exact active Participation binding and original frozen configuration to its owning
+        registered Desktop Session after transport ambiguity. Checks current Session, key, compatibility,
+        eligibility and lease. An open transport Connection is not required. Ready reentry uses a fresh
+        preflight. This read creates no authority and never renews the lease.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.desktop_incompatible
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.management_authority_conflict
+        - exam.attempt.configuration_unsupported
+        - exam.attempt.unavailable
+        - exam.security.preflight_expired
+        - exam.security.preflight_superseded
+        - exam.security.preflight_consumed
+        - exam.delivery.control_rate_limited
+        - exam.security.preflight_rate_limited
+        - exam.security.policy_changed
+        - exam.security.session_changed
+        - exam.security.configuration_unsupported
+        - exam.security.attempt_not_ready
+        - exam.security.catalog_unavailable
+        - exam.security.unsupported_capability
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/SecurityPolicyRecoveryOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    SecurityPreflightID:
+      name: security_preflight_id
+      in: path
+      required: true
+      description: Server-issued canonical preflight transaction ID returned by preparation.
+      schema:
+        type: string
+        minLength: 26
+        maxLength: 26
+        pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+  requestBodies:
+    PrepareSecurityPreflightRequest:
+      required: true
+      description: Complete bounded artifact identities and optional Ready Attempt selector.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PrepareSecurityPreflightRequest'
+          example:
+            native_registry_digest: sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0
+            source_manifest_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            configuration_manifest_fingerprint: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    SecurityPreflightReport:
+      required: true
+      description: Complete bounded minimized preflight report, with no native content or inventory.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecurityPreflightReport'
+          example:
+            challenge: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            policy_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            policy_content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            capability_matrix_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            security_session_id: synthetic-security-session
+            source_manifest_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            selected_source_categories: []
+            sources: []
+            coverage: []
+            baseline:
+              constrained_window: unavailable
+              single_physical_display: unavailable
+              content_protection: unavailable
+            posture: failed
+            reported_at: '2026-09-08T08:00:00.000Z'
+  responses:
+    SecurityPolicyResponseOK:
+      description: Authenticated security preflight result.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecurityPolicyResponse'
+    SecurityPreflightResultOK:
+      description: Authenticated security preflight result.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecurityPreflightResult'
+    SecurityPolicyRecoveryOK:
+      description: >-
+        The exact retained active security receipt and frozen configuration for its owning registered Desktop
+        Session.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecurityPolicyRecovery'
+  schemas:
+    PrepareSecurityPreflightRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - native_registry_digest
+        - source_manifest_digest
+        - configuration_manifest_fingerprint
+      properties:
+        attempt_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+          pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        native_registry_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        source_manifest_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        configuration_manifest_fingerprint:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+    SecurityPreflightChallenge:
+      type: object
+      additionalProperties: false
+      required:
+        - preflight_id
+        - challenge
+        - issued_at
+        - expires_at
+      properties:
+        preflight_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        challenge:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        issued_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    EffectiveExamSecurityPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_id
+        - revision
+        - ordinal
+        - digest
+        - institution_id
+        - exam_revision_id
+        - sitting_id
+        - scope
+        - issued_at
+        - active_from
+        - application_release_id
+        - matrix_id
+        - target_tuple
+        - registry_digest
+        - focus_loss_mode
+        - connection_loss_mode
+        - resolved_exception_refs
+        - evidence_class_id
+        - visibility_class_id
+        - retention_class_id
+        - capabilities
+      properties:
+        policy_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        revision:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
+        ordinal:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        institution_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+          pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        exam_revision_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+          pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        sitting_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+          pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        scope:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required:
+                - kind
+                - admission_scope_id
+              properties:
+                kind:
+                  type: string
+                  const: admission
+                admission_scope_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+                  pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+            - type: object
+              additionalProperties: false
+              required:
+                - kind
+                - attempt_id
+              properties:
+                kind:
+                  type: string
+                  const: attempt
+                attempt_id:
+                  type: string
+                  minLength: 26
+                  maxLength: 26
+                  pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        issued_at:
+          type: string
+          format: date-time
+        active_from:
+          type: string
+          format: date-time
+        application_release_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        matrix_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        target_tuple:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        registry_digest:
+          type: string
+          const: sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0
+        focus_loss_mode:
+          type: string
+          enum:
+            - disabled
+            - observe
+            - enforce
+        connection_loss_mode:
+          type: string
+          const: enforce
+        resolved_exception_refs:
+          type: array
+          minItems: 0
+          maxItems: 0
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        evidence_class_id:
+          type: string
+          const: native_integrity
+        visibility_class_id:
+          type: string
+          const: examiner_restricted
+        retention_class_id:
+          type: string
+          const: native_minimized
+        capabilities:
+          type: array
+          minItems: 10
+          maxItems: 10
+          description: >-
+            Exactly one family in this order: process_application, interactive_session, clipboard, printing,
+            removable_storage, virtualization, network_configuration, camera, microphone, external_capture.
+          items:
+            oneOf:
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_application_ids
+                properties:
+                  id:
+                    type: string
+                    const: process_application
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_application_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular
+                      expressions are not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_application_ids:
+                          const: []
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                properties:
+                  id:
+                    type: string
+                    const: interactive_session
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - observe_os_clipboard_changes
+                  - strategy
+                properties:
+                  id:
+                    type: string
+                    const: clipboard
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  observe_os_clipboard_changes:
+                    type: boolean
+                  strategy:
+                    type: string
+                    enum:
+                      - disabled
+                      - private_attempt
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        observe_os_clipboard_changes:
+                          const: false
+                        strategy:
+                          const: disabled
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        strategy:
+                          const: disabled
+                        observe_os_clipboard_changes:
+                          const: true
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        strategy:
+                          const: private_attempt
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - candidate_print_commands
+                  - monitored_spooler
+                properties:
+                  id:
+                    type: string
+                    const: printing
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  candidate_print_commands:
+                    type: string
+                    enum:
+                      - not_applied
+                      - deny
+                  monitored_spooler:
+                    type: string
+                    enum:
+                      - not_required
+                      - required
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: not_applied
+                        monitored_spooler:
+                          const: not_required
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: not_applied
+                        monitored_spooler:
+                          const: required
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: deny
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_storage_function_class_ids
+                  - enabled_sub_capabilities
+                properties:
+                  id:
+                    type: string
+                    const: removable_storage
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_storage_function_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular
+                      expressions are not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  enabled_sub_capabilities:
+                    type: array
+                    maxItems: 2
+                    uniqueItems: true
+                    items:
+                      type: string
+                      enum:
+                        - removable_block_storage
+                        - portable_mtp
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_storage_function_class_ids:
+                          const: []
+                        enabled_sub_capabilities:
+                          const: []
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - rule
+                properties:
+                  id:
+                    type: string
+                    const: virtualization
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  rule:
+                    type: string
+                    enum:
+                      - not_applied
+                      - block_recognized_guest
+                      - require_certified_physical_environment
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        rule:
+                          const: not_applied
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        rule:
+                          enum:
+                            - block_recognized_guest
+                            - require_certified_physical_environment
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        rule:
+                          enum:
+                            - block_recognized_guest
+                            - require_certified_physical_environment
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_adapter_class_ids
+                  - allowed_managed_profile_ids
+                  - allowed_tunnel_class_ids
+                  - enabled_sub_capabilities
+                properties:
+                  id:
+                    type: string
+                    const: network_configuration
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_adapter_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular
+                      expressions are not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  allowed_managed_profile_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular
+                      expressions are not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  allowed_tunnel_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular
+                      expressions are not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  enabled_sub_capabilities:
+                    type: array
+                    maxItems: 5
+                    uniqueItems: true
+                    items:
+                      type: string
+                      enum:
+                        - system_proxy_state
+                        - os_managed_vpn_state
+                        - tunnel_interface_state
+                        - route_change
+                        - network_source_health
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_adapter_class_ids:
+                          const: []
+                        allowed_managed_profile_ids:
+                          const: []
+                        allowed_tunnel_class_ids:
+                          const: []
+                        enabled_sub_capabilities:
+                          const: []
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - concurrent_use_check
+                  - require_ready
+                properties:
+                  id:
+                    type: string
+                    const: camera
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  concurrent_use_check:
+                    type: string
+                    enum:
+                      - not_required
+                      - supported_required
+                  require_ready:
+                    type: boolean
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        concurrent_use_check:
+                          const: not_required
+                        require_ready:
+                          const: false
+                  - if:
+                      properties:
+                        mode:
+                          enum:
+                            - observe
+                            - enforce
+                    then:
+                      anyOf:
+                        - properties:
+                            require_ready:
+                              const: true
+                        - properties:
+                            concurrent_use_check:
+                              const: supported_required
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - concurrent_use_check
+                  - require_ready
+                properties:
+                  id:
+                    type: string
+                    const: microphone
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  concurrent_use_check:
+                    type: string
+                    enum:
+                      - not_required
+                      - supported_required
+                  require_ready:
+                    type: boolean
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        concurrent_use_check:
+                          const: not_required
+                        require_ready:
+                          const: false
+                  - if:
+                      properties:
+                        mode:
+                          enum:
+                            - observe
+                            - enforce
+                    then:
+                      anyOf:
+                        - properties:
+                            require_ready:
+                              const: true
+                        - properties:
+                            concurrent_use_check:
+                              const: supported_required
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                properties:
+                  id:
+                    type: string
+                    const: external_capture
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+          prefixItems:
+            - properties:
+                id:
+                  const: process_application
+            - properties:
+                id:
+                  const: interactive_session
+            - properties:
+                id:
+                  const: clipboard
+            - properties:
+                id:
+                  const: printing
+            - properties:
+                id:
+                  const: removable_storage
+            - properties:
+                id:
+                  const: virtualization
+            - properties:
+                id:
+                  const: network_configuration
+            - properties:
+                id:
+                  const: camera
+            - properties:
+                id:
+                  const: microphone
+            - properties:
+                id:
+                  const: external_capture
+      description: >-
+        Frozen native semantics for a Participation. issued_at and active_from use millisecond UTC precision,
+        with issued_at <= active_from <= activation time. There is no policy expiry; the renewable
+        Participation lease is the sole live authority. The digest excludes only digest; scope rebinding
+        preserves the separately computed content digest.
+    SecurityCatalogBinding:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - catalog_id
+        - revision
+        - digest
+      properties:
+        kind:
+          type: string
+          enum:
+            - application
+            - storage_function
+            - managed_network_profile
+            - network_adapter_class
+            - tunnel_class
+            - detector
+        catalog_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        revision:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+    FrozenAttemptConfiguration:
+      type: object
+      additionalProperties: false
+      required:
+        - manifest_fingerprint
+        - registry_fingerprint
+        - desktop_build
+        - desktop_target
+        - user_settings_revision
+        - presentation
+        - approved_commands
+        - approved_keybindings
+        - attempt_configuration_revision
+        - digest
+      properties:
+        manifest_fingerprint:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        registry_fingerprint:
+          type: string
+          pattern: ^fnv1a64:[0-9a-f]{16}$
+        desktop_build:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        desktop_target:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        user_settings_revision:
+          $ref: '#/components/schemas/ID'
+        presentation:
+          $ref: '#/components/schemas/AttemptConfigurationPresentation'
+        approved_commands:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords
+            are rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        approved_keybindings:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords
+            are rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        attempt_configuration_revision:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[ -~]+$
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+    BrowserActivityDisclosure:
+      type: object
+      additionalProperties: false
+      required:
+        - notice_id
+        - audience
+        - retention_policy_revision
+        - browser_activity_retention_days
+        - retention_anchor
+        - may_create_integrity_evidence
+      properties:
+        notice_id:
+          type: string
+          const: integrated_browser_activity
+        audience:
+          type: string
+          const: exam_managers_with_browser_activity_permission
+        retention_policy_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        browser_activity_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+        retention_anchor:
+          type: string
+          const: eligible_closed_sitting_records_completion
+        may_create_integrity_evidence:
+          type: boolean
+      description: >-
+        Localized collection notice, not consent or history-read authority. Zero days means no configured
+        automatic expiry. Holds, approval, grace and source reconciliation still apply; minimized integrity
+        evidence can have a different period.
+    SecurityPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - server_time
+        - policy
+        - policy_content_digest
+        - capability_matrix_digest
+        - catalog_bindings
+        - preflight_challenge
+        - frozen_attempt_configuration
+        - browser_activity_disclosure
+      properties:
+        server_time:
+          type: string
+          format: date-time
+        policy:
+          $ref: '#/components/schemas/EffectiveExamSecurityPolicy'
+        policy_content_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        capability_matrix_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        catalog_bindings:
+          type: array
+          minItems: 0
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/SecurityCatalogBinding'
+        preflight_challenge:
+          $ref: '#/components/schemas/SecurityPreflightChallenge'
+        frozen_attempt_configuration:
+          oneOf:
+            - $ref: '#/components/schemas/FrozenAttemptConfiguration'
+            - type: 'null'
+        browser_activity_disclosure:
+          $ref: '#/components/schemas/BrowserActivityDisclosure'
+      description: >-
+        Privileged registered-Desktop response bounded to 128 KiB. Catalog bindings are unique and sorted by
+        kind then catalog_id. First admission returns null configuration; Ready rejoin returns the original
+        immutable configuration.
+    NativeSourceCoverage:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - source_instance_id
+        - sequence
+        - source_schema_digest
+        - adapter_version
+        - health
+        - permission
+        - complete
+        - gap_count
+      properties:
+        source_id:
+          type: string
+          enum:
+            - display-topology
+            - candidate-window
+            - capture-session
+            - process-application
+            - interactive-session
+            - clipboard
+            - print-spooler
+            - removable-storage
+            - virtualization
+            - network-configuration
+            - media-device
+        source_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        source_schema_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        adapter_version:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        health:
+          type: string
+          enum:
+            - starting
+            - healthy
+            - degraded
+            - failed
+            - recovering
+            - stopped
+        permission:
+          type: string
+          enum:
+            - denied
+            - granted
+            - not_determined
+            - restricted
+            - unavailable
+        complete:
+          type: boolean
+        gap_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+    NativeCoverageClaim:
+      type: object
+      additionalProperties: false
+      required:
+        - coverage_key
+        - source_schema_digest
+        - claim
+        - state
+      properties:
+        coverage_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        source_schema_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        claim:
+          type: string
+          enum:
+            - enforce
+            - observe
+            - unavailable
+        state:
+          type: string
+          enum:
+            - ready
+            - degraded
+            - unavailable
+    NativeBaselineReport:
+      type: object
+      additionalProperties: false
+      required:
+        - constrained_window
+        - single_physical_display
+        - content_protection
+      properties:
+        constrained_window:
+          type: string
+          enum:
+            - verified
+            - unavailable
+        single_physical_display:
+          type: string
+          enum:
+            - verified
+            - unavailable
+        content_protection:
+          type: string
+          enum:
+            - verified
+            - unavailable
+    SecurityPreflightReport:
+      type: object
+      additionalProperties: false
+      required:
+        - challenge
+        - policy_digest
+        - policy_content_digest
+        - capability_matrix_digest
+        - security_session_id
+        - source_manifest_digest
+        - selected_source_categories
+        - sources
+        - coverage
+        - baseline
+        - posture
+        - reported_at
+      properties:
+        challenge:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        policy_content_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        capability_matrix_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        security_session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        source_manifest_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        selected_source_categories:
+          type: array
+          minItems: 0
+          maxItems: 10
+          items:
+            type: string
+            enum:
+              - os-clipboard-change
+              - removable-block-storage
+              - portable-mtp
+              - system-proxy-state
+              - os-managed-vpn-state
+              - tunnel-interface-state
+              - route-change
+              - network-source-health
+              - camera
+              - microphone
+          uniqueItems: true
+        sources:
+          type: array
+          minItems: 0
+          maxItems: 11
+          items:
+            $ref: '#/components/schemas/NativeSourceCoverage'
+        coverage:
+          type: array
+          minItems: 0
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/NativeCoverageClaim'
+        baseline:
+          $ref: '#/components/schemas/NativeBaselineReport'
+        posture:
+          type: string
+          enum:
+            - compliant
+            - degraded
+            - contained
+            - failed
+        reported_at:
+          type: string
+          format: date-time
+      description: >-
+        Minimized assertions, at most 64 KiB. Source order and categories must match the resolved policy;
+        coverage keys are sorted and exact. No inventories, media, clipboard bytes, OS errors or arbitrary
+        details are accepted. The server computes the report digest. Client reported_at is provenance; server
+        time controls challenge expiry and admission freshness.
+    SecurityPreflightResult:
+      type: object
+      additionalProperties: false
+      required:
+        - preflight_id
+        - report_digest
+        - admission
+        - reason_codes
+        - server_time
+        - expires_at
+      properties:
+        preflight_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        report_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        admission:
+          type: string
+          enum:
+            - eligible
+            - blocked
+        reason_codes:
+          type: array
+          minItems: 0
+          maxItems: 16
+          items:
+            type: string
+            enum:
+              - policy_changed
+              - unsupported_capability
+              - source_unavailable
+              - permission_required
+              - baseline_unavailable
+              - preflight_expired
+              - preflight_superseded
+              - posture_blocked
+              - configuration_unsupported
+              - session_changed
+          uniqueItems: true
+        server_time:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    AdmittedSecurity:
+      type: object
+      additionalProperties: false
+      required:
+        - policy
+        - policy_content_digest
+        - preflight_id
+        - preflight_report_digest
+        - preflight_policy_digest
+        - participation_id
+        - generation
+        - security_session_id
+        - delivery_stream_id
+        - renewal_interval_seconds
+      properties:
+        policy:
+          $ref: '#/components/schemas/EffectiveExamSecurityPolicy'
+        policy_content_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        preflight_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        preflight_report_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        preflight_policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        participation_id:
+          type: string
+          pattern: ^[a-z0-9]{26}$
+          minLength: 26
+          maxLength: 26
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        security_session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        delivery_stream_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        renewal_interval_seconds:
+          type: integer
+          format: int64
+          const: 5
+    SecurityPolicyRecovery:
+      type: object
+      additionalProperties: false
+      required:
+        - server_time
+        - security
+        - frozen_attempt_configuration
+        - current_sources
+        - current_coverage
+        - source_reset_receipts
+        - security_coverage
+      properties:
+        server_time:
+          type: string
+          format: date-time
+        security:
+          $ref: '#/components/schemas/AdmittedSecurity'
+        frozen_attempt_configuration:
+          $ref: '#/components/schemas/FrozenAttemptConfiguration'
+        current_sources:
+          type: array
+          maxItems: 11
+          items:
+            $ref: '#/components/schemas/NativeSourceCoverage'
+        current_coverage:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/NativeCoverageClaim'
+        source_reset_receipts:
+          type: array
+          maxItems: 11
+          items:
+            $ref: '#/components/schemas/SourceResetReceipt'
+        security_coverage:
+          $ref: '#/components/schemas/SecurityCoverageResult'
+    SourceResetReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - reset_id
+        - reset_digest
+      properties:
+        reset_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        reset_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+    DeliveryWatermarkRejection:
+      type: object
+      additionalProperties: false
+      required:
+        - family
+        - source_id
+        - reason
+      properties:
+        family:
+          type: string
+          enum:
+            - native
+            - browser
+        source_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        reason:
+          type: string
+          enum:
+            - closed_source
+            - position_limit
+    SecurityCoverageResult:
+      type: object
+      additionalProperties: false
+      required:
+        - processed_control_sequence
+        - processed_control_digest
+        - coverage_result
+        - source_reset_receipts
+        - security_interaction_allowed
+        - execution_state
+        - delivery_watermark_rejections
+      properties:
+        processed_control_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        processed_control_digest:
+          type: [string, 'null']
+          pattern: ^sha256:[0-9a-f]{64}$
+        coverage_result:
+          type: string
+          enum:
+            - accepted
+            - stale_control
+            - reset_required
+            - reset_conflict
+        source_reset_receipts:
+          type: array
+          maxItems: 11
+          items:
+            $ref: '#/components/schemas/SourceResetReceipt'
+        security_interaction_allowed:
+          type: boolean
+        execution_state:
+          type: string
+          enum:
+            - not_allocated
+            - ready
+            - freeze_pending
+            - frozen
+            - thaw_pending
+            - unavailable
+        delivery_watermark_rejections:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DeliveryWatermarkRejection'

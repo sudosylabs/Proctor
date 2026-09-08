@@ -39,6 +39,7 @@ type examAttemptTerminalAttempts interface {
 }
 
 type examAttemptTerminalExecution interface {
+	ValidateTerminalInteraction(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) error
 	Ensure(context.Context, appexecution.Request) (*appexecution.Placement, error)
 	Watch(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Cursor) (appexecution.Observation, error)
 	Attach(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Window) (appexecution.Terminal, error)
@@ -71,7 +72,7 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 ) (CandidateExamTerminal, error) {
 	if service == nil || service.attempts == nil || service.execution == nil || service.audit == nil ||
 		!command.SittingID.IsValid() || !command.ClassID.IsValid() || !command.ParticipationID.IsValid() ||
-		command.Generation < 1 || command.Window.Cols < 1 || command.Window.Rows < 1 {
+		command.ExpectedWorkspaceCursor < 0 || command.ExpectedWorkspaceCursor > (1<<53)-1 || command.Generation < 1 || command.Window.Cols < 1 || command.Window.Rows < 1 {
 		return nil, NewError("exam.attempt.terminal_unavailable")
 	}
 	presentation, err := service.attempts.GetPresentation(ctx,
@@ -99,27 +100,60 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 		return nil, err
 	}
 	placement, err := service.execution.Ensure(ctx, appexecution.Request{
-		AttemptID: presentation.AttemptID, Image: profile.Image, Network: appexecution.Network(profile.Network),
+		ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, AttemptID: presentation.AttemptID, Image: profile.Image, Network: appexecution.Network(profile.Network),
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, appexecution.ErrProjectionPending) {
 		return nil, service.failAudit(ctx, auditID, executionError(err))
 	}
 	if placement == nil || !placement.GrantID.IsValid() || placement.AttemptID != presentation.AttemptID || !placement.Ready {
 		service.releasePlacement(ctx, placement)
 		return nil, service.failAudit(ctx, auditID, NewError("exam.attempt.terminal_unavailable"))
 	}
+	if !model.ValidExecutionEnvironmentEpoch(placement.Projection.EnvironmentEpoch) {
+		service.releasePlacement(ctx, placement)
+		return nil, service.failAudit(ctx, auditID, NewError("exam.attempt.terminal_unavailable"))
+	}
 	observation, err := service.execution.Watch(ctx, presentation.AttemptID, placement.GrantID, "")
 	if err != nil || observation == nil {
-		service.releasePlacement(ctx, placement)
+		if !errors.Is(err, appexecution.ErrInteractionBlocked) {
+			service.releasePlacement(ctx, placement)
+		}
 		if err == nil {
 			err = appexecution.ErrUnavailable
 		}
 		return nil, service.failAudit(ctx, auditID, executionError(err))
 	}
+	if semantic, ok := observation.(appexecution.PendingSemanticObservation); ok {
+		if err = service.drainSemanticObservations(ctx, invocation, command, placement.GrantID, semantic); err != nil {
+			_ = observation.Close()
+			if !errors.Is(err, appexecution.ErrProjectionPending) {
+				service.releasePlacement(ctx, placement)
+			}
+			return nil, service.failAudit(ctx, auditID, executionError(err))
+		}
+		refreshed, refreshErr := service.execution.Ensure(ctx, appexecution.Request{AttemptID: presentation.AttemptID, Image: profile.Image, Network: appexecution.Network(profile.Network), ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor})
+		if refreshErr != nil || refreshed == nil || refreshed.GrantID != placement.GrantID || refreshed.Projection.EnvironmentEpoch != placement.Projection.EnvironmentEpoch {
+			_ = observation.Close()
+			if refreshErr == nil {
+				refreshErr = appexecution.ErrUnavailable
+			}
+			if !errors.Is(refreshErr, appexecution.ErrProjectionPending) {
+				service.releasePlacement(ctx, placement)
+			}
+			return nil, service.failAudit(ctx, auditID, executionError(refreshErr))
+		}
+		placement = refreshed
+	}
+	if placement.Projection.State != store.ExecutionProjectionReady || placement.Projection.AppliedWorkspaceCursor < command.ExpectedWorkspaceCursor {
+		_ = observation.Close()
+		return nil, service.failAudit(ctx, auditID, NewError("execution.projection_pending"))
+	}
 	terminal, err := service.execution.Attach(ctx, presentation.AttemptID, placement.GrantID, command.Window)
 	if err != nil || terminal == nil {
 		_ = observation.Close()
-		service.releasePlacement(ctx, placement)
+		if !errors.Is(err, appexecution.ErrProjectionPending) && !errors.Is(err, appexecution.ErrInteractionBlocked) {
+			service.releasePlacement(ctx, placement)
+		}
 		if err == nil {
 			err = appexecution.ErrUnavailable
 		}
@@ -134,16 +168,25 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 		return nil, err
 	}
 	watchCtx, cancel := context.WithCancel(ctx)
-	wrapped := &candidateExamTerminal{terminal: terminal, cancel: cancel, observation: observation}
+	wrapped := &candidateExamTerminal{projection: placement.Projection, terminal: terminal, cancel: cancel, observation: observation}
 	call := examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata())
 	wrapped.validate = func(validateCtx context.Context) error {
 		current, validateErr := service.attempts.GetPresentation(validateCtx, call, command.Access)
 		if validateErr != nil {
 			return examAttemptError(validateErr, true)
 		}
+		capability := current.RuntimeCapabilities.Terminal
+		sameEpoch := capability.EnvironmentEpoch != nil && *capability.EnvironmentEpoch == placement.Projection.EnvironmentEpoch
+		permitted := capability.State == store.CandidateTerminalAvailable || capability.State == store.CandidateTerminalTemporarilyUnavailable && capability.ProjectionState == store.ExecutionProjectionSynchronizing
 		if current.AttemptID != presentation.AttemptID || current.SittingID != command.SittingID ||
-			current.ClassID != command.ClassID || current.RuntimeCapabilities.Terminal.State != store.CandidateTerminalAvailable {
+			current.ClassID != command.ClassID || !sameEpoch {
 			return NewError("exam.attempt.terminal_unavailable")
+		}
+		if !permitted {
+			return NewError("exam.attempt.terminal_unavailable").Wrap(appexecution.ErrInteractionBlocked)
+		}
+		if err := service.execution.ValidateTerminalInteraction(validateCtx, presentation.AttemptID, placement.GrantID, placement.Projection.EnvironmentEpoch); err != nil {
+			return executionError(err)
 		}
 		return nil
 	}
@@ -208,10 +251,11 @@ func (adapter examAttemptTerminalAuditAdapter) Complete(ctx context.Context, aud
 }
 
 type candidateExamTerminal struct {
-	terminal  appexecution.Terminal
-	cancel    context.CancelFunc
-	validate  func(context.Context) error
-	onInvalid func()
+	projection appexecution.ProjectionStatus
+	terminal   appexecution.Terminal
+	cancel     context.CancelFunc
+	validate   func(context.Context) error
+	onInvalid  func()
 
 	mu                 sync.Mutex
 	observation        appexecution.Observation
@@ -278,6 +322,9 @@ func (terminal *candidateExamTerminal) validateInteraction(ctx context.Context) 
 		return nil
 	}
 	if err := terminal.validate(ctx); err != nil {
+		if errors.Is(err, appexecution.ErrInteractionBlocked) {
+			return err
+		}
 		if terminal.beginFailure(err) {
 			if terminal.onInvalid != nil {
 				go terminal.onInvalid()
@@ -411,7 +458,30 @@ func (service *examAttemptTerminalService) synchronizeWorkspace(ctx context.Cont
 			service.failActiveTerminal(ctx, grantID, terminal, executionError(err))
 			return
 		}
-		if err := service.applyExecutionEvent(ctx, invocation, command, grantID, event); err != nil {
+		var applyErr error
+		if event.Semantic != nil {
+			semantic, ok := observation.(appexecution.SemanticObservation)
+			if !ok {
+				applyErr = appexecution.ErrInvalid
+			} else {
+				applyErr = service.applySemanticExecutionEvent(ctx, invocation, command, grantID, *event.Semantic, semantic)
+				if applyErr == nil {
+					if reconciler, ok := service.execution.(interface {
+						ReconcileAttempt(context.Context, model.ExamAttemptID) error
+					}); ok {
+						applyErr = reconciler.ReconcileAttempt(ctx, command.Access.AttemptID)
+						if errors.Is(applyErr, appexecution.ErrProjectionPending) {
+							applyErr = nil
+						}
+					} else {
+						applyErr = appexecution.ErrUnavailable
+					}
+				}
+			}
+		} else {
+			applyErr = service.applyExecutionEvent(ctx, invocation, command, grantID, event)
+		}
+		if err := applyErr; err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -673,8 +743,14 @@ func executionEventIdempotency(grantID model.ExecutionGrantID, event appexecutio
 	return "execution-" + hex.EncodeToString(digest[:])
 }
 
+func (terminal *candidateExamTerminal) ProjectionStatus() appexecution.ProjectionStatus {
+	return terminal.projection
+}
+
 func executionError(err error) error {
 	switch {
+	case errors.Is(err, appexecution.ErrProjectionPending):
+		return NewError("execution.projection_pending").Wrap(err)
 	case errors.Is(err, appexecution.ErrInvalid):
 		return NewError("exam.attempt.terminal_invalid").Wrap(err)
 	case errors.Is(err, appexecution.ErrConflict):

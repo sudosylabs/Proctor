@@ -69,7 +69,10 @@ type ExamExportDownload struct {
 // It locks Policy before Exam, Sitting and ordered Submissions, matching the
 // retirement fence; reads and replays recheck current credentials, manager
 // relationship and both export and ordinary read authority. Integrity excludes
-// the requester as candidate and also requires browser-activity read authority.
+// the requester as candidate and also requires the dedicated Browser Activity
+// permission and exact current Exam Manager membership, including
+// when the general export action uses an override. Retained categories, never
+// caller-provided read categories, determine that history check.
 //
 // A unique artifact is registered before each attempt writes. Publication is
 // fenced by the live Job claim, source deadline and immutable request expiry.

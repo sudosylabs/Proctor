@@ -63,6 +63,10 @@ func applicationDependencies(
 	}
 	mailer := accountMailerAdapter{mailer: capabilities.mailer, assets: mailAssets}
 	mailDeliveryRecorder, mailMetricsReader := newMailTelemetry(log, nil)
+	desktopBuilds, err := verifiedDesktopBuildCatalog()
+	if err != nil {
+		return app.Dependencies{}, err
+	}
 	return app.Dependencies{
 		Store:                   capabilities.persistence,
 		Cache:                   cache,
@@ -75,7 +79,7 @@ func applicationDependencies(
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
 		ExecutionHosts:          capabilities.executionHosts,
-		DesktopBuildCatalog:     verifiedDesktopBuildCatalog(),
+		DesktopBuildCatalog:     desktopBuilds,
 		NodeID:                  capabilities.nodeID,
 		PublicURL:               cfg.Server.PublicURL,
 		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),

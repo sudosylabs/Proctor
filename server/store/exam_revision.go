@@ -15,6 +15,8 @@ import (
 )
 
 type ExamRevisionPublication struct {
+	// InstitutionOrigin is installation configuration supplied by the application, never request data.
+	InstitutionOrigin     string
 	RevisionID            model.ExamRevisionID
 	ExamID                model.ExamID
 	ActorUserID           model.UserID

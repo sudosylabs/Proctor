@@ -100,6 +100,9 @@ func (s *sqlExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 			return outcome, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcomeV1, originalAuditID string) error {
+			if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
+				return err
+			}
 			guard, lockErr := s.lockExamAttemptEligibility(ctx, tx, input, true)
 			if lockErr != nil {
 				return lockErr
@@ -144,15 +147,14 @@ func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.
 		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		command.UserID != input.CandidateUserID || !input.AttemptID.IsValid() || !input.WorkspaceID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
 		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
-		input.DesktopBuild.Validate() != nil || input.DesktopCompatibilityPolicyRevision < 1 || len(input.SupportedConfigurationManifests) != 1 ||
-		input.SupportedConfigurationManifests[0] != model.CurrentAttemptConfigurationManifestFingerprint() ||
-		input.DesktopBuild.AttemptConfigurationManifestFingerprint != input.SupportedConfigurationManifests[0] {
+		input.Security.Validate() != nil || input.DesktopBuild.NativeAgreement == nil || input.DesktopBuild.Validate() != nil || input.DesktopCompatibilityPolicyRevision < 1 || !model.IsValidSHA256Fingerprint(input.ConfigurationManifestFingerprint) ||
+		input.DesktopBuild.AttemptConfigurationManifestFingerprint != input.ConfigurationManifestFingerprint {
 		return store.NewErrInvalidInput("exam_attempt", "connect", nil)
 	}
 	if input.InitialConfiguration != nil {
 		configuration := input.InitialConfiguration
-		if configuration.Validate() != nil || configuration.ManifestFingerprint != input.SupportedConfigurationManifests[0] ||
-			configuration.SourceDesktopRegistryFingerprint != input.DesktopBuild.DesktopSettingsRegistryFingerprint {
+		if configuration.Validate() != nil || configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint ||
+			input.DesktopBuild.ConfigurationManifest.ValidateSelection(configuration.ApprovedCommands, configuration.ApprovedKeybindings) != nil {
 			return store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
 		}
 	}
@@ -160,37 +162,47 @@ func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.
 }
 
 type attemptParticipationRenewalRow struct {
-	State           string         `db:"state"`
-	SessionID       string         `db:"session_id"`
-	RegistrationID  string         `db:"desktop_registration_id"`
-	KeyThumbprint   string         `db:"dpop_key_thumbprint"`
-	Generation      int64          `db:"generation"`
-	RenewalSequence int64          `db:"renewal_sequence"`
-	CredentialHash  string         `db:"continuity_credential_hash"`
-	StartedAt       time.Time      `db:"started_at"`
-	UpdatedAt       time.Time      `db:"updated_at"`
-	LeaseExpiresAt  time.Time      `db:"lease_expires_at"`
-	EndedAt         sql.NullTime   `db:"ended_at"`
-	EndReason       sql.NullString `db:"end_reason"`
-	DatabaseNow     time.Time      `db:"database_now"`
+	State                string         `db:"state"`
+	SessionID            string         `db:"session_id"`
+	RegistrationID       string         `db:"desktop_registration_id"`
+	KeyThumbprint        string         `db:"dpop_key_thumbprint"`
+	Generation           int64          `db:"generation"`
+	RenewalSequence      int64          `db:"renewal_sequence"`
+	CredentialHash       string         `db:"continuity_credential_hash"`
+	StartedAt            time.Time      `db:"started_at"`
+	UpdatedAt            time.Time      `db:"updated_at"`
+	LeaseExpiresAt       time.Time      `db:"lease_expires_at"`
+	EndedAt              sql.NullTime   `db:"ended_at"`
+	EndReason            sql.NullString `db:"end_reason"`
+	DatabaseNow          time.Time      `db:"database_now"`
+	SessionIdleExpiresAt time.Time      `db:"session_idle_expires_at"`
+	SessionExpiresAt     time.Time      `db:"session_expires_at"`
 }
 
 func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
+	return s.changeParticipationControl(ctx, input, true)
+}
+
+func (s *sqlExamAttemptStore) changeParticipationControl(ctx context.Context, input *store.ExamAttemptParticipationRenewal, renew bool) (*store.ExamAttemptParticipationRenewalResult, error) {
 	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
-		!input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || input.Generation < 1 || input.Sequence < 1 ||
+		!input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || input.Generation < 1 || renew && input.Sequence < 1 || !renew && input.Sequence != 0 || input.DesktopCompatibilityPolicyRevision < 1 || input.DesktopBuild.Validate() != nil || input.DesktopBuild.NativeAgreement == nil || input.SecurityCoverage.Validate() != nil ||
 		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		!model.IsValidTokenHash(input.ContinuityCredentialHash) {
 		return nil, store.NewErrInvalidInput("attempt_participation", "renewal", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
-		var attempt struct {
-			CandidateID  string `db:"candidate_user_id"`
-			ExamID       string `db:"exam_id"`
-			SittingID    string `db:"exam_sitting_id"`
-			State        string `db:"state"`
-			SittingState string `db:"sitting_state"`
+		if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
+			return nil, err
 		}
-		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.exam_id,a.exam_sitting_id,a.state,s.state AS sitting_state
+		var attempt struct {
+			CandidateID    string    `db:"candidate_user_id"`
+			ExamID         string    `db:"exam_id"`
+			SittingID      string    `db:"exam_sitting_id"`
+			State          string    `db:"state"`
+			SittingState   string    `db:"sitting_state"`
+			ScheduledEndAt time.Time `db:"scheduled_end_at"`
+		}
+		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.exam_id,a.exam_sitting_id,a.state,s.state AS sitting_state,s.scheduled_end_at
 			FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 			WHERE a.id=? FOR UPDATE OF a FOR SHARE OF s`, input.AttemptID.String()); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -209,7 +221,7 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 		var row attemptParticipationRenewalRow
 		if err := tx.Get(ctx, &row, `SELECT p.state,p.session_id,se.desktop_registration_id,se.dpop_key_thumbprint,
 			p.generation,p.renewal_sequence,p.continuity_credential_hash,p.started_at,p.updated_at,
-			p.lease_expires_at,p.ended_at,p.end_reason
+			p.lease_expires_at,p.ended_at,p.end_reason,se.idle_expires_at AS session_idle_expires_at,se.expires_at AS session_expires_at
 			FROM exam_attempt_participations p JOIN sessions se ON se.id=p.session_id
 			JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 			WHERE p.id=? AND p.exam_attempt_id=? AND se.user_id=? AND se.archived_at IS NULL AND se.revoked_at IS NULL
@@ -256,14 +268,21 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 		if err := tx.Get(ctx, &row.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read Attempt Participation renewal decision time: %w", err)
 		}
-		if !row.DatabaseNow.Before(row.LeaseExpiresAt) {
+		if !row.DatabaseNow.Before(row.SessionIdleExpiresAt) || !row.DatabaseNow.Before(row.SessionExpiresAt) {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
+		}
+		if !row.DatabaseNow.Before(attempt.ScheduledEndAt) || !row.DatabaseNow.Before(row.LeaseExpiresAt) {
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 		}
-		if input.Sequence < row.RenewalSequence {
+		if renew && input.Sequence < row.RenewalSequence {
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
 		}
-		if input.Sequence == row.RenewalSequence {
-			return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+		coverage, err := s.processSecurityCoverage(ctx, tx, input, attempt.SittingState == string(model.ExamSittingOpen), row.DatabaseNow)
+		if err != nil {
+			return nil, err
+		}
+		if !renew || input.Sequence == row.RenewalSequence {
+			return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
 				CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
 				Generation: row.Generation, AcceptedSequence: row.RenewalSequence, DatabaseTime: model.TimeUTC(row.UpdatedAt),
 				LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), Duplicate: true}, nil
@@ -280,6 +299,9 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 		if _, err := participation.Renew(input.Generation, input.Sequence, row.DatabaseNow); err != nil {
 			return nil, fmt.Errorf("renew Attempt Participation domain state: %w", err)
 		}
+		if participation.LeaseExpiresAt.After(attempt.ScheduledEndAt) {
+			participation.LeaseExpiresAt = model.TimeUTC(attempt.ScheduledEndAt)
+		}
 		result, err := tx.Exec(ctx, `UPDATE exam_attempt_participations SET renewal_sequence=?,updated_at=?,lease_expires_at=?
 			WHERE id=? AND exam_attempt_id=? AND state='active' AND renewal_sequence=?`, participation.RenewalSequence,
 			participation.UpdatedAt, participation.LeaseExpiresAt, input.ParticipationID.String(), input.AttemptID.String(), row.RenewalSequence)
@@ -292,7 +314,7 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 			}
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
 		}
-		return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+		return &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: coverage, AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
 			CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
 			Generation: participation.Generation, AcceptedSequence: participation.RenewalSequence,
 			DatabaseTime: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt}, nil
@@ -473,6 +495,9 @@ func (s *sqlExamAttemptStore) ExpireParticipation(ctx context.Context, input *st
 		if _, err = tx.Exec(ctx, `UPDATE exam_attempt_participations SET state=?,updated_at=?,ended_at=?,end_reason=? WHERE id=?`,
 			participation.State, participation.UpdatedAt, participation.EndedAt.Time, participation.EndReason, input.ParticipationID.String()); err != nil {
 			return nil, fmt.Errorf("end Attempt Participation: %w", err)
+		}
+		if err := closeNativeDelivery(ctx, tx, input.ParticipationID, model.DeliveryClosedParticipation, row.LeaseExpiresAt); err != nil {
+			return nil, err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE exam_attempt_connections SET state='closed',closed_at=?,close_reason='lease_expired'
 			WHERE exam_attempt_id=? AND participation_id=? AND state='open'`, row.DatabaseNow, input.AttemptID.String(), input.ParticipationID.String()); err != nil {
@@ -1064,13 +1089,15 @@ func validateExistingAttemptConfiguration(document []byte, digest string, input 
 	if err != nil {
 		return model.AttemptConfiguration{}, invalidPersistedState("exam_attempt", "attempt_configuration", err)
 	}
-	if !slices.Contains(input.SupportedConfigurationManifests, configuration.ManifestFingerprint) ||
-		configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint {
+	if input.ConfigurationManifestFingerprint != configuration.ManifestFingerprint ||
+		configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint ||
+		input.DesktopBuild.ConfigurationManifest.ValidateSelection(configuration.ApprovedCommands, configuration.ApprovedKeybindings) != nil {
 		return model.AttemptConfiguration{}, store.NewErrConflict("exam_attempt", "attempt_configuration_unsupported", nil)
 	}
 	if input.InitialConfiguration != nil {
 		proposed, proposalErr := input.InitialConfiguration.CanonicalAdmission()
-		if proposalErr != nil || !bytes.Equal(proposed, document) || input.InitialConfiguration.Digest != digest {
+		retained, retainedErr := configuration.AttemptConfigurationCandidate.CanonicalAdmission()
+		if proposalErr != nil || retainedErr != nil || !bytes.Equal(proposed, retained) {
 			return model.AttemptConfiguration{}, store.NewErrConflict("exam_attempt", "attempt_configuration_frozen", nil)
 		}
 	}
@@ -1230,20 +1257,27 @@ func hasEffectiveExamManagementAuthority(ctx context.Context, tx *sqlxTxWrapper,
 
 func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard) (examAttemptConnectOutcomeV1, error) {
 	var zero examAttemptConnectOutcomeV1
+	security, securityErr := s.prepareConnectSecurity(ctx, tx, input, guard, input.AttemptID, 1, true)
+	if securityErr != nil {
+		return zero, securityErr
+	}
 	if input.InitialConfiguration == nil {
 		return zero, store.NewErrConflict("exam_attempt", "attempt_configuration_required", nil)
 	}
-	configuration := input.InitialConfiguration.Clone()
-	if configuration.Validate() != nil || configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint ||
-		configuration.SourceDesktopRegistryFingerprint != input.DesktopBuild.DesktopSettingsRegistryFingerprint {
+	candidate := input.InitialConfiguration.Clone()
+	if candidate.ValidateForBuild(input.DesktopBuild) != nil {
 		return zero, store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
 	}
 	var settingsRevision string
 	if err := tx.Get(ctx, &settingsRevision, `SELECT revision FROM user_settings_documents WHERE user_id=? FOR SHARE`, input.CandidateUserID.String()); err != nil {
 		return zero, translateError("user_settings_document", input.CandidateUserID.String(), err)
 	}
-	if settingsRevision != configuration.SourceUserSettingsRevision.String() {
+	if settingsRevision != candidate.UserSettingsRevision.String() {
 		return zero, store.NewErrConflict("exam_attempt", "attempt_configuration_stale", nil)
+	}
+	configuration, err := candidate.Freeze(model.NewId())
+	if err != nil {
+		return zero, store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
 	}
 	canonicalConfiguration, err := configuration.CanonicalAdmission()
 	if err != nil {
@@ -1289,12 +1323,15 @@ func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 		}
 	}
 
-	leaseExpires := guard.DatabaseNow.Add(model.AttemptParticipationInitialLease)
+	leaseExpires := boundedParticipationLease(guard.DatabaseNow, guard.ScheduledEnd)
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_participations
 		(id,exam_attempt_id,session_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
 		VALUES (?,?,?,'active',1,0,?,?,?,?)`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.ContinuityCredentialHash,
 		guard.DatabaseNow, guard.DatabaseNow, leaseExpires); err != nil {
 		return zero, fmt.Errorf("insert Attempt Participation: %w", translateError("attempt_participation", input.ParticipationID.String(), err))
+	}
+	if err := persistConnectSecurity(ctx, tx, input, security); err != nil {
+		return zero, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_connections
 		(id,exam_attempt_id,participation_id,session_id,state,opened_at) VALUES (?,?,?,?,'open',?)`,
@@ -1341,15 +1378,26 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 				FROM exam_attempt_participations WHERE exam_attempt_id=?`, attemptID); err != nil {
 				return zero, fmt.Errorf("select next Attempt Participation generation: %w", err)
 			}
+			parsedAttemptID, parseErr := model.ParseExamAttemptID(attemptID)
+			if parseErr != nil {
+				return zero, parseErr
+			}
+			security, securityErr := s.prepareConnectSecurity(ctx, tx, input, guard, parsedAttemptID, participation.Generation, false)
+			if securityErr != nil {
+				return zero, securityErr
+			}
 			participation.ID = input.ParticipationID.String()
 			participation.SessionID = input.SessionID.String()
 			participation.CredentialHash = input.ContinuityCredentialHash
-			participation.LeaseExpiresAt = guard.DatabaseNow.Add(model.AttemptParticipationInitialLease)
+			participation.LeaseExpiresAt = boundedParticipationLease(guard.DatabaseNow, guard.ScheduledEnd)
 			if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_participations
 				(id,exam_attempt_id,session_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
 				VALUES (?,?,?,'active',?,0,?,?,?,?)`, participation.ID, attemptID, participation.SessionID, participation.Generation,
 				participation.CredentialHash, guard.DatabaseNow, guard.DatabaseNow, participation.LeaseExpiresAt); err != nil {
 				return zero, fmt.Errorf("insert next Attempt Participation: %w", translateError("attempt_participation", participation.ID, err))
+			}
+			if err := persistConnectSecurity(ctx, tx, input, security); err != nil {
+				return zero, err
 			}
 		} else if errors.Is(err, sql.ErrNoRows) {
 			return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
@@ -1369,6 +1417,11 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 		return zero, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	}
 
+	if !reactivating {
+		if err := validateSecurityResume(ctx, tx, input, participation.ID, participation.Generation); err != nil {
+			return zero, err
+		}
+	}
 	connectionID := input.ConnectionID.String()
 	connectionOpened := false
 	var open struct {
@@ -1550,30 +1603,37 @@ func (s *sqlExamAttemptStore) examAttemptConnectResult(ctx context.Context, outc
 	if err != nil {
 		return nil, err
 	}
-	return &store.ExamAttemptConnectResult{Attempt: attempt, Workspace: workspace, Participation: participation,
+	security, err := loadAdmittedSecurity(ctx, s.GetMaster(), outcome.ParticipationID)
+	if err != nil {
+		return nil, err
+	}
+	return &store.ExamAttemptConnectResult{Security: security, Attempt: attempt, Workspace: workspace, Participation: participation,
 		Connection: connection, ClassID: classID, Configuration: configuration,
 		RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, FirstAdmission: outcome.FirstAdmission}, nil
 }
 
 func (s *sqlExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context, outcome examAttemptConnectOutcomeV1) (model.AttemptConfiguration, store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, []model.CandidateLiveCorrection, error) {
 	var row struct {
-		Configuration       []byte    `db:"attempt_configuration_canonical"`
-		ConfigurationDigest string    `db:"attempt_configuration_digest"`
-		AdmissionRevisionID string    `db:"admission_revision_id"`
-		CurrentRevisionID   string    `db:"current_revision_id"`
-		SittingState        string    `db:"sitting_state"`
-		DatabaseNow         time.Time `db:"database_now"`
-		Policy              []byte    `db:"policy_canonical"`
-		ExecutionProfile    []byte    `db:"execution_profile_canonical"`
-		BrowserPolicy       []byte    `db:"browser_policy_canonical"`
-		BrowserPolicyDigest string    `db:"browser_policy_digest"`
-		RuntimeAvailable    bool      `db:"runtime_available"`
-		TerminalAvailable   bool      `db:"terminal_available"`
+		Configuration        []byte    `db:"attempt_configuration_canonical"`
+		ConfigurationDigest  string    `db:"attempt_configuration_digest"`
+		AdmissionRevisionID  string    `db:"admission_revision_id"`
+		CurrentRevisionID    string    `db:"current_revision_id"`
+		SittingState         string    `db:"sitting_state"`
+		DatabaseNow          time.Time `db:"database_now"`
+		Policy               []byte    `db:"policy_canonical"`
+		ExecutionProfile     []byte    `db:"execution_profile_canonical"`
+		BrowserPolicy        []byte    `db:"browser_policy_canonical"`
+		BrowserPolicyDigest  string    `db:"browser_policy_digest"`
+		PolicyRevisionNumber int64     `db:"policy_revision_number"`
+		BrowserUnavailable   bool      `db:"browser_unavailable"`
+		RuntimeAvailable     bool      `db:"runtime_available"`
+		TerminalAvailable    bool      `db:"terminal_available"`
 	}
 	if err := s.GetMaster().Get(ctx, &row, `SELECT a.attempt_configuration_canonical,a.attempt_configuration_digest,
 		a.admission_revision_id,s.exam_revision_id AS current_revision_id,s.state AS sitting_state,
 		statement_timestamp() AS database_now,r.policy_canonical,r.execution_profile_canonical,
-		r.browser_policy_canonical,r.browser_policy_digest,
+		r.browser_policy_canonical,r.browser_policy_digest,r.number AS policy_revision_number,
+ EXISTS(SELECT 1 FROM exam_attempt_security_owners bo JOIN exam_attempt_participations bp ON bp.id=bo.participation_id WHERE bo.exam_attempt_id=a.id AND bp.state='active' AND bo.browser_source_unavailable) AS browser_unavailable,
 		EXISTS (SELECT 1 FROM exam_attempt_participations p JOIN exam_attempt_connections c
 			ON c.participation_id=p.id AND c.exam_attempt_id=p.exam_attempt_id
 			WHERE p.id=? AND c.id=? AND p.exam_attempt_id=a.id AND p.state='active' AND c.state='open'
@@ -1601,18 +1661,25 @@ func (s *sqlExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context
 	if err != nil {
 		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, invalidPersistedState("exam_sitting", "exam_revision_id", err)
 	}
-	liveCorrections, acknowledgementRequired, err := listCandidateLiveCorrections(ctx, s.GetMaster(), attemptID, currentRevisionID)
+	liveCorrections, pendingCapabilities, err := listCandidateLiveCorrections(ctx, s.GetMaster(), attemptID, currentRevisionID)
+	if err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, err
+	}
+	retention, err := getRetentionPolicy(ctx, s.GetMaster(), "")
 	if err != nil {
 		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, err
 	}
 	capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, row.AdmissionRevisionID, row.CurrentRevisionID,
-		row.SittingState, row.DatabaseNow, row.Policy, row.ExecutionProfile, row.BrowserPolicy, row.BrowserPolicyDigest, acknowledgementRequired, row.TerminalAvailable)
+		row.SittingState, row.DatabaseNow, row.Policy, row.ExecutionProfile, row.BrowserPolicy, row.BrowserPolicyDigest, pendingCapabilities, row.TerminalAvailable, row.PolicyRevisionNumber, retention, row.BrowserUnavailable)
+	if err == nil {
+		err = populateCandidateTerminalProjection(ctx, s.GetMaster(), attemptID, &capabilities.Terminal)
+	}
 	return configuration, capabilities, browserPolicy, liveCorrections, err
 }
 
 func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admissionRevision, currentRevision, sittingState string,
 	databaseNow time.Time, policyDocument, executionProfileDocument, browserPolicyDocument []byte, browserPolicyDigest string,
-	acknowledgementRequired, terminalDependencyAvailable bool,
+	pendingCapabilities []model.CandidateCapability, terminalDependencyAvailable bool, revisionNumber int64, retention *model.RetentionPolicy, browserUnavailable bool,
 ) (store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, error) {
 	admissionRevisionID, err := model.ParseExamRevisionID(admissionRevision)
 	if err != nil {
@@ -1650,36 +1717,46 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 		terminalState = store.CandidateTerminalDisabled
 	case interaction == store.CandidateInteractionSittingPaused:
 		terminalState = store.CandidateTerminalSittingPaused
-	case acknowledgementRequired:
+	case slices.Contains(pendingCapabilities, model.CandidateCapabilityTerminal):
 		terminalState = store.CandidateTerminalAcknowledgementRequired
 	case !terminalDependencyAvailable:
 		terminalState = store.CandidateTerminalTemporarilyUnavailable
 	}
-	mutationAllowed := interaction == store.CandidateInteractionInteractive && !acknowledgementRequired
-	preferences := configuration.Preferences
-	preferences.CandidateCommandBindings = slices.Clone(preferences.CandidateCommandBindings)
+	workspaceAllowed := interaction == store.CandidateInteractionInteractive && !slices.Contains(pendingCapabilities, model.CandidateCapabilityWorkspace)
+	submissionAllowed := interaction == store.CandidateInteractionInteractive && !slices.Contains(pendingCapabilities, model.CandidateCapabilitySubmission)
 	browserCapability := store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled}
 	var browserProjection *store.CandidateBrowserPolicy
 	if browserPolicy.Enabled {
 		state := store.CandidateBrowserAvailable
+		if browserUnavailable {
+			state = store.CandidateBrowserTemporarilyUnavailable
+		}
 		if interaction == store.CandidateInteractionSittingPaused {
 			state = store.CandidateBrowserSittingPaused
-		} else if acknowledgementRequired {
+		} else if slices.Contains(pendingCapabilities, model.CandidateCapabilityBrowser) {
 			state = store.CandidateBrowserAcknowledgementRequired
 		}
-		visibleDigest := "sha256:" + browserPolicyDigest
+		visibleDigest := browserPolicyDigest
 		browserCapability = store.CandidateBrowserCapability{State: state, PolicyRevisionID: currentRevisionID, PolicyDigest: visibleDigest}
-		browserProjection = &store.CandidateBrowserPolicy{PolicyRevisionID: currentRevisionID, PolicyDigest: visibleDigest, Policy: browserPolicy.Clone()}
+	}
+	if !slices.Contains(pendingCapabilities, model.CandidateCapabilityBrowser) {
+		disclosure, err := model.NewBrowserActivityDisclosure(retention, browserPolicy.MayCreateIntegrityEvidence())
+		if err != nil || revisionNumber < 1 {
+			return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "browser_disclosure", errors.New("invalid candidate browser provenance"))
+		}
+		browserProjection = &store.CandidateBrowserPolicy{PolicyRevisionID: currentRevisionID, PolicyRevisionNumber: revisionNumber, PolicyDigest: browserPolicyDigest, Policy: browserPolicy.Clone(), BrowserActivityDisclosure: disclosure}
 	}
 	return store.CandidateRuntimeCapabilities{
 		SchemaVersion: 1, ServerTime: model.TimeUTC(databaseNow), InteractionState: interaction,
-		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
-			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: preferences, Digest: configuration.Digest},
-		FocusLossCollectionEnabled: policy.FocusLoss.Enabled, WorkspaceMutationAllowed: mutationAllowed,
-		SubmissionAllowed: mutationAllowed, Terminal: store.CandidateTerminalCapability{State: terminalState},
+		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision,
+			Presentation: configuration.Presentation, ApprovedCommands: slices.Clone(configuration.ApprovedCommands),
+			ApprovedKeybindings: slices.Clone(configuration.ApprovedKeybindings), Digest: configuration.Digest},
+		FocusLossCollectionEnabled: policy.FocusLoss.Enabled, WorkspaceMutationAllowed: workspaceAllowed,
+		PendingCorrectionCapabilities: append([]model.CandidateCapability{}, pendingCapabilities...),
+		SubmissionAllowed:             submissionAllowed, Terminal: store.CandidateTerminalCapability{State: terminalState},
 		Browser: browserCapability,
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: admissionRevisionID,
-			CurrentRevisionID: currentRevisionID, AcknowledgementRequired: acknowledgementRequired},
+			CurrentRevisionID: currentRevisionID, AcknowledgementRequired: len(pendingCapabilities) != 0},
 		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"},
 	}, browserProjection, nil
 }
@@ -2122,20 +2199,23 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, err
 		}
 		var header struct {
-			Title               string    `db:"title"`
-			Instructions        string    `db:"instructions_markdown"`
-			Policy              []byte    `db:"policy_canonical"`
-			ExecutionProfile    []byte    `db:"execution_profile_canonical"`
-			BrowserPolicy       []byte    `db:"browser_policy_canonical"`
-			BrowserPolicyDigest string    `db:"browser_policy_digest"`
-			Configuration       []byte    `db:"attempt_configuration_canonical"`
-			ConfigurationDigest string    `db:"attempt_configuration_digest"`
-			SittingState        string    `db:"sitting_state"`
-			DatabaseNow         time.Time `db:"database_now"`
-			TerminalAvailable   bool      `db:"terminal_available"`
+			Title                string    `db:"title"`
+			Instructions         string    `db:"instructions_markdown"`
+			Policy               []byte    `db:"policy_canonical"`
+			ExecutionProfile     []byte    `db:"execution_profile_canonical"`
+			BrowserPolicy        []byte    `db:"browser_policy_canonical"`
+			BrowserPolicyDigest  string    `db:"browser_policy_digest"`
+			PolicyRevisionNumber int64     `db:"policy_revision_number"`
+			BrowserUnavailable   bool      `db:"browser_unavailable"`
+			Configuration        []byte    `db:"attempt_configuration_canonical"`
+			ConfigurationDigest  string    `db:"attempt_configuration_digest"`
+			SittingState         string    `db:"sitting_state"`
+			DatabaseNow          time.Time `db:"database_now"`
+			TerminalAvailable    bool      `db:"terminal_available"`
 		}
 		if err = tx.Get(ctx, &header, `SELECT r.title,r.instructions_markdown,r.policy_canonical,r.execution_profile_canonical,
-			r.browser_policy_canonical,r.browser_policy_digest,
+			r.browser_policy_canonical,r.browser_policy_digest,r.number AS policy_revision_number,
+ EXISTS(SELECT 1 FROM exam_attempt_security_owners bo JOIN exam_attempt_participations bp ON bp.id=bo.participation_id WHERE bo.exam_attempt_id=a.id AND bp.state='active' AND bo.browser_source_unavailable) AS browser_unavailable,
 			a.attempt_configuration_canonical,a.attempt_configuration_digest,s.state AS sitting_state,
 			statement_timestamp() AS database_now,
 			EXISTS (SELECT 1 FROM execution_grants grant_record WHERE grant_record.exam_attempt_id=a.id
@@ -2157,13 +2237,20 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
 		}
-		liveCorrections, acknowledgementRequired, err := listCandidateLiveCorrections(ctx, tx, attemptID, currentRevisionID)
+		liveCorrections, pendingCapabilities, err := listCandidateLiveCorrections(ctx, tx, attemptID, currentRevisionID)
+		if err != nil {
+			return nil, err
+		}
+		retention, err := getRetentionPolicy(ctx, tx, "FOR SHARE OF p")
 		if err != nil {
 			return nil, err
 		}
 		capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, guard.AdmissionRevisionID, guard.RevisionID,
-			header.SittingState, header.DatabaseNow, header.Policy, header.ExecutionProfile, header.BrowserPolicy, header.BrowserPolicyDigest, acknowledgementRequired, header.TerminalAvailable)
+			header.SittingState, header.DatabaseNow, header.Policy, header.ExecutionProfile, header.BrowserPolicy, header.BrowserPolicyDigest, pendingCapabilities, header.TerminalAvailable, header.PolicyRevisionNumber, retention, header.BrowserUnavailable)
 		if err != nil {
+			return nil, err
+		}
+		if err = populateCandidateTerminalProjection(ctx, tx, attemptID, &capabilities.Terminal); err != nil {
 			return nil, err
 		}
 		executionProfile, err := model.DecodeExecutionProfile(header.ExecutionProfile)
@@ -2371,3 +2458,11 @@ func resolveCandidateWorkspaceFile(ctx context.Context, executor sqlxExecutor, a
 }
 
 var _ store.ExamAttemptStore = (*sqlExamAttemptStore)(nil)
+
+func boundedParticipationLease(now, end time.Time) time.Time {
+	deadline := now.Add(model.AttemptParticipationInitialLease)
+	if end.Before(deadline) {
+		deadline = end
+	}
+	return deadline
+}

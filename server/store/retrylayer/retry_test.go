@@ -433,7 +433,7 @@ func TestRetryExamAttemptRenewalExpiryAndReallowUseTheirDurableFences(t *testing
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	_, _ = layer.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{})
+	_, _ = layer.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1})
 	_, _ = layer.ExamAttempt().ResolveParticipationExpiry(ctx, model.NewExamAttemptID(), model.NewAttemptParticipationID(), 1)
 	_, _ = layer.ExamAttempt().ListExpiredParticipations(ctx, 10)
 	_, _ = layer.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{})
@@ -808,4 +808,9 @@ func newLayer(
 		t.Fatal(err)
 	}
 	return layer
+}
+
+func (s *examAuthoringStub) UpdateDraftNativePolicy(context.Context, *store.ExamDraftNativePolicyUpdate, *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	s.focusAttempts++
+	return nil, s.err
 }

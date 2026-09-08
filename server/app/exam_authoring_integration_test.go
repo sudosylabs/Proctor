@@ -73,7 +73,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if created.Exam.CreatorUserID != teacher.ID || created.Exam.OwnerUserID != teacher.ID || created.Draft.Title != "Systems Programming" || created.Draft.Policy != model.DefaultExamPolicySet() || created.ManagerCount != 1 {
+	if created.Exam.CreatorUserID != teacher.ID || created.Exam.OwnerUserID != teacher.ID || created.Draft.Title != "Systems Programming" || !created.Draft.Policy.Equal(model.DefaultExamPolicySet()) || created.ManagerCount != 1 {
 		t.Fatalf("created = %#v", created)
 	}
 	replayed, appErr := helper.App.CreateExam(ctx, invocation, application.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
@@ -133,7 +133,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || got.Draft.Policy != focusPolicy.Draft.Policy || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
+	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || !got.Draft.Policy.Equal(focusPolicy.Draft.Policy) || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
 		t.Fatalf("get = %#v", got)
 	}
 	active, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})

@@ -94,18 +94,20 @@ func (c *ExamSittingRecordsCompletion) ObserveIntegrity(at time.Time) error {
 // Submission inventory needs no finalized Review. It is invalidated by later
 // discrepancies or Review edits. PrivateReason never belongs in ordinary audit.
 type SubmissionReviewWaiver struct {
-	SubmissionID     SubmissionID
-	Revision         int64
-	ReviewRevision   int64
-	DiscrepancyCount int64
-	ActorUserID      UserID
-	RecordedAt       time.Time
-	ReasonCode       string
-	PrivateReason    string
+	DeliveryInventoryRevision int64
+	InventoryInvalidated      bool
+	SubmissionID              SubmissionID
+	Revision                  int64
+	ReviewRevision            int64
+	DiscrepancyCount          int64
+	ActorUserID               UserID
+	RecordedAt                time.Time
+	ReasonCode                string
+	PrivateReason             string
 }
 
 func (w *SubmissionReviewWaiver) Validate() error {
-	if w == nil || !w.SubmissionID.IsValid() || w.Revision < 1 || w.ReviewRevision < 0 ||
+	if w == nil || w.DeliveryInventoryRevision < 0 || !w.SubmissionID.IsValid() || w.Revision < 1 || w.ReviewRevision < 0 ||
 		w.DiscrepancyCount < 0 || !w.ActorUserID.IsValid() || w.RecordedAt.IsZero() ||
 		ValidateRecordsReason(w.ReasonCode, w.PrivateReason) != nil {
 		return errors.New("model: invalid Submission Review waiver")

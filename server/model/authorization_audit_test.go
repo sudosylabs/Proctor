@@ -176,6 +176,17 @@ func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testin
 	}
 }
 
+func TestBrowserActivityHasNoGrantableOverride(t *testing.T) {
+	obsolete := Action("exam.attempt.browser_activity.view.override")
+	if _, known := DefinitionForAction(obsolete); known || slices.Contains(AllActions(), string(obsolete)) {
+		t.Fatal("obsolete Browser Activity override remained live")
+	}
+	definition, known := DefinitionForAction(ActionExamAttemptBrowserActivityView)
+	if !known || definition.ResourceType != ResourceExamSitting || !slices.Contains(AllActions(), string(ActionExamAttemptBrowserActivityView)) {
+		t.Fatal("dedicated Browser Activity permission is missing")
+	}
+}
+
 func TestDesktopCompatibilityPolicyManagementIsSystemAdministratorOnly(t *testing.T) {
 	t.Parallel()
 

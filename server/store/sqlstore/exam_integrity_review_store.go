@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -136,6 +137,7 @@ func (row examSubmissionReviewRow) value() (*model.SubmissionReview, error) {
 }
 
 type examIntegrityReviewDecisionRow struct {
+	InventoryStale   bool      `db:"inventory_stale"`
 	ID               string    `db:"id"`
 	ReviewID         string    `db:"submission_review_id"`
 	FlagID           string    `db:"integrity_flag_id"`
@@ -147,7 +149,7 @@ type examIntegrityReviewDecisionRow struct {
 }
 
 const examIntegrityReviewDecisionSelect = `SELECT id,submission_review_id,integrity_flag_id,outcome,revision,
-	actor_user_id,private_rationale,decided_at FROM integrity_review_decisions`
+	actor_user_id,private_rationale,decided_at,inventory_stale FROM integrity_review_decisions`
 
 func (row examIntegrityReviewDecisionRow) value() (*model.IntegrityReviewDecision, error) {
 	id, err := model.ParseIntegrityReviewDecisionID(row.ID)
@@ -166,7 +168,7 @@ func (row examIntegrityReviewDecisionRow) value() (*model.IntegrityReviewDecisio
 	if err != nil {
 		return nil, invalidPersistedState("integrity_review_decision", "actor_user_id", err)
 	}
-	decision := &model.IntegrityReviewDecision{ID: id, ReviewID: reviewID, FlagID: flagID,
+	decision := &model.IntegrityReviewDecision{InventoryStale: row.InventoryStale, ID: id, ReviewID: reviewID, FlagID: flagID,
 		Outcome: model.IntegrityReviewOutcome(row.Outcome), Revision: row.Revision, ActorUserID: actorID,
 		PrivateRationale: row.PrivateRationale, DecidedAt: model.TimeUTC(row.DecidedAt)}
 	if err = decision.Validate(); err != nil {
@@ -197,6 +199,25 @@ func (s *SQLExamIntegrityReviewStore) Get(ctx context.Context, submissionID mode
 			return nil, err
 		}
 		snapshot := &store.ExamSubmissionReviewSnapshot{Authorization: *authorization, Submission: submission}
+		snapshot.NativeConditions, err = nativeConditionInventory(ctx, tx, authorization.AttemptID)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Get(ctx, &snapshot.DeliveryInventoryRevision, `SELECT review_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, authorization.AttemptID.String()); err != nil {
+			return nil, err
+		}
+		var overflow struct {
+			Count  int64     `db:"validated_event_count"`
+			First  time.Time `db:"first_received_at"`
+			Last   time.Time `db:"last_received_at"`
+			Reason string    `db:"reason"`
+		}
+		overflowErr := tx.Get(ctx, &overflow, `SELECT validated_event_count,first_received_at,last_received_at,reason FROM browser_integrity_overflow WHERE exam_attempt_id=?`, snapshot.Authorization.AttemptID.String())
+		if overflowErr == nil {
+			snapshot.BrowserEvidenceOverflow = &model.BrowserIntegrityOverflow{ValidatedEventCount: overflow.Count, FirstReceivedAt: model.TimeUTC(overflow.First), LastReceivedAt: model.TimeUTC(overflow.Last), Reason: overflow.Reason}
+		} else if !errors.Is(overflowErr, sql.ErrNoRows) {
+			return nil, overflowErr
+		}
 		var reviewRow examSubmissionReviewRow
 		err = tx.Get(ctx, &reviewRow, examSubmissionReviewSelect+` WHERE submission_id=?`, submissionID.String())
 		if errors.Is(err, sql.ErrNoRows) {
@@ -234,11 +255,13 @@ func (s *SQLExamIntegrityReviewStore) ListFlags(ctx context.Context, options sto
 		return nil, store.NewErrInvalidInput("integrity_flag", "list_options", nil)
 	}
 	query := `SELECT f.id,f.exam_attempt_id AS attempt_id,f.generation,f.policy_kind AS kind,f.state,f.created_at,
-		COUNT(ev.id) AS evidence_count,COALESCE(eval.overflow_count,0) AS overflow_count,
+		COUNT(ev.id) AS evidence_count,COALESCE(bg.overflow_count,eval.overflow_count,0) AS overflow_count,
+ bg.participation_id AS browser_participation_id,bg.policy_revision_id AS browser_policy_revision_id,bg.rule_id AS browser_rule_id,bg.overflow_first_received_at,bg.overflow_last_received_at,
 		COALESCE(eval.unresolved_missing_count,0) AS unresolved_missing_count
 		FROM exam_submissions sub JOIN integrity_flags f ON f.exam_attempt_id=sub.exam_attempt_id
 		LEFT JOIN integrity_evidence ev ON ev.integrity_flag_id=f.id
-		LEFT JOIN exam_attempt_focus_loss_evaluations eval ON eval.exam_attempt_id=f.exam_attempt_id AND
+		LEFT JOIN browser_integrity_groups bg ON bg.integrity_flag_id=f.id
+ LEFT JOIN exam_attempt_focus_loss_evaluations eval ON eval.exam_attempt_id=f.exam_attempt_id AND
 			eval.generation=f.generation AND f.policy_kind='focus_loss'
 		WHERE sub.id=? AND sub.sealed=true AND sub.integrity_retired_at IS NULL`
 	args := []any{options.SubmissionID.String()}
@@ -246,18 +269,23 @@ func (s *SQLExamIntegrityReviewStore) ListFlags(ctx context.Context, options sto
 		query += ` AND f.id>?`
 		args = append(args, options.AfterFlagID.String())
 	}
-	query += ` GROUP BY f.id,f.exam_attempt_id,f.generation,f.policy_kind,f.state,f.created_at,eval.overflow_count,eval.unresolved_missing_count ORDER BY f.id LIMIT ?`
+	query += ` GROUP BY f.id,f.exam_attempt_id,f.generation,f.policy_kind,f.state,f.created_at,eval.overflow_count,eval.unresolved_missing_count,bg.integrity_flag_id ORDER BY f.id LIMIT ?`
 	args = append(args, options.Limit+1)
 	var rows []struct {
-		ID                     string    `db:"id"`
-		AttemptID              string    `db:"attempt_id"`
-		Kind                   string    `db:"kind"`
-		State                  string    `db:"state"`
-		Generation             int64     `db:"generation"`
-		EvidenceCount          int       `db:"evidence_count"`
-		OverflowCount          int64     `db:"overflow_count"`
-		UnresolvedMissingCount int64     `db:"unresolved_missing_count"`
-		CreatedAt              time.Time `db:"created_at"`
+		ID                     string         `db:"id"`
+		BrowserPart            sql.NullString `db:"browser_participation_id"`
+		BrowserPolicy          sql.NullString `db:"browser_policy_revision_id"`
+		BrowserRule            sql.NullString `db:"browser_rule_id"`
+		OverflowFirst          sql.NullTime   `db:"overflow_first_received_at"`
+		OverflowLast           sql.NullTime   `db:"overflow_last_received_at"`
+		AttemptID              string         `db:"attempt_id"`
+		Kind                   string         `db:"kind"`
+		State                  string         `db:"state"`
+		Generation             int64          `db:"generation"`
+		EvidenceCount          int            `db:"evidence_count"`
+		OverflowCount          int64          `db:"overflow_count"`
+		UnresolvedMissingCount int64          `db:"unresolved_missing_count"`
+		CreatedAt              time.Time      `db:"created_at"`
 	}
 	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("list Integrity Flags: %w", err)
@@ -281,7 +309,19 @@ func (s *SQLExamIntegrityReviewStore) ListFlags(ctx context.Context, options sto
 		if err = flag.Validate(); err != nil {
 			return nil, invalidPersistedState("integrity_flag", "value", err)
 		}
-		page.Items = append(page.Items, store.ExamIntegrityFlagSummary{Flag: flag, EvidenceCount: row.EvidenceCount,
+		var browser *model.BrowserIntegrityGroup
+		if row.BrowserPart.Valid {
+			browser = &model.BrowserIntegrityGroup{ParticipationID: model.AttemptParticipationID(row.BrowserPart.String), PolicyRevisionID: model.ExamRevisionID(row.BrowserPolicy.String), RuleID: row.BrowserRule.String}
+			if row.OverflowFirst.Valid {
+				v := model.TimeUTC(row.OverflowFirst.Time)
+				browser.OverflowFirstReceivedAt = &v
+			}
+			if row.OverflowLast.Valid {
+				v := model.TimeUTC(row.OverflowLast.Time)
+				browser.OverflowLastReceivedAt = &v
+			}
+		}
+		page.Items = append(page.Items, store.ExamIntegrityFlagSummary{Browser: browser, Flag: flag, EvidenceCount: row.EvidenceCount,
 			OverflowCount: row.OverflowCount, UnresolvedMissingCount: row.UnresolvedMissingCount})
 	}
 	return page, nil
@@ -293,7 +333,7 @@ func (s *SQLExamIntegrityReviewStore) ListEvidence(ctx context.Context, options 
 		return nil, store.NewErrInvalidInput("integrity_evidence", "list_options", nil)
 	}
 	query := `SELECT ev.id,ev.exam_attempt_id,ev.participation_id,ev.integrity_flag_id,ev.generation,ev.policy_kind,
-		ev.focus_loss_signal_id,ev.sequence,ev.duration_milliseconds,ev.source,ev.missing_before,ev.observed_at,ev.recorded_at
+		ev.focus_loss_signal_id,ev.sequence,ev.duration_milliseconds,ev.source,ev.missing_before,ev.observed_at,ev.recorded_at,ev.browser_detail_canonical
 		FROM exam_submissions sub JOIN integrity_evidence ev ON ev.exam_attempt_id=sub.exam_attempt_id
 		WHERE sub.id=? AND sub.sealed=true AND sub.integrity_retired_at IS NULL AND ev.integrity_flag_id=?`
 	args := []any{options.SubmissionID.String(), options.FlagID.String()}
@@ -323,6 +363,7 @@ func (s *SQLExamIntegrityReviewStore) ListEvidence(ctx context.Context, options 
 }
 
 type examIntegrityEvidenceRow struct {
+	BrowserDetail        []byte         `db:"browser_detail_canonical"`
 	ID                   string         `db:"id"`
 	AttemptID            string         `db:"exam_attempt_id"`
 	ParticipationID      string         `db:"participation_id"`
@@ -365,6 +406,14 @@ func (row examIntegrityEvidenceRow) value() (*model.IntegrityEvidence, error) {
 	evidence := &model.IntegrityEvidence{ID: id, AttemptID: attemptID, ParticipationID: participationID, FlagID: flagID, Generation: row.Generation,
 		Kind: model.IntegrityPolicyKind(row.Kind), SignalID: signalID, Sequence: row.Sequence.Int64, DurationMilliseconds: row.DurationMilliseconds.Int64,
 		Source: model.FocusLossSource(row.Source.String), MissingBefore: row.MissingBefore.Int64, ObservedAt: model.TimeUTC(row.ObservedAt), RecordedAt: model.TimeUTC(row.RecordedAt)}
+	if len(row.BrowserDetail) > 0 {
+		var detail model.BrowserIntegrityEvidence
+		if err := json.Unmarshal(row.BrowserDetail, &detail); err != nil {
+			return nil, err
+		}
+		evidence.Browser = &detail
+	}
+
 	if err = evidence.Validate(); err != nil {
 		return nil, invalidPersistedState("integrity_evidence", "value", err)
 	}
@@ -817,7 +866,7 @@ func saveReviewDecision(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		}
 		if err == nil {
 			var result sql.Result
-			result, err = tx.Exec(ctx, `UPDATE integrity_review_decisions SET outcome=?,revision=?,actor_user_id=?,private_rationale=?,decided_at=? WHERE id=? AND revision=?`, string(decision.Outcome), decision.Revision, decision.ActorUserID.String(), decision.PrivateRationale, decision.DecidedAt, decision.ID.String(), input.ExpectedDecisionRevision)
+			result, err = tx.Exec(ctx, `UPDATE integrity_review_decisions SET inventory_stale=false,outcome=?,revision=?,actor_user_id=?,private_rationale=?,decided_at=? WHERE id=? AND revision=?`, string(decision.Outcome), decision.Revision, decision.ActorUserID.String(), decision.PrivateRationale, decision.DecidedAt, decision.ID.String(), input.ExpectedDecisionRevision)
 			if err == nil {
 				affected, e := result.RowsAffected()
 				if e != nil || affected != 1 {
@@ -913,7 +962,7 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 		DecisionRevision sql.NullInt64  `db:"decision_revision"`
 	}
 	var flags []flagInventoryRow
-	if err = tx.Select(ctx, &flags, `SELECT f.id AS flag_id,d.id AS decision_id,d.revision AS decision_revision FROM integrity_flags f LEFT JOIN integrity_review_decisions d ON d.integrity_flag_id=f.id AND d.submission_review_id=? WHERE f.exam_attempt_id=? ORDER BY f.id LIMIT 201 FOR SHARE OF f`, review.ID.String(), auth.AttemptID.String()); err != nil {
+	if err = tx.Select(ctx, &flags, `SELECT f.id AS flag_id,d.id AS decision_id,d.revision AS decision_revision FROM integrity_flags f LEFT JOIN integrity_review_decisions d ON d.integrity_flag_id=f.id AND d.submission_review_id=? AND NOT d.inventory_stale WHERE f.exam_attempt_id=? ORDER BY f.id LIMIT 457 FOR SHARE OF f`, review.ID.String(), auth.AttemptID.String()); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
 	if len(flags) > model.SubmissionReviewMaximumFlags {
@@ -939,7 +988,7 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 		FlagID     string `db:"flag_id"`
 	}
 	var evidenceRows []evidenceInventoryRow
-	if err = tx.Select(ctx, &evidenceRows, `SELECT e.id AS evidence_id,e.integrity_flag_id AS flag_id FROM integrity_evidence e WHERE e.exam_attempt_id=? ORDER BY e.id LIMIT 20001 FOR SHARE`, auth.AttemptID.String()); err != nil {
+	if err = tx.Select(ctx, &evidenceRows, `SELECT e.id AS evidence_id,e.integrity_flag_id AS flag_id FROM integrity_evidence e WHERE e.exam_attempt_id=? ORDER BY e.id LIMIT 30001 FOR SHARE`, auth.AttemptID.String()); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
 	if len(evidenceRows) > model.SubmissionReviewMaximumEvidence {
@@ -979,20 +1028,40 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
+	settlement, err := browserSubmissionSettlement(ctx, tx, auth.AttemptID)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	var deliveryRevision int64
+	if err := tx.Get(ctx, &deliveryRevision, `SELECT review_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, auth.AttemptID.String()); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	digest, err = model.IntegrityReviewDeliveryDigest(digest, settlement, deliveryRevision)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	nativeInventory, err := nativeConditionInventory(ctx, tx, auth.AttemptID)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	digest, err = model.IntegrityReviewNativeDigest(digest, nativeInventory)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
 	for _, item := range flagItems {
-		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_inventory_flags(submission_review_id,exam_attempt_id,integrity_flag_id,decision_id,decision_revision) VALUES(?,?,?,?,?)`, review.ID.String(), auth.AttemptID.String(), item.FlagID.String(), item.DecisionID.String(), item.DecisionRevision); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_inventory_flags(submission_review_id,finalization_revision,exam_attempt_id,integrity_flag_id,decision_id,decision_revision) VALUES(?,?,?,?,?,?)`, review.ID.String(), review.Revision+1, auth.AttemptID.String(), item.FlagID.String(), item.DecisionID.String(), item.DecisionRevision); err != nil {
 			return examIntegrityReviewOutcome{}, err
 		}
 	}
 	for _, item := range evidenceItems {
-		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_inventory_evidence(submission_review_id,exam_attempt_id,integrity_flag_id,integrity_evidence_id) VALUES(?,?,?,?)`, review.ID.String(), auth.AttemptID.String(), item.FlagID.String(), item.EvidenceID.String()); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_inventory_evidence(submission_review_id,finalization_revision,exam_attempt_id,integrity_flag_id,integrity_evidence_id) VALUES(?,?,?,?,?)`, review.ID.String(), review.Revision+1, auth.AttemptID.String(), item.FlagID.String(), item.EvidenceID.String()); err != nil {
 			return examIntegrityReviewOutcome{}, err
 		}
 	}
 	for _, item := range discrepancyItems {
 		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_inventory_discrepancies
-			(submission_review_id,submission_id,exam_attempt_id,integrity_discrepancy_id) VALUES(?,?,?,?)`,
-			review.ID.String(), review.SubmissionID.String(), auth.AttemptID.String(), item.DiscrepancyID.String()); err != nil {
+			(submission_review_id,finalization_revision,submission_id,exam_attempt_id,integrity_discrepancy_id) VALUES(?,?,?,?,?)`,
+			review.ID.String(), review.Revision+1, review.SubmissionID.String(), auth.AttemptID.String(), item.DiscrepancyID.String()); err != nil {
 			return examIntegrityReviewOutcome{}, err
 		}
 	}
@@ -1000,6 +1069,41 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 		return examIntegrityReviewOutcome{}, err
 	}
 	if err = persistReview(ctx, tx, review, input.ExpectedReviewRevision); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	var decisionRows []examIntegrityReviewDecisionRow
+	if err := tx.Select(ctx, &decisionRows, examIntegrityReviewDecisionSelect+` WHERE submission_review_id=? ORDER BY integrity_flag_id LIMIT 457`, review.ID.String()); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	var browserGroups []struct {
+		Flag     string       `db:"integrity_flag_id"`
+		Details  int64        `db:"retained_details"`
+		Overflow int64        `db:"overflow_count"`
+		First    sql.NullTime `db:"overflow_first_received_at"`
+		Last     sql.NullTime `db:"overflow_last_received_at"`
+	}
+	if err := tx.Select(ctx, &browserGroups, `SELECT integrity_flag_id,retained_details,overflow_count,overflow_first_received_at,overflow_last_received_at FROM browser_integrity_groups WHERE exam_attempt_id=? ORDER BY integrity_flag_id LIMIT 257`, auth.AttemptID.String()); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	if len(browserGroups) > 256 {
+		return examIntegrityReviewOutcome{}, model.ErrDeliveryInvalid
+	}
+	var browserOverflow []struct {
+		Count int64     `db:"validated_event_count"`
+		First time.Time `db:"first_received_at"`
+		Last  time.Time `db:"last_received_at"`
+	}
+	if err := tx.Select(ctx, &browserOverflow, `SELECT validated_event_count,first_received_at,last_received_at FROM browser_integrity_overflow WHERE exam_attempt_id=?`, auth.AttemptID.String()); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	snapshot, err := canonicalPreflightValue(map[string]any{"native_conditions": nativeInventory, "review": review, "decisions": decisionRows, "browser_activity": settlement, "delivery_inventory_revision": deliveryRevision, "browser_groups": browserGroups, "browser_evidence_overflow": browserOverflow})
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	if len(snapshot) > 2*1024*1024 {
+		return examIntegrityReviewOutcome{}, model.ErrDeliveryInvalid
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO submission_review_finalizations(submission_review_id,finalization_revision,exam_attempt_id,snapshot_canonical) VALUES(?,?,?,?)`, review.ID.String(), review.Revision, auth.AttemptID.String(), snapshot); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
 	out := examIntegrityReviewOutcome{Authorization: *auth, Review: *review}
@@ -1043,7 +1147,7 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if auth.CandidateUserID != input.CandidateUserID || recipient.Revision != input.ExpectedRecipientRevision {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_recipient_changed", nil)
 	}
-	payloadKeyID, err := validateResultReleaseMail(input.Notice, recipient, input.ReviewID, releaseAt)
+	payloadKeyID, err := validateResultReleaseMail(input.Notice, recipient, input.ReviewID, input.ExpectedReviewRevision, releaseAt)
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}

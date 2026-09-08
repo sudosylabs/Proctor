@@ -112,12 +112,14 @@ content remains only as long as security review and audit require.
 
 One revisioned Institution Retention Policy is created in PostgreSQL in the
 same transaction as the Institution. It stores separate day counts for
-Submissions and associated work, integrity evidence and review, audit history,
+Submissions and associated work, integrity evidence and review, ordinary Browser
+Activity, native security operational records, audit history,
 temporary export artifacts, and deletion grace time. Zero means no configured
 expiry or grace period, never immediate deletion. All values initially are
 zero. Export retention accepts zero when unconfigured or a finite 1–7 days.
 Other periods have a 36,500-day numeric maximum, not an institutional default.
-Days mean 24-hour durations. Submission work and integrity use explicit
+Days mean 24-hour durations. Work, integrity, Browser Activity and native
+operational categories use explicit
 current Sitting Records Completion as their retention anchor; audit and
 retirement receipts use their own event ages.
 Archiving an Institution retains its policy; a replacement Institution gets
@@ -130,7 +132,16 @@ currently enables cleanup. Saving a new policy pauses old approval and cancels
 pending grace. Existing operational expiry of credentials, leases, abandoned
 stages, retry outcomes, and ordinary Job history remains separate.
 
-Retirement is per Submission and category. Supporting work uses the later
+Retirement is per Submission and category. Browser Activity and native
+operational categories use independent configured periods, approval, holds,
+notices, grace and permanent fences. Work or integrity retirement never clears
+ordinary Browser history or its separate all-source settlement. Browser retirement
+removes event/source/declaration/retry payloads; minimal owner selectors allow
+current-key retries to receive terminal expiry. Native operational retirement
+removes health/reset/gap/occurrence payloads and private admission retry copies.
+Lifetime quota counters are never refunded. Minimized integrity copies must own
+sufficient frozen provenance to survive ordinary history retirement.
+Supporting work uses the later
 work/integrity deadline and remains preserved if either required period is
 indefinite. Scoped holds and export construction protect current descendants;
 fresh holds, changed completion, policy/control changes, and new construction
@@ -159,7 +170,9 @@ checks, and a new audit attempt. Exact no-ops also require these checks. Configu
 is read authoritatively on every node and is not cached.
 
 Temporary portable exports require a separate permission and explicit work
-and/or integrity categories. They have their own bounded expiry; downloading,
+and/or integrity categories, or Browser Activity alone. Ordinary browsing URLs
+never enter generic work/integrity archives. History exports also require exact
+current Exam Manager membership and the dedicated Browser Activity action. They have their own bounded expiry; downloading,
 retrying, adding a later hold, or changing examination grace cannot extend it.
 They are verifiable archives without an import promise. Logical removal never
 promises immediate erasure from backups or previously downloaded exports.
@@ -405,7 +418,13 @@ Each accepted mutation has one idempotency key and explicit expected entry,
 path, content version, and destination conditions. An Attempt-scoped ordered
 journal records identities, old/new paths, resulting content versions,
 mutation keys, and Workspace Cursors without retaining the complete body of
-every prior save. Reconnect applies ordered changes after the last acknowledged
+every prior save. Private projection metadata also retains each changed file's
+expected version and exact original object reference, plus explicit source grant
+identity. Unapplied retained journal positions of a bound ready Execution Grant
+protect their obsolete object bytes from cleanup. This protection ends when the
+prefix is applied, the journal position expires, or the grant is released;
+other durable references retain their independent protection. Public candidate
+journal responses omit these private projection fields. Reconnect applies ordered changes after the last acknowledged
 cursor or refreshes a complete manifest after a gap. Conflicted, rejected, or
 outcome-unknown client work remains protected until acknowledged replacement
 or explicit discard.
@@ -419,6 +438,15 @@ one deletion journal record marked recursive. Clients remove the root and
 paths beneath its slash boundary. Retired attempt-owned objects remain
 protected by the retained command outcome without an unbounded object-ID list;
 published Starter content and submitted manifests retain their pins.
+
+Semantic Execution Host mutations additionally bind the exact grant/epoch/control
+fence, consecutive host sequence, original projected baseline and stable guest
+node identity. The same atomic Workspace mutation records its host outcome and
+binding. Replays return the retained outcome; old capture versions can advance
+only through that exact node's prior accepted outcomes. A foreign overlapping
+journal change conflicts instead of being adopted as an observed precondition.
+Ignored-tree acknowledgements advance only host processing, not the Workspace
+cursor. These are private ingestion rules, not additional public mutation routes.
 
 The public protocol is deliberately asymmetric. Authoritative create,
 replace, move/rename, and delete commands are HTTP-only, require the active

@@ -160,25 +160,26 @@ type ManagerMailPreparer interface {
 }
 
 type Authoring struct {
-	persistence store.ExamAuthoringStore
-	memberships manageraccess.Memberships
-	users       users
-	mail        ManagerMailPreparer
-	authorizer  Authorizer
-	auditor     Auditor
-	outcomes    CommandOutcomes
-	profiles    ExecutionProfileCatalog
-	effects     Effects
-	failures    EffectFailures
-	now         func() time.Time
-	newID       func() model.ExamID
+	institutionOrigin string
+	persistence       store.ExamAuthoringStore
+	memberships       manageraccess.Memberships
+	users             users
+	mail              ManagerMailPreparer
+	authorizer        Authorizer
+	auditor           Auditor
+	outcomes          CommandOutcomes
+	profiles          ExecutionProfileCatalog
+	effects           Effects
+	failures          EffectFailures
+	now               func() time.Time
+	newID             func() model.ExamID
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships manageraccess.Memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, outcomes CommandOutcomes, profiles ExecutionProfileCatalog, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
+func NewAuthoring(persistence store.ExamAuthoringStore, memberships manageraccess.Memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, outcomes CommandOutcomes, profiles ExecutionProfileCatalog, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID, institutionOrigin string) (*Authoring, error) {
 	if persistence == nil || memberships == nil || users == nil || mail == nil || authorizer == nil || auditor == nil || outcomes == nil || profiles == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
-	return &Authoring{persistence: persistence, memberships: memberships, users: users, mail: mail, authorizer: authorizer, auditor: auditor, outcomes: outcomes, profiles: profiles, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Authoring{institutionOrigin: institutionOrigin, persistence: persistence, memberships: memberships, users: users, mail: mail, authorizer: authorizer, auditor: auditor, outcomes: outcomes, profiles: profiles, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
 func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand) (View, error) {
@@ -617,6 +618,9 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	if err != nil {
 		return View{}, invalidCause("browser_policy", err)
 	}
+	if err := policy.ValidateInstitutionOrigin(a.institutionOrigin); err != nil {
+		return View{}, invalidCause("browser_policy", err)
+	}
 	canonical, err := model.EncodeBrowserPolicy(policy)
 	if err != nil {
 		return View{}, invalidCause("browser_policy", err)
@@ -667,7 +671,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	if err != nil {
 		return View{}, err
 	}
-	result, err := a.persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{
+	result, err := a.persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{InstitutionOrigin: a.institutionOrigin,
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, Policy: policy, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
@@ -783,4 +787,94 @@ func mapStoreError(err error) error {
 		}
 		return unavailable(err)
 	}
+}
+
+type ConfigureDraftNativePolicyCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	NativePolicy          model.NativeSecurityPolicy
+	IdempotencyKey        string
+}
+
+func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, command ConfigureDraftNativePolicyCommand) (View, error) {
+	principal := call.Principal()
+	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
+		return View{}, invalid("draft_revision")
+	}
+	policy := model.DefaultExamPolicySet()
+	policy.Native = command.NativePolicy
+	if err := policy.Validate(); err != nil {
+		return View{}, invalidCause("native_policy", err)
+	}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureDraftNativePolicy, command.IdempotencyKey, struct {
+		ExamID                string                     `json:"exam_id"`
+		ExpectedDraftRevision int64                      `json:"expected_draft_revision"`
+		Native                model.NativeSecurityPolicy `json:"native"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, command.NativePolicy.Clone()})
+	if err != nil {
+		return View{}, err
+	}
+	at := model.TimeUTC(a.now())
+	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if access == nil || access.Exam == nil {
+		return View{}, unavailable(errors.New("exam store returned no access projection"))
+	}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
+	if err != nil {
+		return View{}, err
+	}
+	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
+	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+		return View{}, err
+	}
+	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned an incomplete snapshot"))
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyNativePolicy(command.NativePolicy, at)
+	if err != nil {
+		return View{}, invalidCause("native_policy", err)
+	}
+	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
+		return View{}, &Fault{Code: "exam.draft.no_changes"}
+	}
+	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
+		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
+		"draft_revision": command.ExpectedDraftRevision + 1,
+	}, nil)
+	if err != nil {
+		return View{}, err
+	}
+	result, err := a.persistence.UpdateDraftNativePolicy(ctx, &store.ExamDraftNativePolicyUpdate{
+		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
+		ExpectedRevision: command.ExpectedDraftRevision, NativePolicy: command.NativePolicy.Clone(), UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	}, idempotency)
+	if err != nil {
+		mapped := mapStoreError(err)
+		var fault *Fault
+		if !errors.As(mapped, &fault) {
+			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
+		}
+		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+			return View{}, auditErr
+		}
+		return View{}, mapped
+	}
+	if result == nil || result.Value == nil || result.Value.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned no native policy update result"))
+	}
+	if !result.Replayed {
+		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		}
+	}
+	return project(result.Value), nil
 }

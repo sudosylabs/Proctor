@@ -77,7 +77,7 @@ func (adapter examRecordsAuthorizationAdapter) Authorize(ctx context.Context, ca
 	return adapter.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
 }
 
-func (adapter examRecordsAuthorizationAdapter) DenySelf(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
+func (adapter examRecordsAuthorizationAdapter) Deny(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
 	if err := adapter.audit.RecordAuthorizationDecision(ctx, call.Principal(), action, resource,
 		model.RoleScopeAcademicUnit, unitID.String(), call.RequestMetadata(), false); err != nil {
 		return err

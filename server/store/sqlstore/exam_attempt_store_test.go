@@ -9,6 +9,8 @@ package sqlstore
 
 import (
 	"bytes"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 	"testing"
 	"time"
 )
@@ -34,5 +36,52 @@ func TestExamAttemptConnectOutcomeIsBoundedAndCredentialFree(t *testing.T) {
 	credentialHash := []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	if bytes.Contains(encoded, credentialHash) || bytes.Contains(encoded, []byte("credential")) {
 		t.Fatalf("connect outcome exposed credential material: %s", encoded)
+	}
+}
+
+func TestExistingAttemptConfigurationRetainsOriginalProvenanceOnPatchedBuild(t *testing.T) {
+	t.Parallel()
+	manifest := model.EmptyAttemptConfigurationManifest()
+	candidate := model.AttemptConfigurationCandidate{ManifestFingerprint: manifest.Fingerprint(), RegistryFingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+		DesktopBuild: "original-build", DesktopTarget: "original-target", UserSettingsRevision: model.NewUserSettingsRevision(),
+		Presentation: model.AttemptConfigurationPresentation{ColorTheme: "hcDark", ZoomPercent: 100, EditorFontSizePX: 24, EditorLineHeightPX: 16,
+			ScreenReaderMode: "on", AnnouncementMode: "minimal", CursorStyle: "underline", CursorBlinking: "phase"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}
+	frozen, err := candidate.Freeze(model.NewId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := frozen.CanonicalAdmission()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &store.ExamAttemptConnect{ConfigurationManifestFingerprint: manifest.Fingerprint(), InitialConfiguration: &candidate,
+		DesktopBuild: model.DesktopBuildTuple{DesktopRelease: "1.0.1", DesktopBuildID: "patched-build", DesktopTarget: "patched-target",
+			Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64, RealtimeProtocol: 1,
+			ConfigurationManifest: manifest, AttemptConfigurationManifestFingerprint: manifest.Fingerprint(),
+			DesktopSettingsRegistryFingerprint: "fnv1a64:bbbbbbbbbbbbbbbb", CapabilityMatrixIdentity: "patched-matrix"}}
+	if input.DesktopBuild.Validate() != nil {
+		t.Fatal("invalid test build")
+	}
+	for _, proposal := range []*model.AttemptConfigurationCandidate{nil, &candidate} {
+		input.InitialConfiguration = proposal
+		retained, err := validateExistingAttemptConfiguration(canonical, frozen.Digest, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, _ := retained.CanonicalAdmission()
+		if !bytes.Equal(actual, canonical) {
+			t.Fatal("rejoin rewrote original provenance")
+		}
+	}
+	changed := candidate.Clone()
+	changed.Presentation.ColorTheme = "light"
+	input.InitialConfiguration = &changed
+	if _, err := validateExistingAttemptConfiguration(canonical, frozen.Digest, input); err == nil {
+		t.Fatal("rejoin changed the frozen candidate")
+	}
+	input.InitialConfiguration = nil
+	input.ConfigurationManifestFingerprint = model.SHA256Fingerprint([]byte("unknown"))
+	if _, err := validateExistingAttemptConfiguration(canonical, frozen.Digest, input); err == nil {
+		t.Fatal("unknown manifest reproduced a frozen configuration")
 	}
 }

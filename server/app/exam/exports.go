@@ -108,17 +108,30 @@ func (s *Exports) authorizeSources(ctx context.Context, call Call, scope model.R
 	if len(selected) < 1 || len(selected) > model.ExamExportMaximumSubmissions {
 		return exportUnavailable(errors.New("invalid export source scope"))
 	}
-	view, sittingView, browser := model.ActionSubmissionViewOverride, model.ActionExamSittingViewOverride, model.ActionExamAttemptBrowserActivityViewOverride
+	view, sittingView := model.ActionSubmissionViewOverride, model.ActionExamSittingViewOverride
 	if action == model.ActionExamRecordsExport {
-		view, sittingView, browser = model.ActionSubmissionView, model.ActionExamSittingView, model.ActionExamAttemptBrowserActivityView
+		view, sittingView = model.ActionSubmissionView, model.ActionExamSittingView
 	}
 	if scope.SubmissionID.IsZero() {
 		if err := s.authorizer.Authorize(ctx, call, sittingView, scope.Resource()); err != nil {
 			return err
 		}
 	}
-	if slices.Contains(categories, model.RetentionCategoryIntegrity) {
-		if err := s.authorizer.Authorize(ctx, call, browser, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}); err != nil {
+	if slices.Contains(categories, model.RetentionCategoryBrowserActivity) {
+		access, err := s.access.Access(ctx, scope.ExamID, call.Principal().UserID)
+		if err != nil {
+			return exportStoreError(err)
+		}
+		if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || access.Exam.AcademicUnitID != unit {
+			return exportUnavailable(errors.New("invalid browser history access projection"))
+		}
+		if !access.ActorIsManager {
+			if err := s.authorizer.Deny(ctx, call, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
+				return err
+			}
+			return &Fault{Code: "exam.not_found"}
+		}
+		if err := s.authorizer.Authorize(ctx, call, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}); err != nil {
 			return err
 		}
 	}
@@ -129,7 +142,7 @@ func (s *Exports) authorizeSources(ctx context.Context, call Call, scope model.R
 		}
 		resource := model.Resource{Type: model.ResourceSubmission, ID: a.SubmissionID.String()}
 		if a.CandidateUserID == call.Principal().UserID {
-			return s.authorizer.DenySelf(ctx, call, view, resource, unit)
+			return s.authorizer.Deny(ctx, call, view, resource, unit)
 		}
 		if err := s.authorizer.Authorize(ctx, call, view, resource); err != nil {
 			return err

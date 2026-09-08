@@ -35,15 +35,18 @@ Send an explicit category selection:
 `work` includes the preserved Workspace manifest, directory paths, and original
 file bytes. `integrity` includes the integrity summary, observations and
 discrepancies, private Review text and decisions, frozen Review inventories,
-waivers, and related integrity records. Choose one category when the other is
-unnecessary. Private Review records remain private even when a smaller result
+waivers, minimized Browser evidence copies and native condition records.
+`browser_activity` selects ordinary Browser history separately. Select only the
+categories needed. Private Review records remain private even when a smaller result
 has been released to the candidate. A retired category cannot be exported.
 
 The requester needs the dedicated `exam.records.export` permission, current
 Exam Manager access, and the ordinary read permissions for every selected
 record. Scoped override access uses the corresponding override permissions.
-Sitting exports also require Sitting read authority; integrity exports require
-Browser Activity read authority. These routes accept Sessions, not Personal
+Sitting exports also require Sitting read authority. Integrity exports require
+Review authority and do not implicitly include ordinary Browser history. Selecting
+`browser_activity` additionally requires the exact Exam Manager relationship and
+the dedicated Browser Activity permission; scoped overrides cannot grant it. These routes accept Sessions, not Personal
 Access Tokens. Current credentials, permissions, and scope are rechecked when
 requesting metadata or downloading; an archive is downloadable only by its
 requester.

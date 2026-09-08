@@ -24,25 +24,31 @@ import (
 type SQLExecutionGrantStore struct{ *SQLStore }
 
 type executionGrantRow struct {
-	ID                     string         `db:"id"`
-	AttemptID              string         `db:"exam_attempt_id"`
-	HostID                 string         `db:"host_id"`
-	Image                  string         `db:"image"`
-	Network                string         `db:"network"`
-	State                  string         `db:"state"`
-	AppliedSittingState    string         `db:"applied_sitting_state"`
-	AppliedSittingRevision int64          `db:"applied_sitting_revision"`
-	LifecyclePending       bool           `db:"lifecycle_pending"`
-	PendingSittingState    sql.NullString `db:"pending_sitting_state"`
-	PendingSittingRevision sql.NullInt64  `db:"pending_sitting_revision"`
-	AppliedWorkspaceCursor int64          `db:"applied_workspace_cursor"`
-	WorkspacePending       bool           `db:"workspace_pending"`
-	PendingWorkspaceCursor int64          `db:"pending_workspace_cursor"`
-	CreatedAt              time.Time      `db:"created_at"`
-	UpdatedAt              time.Time      `db:"updated_at"`
-	ReleasedAt             sql.NullTime   `db:"released_at"`
-	RevokedAt              sql.NullTime   `db:"revoked_at"`
-	Revision               int64          `db:"revision"`
+	ProcessedHostSequence       int64          `db:"processed_host_sequence"`
+	EnvironmentEpoch            string         `db:"environment_epoch"`
+	ControlRevision             int64          `db:"control_revision"`
+	ControlAcknowledgedRevision int64          `db:"control_acknowledged_revision"`
+	DesiredControlState         string         `db:"desired_control_state"`
+	ControlAuthorityDigest      string         `db:"control_authority_digest"`
+	ID                          string         `db:"id"`
+	AttemptID                   string         `db:"exam_attempt_id"`
+	HostID                      string         `db:"host_id"`
+	Image                       string         `db:"image"`
+	Network                     string         `db:"network"`
+	State                       string         `db:"state"`
+	AppliedSittingState         string         `db:"applied_sitting_state"`
+	AppliedSittingRevision      int64          `db:"applied_sitting_revision"`
+	LifecyclePending            bool           `db:"lifecycle_pending"`
+	PendingSittingState         sql.NullString `db:"pending_sitting_state"`
+	PendingSittingRevision      sql.NullInt64  `db:"pending_sitting_revision"`
+	AppliedWorkspaceCursor      int64          `db:"applied_workspace_cursor"`
+	WorkspacePending            bool           `db:"workspace_pending"`
+	PendingWorkspaceCursor      int64          `db:"pending_workspace_cursor"`
+	CreatedAt                   time.Time      `db:"created_at"`
+	UpdatedAt                   time.Time      `db:"updated_at"`
+	ReleasedAt                  sql.NullTime   `db:"released_at"`
+	RevokedAt                   sql.NullTime   `db:"revoked_at"`
+	Revision                    int64          `db:"revision"`
 }
 
 type executionGrantConvergenceRow struct {
@@ -52,9 +58,10 @@ type executionGrantConvergenceRow struct {
 	SittingRevision         int64  `db:"sitting_revision"`
 	WorkspaceCursor         int64  `db:"workspace_cursor"`
 	AcknowledgementRequired bool   `db:"acknowledgement_required"`
+	SecurityBlocked         bool   `db:"security_blocked"`
 }
 
-const executionGrantColumns = `id,exam_attempt_id,host_id,image,network,state,applied_sitting_state,applied_sitting_revision,lifecycle_pending,pending_sitting_state,pending_sitting_revision,applied_workspace_cursor,workspace_pending,pending_workspace_cursor,created_at,updated_at,released_at,revoked_at,revision`
+const executionGrantColumns = `processed_host_sequence,environment_epoch,control_revision,control_acknowledged_revision,desired_control_state,control_authority_digest,id,exam_attempt_id,host_id,image,network,state,applied_sitting_state,applied_sitting_revision,lifecycle_pending,pending_sitting_state,pending_sitting_revision,applied_workspace_cursor,workspace_pending,pending_workspace_cursor,created_at,updated_at,released_at,revoked_at,revision`
 
 func newSQLExecutionGrantStore(sqlStore *SQLStore) store.ExecutionGrantStore {
 	return &SQLExecutionGrantStore{SQLStore: sqlStore}
@@ -388,7 +395,7 @@ func (s SQLExecutionGrantStore) CurrentForReconciliation(ctx context.Context, id
 	var row executionGrantConvergenceRow
 	if err := s.GetMaster().Get(ctx, &row, `SELECT `+prefixedExecutionGrantColumns("g")+`,
 		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,w.cursor AS workspace_cursor,
-		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
+		`+pendingTerminalCorrectionSQL+` AS acknowledgement_required, NOT EXISTS (SELECT 1 FROM exam_attempt_security_owners o JOIN exam_attempt_participations p ON p.id=o.participation_id WHERE o.exam_attempt_id=a.id AND p.state='active' AND p.lease_expires_at>clock_timestamp() AND o.security_interaction_allowed AND NOT o.freeze_required) AS security_blocked FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
@@ -405,7 +412,7 @@ func (s SQLExecutionGrantStore) ListCurrentForReconciliation(ctx context.Context
 	var rows []executionGrantConvergenceRow
 	if err := s.GetMaster().Select(ctx, &rows, `SELECT `+prefixedExecutionGrantColumns("g")+`,
 		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,w.cursor AS workspace_cursor,
-		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
+		`+pendingTerminalCorrectionSQL+` AS acknowledgement_required, NOT EXISTS (SELECT 1 FROM exam_attempt_security_owners o JOIN exam_attempt_participations p ON p.id=o.participation_id WHERE o.exam_attempt_id=a.id AND p.state='active' AND p.lease_expires_at>clock_timestamp() AND o.security_interaction_allowed AND NOT o.freeze_required) AS security_blocked FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
@@ -438,7 +445,7 @@ func executionGrantConvergenceModel(row executionGrantConvergenceRow) (*store.Ex
 	}
 	return &store.ExecutionGrantConvergence{Grant: grant, AttemptState: attemptState,
 		SittingState: sittingState, SittingRevision: row.SittingRevision, WorkspaceCursor: row.WorkspaceCursor,
-		AcknowledgementRequired: row.AcknowledgementRequired}, nil
+		AcknowledgementRequired: row.AcknowledgementRequired, SecurityBlocked: row.SecurityBlocked}, nil
 }
 
 func (s SQLExecutionGrantStore) ListCurrentForSitting(ctx context.Context, sittingID model.ExamSittingID, after model.ExecutionGrantID, limit int) ([]*model.ExecutionGrant, error) {
@@ -463,7 +470,7 @@ func (s SQLExecutionGrantStore) ListCurrentForSitting(ctx context.Context, sitti
 }
 
 func prefixedExecutionGrantColumns(prefix string) string {
-	return prefix + ".id," + prefix + ".exam_attempt_id," + prefix + ".host_id," + prefix + ".image," + prefix + ".network," +
+	return prefix + ".processed_host_sequence," + prefix + ".environment_epoch," + prefix + ".control_revision," + prefix + ".control_acknowledged_revision," + prefix + ".desired_control_state," + prefix + ".control_authority_digest," + prefix + ".id," + prefix + ".exam_attempt_id," + prefix + ".host_id," + prefix + ".image," + prefix + ".network," +
 		prefix + ".state," + prefix + ".applied_sitting_state," + prefix + ".applied_sitting_revision," +
 		prefix + ".lifecycle_pending," + prefix + ".pending_sitting_state," + prefix + ".pending_sitting_revision," +
 		prefix + ".applied_workspace_cursor," + prefix + ".workspace_pending," + prefix + ".pending_workspace_cursor," +
@@ -471,6 +478,7 @@ func prefixedExecutionGrantColumns(prefix string) string {
 }
 
 type executionWorkspaceNodeRow struct {
+	EntryID         string         `db:"entry_id"`
 	Kind            string         `db:"kind"`
 	Path            string         `db:"path"`
 	ContentVersion  sql.NullString `db:"content_version"`
@@ -495,7 +503,7 @@ func (s SQLExecutionGrantStore) WorkspaceSnapshot(ctx context.Context, attemptID
 			return nil, translateError("execution_workspace", attemptID.String(), err)
 		}
 		var rows []executionWorkspaceNodeRow
-		if err := tx.Select(ctx, &rows, `SELECT e.kind,e.path,o.content_version,o.size_bytes,o.sha256,o.storage_origin,
+		if err := tx.Select(ctx, &rows, `SELECT e.id AS entry_id,e.kind,e.path,o.content_version,o.size_bytes,o.sha256,o.storage_origin,
 			o.starter_object_id,o.id AS attempt_object_id FROM exam_attempt_workspace_entries e
 			JOIN exam_attempt_workspaces w ON w.id=e.workspace_id
 			LEFT JOIN exam_attempt_workspace_objects o ON o.workspace_id=e.workspace_id AND o.id=e.current_object_id
@@ -518,7 +526,11 @@ func (s SQLExecutionGrantStore) WorkspaceSnapshot(ctx context.Context, attemptID
 }
 
 func executionWorkspaceNode(row executionWorkspaceNodeRow) (store.ExecutionWorkspaceNode, error) {
-	node := store.ExecutionWorkspaceNode{Kind: model.StarterWorkspaceEntryKind(row.Kind), Path: row.Path}
+	entryID, err := model.ParseAttemptWorkspaceEntryID(row.EntryID)
+	if err != nil {
+		return store.ExecutionWorkspaceNode{}, invalidPersistedState("execution_workspace", "entry_id", err)
+	}
+	node := store.ExecutionWorkspaceNode{EntryID: entryID, Kind: model.StarterWorkspaceEntryKind(row.Kind), Path: row.Path}
 	if node.Kind == model.StarterWorkspaceEntryDirectory {
 		if row.ContentVersion.Valid || row.SizeBytes.Valid || row.SHA256.Valid || row.StorageOrigin.Valid ||
 			row.StarterObjectID.Valid || row.AttemptObjectID.Valid {
@@ -599,8 +611,11 @@ func lockExecutableAttempt(ctx context.Context, tx *sqlxTxWrapper, attemptID mod
 	if !row.Allowed {
 		return store.NewErrConflict("execution_grant", "attempt_not_executable", nil)
 	}
-	pending, err := hasPendingCandidateCorrectionAcknowledgement(ctx, tx, attemptID.String(), row.SittingID,
-		row.AdmissionRevisionID, row.CurrentRevisionID)
+	if err := lockSecurityInteraction(ctx, tx, attemptID); err != nil {
+		return err
+	}
+	pending, err := hasPendingCandidateCorrectionCapability(ctx, tx, attemptID.String(), row.SittingID,
+		row.AdmissionRevisionID, row.CurrentRevisionID, model.CandidateCapabilityTerminal)
 	if err != nil {
 		return err
 	}
@@ -610,7 +625,7 @@ func lockExecutableAttempt(ctx context.Context, tx *sqlxTxWrapper, attemptID mod
 	return nil
 }
 
-const pendingCorrectionAcknowledgementSQL = `EXISTS (
+const pendingTerminalCorrectionSQL = `EXISTS (
 	SELECT 1 FROM exam_sitting_live_corrections live
 	JOIN exam_revisions correction ON correction.id=live.correction_revision_id AND correction.exam_id=live.exam_id
 	JOIN exam_revisions admission ON admission.id=a.admission_revision_id AND admission.exam_id=a.exam_id
@@ -618,6 +633,7 @@ const pendingCorrectionAcknowledgementSQL = `EXISTS (
 	WHERE live.exam_sitting_id=s.id AND correction.number>admission.number
 	AND correction.number<=current_revision.number AND correction.publication_kind='live_correction'
 	AND correction.candidate_correction_acknowledgement_required=true
+	AND 'terminal' = ANY(correction.candidate_correction_affected_capabilities)
 	AND NOT EXISTS (SELECT 1 FROM exam_attempt_correction_acknowledgements acknowledgement
 		WHERE acknowledgement.exam_attempt_id=a.id AND acknowledgement.correction_revision_id=correction.id))`
 
@@ -649,6 +665,9 @@ func executionGrantModel(row executionGrantRow) (*model.ExecutionGrant, error) {
 		AppliedSittingRevision: row.AppliedSittingRevision,
 		CreatedAt:              model.TimeUTC(row.CreatedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
 		ReleasedAt: OptionalTimeFromNullTime(row.ReleasedAt), RevokedAt: OptionalTimeFromNullTime(row.RevokedAt), Revision: row.Revision}
+	grant.ProcessedHostSequence = row.ProcessedHostSequence
+	grant.EnvironmentEpoch, grant.ControlRevision, grant.ControlAcknowledgedRevision = row.EnvironmentEpoch, row.ControlRevision, row.ControlAcknowledgedRevision
+	grant.DesiredControlState, grant.ControlAuthorityDigest = model.ExecutionControlState(row.DesiredControlState), row.ControlAuthorityDigest
 	grant.LifecyclePending = row.LifecyclePending
 	grant.AppliedWorkspaceCursor, grant.WorkspacePending, grant.PendingWorkspaceCursor = row.AppliedWorkspaceCursor, row.WorkspacePending, row.PendingWorkspaceCursor
 	if row.PendingSittingState.Valid {

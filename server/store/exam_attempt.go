@@ -10,6 +10,7 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -31,6 +32,7 @@ const (
 // The raw continuity credential never crosses this boundary: the caller
 // validates the canonical 32-byte base64url value and supplies only its digest.
 type ExamAttemptConnect struct {
+	Security                           model.ConnectSecurity
 	SittingID                          model.ExamSittingID
 	CandidateUserID                    model.UserID
 	SessionID                          model.SessionID
@@ -41,8 +43,8 @@ type ExamAttemptConnect struct {
 	ParticipationID                    model.AttemptParticipationID
 	ConnectionID                       model.AttemptConnectionID
 	ContinuityCredentialHash           string
-	SupportedConfigurationManifests    []string
-	InitialConfiguration               *model.AttemptConfiguration
+	ConfigurationManifestFingerprint   string
+	InitialConfiguration               *model.AttemptConfigurationCandidate
 	DesktopBuild                       model.DesktopBuildTuple
 	DesktopCompatibilityPolicyRevision int64
 	AuditEventID                       string
@@ -53,6 +55,7 @@ type ExamAttemptConnect struct {
 // denotes an exact command replay; FirstAdmission denotes creation of the
 // stable Attempt and Workspace in this transaction.
 type ExamAttemptConnectResult struct {
+	Security            model.AdmittedSecurity
 	Attempt             *model.ExamAttempt
 	Workspace           *model.ExamAttemptWorkspace
 	Participation       *ExamAttemptParticipationView
@@ -97,16 +100,19 @@ type ExamAttemptParticipationView struct {
 // crosses the Store seam. Generation and Sequence are client fences, while
 // PostgreSQL supplies the only authoritative decision time.
 type ExamAttemptParticipationRenewal struct {
-	AttemptID                model.ExamAttemptID
-	ParticipationID          model.AttemptParticipationID
-	ConnectionID             model.AttemptConnectionID
-	CandidateUserID          model.UserID
-	SessionID                model.SessionID
-	DesktopRegistrationID    model.DesktopRegistrationID
-	DPoPKeyThumbprint        string
-	Generation               int64
-	Sequence                 int64
-	ContinuityCredentialHash string
+	SecurityCoverage                   model.SecurityCoverageRenewal
+	DesktopBuild                       model.DesktopBuildTuple
+	AttemptID                          model.ExamAttemptID
+	ParticipationID                    model.AttemptParticipationID
+	ConnectionID                       model.AttemptConnectionID
+	CandidateUserID                    model.UserID
+	SessionID                          model.SessionID
+	DesktopRegistrationID              model.DesktopRegistrationID
+	DPoPKeyThumbprint                  string
+	Generation                         int64
+	Sequence                           int64
+	ContinuityCredentialHash           string
+	DesktopCompatibilityPolicyRevision int64
 }
 
 // ExamAttemptParticipationRenewalResult is the bounded hash-free renewal
@@ -114,6 +120,7 @@ type ExamAttemptParticipationRenewal struct {
 // current accepted sequence; that case returns the existing authoritative
 // times without extending the lease.
 type ExamAttemptParticipationRenewalResult struct {
+	SecurityCoverage model.SecurityCoverageResult
 	AttemptID        model.ExamAttemptID
 	ExamID           model.ExamID
 	SittingID        model.ExamSittingID
@@ -393,22 +400,65 @@ type CandidateAttemptAccess struct {
 	ContinuityCredentialHash string
 }
 
+type DeliveryOwnerTarget struct {
+	SittingID model.ExamSittingID
+	ClassID   model.ClassID
+}
+
 type BrowserActivitySourceStart struct {
-	Access               CandidateAttemptAccess
-	ParticipationID      model.AttemptParticipationID
-	Generation           int64
-	SourceSessionID      model.BrowserSourceSessionID
-	PredecessorSessionID model.BrowserSourceSessionID
-	ResetReason          model.BrowserSourceResetReason
+	AuditEventID     string
+	AuditAt          int64
+	Access           CandidateAttemptAccess
+	ParticipationID  model.AttemptParticipationID
+	Generation       int64
+	SourceSessionID  model.BrowserSourceSessionID
+	PolicyRevisionID model.ExamRevisionID
+	PolicyDigest     string
+	Transition       model.BrowserStartTransition
+}
+
+func (value BrowserActivitySourceStart) Declaration() model.BrowserSourceStart {
+	return model.BrowserSourceStart{ParticipationID: value.ParticipationID, Generation: value.Generation, SourceSessionID: value.SourceSessionID, PolicyRevisionID: value.PolicyRevisionID, PolicyDigest: value.PolicyDigest, Transition: value.Transition}
+}
+
+// BrowserSourceRefusal represents an already committed predecessor closure.
+// Current capabilities are loaded after commit by the application.
+type BrowserSourceRefusal struct {
+	Capabilities *CandidateRuntimeCapabilities
+	Code         string
+	Status       model.BrowserSourceStatus
+	Capacity     *model.DeliveryMetadataCapacity
+}
+
+func (value *BrowserSourceRefusal) Error() string { return "browser source replacement refused" }
+func (value *BrowserSourceRefusal) Unwrap() error {
+	if value.Capacity != nil {
+		return value.Capacity
+	}
+	return nil
+}
+
+type BrowserDeliveryAccess struct {
+	Access          CandidateAttemptAccess
+	SourceSessionID model.BrowserSourceSessionID
+	ParticipationID model.AttemptParticipationID
 }
 
 type BrowserActivityAppend struct {
-	Access          CandidateAttemptAccess
-	ParticipationID model.AttemptParticipationID
-	Generation      int64
-	SourceSessionID model.BrowserSourceSessionID
-	Events          []model.BrowserActivityEvent
+	AuditEventID     string
+	AuditAt          int64
+	PolicyRevisionID model.ExamRevisionID
+	PolicyDigest     string
+	Access           CandidateAttemptAccess
+	ParticipationID  model.AttemptParticipationID
+	Generation       int64
+	SourceSessionID  model.BrowserSourceSessionID
+	Events           []model.BrowserActivityEvent
 }
+
+type BrowserDeliveryRefusal struct{ Reason string }
+
+func (value *BrowserDeliveryRefusal) Error() string { return "browser detail delivery refused" }
 
 type BrowserActivityListOptions struct {
 	ExamID          model.ExamID
@@ -506,6 +556,7 @@ const (
 type CandidateBrowserCapabilityState string
 
 const (
+	CandidateBrowserTemporarilyUnavailable  CandidateBrowserCapabilityState = "temporarily_unavailable"
 	CandidateBrowserDisabled                CandidateBrowserCapabilityState = "disabled"
 	CandidateBrowserAvailable               CandidateBrowserCapabilityState = "available"
 	CandidateBrowserSittingPaused           CandidateBrowserCapabilityState = "sitting_paused"
@@ -513,14 +564,50 @@ const (
 )
 
 type CandidateAttemptConfiguration struct {
-	SchemaVersion       int
-	ManifestFingerprint string
-	Preferences         model.AttemptConfigurationPreferences
+	Revision            string
+	Presentation        model.AttemptConfigurationPresentation
+	ApprovedCommands    []string
+	ApprovedKeybindings []string
 	Digest              string
 }
 
 type CandidateTerminalCapability struct {
-	State CandidateTerminalCapabilityState
+	State                  CandidateTerminalCapabilityState
+	EnvironmentEpoch       *string
+	AppliedWorkspaceCursor int64
+	ProjectionState        ExecutionProjectionState
+}
+
+// ExecutionProjectionState describes readiness of the retained host projection.
+type ExecutionProjectionState string
+
+const (
+	ExecutionProjectionSynchronizing ExecutionProjectionState = "synchronizing"
+	ExecutionProjectionReady         ExecutionProjectionState = "ready"
+	ExecutionProjectionConflict      ExecutionProjectionState = "conflict"
+	ExecutionProjectionUnavailable   ExecutionProjectionState = "unavailable"
+)
+
+func (terminal CandidateTerminalCapability) ValidateProjection() error {
+	if terminal.AppliedWorkspaceCursor < 0 || terminal.AppliedWorkspaceCursor > (1<<53)-1 {
+		return errors.New("candidate projection cursor is invalid")
+	}
+	switch terminal.ProjectionState {
+	case ExecutionProjectionSynchronizing, ExecutionProjectionReady, ExecutionProjectionConflict, ExecutionProjectionUnavailable:
+	default:
+		return errors.New("candidate projection state is invalid")
+	}
+	if terminal.EnvironmentEpoch == nil {
+		if terminal.AppliedWorkspaceCursor != 0 || terminal.ProjectionState != ExecutionProjectionUnavailable {
+			return errors.New("candidate projection has no environment")
+		}
+	} else if !model.ValidExecutionEnvironmentEpoch(*terminal.EnvironmentEpoch) {
+		return errors.New("candidate environment epoch is invalid")
+	}
+	if terminal.State == CandidateTerminalAvailable && terminal.ProjectionState != ExecutionProjectionReady {
+		return errors.New("candidate terminal is not projected")
+	}
+	return nil
 }
 
 type CandidateBrowserCapability struct {
@@ -529,12 +616,14 @@ type CandidateBrowserCapability struct {
 	PolicyDigest     string
 }
 
-// CandidateBrowserPolicy is the exact enabled enforcement value delivered
-// beside runtime capabilities. A disabled policy is represented by nil.
+// CandidateBrowserPolicy is the current policy and separately revisioned disclosure.
+// A pending browser correction withholds the policy until acknowledgement.
 type CandidateBrowserPolicy struct {
-	PolicyRevisionID model.ExamRevisionID
-	PolicyDigest     string
-	Policy           model.BrowserPolicy
+	PolicyRevisionNumber      int64
+	BrowserActivityDisclosure model.BrowserActivityDisclosure
+	PolicyRevisionID          model.ExamRevisionID
+	PolicyDigest              string
+	Policy                    model.BrowserPolicy
 }
 
 type CandidateExamRevisionCapability struct {
@@ -552,39 +641,44 @@ type CandidateDepartureCapability struct {
 // It deliberately contains no credential, placement, capacity, settings
 // provenance, or authored Browser Policy data.
 type CandidateRuntimeCapabilities struct {
-	SchemaVersion              int
-	ServerTime                 time.Time
-	InteractionState           CandidateInteractionState
-	AttemptConfiguration       CandidateAttemptConfiguration
-	FocusLossCollectionEnabled bool
-	WorkspaceMutationAllowed   bool
-	SubmissionAllowed          bool
-	Terminal                   CandidateTerminalCapability
-	Browser                    CandidateBrowserCapability
-	ExamRevision               CandidateExamRevisionCapability
-	Departure                  CandidateDepartureCapability
+	SchemaVersion                 int
+	ServerTime                    time.Time
+	InteractionState              CandidateInteractionState
+	AttemptConfiguration          CandidateAttemptConfiguration
+	FocusLossCollectionEnabled    bool
+	PendingCorrectionCapabilities []model.CandidateCapability
+	WorkspaceMutationAllowed      bool
+	SubmissionAllowed             bool
+	Terminal                      CandidateTerminalCapability
+	Browser                       CandidateBrowserCapability
+	ExamRevision                  CandidateExamRevisionCapability
+	Departure                     CandidateDepartureCapability
 }
 
 func (capabilities CandidateRuntimeCapabilities) Validate() error {
 	if capabilities.SchemaVersion != 1 || capabilities.ServerTime.IsZero() ||
 		(capabilities.InteractionState != CandidateInteractionInteractive && capabilities.InteractionState != CandidateInteractionSittingPaused) ||
-		capabilities.AttemptConfiguration.SchemaVersion != model.AttemptConfigurationSchemaVersion ||
-		capabilities.AttemptConfiguration.ManifestFingerprint != model.CurrentAttemptConfigurationManifestFingerprint() ||
-		capabilities.AttemptConfiguration.Preferences.Validate() != nil ||
+		!model.IsValidAgreementID(capabilities.AttemptConfiguration.Revision) ||
+		capabilities.AttemptConfiguration.Presentation.Validate() != nil ||
+		model.ValidateAttemptApprovedIDs(capabilities.AttemptConfiguration.ApprovedCommands) != nil ||
+		model.ValidateAttemptApprovedIDs(capabilities.AttemptConfiguration.ApprovedKeybindings) != nil ||
 		!model.IsValidSHA256Fingerprint(capabilities.AttemptConfiguration.Digest) ||
 		!capabilities.ExamRevision.AdmissionRevisionID.IsValid() || !capabilities.ExamRevision.CurrentRevisionID.IsValid() ||
+		model.ValidateCandidateCapabilities(capabilities.PendingCorrectionCapabilities) != nil ||
+		capabilities.ExamRevision.AcknowledgementRequired != (len(capabilities.PendingCorrectionCapabilities) != 0) ||
 		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
 		return errors.New("candidate runtime capabilities are invalid")
 	}
-	semantics, err := (model.AttemptConfiguration{SchemaVersion: capabilities.AttemptConfiguration.SchemaVersion,
-		ManifestFingerprint: capabilities.AttemptConfiguration.ManifestFingerprint,
-		Preferences:         capabilities.AttemptConfiguration.Preferences}).CanonicalSemantics()
-	if err != nil || model.SHA256Fingerprint(semantics) != capabilities.AttemptConfiguration.Digest {
-		return errors.New("candidate Attempt Configuration digest is invalid")
+	if err := capabilities.Terminal.ValidateProjection(); err != nil {
+		return err
 	}
-	pausedOrFenced := capabilities.InteractionState == CandidateInteractionSittingPaused ||
-		capabilities.ExamRevision.AcknowledgementRequired
-	if capabilities.WorkspaceMutationAllowed == pausedOrFenced || capabilities.SubmissionAllowed == pausedOrFenced {
+	// This minimized projection omits hash provenance. The full frozen document
+	// is validated before deriving it; its digest cannot be recomputed here.
+
+	paused := capabilities.InteractionState == CandidateInteractionSittingPaused
+	workspaceFenced := paused || slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityWorkspace)
+	submissionFenced := paused || slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilitySubmission)
+	if capabilities.WorkspaceMutationAllowed == workspaceFenced || capabilities.SubmissionAllowed == submissionFenced {
 		return errors.New("candidate mutation capabilities are inconsistent")
 	}
 	switch capabilities.Terminal.State {
@@ -593,17 +687,33 @@ func (capabilities CandidateRuntimeCapabilities) Validate() error {
 	default:
 		return errors.New("candidate terminal capability is invalid")
 	}
+	if capabilities.Terminal.State != CandidateTerminalDisabled {
+		terminalPending := slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityTerminal)
+		if paused && capabilities.Terminal.State != CandidateTerminalSittingPaused ||
+			!paused && terminalPending && capabilities.Terminal.State != CandidateTerminalAcknowledgementRequired ||
+			!paused && !terminalPending && capabilities.Terminal.State != CandidateTerminalAvailable && capabilities.Terminal.State != CandidateTerminalTemporarilyUnavailable {
+			return errors.New("candidate terminal capability disagrees with current gates")
+		}
+	}
 	switch capabilities.Browser.State {
 	case CandidateBrowserDisabled:
 		if !capabilities.Browser.PolicyRevisionID.IsZero() || capabilities.Browser.PolicyDigest != "" {
 			return errors.New("disabled candidate browser capability has policy metadata")
 		}
-	case CandidateBrowserAvailable, CandidateBrowserSittingPaused, CandidateBrowserAcknowledgementRequired:
+	case CandidateBrowserAvailable, CandidateBrowserSittingPaused, CandidateBrowserAcknowledgementRequired, CandidateBrowserTemporarilyUnavailable:
 		if !capabilities.Browser.PolicyRevisionID.IsValid() || !model.IsValidSHA256Fingerprint(capabilities.Browser.PolicyDigest) {
 			return errors.New("enabled candidate browser capability lacks policy metadata")
 		}
 	default:
 		return errors.New("candidate browser capability is invalid")
+	}
+	if capabilities.Browser.State != CandidateBrowserDisabled {
+		browserPending := slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityBrowser)
+		if paused && capabilities.Browser.State != CandidateBrowserSittingPaused ||
+			!paused && browserPending && capabilities.Browser.State != CandidateBrowserAcknowledgementRequired ||
+			!paused && !browserPending && capabilities.Browser.State != CandidateBrowserAvailable && capabilities.Browser.State != CandidateBrowserTemporarilyUnavailable {
+			return errors.New("candidate browser capability disagrees with current gates")
+		}
 	}
 	return nil
 }
@@ -830,6 +940,7 @@ type SittingCandidateSuspension struct {
 }
 
 type SittingCandidateStatusItem struct {
+	NativeSecurity          *model.NativeSecuritySummary
 	Candidate               SittingCandidateIdentity
 	CurrentClassMembership  bool
 	Attempt                 *SittingCandidateStatusAttempt
@@ -862,17 +973,36 @@ type ExamAttemptInvalidationTarget struct {
 // rechecking current session, Sitting capability, and exact-Class membership;
 // every fresh connection performs the same current eligibility checks.
 type ExamAttemptStore interface {
+	AppendNativeDelivery(context.Context, *NativeDeliveryAppend, *CommandIdempotency) (*model.NativeSecurityAcknowledgement, error)
+	ResolveNativeDeliveryTarget(context.Context, NativeDeliveryAccess) (*NativeDeliveryTarget, error)
+	// Native delivery operations recheck current User/registered-key ownership
+	// before replay. Live owners additionally require exact Connection continuity.
+	// Gap/final declaration revisions, position and metadata charges, semantic
+	// receipts, successful audit and command outcome commit atomically. Status
+	// expires closed owners using their original immutable upload deadline.
+	NativeDeliveryStatus(context.Context, NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error)
+	NativeDeliveryReceipt(context.Context, NativeDeliveryAccess, int64) (*model.NativeBatchReceipt, error)
+	DeclareNativeDeliveryGaps(context.Context, *NativeDeliveryGapDeclaration, *CommandIdempotency) (*model.DeliveryGapReceipt, error)
+	SealNativeDelivery(context.Context, *NativeDeliveryFinalDeclaration, *CommandIdempotency) (*model.NativeSecurityStreamStatus, error)
+	UpdateNativeDeliverySummary(context.Context, *NativeDeliverySummaryUpdate, *CommandIdempotency) (*model.NativeSecurityStreamStatus, error)
+
+	ResolveSecurityPreflightSitting(context.Context, string, model.UserID, model.SessionID) (model.ExamSittingID, error)
+	RecoverSecurityPolicy(context.Context, SecurityPreflightAccess, model.ExamAttemptID) (*SecurityPolicyRecovery, error)
+	PrepareSecurityPreflight(context.Context, *SecurityPreflightPrepare, *CommandIdempotency) (*SecurityPreflightPrepared, error)
+	ReportSecurityPreflight(context.Context, *SecurityPreflightReport, *CommandIdempotency) (*model.SecurityPreflightResult, error)
 	Connect(context.Context, *ExamAttemptConnect, *CommandIdempotency) (*ExamAttemptConnectResult, error)
 	ListSessionRevocationInvalidationTargets(context.Context, model.UserID, []model.SessionID) ([]ExamAttemptInvalidationTarget, error)
 	// RenewParticipation locks and validates the exact Attempt, active
 	// Participation generation, owning candidate, Session-bound open Connection,
 	// and credential digest. Sequence equal to the current accepted sequence is
 	// an idempotent duplicate; an older sequence conflicts. A greater sequence
-	// sets expiry to PostgreSQL decision time plus the fixed 20-second lease.
+	// sets expiry to the earlier of PostgreSQL decision time plus the fixed
+	// 20-second lease and the locked current Sitting end.
 	// expires_at <= database_now returns the stable expired conflict and never
 	// mutates or revives the generation. Stable conflict constraints are
 	// attempt_participation_credential, attempt_participation_generation,
 	// attempt_participation_sequence, and attempt_participation_expired.
+	UpdateSecurityCoverage(context.Context, *ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error)
 	RenewParticipation(context.Context, *ExamAttemptParticipationRenewal) (*ExamAttemptParticipationRenewalResult, error)
 	// ResolveFocusLossTarget resolves safe audit/effect scope after checking the
 	// established access selector. It also resolves the exact retained
@@ -917,6 +1047,10 @@ type ExamAttemptStore interface {
 	// ListExpiredParticipations returns at most limit active generations whose
 	// expiry is at or before PostgreSQL's current time, ordered by
 	// (LeaseExpiresAt, ParticipationID). Limit is 1..200.
+	DeliveryBudget(context.Context, DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error)
+	StopDeliveryDetails(context.Context, *DeliveryDetailsStop, *CommandIdempotency) (*model.StopDeliveryDetailsResult, error)
+	ListExpiredDeliveries(context.Context, int) ([]DeliveryExpiryDue, error)
+	ExpireDelivery(context.Context, *DeliveryExpiry) (bool, error)
 	ListExpiredParticipations(context.Context, int) ([]ExamAttemptParticipationExpiryDue, error)
 	// ExpireParticipation is the single conditional operation shared by late
 	// renewal and the recurring scan. It locks the exact generation and, when
@@ -943,7 +1077,17 @@ type ExamAttemptStore interface {
 	ListCandidateActivity(context.Context, CandidateExamActivityListOptions) (*CandidateExamActivityPage, error)
 	ListSittingCandidateStatuses(context.Context, SittingCandidateStatusListOptions) (*SittingCandidateStatusPage, error)
 	GetCandidatePresentation(context.Context, CandidateAttemptAccess) (*CandidateExamPresentation, error)
-	StartBrowserActivity(context.Context, *BrowserActivitySourceStart) (*model.BrowserActivityAcknowledgement, error)
+	ResolveLiveDeliveryTarget(context.Context, CandidateAttemptAccess) (*DeliveryOwnerTarget, error)
+	AppendHistoricalBrowserDelivery(context.Context, *BrowserActivityAppend, *CommandIdempotency) (*model.BrowserActivityAcknowledgement, error)
+	ResolveBrowserDeliveryTarget(context.Context, BrowserDeliveryAccess) (*DeliveryOwnerTarget, error)
+	BrowserDeliveryReceipts(context.Context, BrowserDeliveryAccess, int64, int) (*model.BrowserReceiptPage, error)
+	DeclareBrowserDeliveryGaps(context.Context, *BrowserDeliveryGapDeclaration, *CommandIdempotency) (*model.BrowserDeliveryGapResult, error)
+	SealBrowserDelivery(context.Context, *BrowserDeliveryFinalDeclaration, *CommandIdempotency) (*model.BrowserSourceStatus, error)
+	UpdateBrowserDeliverySummary(context.Context, *BrowserDeliverySummaryUpdate, *CommandIdempotency) (*model.BrowserDeliverySummaryResult, error)
+
+	BrowserSourceStatus(context.Context, BrowserDeliveryAccess) (*model.BrowserSourceStatus, error)
+	BrowserSourceList(context.Context, BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error)
+	StartBrowserActivity(context.Context, *BrowserActivitySourceStart) (*model.BrowserSourceStatus, error)
 	AppendBrowserActivity(context.Context, *BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error)
 	ResolveCorrectionAcknowledgementTarget(context.Context, ExamAttemptCorrectionAcknowledgement) (*ExamAttemptCorrectionAcknowledgementTarget, error)
 	AcknowledgeCorrection(context.Context, *ExamAttemptCorrectionAcknowledgement, *CommandIdempotency) (*ExamAttemptCorrectionAcknowledgementResult, error)

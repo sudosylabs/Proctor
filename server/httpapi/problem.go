@@ -11,6 +11,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 	"net/http"
 )
 
@@ -26,6 +28,8 @@ func withRequestLocalization(ctx context.Context, localizer Localizer, locale st
 }
 
 type Problem struct {
+	Delivery *model.DeliveryRecovery `json:"delivery,omitempty"`
+	*model.DeliveryMetadataCapacity
 	Type      string            `json:"type"`
 	Title     string            `json:"title"`
 	Status    int               `json:"status"`
@@ -60,10 +64,25 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 	var failure applicationFailure
 	if errors.As(err, &failure) {
-		if failure.Code() == "service.busy" {
+		if failure.Code() == "service.busy" || failure.Code() == "exam.delivery.control_rate_limited" || failure.Code() == "exam.delivery.summary_rate_limited" || failure.Code() == "exam.delivery.append_rate_limited" || failure.Code() == "exam.delivery.pending_capacity" {
 			writer.Header().Set("Retry-After", "1")
 		}
-		WriteProblem(writer, problemFromApplicationFailure(request, failure))
+		problem := problemFromApplicationFailure(request, failure)
+		var capacity *model.DeliveryMetadataCapacity
+		if failure.Code() == "exam.delivery.metadata_capacity" && errors.As(err, &capacity) && capacity.Validate() == nil {
+			value := *capacity
+			problem.DeliveryMetadataCapacity = &value
+			problem.Fields = nil
+		}
+		var recovery interface {
+			DeliveryRecovery() *model.DeliveryRecovery
+		}
+		if application.SupportsDeliveryRecovery(failure.Code()) && errors.As(err, &recovery) {
+			if value := recovery.DeliveryRecovery(); value != nil && value.Validate() == nil {
+				problem.Delivery = value
+			}
+		}
+		WriteProblem(writer, problem)
 		return
 	}
 	WriteProblem(writer, internalProblem(request))

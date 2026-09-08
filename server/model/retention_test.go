@@ -47,6 +47,23 @@ func TestRetentionEligibility(t *testing.T) {
 		}, deadline: 10},
 		{name: "shared published objects survive independently", days: 10, edit: func(r *RetentionRecord, _ *RetentionPolicy) { r.SharedPublishedObjects = 3 }, deadline: 10},
 		{name: "retired never revives after hold", days: 100, edit: func(r *RetentionRecord, _ *RetentionPolicy) { r.Held = true; r.RetiredAt = OptionalTimeFrom(completed) }, want: RetentionBlockerRetired},
+
+		{name: "browser uses independent deadline", days: 2, edit: func(r *RetentionRecord, p *RetentionPolicy) {
+			r.Category = RetentionCategoryBrowserActivity
+			r.HasIntegrity = true
+			p.BrowserActivityRetentionDays = 3
+			p.IntegrityRetentionDays = 0
+		}, want: RetentionBlockerDeadline, deadline: 3},
+		{name: "native operational uses independent deadline", days: 4, edit: func(r *RetentionRecord, p *RetentionPolicy) {
+			r.Category = RetentionCategorySecurityOperational
+			p.SecurityOperationalRetentionDays = 4
+		}, deadline: 4},
+		{name: "indefinite browser is not inherited integrity expiry", days: 100, edit: func(r *RetentionRecord, p *RetentionPolicy) { r.Category = RetentionCategoryBrowserActivity }, want: RetentionBlockerUnconfigured},
+		{name: "browser hold keeps own deadline", days: 100, edit: func(r *RetentionRecord, p *RetentionPolicy) {
+			r.Category = RetentionCategoryBrowserActivity
+			r.Held = true
+			p.BrowserActivityRetentionDays = 2
+		}, want: RetentionBlockerHold, deadline: 2},
 		{name: "integrity uses own period", days: 19, edit: func(r *RetentionRecord, _ *RetentionPolicy) { r.Category = RetentionCategoryIntegrity }, want: RetentionBlockerDeadline, deadline: 20},
 	}
 	for _, tt := range tests {

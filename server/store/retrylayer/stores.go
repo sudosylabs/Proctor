@@ -791,3 +791,47 @@ func (s *clusterDiscoveryStore) ListLive(ctx context.Context, nowMillis int64) (
 		return s.ClusterDiscoveryStore.ListLive(ctx, nowMillis)
 	})
 }
+
+func (s *examAuthoringStore) UpdateDraftNativePolicy(ctx context.Context, input *store.ExamDraftNativePolicyUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	if command == nil {
+		return s.ExamAuthoringStore.UpdateDraftNativePolicy(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAuthoringCommandResult, error) {
+		return s.ExamAuthoringStore.UpdateDraftNativePolicy(ctx, input, command)
+	})
+}
+
+func (s *examAttemptStore) PrepareSecurityPreflight(ctx context.Context, input *store.SecurityPreflightPrepare, command *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
+	if command == nil {
+		return s.ExamAttemptStore.PrepareSecurityPreflight(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.SecurityPreflightPrepared, error) {
+		return s.ExamAttemptStore.PrepareSecurityPreflight(ctx, input, command)
+	})
+}
+func (s *examAttemptStore) ReportSecurityPreflight(ctx context.Context, input *store.SecurityPreflightReport, command *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
+	if command == nil {
+		return s.ExamAttemptStore.ReportSecurityPreflight(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*model.SecurityPreflightResult, error) {
+		return s.ExamAttemptStore.ReportSecurityPreflight(ctx, input, command)
+	})
+}
+
+func (s *examAttemptStore) ResolveSecurityPreflightSitting(ctx context.Context, id string, userID model.UserID, sessionID model.SessionID) (model.ExamSittingID, error) {
+	return retryCall1(ctx, s.layer, func() (model.ExamSittingID, error) {
+		return s.ExamAttemptStore.ResolveSecurityPreflightSitting(ctx, id, userID, sessionID)
+	})
+}
+
+func (s *examAttemptStore) RecoverSecurityPolicy(ctx context.Context, access store.SecurityPreflightAccess, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+	return retryCall1(ctx, s.layer, func() (*store.SecurityPolicyRecovery, error) {
+		return s.ExamAttemptStore.RecoverSecurityPolicy(ctx, access, attemptID)
+	})
+}
+
+func (s *examAttemptStore) UpdateSecurityCoverage(ctx context.Context, input *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
+	return retryCall1(ctx, s.layer, func() (model.SecurityCoverageResult, error) {
+		return s.ExamAttemptStore.UpdateSecurityCoverage(ctx, input)
+	})
+}

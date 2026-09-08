@@ -99,7 +99,12 @@ outcome; failed or abandoned stages remain invisible and retention-eligible.
 Every live-correction Revision owns an immutable candidate notice: a trimmed
 summary of 1 to 500 Unicode characters and at most 2,000 UTF-8 bytes, the
 canonically ordered changed areas (`instructions`, `resources`, and/or
-`browser_policy`), and whether acknowledgement is required. One Sitting may
+`browser_policy`), an explicit sorted `affected_capabilities` selection, and
+whether acknowledgement is required. Actual Browser Policy changes require
+`browser`; instructions or resources require `submission`, `terminal`, and
+`workspace`. Authors may select a superset, including when acknowledgement is
+not required. Missing, unknown, duplicate, or unsorted selections fail; changing
+only the selection cannot manufacture a content correction. One Sitting may
 accumulate at most 32 live corrections. The manager's private reason is never
 part of the candidate notice. Candidate presentation returns the ordered
 notice history and Attempt-owned acknowledgement state instead of relying on
@@ -363,15 +368,25 @@ credentials, renewals, and mutations cannot revive prior access. Individual
 Attempt Connections remain durable children of their Participation and every
 committed open/close emits a bounded manager notification after commit.
 
-The first secure admission also freezes one Attempt Configuration from the
-candidate's current portable User Settings and the exact Desktop build's
-supported configuration manifest. It contains only the closed accessibility,
-appearance, editor, motion, announcement, cursor, and approved command-binding
-preferences understood by both sides; hidden settings and registry revisions
-remain provenance rather than runtime input. The configuration is immutable
-for the Attempt, schema- and size-bounded, canonically digested, and cannot be
-recomputed on reconnect or re-allow. Unsupported or stale manifest agreement
-leaves the Attempt Ready and denies activation.
+The first secure admission freezes the complete proposed Attempt Configuration
+under the current User Settings revision and exact admitted Desktop build,
+target, FNV registry identity, and configuration manifest. Its pixel line height
+has independent bounds; explicit high-contrast themes, accessibility booleans,
+announcement modes and cursor modes are preserved. Approved commands and
+keybindings are sorted catalog IDs; every selected keybinding resolves to a
+selected Candidate-safe command. Only admitted packaging can register IDs.
+
+The admission transaction creates one opaque configuration revision. SHA-256
+covers the complete canonical candidate, including original build, target and
+User Settings provenance, excluding only the server revision and digest. Both
+candidate and frozen document are bounded at 16 KiB. Reject constraint errors
+without clamping. Reconnect, replay and re-allow retain the exact stored object
+despite changed account settings. A later verified build can reproduce the same
+manifest without rewriting or matching the original build/target provenance.
+Unsupported manifests deny activation and leave an existing Ready Attempt Ready.
+The candidate renderer receives only effective presentation, approved IDs,
+configuration revision and digest; full provenance belongs to the owning
+privileged Desktop recovery path and never to manager, audit or generic hints.
 
 Successful connection and candidate presentation return one bounded runtime
 capability document derived from the immutable Attempt Configuration, current
@@ -494,13 +509,19 @@ Participation, and therefore survives a reconnect or later Participation
 generation. Required notices are acknowledged oldest-first through an exact
 Revision route with required idempotency and the current Revision,
 Participation, generation, bound Session, credential, and open Connection
-fence. A pending acknowledgement blocks Workspace mutations, terminal use,
-governed Browser navigation, and voluntary Submission, but not protected
+fence. Each pending acknowledgement blocks only its immutable selected
+capabilities. A browser-only notice leaves Workspace, terminal, and voluntary
+Submission authority independent. The sorted pending union is a projection of
+the current notices, and each mutation checks its capability inside the existing
+aggregate transaction. Pending browser acknowledgements also withhold usable
+policy content. The gates do not block protected
 reads, lease renewal, focus or Browser Activity delivery, the acknowledgement
 itself, or authorized closure. Acknowledgement remains available while the
 Sitting is paused. Exact replay repeats current authorization and audit checks
-but returns the retained result without repeating the domain mutation or
-transient effects.
+but returns the retained acknowledgement time together with freshly resolved
+current Revision and capability state, without repeating the domain mutation.
+Actual reversible guest containment remains an execution lifecycle concern;
+denying input is not proof that a running process is frozen.
 
 Normal submission first denies new edits, settles workspace mutations, closes
 and reconciles integrity source sequences/gaps, and then atomically creates one
@@ -561,10 +582,15 @@ The document has one integer `schema_version`, required `connection_loss` and
 duplicates, missing fields, invalid combinations, trailing input, and oversized
 documents fail closed. Publication decodes and validates the complete typed
 value, serializes it canonically, computes its SHA-256 digest, and freezes both
-document and digest in the Revision. Old explicit decoders remain while stored
-Revisions use them; an unknown version denies Sitting admission rather than
-being reinterpreted with current defaults. Go domain names remain unversioned;
-version-specific codec names are internal implementation details.
+document and digest in the Revision. Exam policy, Browser Policy, and Attempt
+Configuration encoding uses the bounded
+[`internal/canonicaljson` contract](../../../../server/internal/canonicaljson/README.md):
+sorted ASCII keys, exact scalar UTF-8 and JSON.stringify string escapes, and
+decimal safe integers. Validate original bytes before typed decoding can erase
+duplicates, malformed Unicode, or fractional/exponent integer spelling.
+The current pre-release schema changes in place with coordinated clients and
+development fixtures, without old-shape readers or compatibility branches.
+An unknown version denies admission rather than selecting current defaults.
 
 The initial persisted shape and shipped defaults are:
 
@@ -618,14 +644,48 @@ authority; Connection Loss remains server-observed.
 
 When the Revision enables a Browser Policy, the trusted Desktop exposes only
 one governed Browser surface. Rules are a strict, canonically ordered,
-versioned allowlist of HTTPS origin, host match, path prefix, redirect policy,
+allowlist of network origin, host match, path prefix, redirect policy,
 and start rule; ordinary query strings, fragments, credentials, page content,
 titles, referrers, headers, cookies, DOM data, and download bodies are never
 policy or telemetry fields. Blocked top-level navigation is always recorded
 with a closed reason.
 
+The canonical policy contains only `enabled`, and, when enabled, `start_rule_id`
+and `rules`. Each rule explicitly selects `record` or `integrity_evidence` and
+includes `institution_http_exception`, even when false. HTTP requires that flag
+and the same normalized hostname and explicit port as the installation's pinned
+HTTPS origin; HTTPS requires false. Authoring, publication and live correction
+validate the pin from server configuration. This navigation exception never
+permits HTTP credentials or changes the installation's production origin.
+
+The SHA-256 fingerprint includes its `sha256:` prefix and covers only canonical
+policy bytes. Candidate projections add the immutable Revision ID and monotonic
+Revision number and a separately revisioned Browser Activity disclosure. Disabled
+policies still carry that provenance and notice while omitting rules and start
+rule. A pending browser correction withholds its policy until acknowledgement.
+The notice derives possible integrity evidence from the delivered rules and
+refreshes from the current Institution Retention Policy, including preflight
+preparation replay; it does not change the policy digest or grant history access.
+
+The current matcher accepts at most 128 rules within 32 KiB; each origin and
+path prefix is bounded to 2,048 ASCII bytes. Hosts use bounded ASCII DNS labels
+or browser-normalized IPv4, without IDN, punycode, IPv6, trailing dots or wildcard
+IP matching. Ports are decimal 1..65535 without leading zeroes; default ports
+normalize away. Rule paths reject dot segments (including browser-recognized
+encoded dots), malformed escapes and encoded slash/backslash. Authoring removes
+one non-root trailing slash and rejects paths requiring other normalization.
+Navigation applies browser dot-segment handling while preserving repeated
+slashes, unreserved percent escapes and their case. Retained activity validates
+that same serialized pathname, rather than treating it as an authored prefix.
+Query and fragment never select a rule. The matching order is longest path,
+exact host before wildcard, longest configured hostname, then smallest rule ID.
+The tracked [URL fixtures](../../../../server/model/testdata/browser_urls.json)
+include exact retained components and rejected input forms; their adjacent
+JavaScript verifier checks valid serialization against the browser URL API.
+
 Browser Activity is a separate privacy-minimized delivery stream. Each
-Participation may own at most 16 sequential UUIDv4 source sessions. A reset
+Participation may own one initial, up to 32 correction and up to 16 runtime-reset
+UUIDv4 sources. Separate lifetime allowances are never refunded. A reset
 names the exact predecessor and one closed reason; the former source remains
 immutable history. Events cover browser open/close, allowed top-level
 navigation/redirect, and blocked top-level navigation. They carry a monotonic
@@ -642,12 +702,19 @@ acknowledges the highest contiguous and seen sequences plus at most 32 missing
 ranges. Delivery is allowed while paused or awaiting correction
 acknowledgement so evidence can converge without granting interaction.
 
-At Submission, a complete Browser Activity source must be final and contiguous
-through the declared sequence. Missing records, an unfinalized source, a
-client-declared gap, or an incomplete prior source creates explicit bounded
-Submission discrepancy provenance without inventing observations or blocking
-closure. Authorized managers may page the minimized retained records through
-the exact Attempt route; the response excludes Session, Registration,
+Submission closes live Browser sources and exposes a server-owned settlement
+inventory spanning every Participation. It does not accept a client completeness
+claim or fabricate immutable Focus Loss discrepancies from Browser delivery loss.
+Pending takes precedence while any source can still settle. Permanent gaps,
+unknown tails and unretained summaries preserve incomplete status. No sources is
+`not_applicable`, including when the final policy is disabled. Late accepted
+records advance the separate inventory without changing the sealed manifest.
+Each page through the exact Attempt route requires current exact Exam
+Manager membership plus the dedicated Browser Activity
+view permission. Administrator and general export permissions provide no
+history override. History-bearing exports repeat this check on creation,
+replay, metadata reads and downloads, including authoritative Store checks.
+The response excludes Session, Registration,
 Connection, credentials, page content, and private Review state.
 
 A Focus Loss duration equal to or above the configured minimum qualifies. The
@@ -676,10 +743,20 @@ other.
 
 Finalization is one named, audited, idempotent operation. It locks the sealed
 Submission, requires terminal collection and a decision for every current
-Flag, caps the inventory at 200 Flags, 20,000 evidence rows, and 200 explicit
+Flag, caps the combined inventory at 456 Flags, 30,000 evidence rows, and 200 explicit
 discrepancies, and freezes their stable identities and decision revisions in a
-canonical SHA-256 digest. The finalized Review has no mutable backdoor.
-Release is a separate one-way `submission.release` operation with its own
+canonical SHA-256 digest. Browser delivery adds 256 groups and 10,000 copies to
+the existing ceilings. The digest also binds the current delivery inventory and
+all-source Browser settlement, including count-only overflow. Previous
+finalizations remain immutable, revision-keyed integrity snapshots. Newly
+accepted late Browser delivery reopens only the current aggregate as a withheld
+draft, advances its revision, invalidates its waiver and Sitting records
+completion, and marks the affected group decision stale. Managers must record a
+new decision before finalization; new events cannot inherit an earlier
+disposition. Candidate results are concealed until the new inventory is approved
+and released. This transition never changes immutable Submission work.
+Release is a separate one-way `submission.release` operation for that finalized
+Review revision with its own
 current authorization, audit, revision fence, and idempotent outcome. Before
 release, the candidate result selector is concealed as not found. After
 release it returns only Review, Submission, and Attempt identities, sanitized
@@ -793,3 +870,39 @@ defines category retirement, byte purge, expiring exports and surviving markers.
 pre-release schema extends the single version-1 baseline and requires
 development databases to be recreated; it does not add a chain of development
 migrations.
+
+Browser evidence groups use Attempt, Participation, frozen Browser Policy
+Revision and rule ID. Only verified accepted events with the rule's
+`integrity_evidence` outcome qualify. Keep the first 100 eligible minimized
+copies within 10,000 records and 8 MiB per Attempt, without rotating prior
+copies. Further verified events increment exact overflow count and first/last
+server receive times once. At the 256-group limit, one Attempt summary counts
+additional verified qualifying events with reason `group_capacity`, without
+inventing Flags or a number of distinct omitted groups. Unresolved redirect
+provenance and unretained client summaries are uncertainty, never verified
+counter input. Integrity copies, groups and prior review snapshots retire with
+integrity; ordinary Browser Activity retirement cannot remove them. Lifetime
+quota counters are never refunded by either retirement.
+
+
+Native condition review preserves immutable, catalog-validated occurrence
+transitions independently of native operational telemetry, including explicit
+unresolved openers and original receipt/interpretation provenance. It requires
+current detailed Submission integrity-view authority and no fabricated Flag.
+Operational health, permissions, gaps and resets remain uncertainty. The manager
+board receives only bounded counts and live source health. A fixed count/digest
+binds native evidence into Review finalization; late interpreted transitions
+invalidate the current Review/release/waiver without changing sealed work or
+prior snapshots. Integrity retirement removes condition copies from both their
+review owner and delivery rows and prevents new condition intake. Operational
+retirement removes delivery state while preserving separately retained integrity
+material. Native evidence rows remain bounded by admitted native record quotas;
+SQL physical copies are not additional client receipt or quota allocations.
+
+Current live controls validate all Browser watermark selectors and claimed
+contiguous receipts before processing. Owned closed sources and position limits
+produce local rejections without invalidating otherwise usable native coverage.
+Accepted allocation deltas charge the existing Participation/Attempt counters;
+compact replay receipts preserve immutable source ordinals, including in retired
+source stubs. Status/receipt/target reads only project deadline changes; audited
+lifecycle, declaration, append or expiry operations own persisted interpretation.

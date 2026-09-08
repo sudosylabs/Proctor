@@ -90,6 +90,7 @@ components:
             expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza3
             instructions_markdown: Read the corrected resource before continuing.
             candidate_summary: The formula sheet for Question 3 was corrected.
+            affected_capabilities: [submission, terminal, workspace]
             acknowledgement_required: true
             reason: Question 3 contained an incorrect constant.
             resources:
@@ -139,6 +140,7 @@ components:
         - expected_sitting_revision
         - expected_current_revision_id
         - candidate_summary
+        - affected_capabilities
         - acknowledgement_required
         - reason
         - resources
@@ -157,6 +159,8 @@ components:
         browser_policy:
           $ref: '#/components/schemas/BrowserPolicy'
           description: Omitted preserves the current Browser Policy; a present object replaces it atomically with the other correction content.
+        affected_capabilities:
+          $ref: '#/components/schemas/CorrectionCapabilitySelection'
         candidate_summary:
           type: string
           minLength: 1
@@ -177,6 +181,21 @@ components:
             Required complete desired resource manifest. Omitted base resources are removed and array order becomes resource position. Resource and non-empty stage identities must each be unique.
           items:
             $ref: '#/components/schemas/ExamSittingCorrectionResourceRequest'
+    CorrectionCapabilitySelection:
+      type: array
+      minItems: 1
+      maxItems: 4
+      uniqueItems: true
+      description: >-
+        Explicit sorted selection. A Browser Policy change requires browser;
+        an instructions or resources change requires submission, terminal and workspace.
+        Supersets are permitted. The selection cannot create a correction without
+        an actual content change and remains present when acknowledgement is not required.
+      items:
+        $ref: '#/components/schemas/CandidateCapability'
+    CandidateCapability:
+      type: string
+      enum: [browser, submission, terminal, workspace]
     ExamSittingCorrectionResponse:
       description: Immutable correction Revision and updated Sitting state committed by the transition.
       type: object
@@ -190,7 +209,10 @@ components:
         - sitting_revision
         - sitting_state
         - effective_at
+        - affected_capabilities
       properties:
+        affected_capabilities:
+          $ref: '#/components/schemas/CorrectionCapabilitySelection'
         exam_id:
           $ref: '#/components/schemas/ID'
         exam_sitting_id:

@@ -1,0 +1,372 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/delivery-limits:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: deliveryBudget
+      summary: Read current delivery limits
+      description: >-
+        Return one owned Participation and the current lifetime Attempt counters across every generation,
+        bounded at 8 KiB. Requires a current Session of the registered key that owns the Participation.
+        Retirement and client spool deletion never refund quota; a snapshot grants no interaction or larger
+        allowance.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - name: participation_id
+          in: query
+          required: true
+          description: Owned Participation whose bounded source inventory is requested.
+          schema:
+            $ref: '#/components/schemas/ID'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryBudgetOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/delivery-limits/stop-details:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: stopDeliveryDetails
+      summary: Stop detailed delivery for a Participation
+      description: >-
+        Requires the current live registered Desktop Connection and Idempotency-Key. Local loss-inventory
+        exhaustion irreversibly latches only the selected family for the current Participation, freezes
+        allocated boundaries and records terminal omissions without fabricating receipts. Return the current
+        budget and at most one native stream or 49 Browser sources, bounded at 1 MiB. Exact replay rechecks
+        live authority and cannot affect a successor generation. No quota is replenished and no misconduct
+        Flag, suspension or interaction denial follows solely from this request.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/StopDeliveryDetails'
+      responses:
+        '200':
+          $ref: '#/components/responses/StopDeliveryDetailsOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  schemas:
+    DeliveryQuotaUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - retained_records
+        - retained_bytes
+        - allocated_positions
+        - record_limit
+        - byte_limit
+        - position_limit
+        - summary_only
+        - stop_reason
+      properties:
+        retained_records:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        retained_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        allocated_positions:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        record_limit:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        byte_limit:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        position_limit:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        summary_only:
+          type: boolean
+        stop_reason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - records
+            - bytes
+            - positions
+            - metadata
+            - local_loss_inventory_exhausted
+            - null
+    DeliveryFamilyBudget:
+      type: object
+      additionalProperties: false
+      required:
+        - participation
+        - attempt
+        - pending_bytes
+        - pending_byte_limit
+      properties:
+        participation:
+          $ref: '#/components/schemas/DeliveryQuotaUsage'
+        attempt:
+          $ref: '#/components/schemas/DeliveryQuotaUsage'
+        pending_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+        pending_byte_limit:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+          enum:
+            - 2097152
+    DeliveryBudgetSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - native
+        - browser
+        - browser_flag_groups
+        - browser_evidence_records
+        - browser_evidence_bytes
+        - explicit_missing_intervals
+        - control_metadata_bytes
+        - server_time
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        native:
+          $ref: '#/components/schemas/DeliveryFamilyBudget'
+        browser:
+          $ref: '#/components/schemas/DeliveryFamilyBudget'
+        browser_flag_groups:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 256
+        browser_evidence_records:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 10000
+        browser_evidence_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 8388608
+        explicit_missing_intervals:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 4096
+        control_metadata_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 2097152
+        server_time:
+          type: string
+          format: date-time
+          pattern: Z$
+    StopDeliveryDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - family
+        - reason
+      properties:
+        family:
+          type: string
+          enum:
+            - native
+            - browser
+        reason:
+          type: string
+          enum:
+            - local_loss_inventory_exhausted
+    StopDeliveryDetailsResult:
+      type: object
+      additionalProperties: false
+      required:
+        - budget
+        - native
+        - browser
+      properties:
+        budget:
+          $ref: '#/components/schemas/DeliveryBudgetSnapshot'
+        native:
+          oneOf:
+            - $ref: '#/components/schemas/NativeSecurityStreamStatus'
+            - type: 'null'
+        browser:
+          type: array
+          maxItems: 49
+          items:
+            $ref: '#/components/schemas/BrowserSourceStatus'
+  requestBodies:
+    StopDeliveryDetails:
+      required: true
+      description: Closed family-scoped local loss-inventory exhaustion declaration. Maximum 2 KiB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StopDeliveryDetails'
+          example:
+            family: browser
+            reason: local_loss_inventory_exhausted
+  responses:
+    DeliveryBudgetOK:
+      description: Current lifetime quota projection, bounded at 8 KiB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeliveryBudgetSnapshot'
+    StopDeliveryDetailsOK:
+      description: Committed family cutoff and current affected source inventory, bounded at 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StopDeliveryDetailsResult'

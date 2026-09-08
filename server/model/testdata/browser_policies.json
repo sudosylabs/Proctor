@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "name": "disabled",
+      "institution_origin": "https://institution.example",
+      "policy": {
+        "enabled": false
+      },
+      "canonical": "{\"enabled\":false}",
+      "digest": "sha256:5acf3ff77b4420677b5923071f303facaba7a9273a346284a667a275df325146"
+    },
+    {
+      "name": "record",
+      "institution_origin": "https://institution.example",
+      "policy": {
+        "enabled": true,
+        "start_rule_id": "start",
+        "rules": [
+          {
+            "rule_id": "start",
+            "origin": "https://library.example",
+            "path_prefix": "/docs",
+            "host_match": "exact",
+            "allow_redirects": false,
+            "blocked_navigation_outcome": "record",
+            "institution_http_exception": false
+          }
+        ]
+      },
+      "canonical": "{\"enabled\":true,\"rules\":[{\"allow_redirects\":false,\"blocked_navigation_outcome\":\"record\",\"host_match\":\"exact\",\"institution_http_exception\":false,\"origin\":\"https://library.example\",\"path_prefix\":\"/docs\",\"rule_id\":\"start\"}],\"start_rule_id\":\"start\"}",
+      "digest": "sha256:d3f3dc210885d3d3637816454ff14fdcc2d08ae3b32a56885c09247ac87ef2f0"
+    },
+    {
+      "name": "http exception",
+      "institution_origin": "https://institution.example:8080",
+      "policy": {
+        "enabled": true,
+        "start_rule_id": "start",
+        "rules": [
+          {
+            "rule_id": "start",
+            "origin": "http://institution.example:8080",
+            "path_prefix": "/exam",
+            "host_match": "exact",
+            "allow_redirects": false,
+            "blocked_navigation_outcome": "integrity_evidence",
+            "institution_http_exception": true
+          }
+        ]
+      },
+      "canonical": "{\"enabled\":true,\"rules\":[{\"allow_redirects\":false,\"blocked_navigation_outcome\":\"integrity_evidence\",\"host_match\":\"exact\",\"institution_http_exception\":true,\"origin\":\"http://institution.example:8080\",\"path_prefix\":\"/exam\",\"rule_id\":\"start\"}],\"start_rule_id\":\"start\"}",
+      "digest": "sha256:84bbd933ec886fb997abbc560e56a2c9b26052b9a227097667e0c0013e28bf88"
+    }
+  ]
+}

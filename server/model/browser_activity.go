@@ -8,8 +8,6 @@
 package model
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -24,7 +22,7 @@ const (
 	BrowserActivityAppendMaximumBytes         = 256 * 1024
 	BrowserActivityMaximumReorderWindow       = 4096
 	BrowserActivityMaximumMissingRanges       = 32
-	BrowserSourceMaximumPerParticipation      = 16
+	BrowserSourceMaximumPerParticipation      = 49
 	BrowserActivityLocationSchemeMaximumBytes = 32
 )
 
@@ -81,19 +79,29 @@ func (reason BrowserActivityBlockReason) IsValid() bool {
 }
 
 type BrowserActivityEvent struct {
-	Sequence         int64
-	Kind             BrowserActivityKind
-	PolicyRevisionID ExamRevisionID
-	ClientOccurredAt time.Time
-	Location         *BrowserLocation
-	MatchedRuleID    *string
-	BlockReason      *BrowserActivityBlockReason
-	ReceivedAt       time.Time
+	RedirectFromSequence *int64
+	Sequence             int64
+	Kind                 BrowserActivityKind
+	PolicyRevisionID     ExamRevisionID
+	ClientOccurredAt     time.Time
+	Location             *BrowserLocation
+	MatchedRuleID        *string
+	BlockReason          *BrowserActivityBlockReason
+	ReceivedAt           time.Time
 }
 
 func (event BrowserActivityEvent) ValidateClientRecord() error {
-	if event.Sequence < 1 || !event.PolicyRevisionID.IsValid() || event.ClientOccurredAt.IsZero() || !event.ReceivedAt.IsZero() {
+	if event.Sequence < 1 || !securitySafeInt(event.Sequence) || !event.PolicyRevisionID.IsValid() || !securityInstant(event.ClientOccurredAt) || !event.ReceivedAt.IsZero() {
 		return errors.New("model: invalid Browser Activity event metadata")
+	}
+	if event.RedirectFromSequence != nil && (*event.RedirectFromSequence < 1 || *event.RedirectFromSequence >= event.Sequence) {
+		return ErrDeliveryInvalid
+	}
+	if (event.Kind == BrowserActivityTopRedirect || event.BlockReason != nil && *event.BlockReason == BrowserBlockRedirectNotAllowed) && event.RedirectFromSequence == nil {
+		return ErrDeliveryInvalid
+	}
+	if event.RedirectFromSequence != nil && event.Kind != BrowserActivityTopRedirect && event.Kind != BrowserActivityBlockedNavigation {
+		return ErrDeliveryInvalid
 	}
 	switch event.Kind {
 	case BrowserActivityOpened, BrowserActivityClosed:
@@ -125,6 +133,9 @@ func (event BrowserActivityEvent) ValidateClientRecord() error {
 }
 
 func (location BrowserLocation) Validate() error {
+	if location.Scheme == "http" {
+		return location.validateNetwork("http", "80")
+	}
 	return location.validateNetwork("https", "443")
 }
 
@@ -161,7 +172,8 @@ func (location BrowserLocation) ValidateBlocked(reason BrowserActivityBlockReaso
 }
 
 func (location BrowserLocation) validateNetwork(scheme, defaultPort string) error {
-	if location.Scheme != scheme || location.Host == "" || strings.ToLower(location.Host) != location.Host || strings.ContainsAny(location.Host, "\\/?#@") {
+	if location.Scheme != scheme || location.Host == "" || strings.ToLower(location.Host) != location.Host ||
+		strings.ContainsAny(location.Host, "\\/?#@") || len(location.Path) > browserLocationMaximumPathBytes {
 		return errors.New("model: invalid minimized Browser Activity location")
 	}
 	parsed, err := url.Parse(scheme + "://" + browserHostPort(location.Host, location.Port))
@@ -172,33 +184,54 @@ func (location BrowserLocation) validateNetwork(scheme, defaultPort string) erro
 	if err != nil || host != location.Host || port != location.Port {
 		return errors.New("model: non-canonical Browser Activity authority")
 	}
-	canonicalPath, err := CanonicalizeBrowserPolicyPath(location.Path)
+	canonicalPath, err := canonicalBrowserPath(location.Path)
 	if err != nil || canonicalPath != location.Path {
 		return errors.New("model: non-canonical Browser Activity path")
 	}
 	return nil
 }
 
-func (event BrowserActivityEvent) Fingerprint() (string, error) {
-	if err := event.ValidateClientRecord(); err != nil {
-		return "", err
+type browserActivityEventWire struct {
+	Sequence             int64                       `json:"sequence"`
+	Kind                 BrowserActivityKind         `json:"kind"`
+	PolicyRevisionID     ExamRevisionID              `json:"policy_revision_id"`
+	ClientOccurredAt     time.Time                   `json:"client_occurred_at"`
+	Location             *BrowserLocation            `json:"location,omitempty"`
+	MatchedRuleID        *string                     `json:"matched_rule_id,omitempty"`
+	BlockReason          *BrowserActivityBlockReason `json:"block_reason,omitempty"`
+	RedirectFromSequence *int64                      `json:"redirect_from_sequence,omitempty"`
+}
+
+func (event BrowserActivityEvent) MarshalJSON() ([]byte, error) {
+	if event.ValidateClientRecord() != nil {
+		return nil, ErrDeliveryInvalid
 	}
-	encoded, err := json.Marshal(struct {
-		SchemaVersion    int                         `json:"schema_version"`
-		Sequence         int64                       `json:"sequence"`
-		Kind             BrowserActivityKind         `json:"kind"`
-		PolicyRevisionID string                      `json:"policy_revision_id"`
-		ClientOccurredAt string                      `json:"client_occurred_at"`
-		Location         *BrowserLocation            `json:"location"`
-		MatchedRuleID    *string                     `json:"matched_rule_id"`
-		BlockReason      *BrowserActivityBlockReason `json:"block_reason"`
-	}{BrowserActivitySchemaVersion, event.Sequence, event.Kind, event.PolicyRevisionID.String(),
-		TimeUTC(event.ClientOccurredAt).Format(time.RFC3339Nano), event.Location, event.MatchedRuleID, event.BlockReason})
+	return json.Marshal(browserActivityEventWire{Sequence: event.Sequence, Kind: event.Kind, PolicyRevisionID: event.PolicyRevisionID, ClientOccurredAt: event.ClientOccurredAt, Location: event.Location, MatchedRuleID: event.MatchedRuleID, BlockReason: event.BlockReason, RedirectFromSequence: event.RedirectFromSequence})
+}
+func (event *BrowserActivityEvent) UnmarshalJSON(raw []byte) error {
+	var value browserActivityEventWire
+	if event == nil || decodeClosedDeliveryDeclaration(raw, &value, 32*1024) != nil {
+		return ErrDeliveryInvalid
+	}
+	candidate := BrowserActivityEvent{Sequence: value.Sequence, Kind: value.Kind, PolicyRevisionID: value.PolicyRevisionID, ClientOccurredAt: value.ClientOccurredAt, Location: value.Location, MatchedRuleID: value.MatchedRuleID, BlockReason: value.BlockReason, RedirectFromSequence: value.RedirectFromSequence}
+	if candidate.ValidateClientRecord() != nil {
+		return ErrDeliveryInvalid
+	}
+	*event = candidate
+	return nil
+}
+func (event BrowserActivityEvent) Canonical() ([]byte, error) {
+	if event.ValidateClientRecord() != nil {
+		return nil, ErrDeliveryInvalid
+	}
+	return encodeCanonicalExamDocument(event)
+}
+func (event BrowserActivityEvent) Fingerprint() (string, error) {
+	encoded, err := event.Canonical()
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:]), nil
+	return SHA256Fingerprint(encoded), nil
 }
 
 type BrowserActivityMissingRange struct {
@@ -207,6 +240,10 @@ type BrowserActivityMissingRange struct {
 }
 
 type BrowserActivityAcknowledgement struct {
+	Receipts               []BrowserEventReceipt
+	SettledThrough         int64
+	AllocatedThrough       int64
+	TerminalMissingThrough int64
 	SourceSessionID        BrowserSourceSessionID
 	HighestContiguous      int64
 	HighestSeen            int64

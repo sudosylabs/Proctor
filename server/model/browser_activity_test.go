@@ -22,6 +22,7 @@ func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
 		location BrowserLocation
 	}{
 		{"https origin", BrowserBlockOriginNotAllowed, BrowserLocation{Scheme: "https", Host: "example.edu", Path: "/outside"}},
+		{"HTTP exception origin block", BrowserBlockOriginNotAllowed, BrowserLocation{Scheme: "http", Host: "example.edu", Path: "/outside"}},
 		{"http network", BrowserBlockSchemeNotAllowed, BrowserLocation{Scheme: "http", Host: "example.edu", Port: "8443", Path: "/outside"}},
 		{"file scheme only", BrowserBlockSchemeNotAllowed, BrowserLocation{Scheme: "file"}},
 		{"javascript scheme only", BrowserBlockSchemeNotAllowed, BrowserLocation{Scheme: "javascript"}},
@@ -50,7 +51,7 @@ func TestBlockedBrowserActivityLocationShapes(t *testing.T) {
 		{"http default port retained", BrowserBlockSchemeNotAllowed, BrowserLocation{Scheme: "http", Host: "example.edu", Port: "80", Path: "/"}},
 		{"hostless payload retained", BrowserBlockSchemeNotAllowed, BrowserLocation{Scheme: "javascript", Path: "/alert(secret)"}},
 		{"invalid URL retained components", BrowserBlockInvalidURL, BrowserLocation{Scheme: "http"}},
-		{"non-https origin block", BrowserBlockOriginNotAllowed, BrowserLocation{Scheme: "http", Host: "example.edu", Path: "/"}},
+		{"non-network origin block", BrowserBlockOriginNotAllowed, BrowserLocation{Scheme: "file", Host: "example.edu", Path: "/"}},
 	}
 	for _, test := range invalid {
 		t.Run(test.name, func(t *testing.T) {

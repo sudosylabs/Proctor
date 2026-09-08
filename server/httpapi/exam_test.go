@@ -446,7 +446,7 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	}
 	policy := draft["policy"].(map[string]any)
 	capacity := draft["capacity"].(map[string]any)
-	if policy["schema_version"] != float64(1) || document["manager_count"] != float64(1) || draft["resource_count"] != float64(0) || draft["has_starter_workspace"] != false {
+	if policy["native"] == nil || document["manager_count"] != float64(1) || draft["resource_count"] != float64(0) || draft["has_starter_workspace"] != false {
 		t.Fatalf("response = %s", encoded)
 	}
 	if capacity["resource_maximum_count"] != float64(model.ExamResourceDefaultMaximumCount) ||
@@ -462,6 +462,7 @@ type examHTTPApplication struct {
 	create                    application.CreateExamCommand
 	edit                      application.EditExamDraftTextCommand
 	configureFocusLoss        application.ConfigureExamDraftFocusLossCommand
+	configureNativePolicy     application.ConfigureExamDraftNativePolicyCommand
 	configureExecutionProfile application.ConfigureExamDraftExecutionProfileCommand
 	configureBrowserPolicy    application.ConfigureExamDraftBrowserPolicyCommand
 	executionImages           []application.ExamExecutionImage
@@ -522,6 +523,11 @@ func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ application
 	a.edit = command
 	return a.view, nil
 }
+func (a *examHTTPApplication) ConfigureExamDraftNativePolicy(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftNativePolicyCommand) (application.ExamView, error) {
+	a.configureNativePolicy = command
+	return a.view, nil
+}
+
 func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error) {
 	a.configureFocusLoss = command
 	return a.view, nil

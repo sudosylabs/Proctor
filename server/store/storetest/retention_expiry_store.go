@@ -249,7 +249,7 @@ func TestRetentionReceiptExpiryStore(t *testing.T, ss store.Store, retentionProb
 	for _, item := range page.Items {
 		if item.Record.Category == model.RetentionCategoryWork {
 			work = item.Retirement
-		} else {
+		} else if item.Record.Category == model.RetentionCategoryIntegrity {
 			integrity = item.Retirement
 		}
 	}
@@ -294,6 +294,12 @@ func TestRetentionReceiptExpiryStore(t *testing.T, ss store.Store, retentionProb
 	page, err = ss.Retention().ListRecords(ctx, store.RetentionRecordListOptions{Limit: 100})
 	requireNoError(t, err)
 	for _, item := range page.Items {
+		if item.Record.Category == model.RetentionCategoryBrowserActivity || item.Record.Category == model.RetentionCategorySecurityOperational {
+			if item.Retirement != nil || item.Eligibility.Blocker != model.RetentionBlockerUnconfigured {
+				t.Fatal("receipt expiry changed an independently retained category")
+			}
+			continue
+		}
 		if item.Retirement != nil || item.Eligibility.Blocker != model.RetentionBlockerRetired {
 			t.Fatal("minimal history expiry changed logical retirement")
 		}

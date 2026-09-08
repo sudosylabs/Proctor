@@ -112,13 +112,13 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Executi
 	if err != nil {
 		return err
 	}
-	if page == nil || len(page.Items) > 2*limit || len(page.Items)%2 != 0 || (page.HasMore && len(page.Items) == 0) {
+	if page == nil || len(page.Items) > 4*limit || len(page.Items)%4 != 0 || (page.HasMore && len(page.Items) == 0) {
 		return errors.New("invalid retention page")
 	}
-	for i := 0; i < len(page.Items); i += 2 {
-		work, integrity := page.Items[i], page.Items[i+1]
+	for i := 0; i < len(page.Items); i += 4 {
+		work, integrity, browser, security := page.Items[i], page.Items[i+1], page.Items[i+2], page.Items[i+3]
 		id := work.Record.Scope.SubmissionID
-		if !id.IsValid() || id <= cp.AfterSubmissionID || integrity.Record.Scope != work.Record.Scope || work.Record.Category != model.RetentionCategoryWork || integrity.Record.Category != model.RetentionCategoryIntegrity {
+		if !id.IsValid() || id <= cp.AfterSubmissionID || integrity.Record.Scope != work.Record.Scope || work.Record.Category != model.RetentionCategoryWork || integrity.Record.Category != model.RetentionCategoryIntegrity || browser.Record.Scope != work.Record.Scope || security.Record.Scope != work.Record.Scope || browser.Record.Category != model.RetentionCategoryBrowserActivity || security.Record.Category != model.RetentionCategorySecurityOperational {
 			return errors.New("invalid retention category ordering")
 		}
 		reserved, err := e.ReserveWork(ctx, 1, command.BatchSize)
@@ -128,8 +128,10 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Executi
 		if !reserved {
 			return nil
 		}
-		needed := work.Eligibility.Blocker == model.RetentionBlockerNone || integrity.Eligibility.Blocker == model.RetentionBlockerNone ||
-			(work.Retirement != nil && work.Retirement.State == model.RetentionRetirementGrace) || (integrity.Retirement != nil && integrity.Retirement.State == model.RetentionRetirementGrace)
+		needed := false
+		for _, item := range page.Items[i : i+4] {
+			needed = needed || item.Eligibility.Blocker == model.RetentionBlockerNone || item.Retirement != nil && item.Retirement.State == model.RetentionRetirementGrace
+		}
 		if needed {
 			auditID, err := h.audit.BeginRetention(ctx, control.InstitutionID, id)
 			if err != nil {
@@ -139,7 +141,7 @@ func (h retentionHandler) reconcilePage(ctx context.Context, e jobengine.Executi
 			if err != nil {
 				return errors.Join(err, h.audit.FailRetention(ctx, auditID))
 			}
-			if result == nil || result.Scheduled < 0 || result.Cancelled < 0 || result.Retired < 0 || result.Scheduled > 2 || result.Cancelled > 2 || result.Retired > 2 {
+			if result == nil || result.Scheduled < 0 || result.Cancelled < 0 || result.Retired < 0 || result.Scheduled > 4 || result.Cancelled > 4 || result.Retired > 4 {
 				return errors.New("invalid retention result")
 			}
 			if result.Scheduled+result.Cancelled+result.Retired > 0 {

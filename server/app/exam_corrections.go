@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
@@ -43,14 +44,15 @@ type ExamSittingCorrectionResourceManifestItem = examcorrection.ResourceManifest
 type ApplyExamSittingCorrectionCommand = examcorrection.ApplyCommand
 
 type ExamSittingCorrectionResult struct {
-	ExamID             model.ExamID
-	SittingID          model.ExamSittingID
-	PreviousRevisionID model.ExamRevisionID
-	RevisionID         model.ExamRevisionID
-	RevisionNumber     int64
-	SittingState       model.ExamSittingState
-	SittingRevision    int64
-	EffectiveAt        time.Time
+	ExamID               model.ExamID
+	SittingID            model.ExamSittingID
+	PreviousRevisionID   model.ExamRevisionID
+	RevisionID           model.ExamRevisionID
+	RevisionNumber       int64
+	SittingState         model.ExamSittingState
+	SittingRevision      int64
+	EffectiveAt          time.Time
+	AffectedCapabilities []model.CandidateCapability
 }
 
 type examCorrectionUseCases interface {
@@ -70,11 +72,12 @@ func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocat
 	childResources := make([]examcorrection.ResourceManifestItem, len(command.Resources))
 	copy(childResources, command.Resources)
 	command.Resources = childResources
+	command.AffectedCapabilities = slices.Clone(command.AffectedCapabilities)
 	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingCorrectionResult{}, examCorrectionError(err, true)
 	}
-	return ExamSittingCorrectionResult{ExamID: result.ExamID, SittingID: result.SittingID, PreviousRevisionID: result.PreviousRevisionID, RevisionID: result.RevisionID, RevisionNumber: result.RevisionNumber, SittingState: result.SittingState, SittingRevision: result.SittingRevision, EffectiveAt: result.EffectiveAt}, nil
+	return ExamSittingCorrectionResult{ExamID: result.ExamID, SittingID: result.SittingID, PreviousRevisionID: result.PreviousRevisionID, RevisionID: result.RevisionID, RevisionNumber: result.RevisionNumber, SittingState: result.SittingState, SittingRevision: result.SittingRevision, EffectiveAt: result.EffectiveAt, AffectedCapabilities: slices.Clone(result.AffectedCapabilities)}, nil
 }
 
 func examCorrectionError(err error, conceal bool) error {
@@ -134,7 +137,7 @@ func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result exa
 		return err
 	}
 	var executionErr error
-	if result.AcknowledgementRequired && e.execution != nil {
+	if result.AcknowledgementRequired && slices.Contains(result.AffectedCapabilities, model.CandidateCapabilityTerminal) && e.execution != nil {
 		executionErr = e.execution.ReleaseSitting(ctx, result.SittingID)
 	}
 	return errors.Join(

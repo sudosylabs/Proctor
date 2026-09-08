@@ -15,7 +15,9 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Lists bounded manager-authorized Flag summaries created by retained integrity policy processing for one sealed Submission. Summaries report lifecycle and counts without returning evidence payloads, private decisions, candidate-facing accusations, or grades.
+        Lists bounded manager-authorized Flag summaries created by retained integrity policy processing for
+        one sealed Submission. Summaries report lifecycle and counts without returning evidence payloads,
+        private decisions, candidate-facing accusations, or grades.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -54,19 +56,19 @@ paths:
             description: Opaque versioned Flag identity cursor.
           description: Opaque continuation emitted by the preceding Flag page.
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityFlagListOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/submissions/{submission_id}/integrity-flags/{integrity_flag_id}/evidence:
     parameters:
@@ -78,7 +80,9 @@ paths:
       tags:
         - Integrity review
       description: >-
-        Lists only the bounded evidence retained for the exact authorized Flag and Submission. Evidence records are non-academic integrity signals, not guilt findings, and remain private to authorized review workflows.
+        Lists only the bounded evidence retained for the exact authorized Flag and Submission. Evidence
+        records are non-academic integrity signals, not guilt findings, and remain private to authorized
+        review workflows.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -117,19 +121,19 @@ paths:
             description: Opaque versioned Evidence identity cursor.
           description: Opaque continuation emitted by the preceding Evidence page.
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamIntegrityEvidenceListOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
@@ -184,6 +188,7 @@ components:
           enum:
             - connection_loss
             - focus_loss
+            - browser_navigation
         state:
           type: string
           enum:
@@ -206,6 +211,8 @@ components:
           format: int64
           minimum: 0
           description: Missing monotonic signals not reconciled before collection ended.
+        browser:
+          $ref: '#/components/schemas/BrowserIntegrityGroup'
     ExamIntegrityFlagListResponse:
       description: One bounded page of manager-authorized integrity Flag summaries.
       type: object
@@ -255,6 +262,7 @@ components:
           enum:
             - connection_loss
             - focus_loss
+            - browser_navigation
         signal_id:
           $ref: '#/components/schemas/ID'
         sequence:
@@ -285,6 +293,8 @@ components:
         recorded_at:
           type: string
           format: date-time
+        browser:
+          $ref: '#/components/schemas/BrowserIntegrityEvidence'
     ExamIntegrityEvidenceListResponse:
       description: One bounded page of purpose-specific integrity evidence.
       type: object

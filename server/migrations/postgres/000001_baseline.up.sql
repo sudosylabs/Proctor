@@ -856,7 +856,7 @@ CREATE TABLE exam_drafts (
     instructions_markdown text NOT NULL DEFAULT '',
     policy jsonb NOT NULL,
     execution_profile jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false,"image":"","network":"none"}'::jsonb,
-    browser_policy jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false}'::jsonb,
+    browser_policy jsonb NOT NULL DEFAULT '{"enabled":false}'::jsonb,
     base_revision_id varchar(26),
     updated_at timestamptz NOT NULL,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
@@ -1056,9 +1056,10 @@ CREATE TABLE exam_revisions (
     execution_profile_digest char(64) NOT NULL CHECK (execution_profile_digest ~ '^[0-9a-f]{64}$'),
     browser_policy_document jsonb NOT NULL CHECK (octet_length(browser_policy_document::text) <= 65536),
     browser_policy_canonical bytea NOT NULL CHECK (octet_length(browser_policy_canonical) BETWEEN 1 AND 32768),
-    browser_policy_digest char(64) NOT NULL CHECK (browser_policy_digest ~ '^[0-9a-f]{64}$'),
+    browser_policy_digest varchar(71) NOT NULL CHECK (browser_policy_digest ~ '^sha256:[0-9a-f]{64}$'),
     candidate_correction_summary text,
     candidate_correction_changed_areas text[],
+    candidate_correction_affected_capabilities text[],
     candidate_correction_acknowledgement_required boolean,
     starter_workspace_digest char(64) NOT NULL CHECK (starter_workspace_digest ~ '^[0-9a-f]{64}$'),
     content_digest char(64) NOT NULL CHECK (content_digest ~ '^[0-9a-f]{64}$'),
@@ -1085,13 +1086,27 @@ CREATE TABLE exam_revisions (
     CONSTRAINT exam_revisions_base_not_self_check CHECK (base_revision_id IS NULL OR base_revision_id <> id),
     CONSTRAINT exam_revisions_candidate_correction_check CHECK (
         (publication_kind = 'standard' AND candidate_correction_summary IS NULL AND
-            candidate_correction_changed_areas IS NULL AND candidate_correction_acknowledgement_required IS NULL) OR
+            candidate_correction_changed_areas IS NULL AND candidate_correction_affected_capabilities IS NULL AND
+            candidate_correction_acknowledgement_required IS NULL) OR
         (publication_kind = 'live_correction' AND base_revision_id IS NOT NULL AND
+            candidate_correction_summary IS NOT NULL AND candidate_correction_changed_areas IS NOT NULL AND
+            candidate_correction_affected_capabilities IS NOT NULL AND
             candidate_correction_summary = btrim(candidate_correction_summary) AND
             char_length(candidate_correction_summary) BETWEEN 1 AND 500 AND
             octet_length(candidate_correction_summary) <= 2000 AND
             cardinality(candidate_correction_changed_areas) BETWEEN 1 AND 3 AND
             candidate_correction_changed_areas <@ ARRAY['instructions','resources','browser_policy']::text[] AND
+            cardinality(candidate_correction_affected_capabilities) BETWEEN 1 AND 4 AND
+            candidate_correction_affected_capabilities = array_remove(ARRAY[
+                CASE WHEN 'browser' = ANY(candidate_correction_affected_capabilities) THEN 'browser' END,
+                CASE WHEN 'submission' = ANY(candidate_correction_affected_capabilities) THEN 'submission' END,
+                CASE WHEN 'terminal' = ANY(candidate_correction_affected_capabilities) THEN 'terminal' END,
+                CASE WHEN 'workspace' = ANY(candidate_correction_affected_capabilities) THEN 'workspace' END
+            ], NULL) AND
+            (NOT ('browser_policy' = ANY(candidate_correction_changed_areas)) OR
+                'browser' = ANY(candidate_correction_affected_capabilities)) AND
+            (NOT (candidate_correction_changed_areas && ARRAY['instructions','resources']::text[]) OR
+                candidate_correction_affected_capabilities @> ARRAY['submission','terminal','workspace']::text[]) AND
             candidate_correction_acknowledgement_required IS NOT NULL)
     )
 );
@@ -1701,6 +1716,20 @@ CREATE TABLE execution_grants (
     applied_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (applied_workspace_cursor >= 0),
     workspace_pending boolean NOT NULL DEFAULT false,
     pending_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (pending_workspace_cursor >= 0),
+    processed_host_sequence bigint NOT NULL DEFAULT 0 CHECK (processed_host_sequence BETWEEN 0 AND 9007199254740991),
+    environment_epoch varchar(128) NOT NULL DEFAULT '',
+    control_revision bigint NOT NULL DEFAULT 0,
+    control_acknowledged_revision bigint NOT NULL DEFAULT 0,
+    desired_control_state varchar(16) NOT NULL DEFAULT '',
+    control_authority_digest varchar(64) NOT NULL DEFAULT '',
+    CONSTRAINT execution_grants_control_check CHECK (
+        (environment_epoch='' AND processed_host_sequence=0 AND control_revision=0 AND control_acknowledged_revision=0
+         AND desired_control_state='' AND control_authority_digest='') OR
+        (environment_epoch ~ '^[A-Za-z0-9_-]{1,128}$' AND control_revision BETWEEN 1 AND 9007199254740991
+         AND control_acknowledged_revision BETWEEN 0 AND control_revision
+         AND desired_control_state IN ('running','frozen','revoked')
+         AND control_authority_digest ~ '^[0-9a-f]{64}$')
+    ),
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     released_at timestamptz,
@@ -1855,6 +1884,16 @@ CREATE TABLE exam_attempt_workspace_journal (
     old_path text,
     new_path text,
     content_version varchar(26),
+    expected_content_version varchar(26),
+    projected_object_id varchar(26),
+    source_grant_id varchar(26),
+    CONSTRAINT exam_attempt_workspace_journal_projection_check CHECK (
+        (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
+        (projected_object_id IS NULL OR projected_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
+        (source_grant_id IS NULL OR source_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
+        ((operation IN ('create_file','replace_file')) = (projected_object_id IS NOT NULL)) AND
+        ((entry_kind='file' AND operation IN ('replace_file','move_entry','delete_entry')) = (expected_content_version IS NOT NULL))
+    ),
     mutation_key_digest bytea NOT NULL CHECK (octet_length(mutation_key_digest) = 32),
     changed_at timestamptz NOT NULL,
     recursive boolean NOT NULL DEFAULT false,
@@ -1870,6 +1909,68 @@ CREATE TABLE exam_attempt_workspace_journal (
 
 CREATE INDEX exam_attempt_workspace_journal_entry_cursor_idx
     ON exam_attempt_workspace_journal (workspace_id, entry_id, cursor DESC);
+
+CREATE INDEX exam_attempt_workspace_journal_projected_object_idx
+    ON exam_attempt_workspace_journal (projected_object_id, workspace_id, cursor)
+    WHERE projected_object_id IS NOT NULL;
+
+CREATE TABLE execution_projection_effects (
+    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
+    mutation_id varchar(26) NOT NULL CHECK (mutation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    environment_epoch varchar(128) NOT NULL CHECK (environment_epoch ~ '^[A-Za-z0-9_-]{1,128}$'),
+    control_revision bigint NOT NULL CHECK (control_revision BETWEEN 1 AND 9007199254740991),
+    from_workspace_cursor bigint NOT NULL CHECK (from_workspace_cursor>=0),
+    through_workspace_cursor bigint NOT NULL CHECK (through_workspace_cursor>=from_workspace_cursor AND through_workspace_cursor<=9007199254740991),
+    expected_host_cursor bigint NOT NULL CHECK (expected_host_cursor BETWEEN 0 AND 9007199254740991),
+    initial boolean NOT NULL,
+    request_digest bytea NOT NULL CHECK (octet_length(request_digest)=32),
+    request_canonical bytea CHECK (octet_length(request_canonical) BETWEEN 1 AND 262144),
+    completed boolean NOT NULL DEFAULT false,
+    rejected boolean NOT NULL DEFAULT false CHECK (NOT rejected OR completed),
+    PRIMARY KEY (execution_grant_id,mutation_id),
+    CONSTRAINT execution_projection_effects_state_check CHECK (completed = (request_canonical IS NULL))
+);
+CREATE UNIQUE INDEX execution_projection_effects_one_pending_idx ON execution_projection_effects (execution_grant_id) WHERE NOT completed;
+
+-- A released grant cannot retry an unfinished host effect. Drop its private
+-- request (paths and transfer handles); completed receipts retain metadata only.
+CREATE FUNCTION discard_released_execution_projection() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.state='released' THEN
+        DELETE FROM execution_projection_effects WHERE execution_grant_id=NEW.id AND NOT completed;
+        DELETE FROM execution_observed_nodes WHERE execution_grant_id=NEW.id;
+        DELETE FROM execution_observation_outcomes WHERE execution_grant_id=NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER execution_projection_release AFTER UPDATE OF state ON execution_grants
+    FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION discard_released_execution_projection();
+
+-- Semantic host evidence and stable identities live only for the exact grant.
+-- The grant's safe sequence cap bounds these rows; no pending content bytes live here.
+CREATE TABLE execution_observation_outcomes (
+    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
+    host_sequence bigint NOT NULL CHECK (host_sequence BETWEEN 1 AND 65536),
+    observation_digest bytea NOT NULL CHECK (octet_length(observation_digest)=32),
+    outcome_canonical bytea NOT NULL CHECK (octet_length(outcome_canonical) BETWEEN 1 AND 8192),
+    PRIMARY KEY (execution_grant_id,host_sequence)
+);
+CREATE TABLE execution_observed_nodes (
+    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
+    node_identity varchar(128) NOT NULL CHECK (node_identity ~ '^[A-Za-z0-9_-]{1,128}$'),
+    entry_id varchar(26) NOT NULL CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    kind varchar(16) NOT NULL CHECK (kind IN ('file','directory')),
+    path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
+    expected_content_version varchar(26),
+    resulting_content_version varchar(26),
+    workspace_cursor bigint NOT NULL CHECK (workspace_cursor BETWEEN 1 AND 9007199254740991),
+    deleted boolean NOT NULL,
+    PRIMARY KEY (execution_grant_id,node_identity),
+    UNIQUE (execution_grant_id,entry_id),
+    CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CHECK (resulting_content_version IS NULL OR resulting_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
+);
 
 CREATE TABLE exam_attempt_participations (
     id varchar(26) PRIMARY KEY,
@@ -1942,6 +2043,10 @@ CREATE INDEX exam_attempt_connections_attempt_opened_id_idx
 -- authority from its identifier; every append is fenced by Participation,
 -- Session, Connection, generation, and continuity credential.
 CREATE TABLE browser_activity_sources (
+ upload_expires_at timestamptz,
+ upload_expired boolean NOT NULL DEFAULT false,
+ settlement_pending boolean NOT NULL DEFAULT false,
+ settlement_incomplete boolean NOT NULL DEFAULT false,
     id uuid PRIMARY KEY,
     exam_id varchar(26) NOT NULL,
     exam_sitting_id varchar(26) NOT NULL,
@@ -1950,6 +2055,26 @@ CREATE TABLE browser_activity_sources (
     generation bigint NOT NULL CHECK (generation > 0),
     session_id varchar(26) NOT NULL REFERENCES sessions(id),
     connection_id varchar(26) NOT NULL,
+    candidate_user_id varchar(26) NOT NULL REFERENCES users(id),
+    registration_id varchar(26) NOT NULL REFERENCES desktop_registrations(id),
+    key_thumbprint text NOT NULL,
+    policy_revision_id varchar(26) NOT NULL REFERENCES exam_revisions(id),
+    policy_digest varchar(71) NOT NULL CHECK(policy_digest ~ '^sha256:[0-9a-f]{64}$'),
+    start_ordinal integer NOT NULL CHECK(start_ordinal BETWEEN 1 AND 49),
+    UNIQUE(participation_id,start_ordinal),
+    start_transition varchar(24) NOT NULL CHECK(start_transition IN ('initial','policy_correction','runtime_reset')),
+    start_digest varchar(71) NOT NULL CHECK(start_digest ~ '^sha256:[0-9a-f]{64}$'),
+    start_canonical bytea NOT NULL CHECK(octet_length(start_canonical)<=8192),
+    refusal_canonical bytea CHECK(octet_length(refusal_canonical)<=2048),
+    closure_canonical bytea CHECK(octet_length(closure_canonical)<=2048),
+    allocated_through_sequence bigint NOT NULL DEFAULT 0 CHECK(allocated_through_sequence BETWEEN 0 AND 50000),
+    terminal_missing_through_sequence bigint NOT NULL DEFAULT 0 CHECK(terminal_missing_through_sequence BETWEEN 0 AND allocated_through_sequence),
+    settled_through_sequence bigint NOT NULL DEFAULT 0 CHECK(settled_through_sequence BETWEEN 0 AND allocated_through_sequence),
+    declaration_revision bigint NOT NULL DEFAULT 0 CHECK(declaration_revision BETWEEN 0 AND 9007199254740991),
+    summary_canonical bytea CHECK(octet_length(summary_canonical)<=2048),
+    summary_received_at timestamptz,
+    summary_final boolean NOT NULL DEFAULT false,
+    reserved_bytes bigint NOT NULL CHECK(reserved_bytes>0 AND reserved_bytes<=2097152),
     predecessor_id uuid REFERENCES browser_activity_sources(id),
     reset_reason varchar(24) CHECK (reset_reason IN ('coordinator_restarted','spool_unavailable','source_corrupt')),
     state varchar(12) NOT NULL CHECK (state IN ('current','closed','gapped')),
@@ -1968,8 +2093,9 @@ CREATE TABLE browser_activity_sources (
         FOREIGN KEY (connection_id, exam_attempt_id, participation_id)
         REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id),
     CONSTRAINT browser_activity_sources_reset_check CHECK (
-        (predecessor_id IS NULL AND reset_reason IS NULL) OR
-        (predecessor_id IS NOT NULL AND reset_reason IS NOT NULL AND predecessor_id <> id)
+        (start_transition='initial' AND predecessor_id IS NULL AND reset_reason IS NULL) OR
+        (start_transition='policy_correction' AND predecessor_id IS NOT NULL AND reset_reason IS NULL AND predecessor_id<>id) OR
+        (start_transition='runtime_reset' AND predecessor_id IS NOT NULL AND reset_reason IS NOT NULL AND predecessor_id<>id)
     ),
     CONSTRAINT browser_activity_sources_lifecycle_check CHECK (
         (state='current' AND ended_at IS NULL) OR
@@ -1981,6 +2107,14 @@ CREATE UNIQUE INDEX browser_activity_sources_one_current_participation_key
     ON browser_activity_sources (participation_id) WHERE state='current';
 CREATE INDEX browser_activity_sources_attempt_started_id_idx
     ON browser_activity_sources (exam_attempt_id, started_at, id);
+
+CREATE TABLE browser_delivery_declarations (
+ source_session_id uuid NOT NULL REFERENCES browser_activity_sources(id),
+ declaration_id varchar(128) NOT NULL,
+ kind varchar(8) NOT NULL CHECK(kind IN ('gaps','final')),
+ canonical bytea NOT NULL CHECK(octet_length(canonical)<=16384),
+ PRIMARY KEY(source_session_id,declaration_id)
+);
 
 CREATE TABLE browser_activity_events (
     source_session_id uuid NOT NULL REFERENCES browser_activity_sources(id),
@@ -1994,6 +2128,12 @@ CREATE TABLE browser_activity_events (
     kind varchar(40) NOT NULL CHECK (kind IN (
         'browser_opened','browser_closed','top_level_navigation','top_level_redirect','blocked_top_level_navigation'
     )),
+    record_canonical bytea NOT NULL CHECK(octet_length(record_canonical)<=32768),
+    receipt_canonical bytea NOT NULL CHECK(octet_length(receipt_canonical)<=512),
+    metadata_canonical bytea NOT NULL CHECK(octet_length(metadata_canonical)<=256),
+    interpretation_state smallint NOT NULL DEFAULT 0 CHECK(interpretation_state BETWEEN 0 AND 2),
+    redirect_from_sequence bigint CHECK(redirect_from_sequence>0 AND redirect_from_sequence<sequence),
+    counted_bytes integer NOT NULL CHECK(counted_bytes BETWEEN 1 AND 33536),
     client_occurred_at timestamptz NOT NULL,
     location_scheme varchar(32),
     location_host text,
@@ -2003,7 +2143,7 @@ CREATE TABLE browser_activity_events (
     block_reason varchar(32) CHECK (block_reason IN (
         'scheme_not_allowed','origin_not_allowed','path_not_allowed','redirect_not_allowed','invalid_url'
     )),
-    event_fingerprint char(64) NOT NULL CHECK (event_fingerprint ~ '^[0-9a-f]{64}$'),
+    event_fingerprint varchar(71) NOT NULL CHECK (event_fingerprint ~ '^sha256:[0-9a-f]{64}$'),
     received_at timestamptz NOT NULL,
     PRIMARY KEY (source_session_id, sequence),
     CONSTRAINT browser_activity_events_revision_fkey
@@ -2014,7 +2154,7 @@ CREATE TABLE browser_activity_events (
     CONSTRAINT browser_activity_events_location_check CHECK (
         (kind IN ('browser_opened','browser_closed') AND location_scheme IS NULL AND location_host IS NULL AND
             location_port IS NULL AND location_path IS NULL AND matched_rule_id IS NULL AND block_reason IS NULL) OR
-        (kind IN ('top_level_navigation','top_level_redirect') AND location_scheme='https' AND location_host IS NOT NULL AND
+        (kind IN ('top_level_navigation','top_level_redirect') AND location_scheme IN ('https','http') AND location_host IS NOT NULL AND
             location_path IS NOT NULL AND matched_rule_id IS NOT NULL AND block_reason IS NULL) OR
         (kind='blocked_top_level_navigation' AND (
             (block_reason='invalid_url' AND location_scheme='' AND location_host='' AND location_port IS NULL AND
@@ -2221,10 +2361,10 @@ CREATE TABLE integrity_flags (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
     generation bigint NOT NULL CHECK (generation > 0),
-    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss')),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss', 'browser_navigation')),
     state varchar(16) NOT NULL CHECK (state = 'open'),
     created_at timestamptz NOT NULL,
-    UNIQUE (exam_attempt_id, generation, policy_kind),
+
     UNIQUE (id, exam_attempt_id, generation)
 );
 
@@ -2234,7 +2374,7 @@ CREATE TABLE integrity_evidence (
     participation_id varchar(26) NOT NULL,
     integrity_flag_id varchar(26) NOT NULL,
     generation bigint NOT NULL CHECK (generation > 0),
-    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss')),
+    policy_kind varchar(32) NOT NULL CHECK (policy_kind IN ('connection_loss', 'focus_loss', 'browser_navigation')),
     focus_loss_signal_id varchar(26),
     sequence bigint,
     duration_milliseconds bigint,
@@ -2255,10 +2395,14 @@ CREATE TABLE integrity_evidence (
         (policy_kind = 'focus_loss' AND focus_loss_signal_id IS NOT NULL AND sequence > 0 AND
          duration_milliseconds BETWEEN 1 AND 86400000 AND
          (source IS NULL OR source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')) AND
-         missing_before >= 0)
+         missing_before >= 0) OR
+        (policy_kind = 'browser_navigation' AND browser_detail_canonical IS NOT NULL AND focus_loss_signal_id IS NULL AND sequence IS NULL AND duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL)
     ),
-    UNIQUE (exam_attempt_id, generation, policy_kind, sequence)
+    browser_detail_canonical bytea CHECK(browser_detail_canonical IS NULL OR octet_length(browser_detail_canonical) BETWEEN 1 AND 32768)
 );
+
+CREATE UNIQUE INDEX integrity_flags_legacy_group_idx ON integrity_flags(exam_attempt_id,generation,policy_kind) WHERE policy_kind <> 'browser_navigation';
+CREATE UNIQUE INDEX integrity_evidence_legacy_sequence_idx ON integrity_evidence(exam_attempt_id,generation,policy_kind,sequence) WHERE policy_kind <> 'browser_navigation';
 
 -- One bounded mutable evaluator exists per Participation generation. It keeps
 -- only the latest accepted outcome needed for natural sequence replay, bounded
@@ -2441,12 +2585,6 @@ CREATE TABLE exam_submissions (
     manifest_entry_count integer NOT NULL CHECK (manifest_entry_count BETWEEN 0 AND 5000),
     manifest_total_file_bytes bigint NOT NULL CHECK (manifest_total_file_bytes BETWEEN 0 AND 1073741824),
     final_focus_loss_sequence bigint NOT NULL CHECK (final_focus_loss_sequence >= 0),
-    browser_activity_state varchar(16) NOT NULL CHECK (browser_activity_state IN ('not_applicable','complete','gapped')),
-    browser_activity_source_session_id uuid REFERENCES browser_activity_sources(id),
-    browser_activity_final_sequence bigint CHECK (browser_activity_final_sequence > 0),
-    browser_activity_gap_reason varchar(32) CHECK (browser_activity_gap_reason IN (
-        'spool_overflow','spool_corrupt','spool_key_unavailable','delivery_incomplete','source_not_finalized'
-    )),
     integrity_state varchar(16) NOT NULL CHECK (integrity_state IN ('settled', 'gapped')),
     unresolved_integrity_count bigint NOT NULL CHECK (unresolved_integrity_count >= 0),
     provenance varchar(32) NOT NULL CHECK (provenance IN ('candidate_submitted', 'manager_ended_attempt', 'sitting_closed')),
@@ -2465,14 +2603,6 @@ CREATE TABLE exam_submissions (
     CONSTRAINT exam_submissions_integrity_check CHECK (
         (integrity_state = 'settled' AND unresolved_integrity_count = 0) OR
         (integrity_state = 'gapped' AND unresolved_integrity_count > 0)
-    ),
-    CONSTRAINT exam_submissions_browser_activity_check CHECK (
-        (browser_activity_state='not_applicable' AND browser_activity_source_session_id IS NULL AND
-            browser_activity_final_sequence IS NULL AND browser_activity_gap_reason IS NULL) OR
-        (browser_activity_state='complete' AND browser_activity_source_session_id IS NOT NULL AND
-            browser_activity_final_sequence IS NOT NULL AND browser_activity_gap_reason IS NULL) OR
-        (browser_activity_state='gapped' AND browser_activity_source_session_id IS NOT NULL AND
-            browser_activity_gap_reason IS NOT NULL)
     )
 );
 
@@ -2565,16 +2695,16 @@ LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'UPDATE' AND OLD.sealed AND NEW.sealed AND
        (NEW.work_retired_at IS DISTINCT FROM OLD.work_retired_at OR NEW.integrity_retired_at IS DISTINCT FROM OLD.integrity_retired_at) AND
-       (to_jsonb(NEW) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count' - 'browser_activity_state' - 'browser_activity_source_session_id' - 'browser_activity_final_sequence' - 'browser_activity_gap_reason') =
-       (to_jsonb(OLD) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count' - 'browser_activity_state' - 'browser_activity_source_session_id' - 'browser_activity_final_sequence' - 'browser_activity_gap_reason') AND
+       (to_jsonb(NEW) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count') =
+       (to_jsonb(OLD) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count') AND
        (((NEW.work_retired_at IS NOT DISTINCT FROM OLD.work_retired_at) AND
          ROW(NEW.workspace_cursor,NEW.manifest_digest,NEW.manifest_entry_count,NEW.manifest_total_file_bytes) IS NOT DISTINCT FROM
          ROW(OLD.workspace_cursor,OLD.manifest_digest,OLD.manifest_entry_count,OLD.manifest_total_file_bytes)) OR
         (OLD.work_retired_at IS NULL AND NEW.work_retired_at IS NOT NULL AND
          EXISTS(SELECT 1 FROM retention_retirements WHERE submission_id=OLD.id AND category='work' AND state='retired' AND retired_at=NEW.work_retired_at))) AND
        (((NEW.integrity_retired_at IS NOT DISTINCT FROM OLD.integrity_retired_at) AND
-         ROW(NEW.integrity_state,NEW.final_focus_loss_sequence,NEW.unresolved_integrity_count,NEW.browser_activity_state,NEW.browser_activity_source_session_id,NEW.browser_activity_final_sequence,NEW.browser_activity_gap_reason) IS NOT DISTINCT FROM
-         ROW(OLD.integrity_state,OLD.final_focus_loss_sequence,OLD.unresolved_integrity_count,OLD.browser_activity_state,OLD.browser_activity_source_session_id,OLD.browser_activity_final_sequence,OLD.browser_activity_gap_reason)) OR
+         ROW(NEW.integrity_state,NEW.final_focus_loss_sequence,NEW.unresolved_integrity_count) IS NOT DISTINCT FROM
+         ROW(OLD.integrity_state,OLD.final_focus_loss_sequence,OLD.unresolved_integrity_count)) OR
         (OLD.integrity_retired_at IS NULL AND NEW.integrity_retired_at IS NOT NULL AND
          EXISTS(SELECT 1 FROM retention_retirements WHERE submission_id=OLD.id AND state='retired' AND retired_at=NEW.integrity_retired_at))) THEN
         RETURN NEW;
@@ -2740,10 +2870,11 @@ CREATE TABLE submission_reviews (
     created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
     manager_notes text NOT NULL DEFAULT '',
     student_remarks_markdown text NOT NULL DEFAULT '',
-    flag_count integer NOT NULL DEFAULT 0 CHECK (flag_count BETWEEN 0 AND 200),
-    evidence_count integer NOT NULL DEFAULT 0 CHECK (evidence_count BETWEEN 0 AND 20000),
+    flag_count integer NOT NULL DEFAULT 0 CHECK (flag_count BETWEEN 0 AND 456),
+    evidence_count integer NOT NULL DEFAULT 0 CHECK (evidence_count BETWEEN 0 AND 30000),
     discrepancy_count integer NOT NULL DEFAULT 0 CHECK (discrepancy_count BETWEEN 0 AND 200),
     evidence_inventory_digest char(64),
+    delivery_inventory_revision bigint NOT NULL DEFAULT 0 CHECK(delivery_inventory_revision>=0),
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     finalized_at timestamptz,
@@ -2798,6 +2929,7 @@ CREATE TABLE integrity_review_decisions (
     revision bigint NOT NULL CHECK (revision > 0),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     private_rationale text NOT NULL,
+    inventory_stale boolean NOT NULL DEFAULT false,
     decided_at timestamptz NOT NULL,
     UNIQUE (submission_review_id, integrity_flag_id),
     UNIQUE (id, submission_review_id, integrity_flag_id),
@@ -2815,11 +2947,12 @@ CREATE TABLE integrity_review_decisions (
 
 CREATE TABLE submission_review_inventory_flags (
     submission_review_id varchar(26) NOT NULL,
+    finalization_revision bigint NOT NULL CHECK(finalization_revision>0),
     exam_attempt_id varchar(26) NOT NULL,
     integrity_flag_id varchar(26) NOT NULL,
     decision_id varchar(26) NOT NULL,
     decision_revision bigint NOT NULL CHECK (decision_revision > 0),
-    PRIMARY KEY (submission_review_id, integrity_flag_id),
+    PRIMARY KEY (submission_review_id, finalization_revision, integrity_flag_id),
     CONSTRAINT submission_review_inventory_flags_review_fkey
         FOREIGN KEY (submission_review_id, exam_attempt_id)
         REFERENCES submission_reviews(id, exam_attempt_id),
@@ -2833,10 +2966,11 @@ CREATE TABLE submission_review_inventory_flags (
 
 CREATE TABLE submission_review_inventory_evidence (
     submission_review_id varchar(26) NOT NULL,
+    finalization_revision bigint NOT NULL CHECK(finalization_revision>0),
     exam_attempt_id varchar(26) NOT NULL,
     integrity_flag_id varchar(26) NOT NULL,
     integrity_evidence_id varchar(26) NOT NULL,
-    PRIMARY KEY (submission_review_id, integrity_evidence_id),
+    PRIMARY KEY (submission_review_id, finalization_revision, integrity_evidence_id),
     CONSTRAINT submission_review_inventory_evidence_review_fkey
         FOREIGN KEY (submission_review_id, exam_attempt_id)
         REFERENCES submission_reviews(id, exam_attempt_id),
@@ -2847,10 +2981,11 @@ CREATE TABLE submission_review_inventory_evidence (
 
 CREATE TABLE submission_review_inventory_discrepancies (
     submission_review_id varchar(26) NOT NULL,
+    finalization_revision bigint NOT NULL CHECK(finalization_revision>0),
     submission_id varchar(26) NOT NULL,
     exam_attempt_id varchar(26) NOT NULL,
     integrity_discrepancy_id varchar(26) NOT NULL,
-    PRIMARY KEY (submission_review_id, integrity_discrepancy_id),
+    PRIMARY KEY (submission_review_id, finalization_revision, integrity_discrepancy_id),
     CONSTRAINT submission_review_inventory_discrepancies_review_fkey
         FOREIGN KEY (submission_review_id, submission_id, exam_attempt_id)
         REFERENCES submission_reviews(id, submission_id, exam_attempt_id),
@@ -2868,6 +3003,14 @@ BEGIN
        NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.revision <> OLD.revision + 1 OR NEW.updated_at < OLD.updated_at THEN
         RAISE EXCEPTION 'Submission Review immutable identity or revision changed' USING ERRCODE = '55000';
     END IF;
+    IF NEW.delivery_inventory_revision > OLD.delivery_inventory_revision AND
+       NEW.delivery_inventory_revision = (SELECT review_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=OLD.exam_attempt_id) AND
+       NEW.state='draft' AND NEW.release_state='withheld' AND NEW.manager_notes=OLD.manager_notes AND
+       NEW.student_remarks_markdown=OLD.student_remarks_markdown AND NEW.flag_count=0 AND NEW.evidence_count=0 AND NEW.discrepancy_count=0 AND
+       NEW.evidence_inventory_digest IS NULL AND NEW.finalized_at IS NULL AND NEW.finalized_by_user_id IS NULL AND NEW.released_at IS NULL AND NEW.released_by_user_id IS NULL AND
+       (OLD.state='draft' OR EXISTS(SELECT 1 FROM submission_review_finalizations WHERE submission_review_id=OLD.id AND finalization_revision<=OLD.revision)) THEN RETURN NEW; END IF;
+    IF NEW.delivery_inventory_revision IS DISTINCT FROM OLD.delivery_inventory_revision THEN
+       RAISE EXCEPTION 'Review inventory revision is server-owned' USING ERRCODE='55000'; END IF;
     IF OLD.state = 'draft' AND NEW.state = 'draft' AND NEW.release_state = 'withheld' AND
        NEW.flag_count = 0 AND NEW.evidence_count = 0 AND NEW.discrepancy_count = 0 AND NEW.evidence_inventory_digest IS NULL AND
        NEW.finalized_at IS NULL AND NEW.finalized_by_user_id IS NULL AND NEW.released_at IS NULL AND NEW.released_by_user_id IS NULL THEN
@@ -2896,6 +3039,8 @@ DECLARE
 BEGIN
 	IF TG_OP = 'DELETE' AND retention_allows_integrity_delete(OLD.exam_attempt_id) THEN RETURN OLD; END IF;
     SELECT state INTO review_state FROM submission_reviews WHERE id = COALESCE(NEW.submission_review_id, OLD.submission_review_id);
+    IF TG_OP='UPDATE' AND NOT OLD.inventory_stale AND NEW.inventory_stale AND
+       (to_jsonb(NEW)-'inventory_stale')=(to_jsonb(OLD)-'inventory_stale') AND review_state='draft' THEN RETURN NEW; END IF;
     IF TG_OP = 'DELETE' OR review_state IS DISTINCT FROM 'draft' THEN
         RAISE EXCEPTION 'Integrity Review decision is frozen' USING ERRCODE = '55000';
     END IF;
@@ -3514,6 +3659,8 @@ CREATE TABLE retention_policies (
     revision bigint NOT NULL CHECK (revision > 0),
     submission_retention_days integer NOT NULL CHECK (submission_retention_days BETWEEN 0 AND 36500),
     integrity_retention_days integer NOT NULL CHECK (integrity_retention_days BETWEEN 0 AND 36500),
+    browser_activity_retention_days integer NOT NULL CHECK (browser_activity_retention_days BETWEEN 0 AND 36500),
+    security_operational_retention_days integer NOT NULL CHECK (security_operational_retention_days BETWEEN 0 AND 36500),
     audit_retention_days integer NOT NULL CHECK (audit_retention_days BETWEEN 0 AND 36500),
     export_retention_days integer NOT NULL CHECK (export_retention_days BETWEEN 0 AND 7),
     deletion_grace_days integer NOT NULL CHECK (deletion_grace_days BETWEEN 0 AND 36500),
@@ -4418,6 +4565,8 @@ CREATE TABLE exam_sitting_records_completions (
 );
 
 CREATE TABLE submission_review_waivers (
+    delivery_inventory_revision bigint NOT NULL DEFAULT 0 CHECK(delivery_inventory_revision>=0),
+    inventory_invalidated boolean NOT NULL DEFAULT false,
     submission_id varchar(26) PRIMARY KEY REFERENCES exam_submissions(id),
     revision bigint NOT NULL CHECK (revision > 0),
     review_revision bigint NOT NULL CHECK (review_revision >= 0),
@@ -4497,11 +4646,9 @@ ALTER TABLE exam_submissions
     ALTER COLUMN manifest_entry_count DROP NOT NULL,
     ALTER COLUMN manifest_total_file_bytes DROP NOT NULL,
     ALTER COLUMN final_focus_loss_sequence DROP NOT NULL,
-    ALTER COLUMN browser_activity_state DROP NOT NULL,
     ALTER COLUMN unresolved_integrity_count DROP NOT NULL,
     DROP CONSTRAINT exam_submissions_integrity_state_check,
-    DROP CONSTRAINT exam_submissions_integrity_check,
-    DROP CONSTRAINT exam_submissions_browser_activity_check;
+    DROP CONSTRAINT exam_submissions_integrity_check;
 
 ALTER TABLE exam_submissions
     ADD CONSTRAINT exam_submissions_work_retirement_check CHECK (
@@ -4515,26 +4662,12 @@ ALTER TABLE exam_submissions
     ),
     ADD CONSTRAINT exam_submissions_integrity_check CHECK (
         (integrity_retired_at IS NULL AND final_focus_loss_sequence IS NOT NULL AND
-         unresolved_integrity_count IS NOT NULL AND browser_activity_state IS NOT NULL AND
+         unresolved_integrity_count IS NOT NULL AND
          ((integrity_state='settled' AND unresolved_integrity_count=0) OR
           (integrity_state='gapped' AND unresolved_integrity_count>0))) OR
         (integrity_retired_at IS NOT NULL AND integrity_retired_at >= submitted_at AND
          integrity_state='retired' AND final_focus_loss_sequence IS NULL AND
-         unresolved_integrity_count IS NULL AND browser_activity_state IS NULL AND
-         browser_activity_source_session_id IS NULL AND browser_activity_final_sequence IS NULL AND
-         browser_activity_gap_reason IS NULL)
-    ),
-    ADD CONSTRAINT exam_submissions_browser_activity_check CHECK (
-        (integrity_retired_at IS NOT NULL AND browser_activity_state IS NULL AND
-         browser_activity_source_session_id IS NULL AND browser_activity_final_sequence IS NULL AND
-         browser_activity_gap_reason IS NULL) OR
-        (integrity_retired_at IS NULL AND (
-          (browser_activity_state='not_applicable' AND browser_activity_source_session_id IS NULL AND
-           browser_activity_final_sequence IS NULL AND browser_activity_gap_reason IS NULL) OR
-          (browser_activity_state='complete' AND browser_activity_source_session_id IS NOT NULL AND
-           browser_activity_final_sequence IS NOT NULL AND browser_activity_gap_reason IS NULL) OR
-          (browser_activity_state='gapped' AND browser_activity_source_session_id IS NOT NULL AND
-           browser_activity_gap_reason IS NOT NULL)))
+         unresolved_integrity_count IS NULL)
     );
 
 
@@ -4545,7 +4678,7 @@ CREATE TABLE retention_retirements (
     exam_id varchar(26) NOT NULL REFERENCES exams(id),
     exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
     submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
-    category varchar(16) NOT NULL CHECK (category IN ('work','integrity')),
+    category varchar(24) NOT NULL CHECK (category IN ('work','integrity','browser_activity','security_operational')),
     state varchar(16) NOT NULL CHECK (state IN ('grace','cancelled','retired')),
     policy_revision bigint NOT NULL CHECK (policy_revision > 0),
     control_revision bigint NOT NULL CHECK (control_revision > 0),
@@ -4598,7 +4731,7 @@ CREATE INDEX retention_notices_recipient_idx ON retention_notices (recipient_use
 CREATE TABLE retention_source_protections (
     export_id varchar(26) NOT NULL,
     submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
-    category varchar(16) NOT NULL CHECK (category IN ('work','integrity')),
+    category varchar(24) NOT NULL CHECK (category IN ('work','integrity','browser_activity','security_operational')),
     created_at timestamptz NOT NULL,
     expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '1 day'),
     PRIMARY KEY (export_id, submission_id, category)
@@ -4613,7 +4746,7 @@ CREATE TABLE exam_exports (
     exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
     submission_id varchar(26) REFERENCES exam_submissions(id),
     requester_user_id varchar(26) NOT NULL REFERENCES users(id),
-    categories text[] NOT NULL CHECK (categories IN (ARRAY['work'], ARRAY['integrity'], ARRAY['work','integrity'])),
+    categories text[] NOT NULL CHECK (categories IN (ARRAY['work'], ARRAY['integrity'], ARRAY['work','integrity'], ARRAY['browser_activity'])),
     state varchar(16) NOT NULL CHECK (state IN ('queued','ready','failed','expired')),
     policy_revision bigint NOT NULL CHECK (policy_revision > 0),
     created_at timestamptz NOT NULL,
@@ -4828,3 +4961,344 @@ ALTER TABLE submission_review_waivers
 ALTER TABLE user_mfa_recovery
     ADD CONSTRAINT user_mfa_recovery_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+
+-- One bounded pending transaction per authenticated Desktop Session and Sitting.
+-- Supersession overwrites this short-lived state; idempotency outcomes preserve
+-- bounded command identity without creating an Attempt or locking the account.
+CREATE TABLE exam_security_preflights (
+    session_id varchar(26) NOT NULL REFERENCES sessions(id),
+    sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    candidate_user_id varchar(26) NOT NULL REFERENCES users(id),
+    preflight_id varchar(128) NOT NULL UNIQUE CHECK (preflight_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
+    registration_id varchar(26) NOT NULL REFERENCES desktop_registrations(id),
+    key_thumbprint varchar(43) NOT NULL,
+    build_id varchar(128) NOT NULL,
+    exam_revision_id varchar(26) NOT NULL REFERENCES exam_revisions(id),
+    attempt_id varchar(26) REFERENCES exam_attempts(id),
+    prepared_canonical bytea NOT NULL CHECK (octet_length(prepared_canonical) BETWEEN 1 AND 262144),
+    report_canonical bytea CHECK (octet_length(report_canonical) BETWEEN 1 AND 65536),
+    result_canonical bytea CHECK (octet_length(result_canonical) BETWEEN 1 AND 16384),
+    issued_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    reported_at timestamptz,
+    consumed_at timestamptz,
+    PRIMARY KEY (session_id,sitting_id),
+    CHECK (expires_at = issued_at + interval '120 seconds'),
+    CHECK ((report_canonical IS NULL) = (result_canonical IS NULL)),
+    CHECK ((report_canonical IS NULL) = (reported_at IS NULL))
+);
+CREATE INDEX exam_security_preflights_expiry_idx ON exam_security_preflights(expires_at);
+
+-- Lifetime delivery metadata is shared across all Participation generations.
+-- Reserved owner capacity is never refunded, including on detail retirement.
+CREATE TABLE exam_attempt_delivery_budgets (
+ native_condition_records bigint NOT NULL DEFAULT 0 CHECK(native_condition_records BETWEEN 0 AND 200000),
+ native_condition_digest varchar(71) NOT NULL DEFAULT 'sha256:6f22f09d08927773d88bb692689f5ebbc45d44edc9df90ff2053b7704f8c85cb' CHECK(native_condition_digest ~ '^sha256:[0-9a-f]{64}$'),
+ browser_flag_groups bigint NOT NULL DEFAULT 0 CHECK(browser_flag_groups BETWEEN 0 AND 256),
+ browser_evidence_records bigint NOT NULL DEFAULT 0 CHECK(browser_evidence_records BETWEEN 0 AND 10000),
+ browser_evidence_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_evidence_bytes BETWEEN 0 AND 8388608),
+ browser_retired_at timestamptz,
+ security_retired_at timestamptz,
+ browser_state varchar(16) NOT NULL DEFAULT 'not_applicable' CHECK(browser_state IN ('not_applicable','settled','pending','incomplete')),
+ review_inventory_revision bigint NOT NULL DEFAULT 0 CHECK(review_inventory_revision>=0),
+ browser_inventory_revision bigint NOT NULL DEFAULT 1 CHECK(browser_inventory_revision BETWEEN 1 AND 9007199254740991),
+ browser_source_count bigint NOT NULL DEFAULT 0 CHECK(browser_source_count>=0),
+ browser_pending_count bigint NOT NULL DEFAULT 0 CHECK(browser_pending_count BETWEEN 0 AND browser_source_count),
+ browser_incomplete_count bigint NOT NULL DEFAULT 0 CHECK(browser_incomplete_count BETWEEN 0 AND browser_source_count),
+ exam_attempt_id varchar(26) PRIMARY KEY REFERENCES exam_attempts(id),
+ control_metadata_bytes bigint NOT NULL CHECK(control_metadata_bytes BETWEEN 0 AND 2097152),
+ native_allocated_positions bigint NOT NULL DEFAULT 0 CHECK(native_allocated_positions BETWEEN 0 AND 80000),
+ browser_allocated_positions bigint NOT NULL DEFAULT 0 CHECK(browser_allocated_positions BETWEEN 0 AND 200000),
+ browser_retained_records bigint NOT NULL DEFAULT 0 CHECK(browser_retained_records BETWEEN 0 AND 200000),
+ browser_retained_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_retained_bytes BETWEEN 0 AND 134217728),
+ browser_pending_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_pending_bytes BETWEEN 0 AND 2097152),
+ browser_rate_tokens integer NOT NULL DEFAULT 8000 CHECK(browser_rate_tokens BETWEEN 0 AND 8000),
+ browser_rate_at timestamptz,
+ native_summary_only boolean NOT NULL DEFAULT false,
+    explicit_missing_intervals bigint NOT NULL DEFAULT 0 CHECK (explicit_missing_intervals BETWEEN 0 AND 4096),
+    native_stop_reason varchar(40) CHECK (native_stop_reason IN ('records','bytes','positions','metadata','local_loss_inventory_exhausted')),
+    browser_summary_only boolean NOT NULL DEFAULT false,
+    browser_stop_reason varchar(40) CHECK (browser_stop_reason IN ('records','bytes','positions','metadata','local_loss_inventory_exhausted')),
+ native_retained_records bigint NOT NULL DEFAULT 0 CHECK(native_retained_records BETWEEN 0 AND 200000),
+ native_retained_bytes bigint NOT NULL DEFAULT 0 CHECK(native_retained_bytes BETWEEN 0 AND 134217728),
+ native_rate_tokens integer NOT NULL DEFAULT 8000 CHECK(native_rate_tokens BETWEEN 0 AND 8000),
+    native_rate_at timestamptz,
+    native_pending_bytes bigint NOT NULL DEFAULT 0 CHECK(native_pending_bytes BETWEEN 0 AND 2097152)
+);
+CREATE TABLE exam_attempt_security_owners (
+ upload_expires_at timestamptz,
+ upload_expired boolean NOT NULL DEFAULT false,
+ participation_id varchar(26) PRIMARY KEY REFERENCES exam_attempt_participations(id),
+ exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+ delivery_stream_id text NOT NULL UNIQUE,
+ security_session_id text NOT NULL,
+ session_id varchar(26) NOT NULL REFERENCES sessions(id),
+ registration_id varchar(26) NOT NULL REFERENCES desktop_registrations(id),
+ key_thumbprint text NOT NULL,
+ binding_canonical bytea NOT NULL CHECK(octet_length(binding_canonical) <= 131072),
+ latest_report_canonical bytea NOT NULL CHECK(octet_length(latest_report_canonical) <= 65536),
+ control_ledger_canonical bytea NOT NULL CHECK(octet_length(control_ledger_canonical)<=262656),
+ control_body_canonical bytea CHECK(octet_length(control_body_canonical)<=65536),
+ browser_correction_starts integer NOT NULL DEFAULT 0 CHECK(browser_correction_starts BETWEEN 0 AND 32),
+ browser_runtime_reset_starts integer NOT NULL DEFAULT 0 CHECK(browser_runtime_reset_starts BETWEEN 0 AND 16),
+ browser_initial_started boolean NOT NULL DEFAULT false,
+ browser_source_unavailable boolean NOT NULL DEFAULT false,
+ browser_summary_only boolean NOT NULL DEFAULT false,
+ browser_stop_reason varchar(40) CHECK(browser_stop_reason IN ('records','bytes','positions','metadata','local_loss_inventory_exhausted')),
+ browser_allocated_positions bigint NOT NULL DEFAULT 0 CHECK(browser_allocated_positions BETWEEN 0 AND 50000),
+ browser_retained_records bigint NOT NULL DEFAULT 0 CHECK(browser_retained_records BETWEEN 0 AND 50000),
+ browser_retained_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_retained_bytes BETWEEN 0 AND 33554432),
+ security_interaction_allowed boolean NOT NULL DEFAULT true,
+ freeze_required boolean NOT NULL DEFAULT false,
+ allocated_through_sequence bigint NOT NULL DEFAULT 0 CHECK(allocated_through_sequence BETWEEN 0 AND 20000),
+ acknowledged_through_sequence bigint NOT NULL DEFAULT 0 CHECK(acknowledged_through_sequence BETWEEN 0 AND allocated_through_sequence),
+ summary_only boolean NOT NULL DEFAULT false,
+ terminal_missing_through_sequence bigint NOT NULL DEFAULT 0 CHECK(terminal_missing_through_sequence BETWEEN 0 AND allocated_through_sequence),
+ reserved_bytes bigint NOT NULL CHECK(reserved_bytes > 0 AND reserved_bytes <= 2097152),
+ created_at timestamptz NOT NULL,
+    closure_canonical bytea CHECK (octet_length(closure_canonical) <= 2048),
+    declaration_revision bigint NOT NULL DEFAULT 0 CHECK (declaration_revision BETWEEN 0 AND 9007199254740991),
+    summary_canonical bytea CHECK (octet_length(summary_canonical) <= 2048),
+    summary_received_at timestamptz,
+    summary_final boolean NOT NULL DEFAULT false,
+    stop_reason varchar(40) CHECK (stop_reason IN ('records','bytes','positions','metadata','local_loss_inventory_exhausted')),
+ retained_records bigint NOT NULL DEFAULT 0 CHECK(retained_records BETWEEN 0 AND 50000),
+ retained_bytes bigint NOT NULL DEFAULT 0 CHECK(retained_bytes BETWEEN 0 AND 33554432),
+ interpreted_through_sequence bigint NOT NULL DEFAULT 0 CHECK(interpreted_through_sequence BETWEEN 0 AND 20000)
+);
+CREATE INDEX exam_attempt_security_owners_attempt ON exam_attempt_security_owners(exam_attempt_id);
+
+CREATE TABLE exam_native_source_resets (
+ participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
+ reset_id text NOT NULL,
+ reset_canonical bytea NOT NULL CHECK(octet_length(reset_canonical)<=2048),
+ PRIMARY KEY(participation_id,reset_id)
+);
+
+
+CREATE TABLE exam_native_delivery_declarations (
+    participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
+    declaration_id varchar(128) NOT NULL,
+    kind varchar(8) NOT NULL CHECK (kind IN ('gaps','final')),
+    canonical bytea NOT NULL CHECK (octet_length(canonical) <= 16384),
+    PRIMARY KEY (participation_id, declaration_id)
+);
+
+CREATE TABLE exam_native_delivery_batches (
+    participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
+    batch_sequence bigint NOT NULL CHECK (batch_sequence BETWEEN 1 AND 20000),
+    request_digest varchar(71) NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),
+    received_at timestamptz NOT NULL,
+    receipt_canonical bytea NOT NULL CHECK (octet_length(receipt_canonical) <= 2048),
+    envelope_canonical bytea NOT NULL CHECK (octet_length(envelope_canonical) <= 2048),
+    counted_bytes bigint NOT NULL CHECK(counted_bytes BETWEEN 1 AND 327680),
+    processed boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (participation_id, batch_sequence)
+);
+
+
+CREATE TABLE exam_native_delivery_records (
+ participation_id varchar(26) NOT NULL,
+ batch_sequence bigint NOT NULL,
+ record_index smallint NOT NULL CHECK(record_index BETWEEN 0 AND 63),
+ kind varchar(24) NOT NULL CHECK(kind IN ('occurrence','coverage_transition','source_reset','source_gap')),
+ record_canonical bytea NOT NULL CHECK(octet_length(record_canonical) <= 8192),
+ metadata_canonical bytea NOT NULL CHECK(octet_length(metadata_canonical) <= 2048),
+ PRIMARY KEY(participation_id,batch_sequence,record_index),
+ FOREIGN KEY(participation_id,batch_sequence) REFERENCES exam_native_delivery_batches(participation_id,batch_sequence)
+);
+
+CREATE TABLE exam_native_occurrences (
+ participation_id varchar(26) NOT NULL,
+ occurrence_id varchar(128) NOT NULL,
+ batch_sequence bigint NOT NULL,
+ record_index smallint NOT NULL,
+ unresolved_opener boolean NOT NULL,
+ PRIMARY KEY(participation_id,occurrence_id),
+ FOREIGN KEY(participation_id,batch_sequence,record_index) REFERENCES exam_native_delivery_records(participation_id,batch_sequence,record_index)
+);
+
+CREATE TABLE browser_delivery_retired_sources (
+ start_ordinal integer NOT NULL CHECK(start_ordinal BETWEEN 1 AND 49),
+ UNIQUE(participation_id,start_ordinal),
+ source_session_id uuid PRIMARY KEY,
+ exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+ participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
+ candidate_user_id varchar(26) NOT NULL REFERENCES users(id),
+ registration_id varchar(26) NOT NULL REFERENCES desktop_registrations(id),
+ key_thumbprint text NOT NULL
+);
+CREATE INDEX browser_delivery_retired_sources_attempt ON browser_delivery_retired_sources(exam_attempt_id);
+
+CREATE FUNCTION guard_delivery_retirement_marker() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF OLD.browser_retired_at IS NOT NULL AND NEW.browser_retired_at IS DISTINCT FROM OLD.browser_retired_at OR
+    OLD.security_retired_at IS NOT NULL AND NEW.security_retired_at IS DISTINCT FROM OLD.security_retired_at THEN
+   RAISE EXCEPTION 'delivery retirement is permanent';
+ END IF;
+ IF OLD.browser_retired_at IS NULL AND NEW.browser_retired_at IS NOT NULL AND NOT EXISTS (
+ SELECT 1 FROM retention_retirements r JOIN exam_submissions sub ON sub.id=r.submission_id
+ WHERE sub.exam_attempt_id=OLD.exam_attempt_id AND r.category='browser_activity' AND r.state='retired' AND r.retired_at=NEW.browser_retired_at) THEN
+ RAISE EXCEPTION 'browser retirement requires its committed receipt'; END IF;
+ IF OLD.security_retired_at IS NULL AND NEW.security_retired_at IS NOT NULL AND NOT EXISTS (
+ SELECT 1 FROM retention_retirements r JOIN exam_submissions sub ON sub.id=r.submission_id
+ WHERE sub.exam_attempt_id=OLD.exam_attempt_id AND r.category='security_operational' AND r.state='retired' AND r.retired_at=NEW.security_retired_at) THEN
+ RAISE EXCEPTION 'security retirement requires its committed receipt'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER delivery_retirement_marker_guard BEFORE UPDATE ON exam_attempt_delivery_budgets FOR EACH ROW EXECUTE FUNCTION guard_delivery_retirement_marker();
+
+CREATE INDEX browser_activity_upload_expiry ON browser_activity_sources(upload_expires_at,id) WHERE NOT upload_expired;
+CREATE INDEX native_delivery_upload_expiry ON exam_attempt_security_owners(upload_expires_at,delivery_stream_id) WHERE NOT upload_expired;
+
+-- Browser Flag groups own copies, with no dependency on ordinary history rows.
+CREATE TABLE browser_integrity_groups (
+    integrity_flag_id varchar(26) PRIMARY KEY REFERENCES integrity_flags(id),
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    participation_id varchar(26) NOT NULL REFERENCES exam_attempt_participations(id),
+    policy_revision_id varchar(26) NOT NULL REFERENCES exam_revisions(id),
+    rule_id varchar(64) NOT NULL,
+    retained_details integer NOT NULL DEFAULT 0 CHECK(retained_details BETWEEN 0 AND 100),
+    overflow_count bigint NOT NULL DEFAULT 0 CHECK(overflow_count BETWEEN 0 AND 9007199254740991),
+    overflow_first_received_at timestamptz,
+    overflow_last_received_at timestamptz,
+    UNIQUE(exam_attempt_id,participation_id,policy_revision_id,rule_id),
+    CHECK ((overflow_count=0 AND overflow_first_received_at IS NULL AND overflow_last_received_at IS NULL) OR
+           (overflow_count>0 AND overflow_first_received_at IS NOT NULL AND overflow_last_received_at>=overflow_first_received_at))
+);
+CREATE TABLE browser_integrity_overflow (
+    exam_attempt_id varchar(26) PRIMARY KEY REFERENCES exam_attempts(id),
+    validated_event_count bigint NOT NULL CHECK(validated_event_count BETWEEN 1 AND 9007199254740991),
+    first_received_at timestamptz NOT NULL,
+    last_received_at timestamptz NOT NULL CHECK(last_received_at>=first_received_at),
+    reason varchar(32) NOT NULL CHECK(reason='group_capacity')
+);
+
+-- Previous finalizations remain private integrity records when late accepted
+-- delivery invalidates the current revision. Inventories retain revision keys.
+CREATE TABLE submission_review_finalizations (
+    submission_review_id varchar(26) NOT NULL REFERENCES submission_reviews(id),
+    finalization_revision bigint NOT NULL CHECK(finalization_revision>0),
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    snapshot_canonical bytea NOT NULL CHECK(octet_length(snapshot_canonical) BETWEEN 1 AND 2097152),
+    PRIMARY KEY(submission_review_id,finalization_revision)
+);
+CREATE TRIGGER submission_review_finalizations_immutable BEFORE UPDATE OR DELETE ON submission_review_finalizations
+    FOR EACH ROW EXECUTE FUNCTION reject_submission_review_inventory_mutation();
+
+-- Independent integrity material: no foreign key to disposable native delivery.
+CREATE TABLE native_condition_evidence (
+ id varchar(26) PRIMARY KEY,
+ exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+ participation_id varchar(26) NOT NULL REFERENCES exam_attempt_participations(id),
+ batch_sequence bigint NOT NULL CHECK(batch_sequence BETWEEN 1 AND 20000),
+ record_index smallint NOT NULL CHECK(record_index BETWEEN 0 AND 63),
+ canonical bytea NOT NULL CHECK(octet_length(canonical) BETWEEN 1 AND 16384),
+ UNIQUE(participation_id,batch_sequence,record_index)
+);
+CREATE INDEX native_condition_evidence_attempt ON native_condition_evidence(exam_attempt_id,id);
+CREATE FUNCTION guard_native_condition_evidence() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'native condition evidence is immutable'; END IF;
+ IF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM retention_retirements r JOIN exam_submissions sub ON sub.id=r.submission_id WHERE sub.exam_attempt_id=OLD.exam_attempt_id AND r.category='integrity' AND r.state='retired') THEN
+ RAISE EXCEPTION 'native condition deletion requires integrity retirement'; END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER native_condition_evidence_guard BEFORE UPDATE OR DELETE ON native_condition_evidence FOR EACH ROW EXECUTE FUNCTION guard_native_condition_evidence();
+
+-- Canonical domain identifiers remain constrained independently of foreign keys.
+ALTER TABLE exam_security_preflights
+    ADD CONSTRAINT exam_security_preflights_session_id_canonical_check
+    CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_security_preflights_sitting_id_canonical_check
+    CHECK (sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_security_preflights_candidate_user_id_canonical_check
+    CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_security_preflights_registration_id_canonical_check
+    CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_security_preflights_exam_revision_id_canonical_check
+    CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_security_preflights_attempt_id_canonical_check
+    CHECK (attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_delivery_budgets
+    ADD CONSTRAINT exam_attempt_delivery_budgets_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_security_owners
+    ADD CONSTRAINT exam_attempt_security_owners_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_security_owners_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_security_owners_session_id_canonical_check
+    CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_security_owners_registration_id_canonical_check
+    CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_native_source_resets
+    ADD CONSTRAINT exam_native_source_resets_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_native_delivery_declarations
+    ADD CONSTRAINT exam_native_delivery_declarations_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_native_delivery_batches
+    ADD CONSTRAINT exam_native_delivery_batches_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_native_delivery_records
+    ADD CONSTRAINT exam_native_delivery_records_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_native_occurrences
+    ADD CONSTRAINT exam_native_occurrences_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_delivery_retired_sources
+    ADD CONSTRAINT browser_delivery_retired_sources_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_delivery_retired_sources_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_delivery_retired_sources_candidate_user_id_canonical_check
+    CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_delivery_retired_sources_registration_id_canonical_check
+    CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_integrity_groups
+    ADD CONSTRAINT browser_integrity_groups_integrity_flag_id_canonical_check
+    CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_integrity_groups_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_integrity_groups_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_integrity_groups_policy_revision_id_canonical_check
+    CHECK (policy_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_integrity_overflow
+    ADD CONSTRAINT browser_integrity_overflow_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_review_finalizations
+    ADD CONSTRAINT submission_review_finalizations_submission_review_id_canonical_check
+    CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_finalizations_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE native_condition_evidence
+    ADD CONSTRAINT native_condition_evidence_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT native_condition_evidence_exam_attempt_id_canonical_check
+    CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT native_condition_evidence_participation_id_canonical_check
+    CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_activity_sources
+    ADD CONSTRAINT browser_activity_sources_candidate_user_id_canonical_check
+    CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_policy_revision_id_canonical_check
+    CHECK (policy_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_registration_id_canonical_check
+    CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');

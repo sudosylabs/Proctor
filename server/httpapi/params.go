@@ -26,6 +26,9 @@ type paramsContextKey struct{}
 // Params contains normalized variables selected by the matched route. Handlers
 // consume this object instead of reaching into mux or parsing URL paths.
 type Params struct {
+	BrowserSourceSessionID  string
+	NativeStreamID          string
+	NativeBatchSequence     string
 	ProviderId              string
 	RoleId                  string
 	RoleBindingId           string
@@ -34,6 +37,7 @@ type Params struct {
 	ExamID                  string
 	ExamRevisionID          string
 	ExamSittingID           string
+	SecurityPreflightID     string
 	ExamAttemptID           string
 	SubmissionID            string
 	ExamExportID            string
@@ -72,6 +76,9 @@ func ParamsFromRequest(request *http.Request) Params {
 	variables := mux.Vars(request)
 	query := request.URL.Query()
 	return Params{
+		BrowserSourceSessionID:  variables["source_session_id"],
+		NativeStreamID:          variables["stream_id"],
+		NativeBatchSequence:     variables["batch_sequence"],
 		ProviderId:              strings.ToLower(strings.TrimSpace(variables["provider_id"])),
 		RoleId:                  strings.TrimSpace(variables["role_id"]),
 		RoleBindingId:           strings.TrimSpace(variables["role_binding_id"]),
@@ -80,6 +87,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		ExamID:                  strings.TrimSpace(variables["exam_id"]),
 		ExamRevisionID:          strings.TrimSpace(variables["exam_revision_id"]),
 		ExamSittingID:           strings.TrimSpace(variables["exam_sitting_id"]),
+		SecurityPreflightID:     strings.TrimSpace(variables["security_preflight_id"]),
 		ExamAttemptID:           strings.TrimSpace(variables["exam_attempt_id"]),
 		SubmissionID:            strings.TrimSpace(variables["submission_id"]),
 		ExamExportID:            strings.TrimSpace(variables["exam_export_id"]),
@@ -299,4 +307,8 @@ func principalAndRequiredId(
 
 func (p Params) RequireExamExportID() (string, error) {
 	return requirePathId("exam_export_id", p.ExamExportID)
+}
+
+func (p Params) RequireSecurityPreflightID() (string, error) {
+	return requirePathId("security_preflight_id", p.SecurityPreflightID)
 }

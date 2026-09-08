@@ -194,6 +194,12 @@ func runLayerConformance(
 		}},
 		{"BrowserActivity", storetest.TestBrowserActivityStore},
 		{"ExecutionGrant", storetest.TestExecutionGrantStore},
+		{"ExecutionControl", storetest.TestExecutionControlStore},
+		{"ExecutionObservation", func(t *testing.T, decorated store.Store) { storetest.TestExecutionObservationStore(t, decorated) }},
+		{"ExecutionProjectionEffects", func(t *testing.T, decorated store.Store) { storetest.TestExecutionProjectionEffectsStore(t, decorated) }},
+		{"ExecutionProjection", func(t *testing.T, decorated store.Store) {
+			storetest.TestExecutionProjectionStore(t, decorated, executionProjectionSQLProbe(sqlStore))
+		}},
 		{"ExamAttemptWorkspace", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamAttemptWorkspaceStore(t, decorated, decorated.ExamAttemptWorkspace(),
 				examAttemptWorkspaceSQLProbe(t, sqlStore))
@@ -829,7 +835,7 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 					ID   string `db:"id"`
 					Kind string `db:"kind"`
 				}
-				if getErr := tx.Get(ctx, &entry, `SELECT id,kind FROM exam_attempt_workspace_entries WHERE workspace_id=? ORDER BY id LIMIT 1`, workspaceID.String()); getErr != nil {
+				if getErr := tx.Get(ctx, &entry, `SELECT id,kind FROM exam_attempt_workspace_entries WHERE workspace_id=? AND kind='directory' ORDER BY id LIMIT 1`, workspaceID.String()); getErr != nil {
 					return struct{}{}, getErr
 				}
 				if _, execErr := tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=?`, workspaceID.String()); execErr != nil {
@@ -1705,4 +1711,138 @@ func TestAdministratorRecoveryStore(t *testing.T) {
 
 func TestCommandOutcomeStore(t *testing.T) {
 	StoreTest(t, storetest.TestCommandOutcomeStore)
+}
+
+func TestSecurityPreflightStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	ctx := context.Background()
+	storetest.TestSecurityPreflightStore(t, persistence, storetest.SecurityPreflightProbe{
+		Expire: func(id string) {
+			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_security_preflights SET issued_at=issued_at-interval '3 minutes',expires_at=expires_at-interval '3 minutes' WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+		},
+		HasReport: func(id string) bool {
+			var present bool
+			if err := persistence.GetMaster().Get(ctx, &present, `SELECT report_canonical IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+			return present
+		},
+		Exists: func(id string) bool {
+			var present bool
+			if err := persistence.GetMaster().Get(ctx, &present, `SELECT EXISTS(SELECT 1 FROM exam_security_preflights WHERE preflight_id=?)`, id); err != nil {
+				t.Fatal(err)
+			}
+			return present
+		},
+	})
+}
+
+func TestSecureConnectStore(t *testing.T) {
+	sqlStore := openTestStore(t)
+	mustExec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := sqlStore.GetMaster().Exec(context.Background(), query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	storetest.TestSecureConnectStore(t, sqlStore, storetest.SecureConnectProbe{
+		AgeReport: func(id string) func() {
+			var original time.Time
+			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT reported_at FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+			mustExec(`UPDATE exam_security_preflights SET reported_at=reported_at-interval '31 seconds' WHERE preflight_id=?`, id)
+			return func() {
+				mustExec(`UPDATE exam_security_preflights SET reported_at=? WHERE preflight_id=?`, original, id)
+			}
+		},
+		ExpireLease: func(id model.AttemptParticipationID) {
+			examAttemptSQLProbe(t, sqlStore).SetParticipationLeaseExpired(t, context.Background(), id)
+		},
+		FillMetadata: func(id model.ExamAttemptID) {
+			mustExec(`UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=2097152 WHERE exam_attempt_id=?`, id.String())
+		},
+		Totals: func(id model.ExamAttemptID) (int64, int64) {
+			var used, owners int64
+			if err := sqlStore.GetMaster().Get(context.Background(), &used, `SELECT control_metadata_bytes FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, id.String()); err != nil {
+				t.Fatal(err)
+			}
+			if err := sqlStore.GetMaster().Get(context.Background(), &owners, `SELECT COUNT(*) FROM exam_attempt_security_owners WHERE exam_attempt_id=?`, id.String()); err != nil {
+				t.Fatal(err)
+			}
+			return used, owners
+		},
+		Consumed: func(id string) bool {
+			var consumed bool
+			if err := sqlStore.GetMaster().Get(context.Background(), &consumed, `SELECT consumed_at IS NOT NULL FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+			return consumed
+		},
+	})
+}
+
+func TestNativeDeliveryAppendStore(t *testing.T) {
+	s := openTestStore(t)
+	storetest.TestNativeDeliveryAppendStore(t, s, func(part model.AttemptParticipationID, records, occurrences int64) {
+		var row struct {
+			Records     int64 `db:"records"`
+			Occurrences int64 `db:"occurrences"`
+			Unresolved  int64 `db:"unresolved"`
+			Pending     int64 `db:"pending"`
+			Flags       int64 `db:"flags"`
+			Bytes       int64 `db:"bytes"`
+			Counted     int64 `db:"counted"`
+			Metadata    int64 `db:"metadata"`
+		}
+		err := s.GetMaster().Get(context.Background(), &row, `SELECT o.retained_records AS records,(SELECT count(*) FROM exam_native_occurrences WHERE participation_id=o.participation_id) AS occurrences,(SELECT count(*) FROM exam_native_occurrences WHERE participation_id=o.participation_id AND unresolved_opener) AS unresolved,b.native_pending_bytes AS pending,(SELECT count(*) FROM integrity_flags WHERE exam_attempt_id=o.exam_attempt_id) AS flags,o.retained_bytes AS bytes,(SELECT sum(counted_bytes) FROM exam_native_delivery_batches WHERE participation_id=o.participation_id) AS counted,b.control_metadata_bytes AS metadata FROM exam_attempt_security_owners o JOIN exam_attempt_delivery_budgets b USING(exam_attempt_id) WHERE o.participation_id=?`, part.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.Records != records || row.Occurrences != occurrences || row.Unresolved != 1 || row.Pending != 0 || row.Flags != 0 || row.Bytes != row.Counted || row.Metadata <= model.NativeOwnerReservationBytes {
+			t.Fatalf("invalid retained accounting/provenance: %#v", row)
+		}
+	})
+}
+
+func TestExecutionControlStore(t *testing.T) { StoreTest(t, storetest.TestExecutionControlStore) }
+
+func TestExecutionProjectionStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExecutionProjectionStore(t, persistence, executionProjectionSQLProbe(persistence))
+}
+func executionProjectionSQLProbe(persistence *SQLStore) storetest.ExecutionProjectionSQLProbe {
+	return storetest.ExecutionProjectionSQLProbe{
+		ExpireObjectProtection: func(t *testing.T, ctx context.Context, id model.ExamAttemptWorkspaceID) {
+			t.Helper()
+			// Workspace commands are Attempt-scoped; remove only those protecting the
+			// fixture Workspace's own objects, emulating completed outcome retirement.
+			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM command_outcomes outcome WHERE operation=$1 AND EXISTS(SELECT 1 FROM exam_attempt_workspace_objects o WHERE o.workspace_id=$2 AND jsonb_exists(outcome.outcome->'o',o.id))`, store.ExamAttemptWorkspaceMutationOperation, id.String()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects SET reclaim_after=statement_timestamp()-INTERVAL '1 microsecond',updated_at=GREATEST(updated_at,statement_timestamp()) WHERE workspace_id=$1 AND state='reclaimable'`, id.String()); err != nil {
+				t.Fatal(err)
+			}
+		},
+		RemoveJournalPosition: func(t *testing.T, ctx context.Context, id model.ExamAttemptWorkspaceID, cursor int64) {
+			t.Helper()
+			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=$1 AND cursor=$2`, id.String(), cursor); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+}
+
+func TestExecutionProjectionEffectsStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExecutionProjectionEffectsStore(t, persistence)
+}
+
+func TestExecutionObservationStore(t *testing.T) {
+	StoreTest(t, storetest.TestExecutionObservationStore)
 }

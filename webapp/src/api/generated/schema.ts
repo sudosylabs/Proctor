@@ -1186,6 +1186,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List owned Participation Browser sources
+         * @description Return at most 49 source statuses in successful start order, bounded at 1 MiB, for one owned Participation. Current registered-key ownership is required; any live source also requires current Connection continuity. This is source recovery, not Browser Activity history access.
+         */
+        get: operations["browserSourceList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Recover an owned Browser source
+         * @description Read the current immutable Browser source identity, source counters and delivery closure after an ambiguous start or reset response. Requires the owning User and current registered key Session. A live source also requires exact current Connection continuity; closed-source ownership grants no live interaction. The response is at most 16 KiB.
+         */
+        get: operations["browserSourceStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload retained events for a closed Browser source
+         * @description Requires current registered-key ownership of an already closed source and its immutable policy revision/digest. Old candidate Connection headers are rejected. Original per-event receipts survive repacking; receipt progress remains distinct from settled gaps. The upload deadline and final declared boundary are immutable.
+         */
+        post: operations["appendHistoricalBrowserDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare permanent missing Browser positions
+         * @description Current registered-key ownership is always rechecked. A live source additionally requires the exact current Connection headers. Declarations are canonical and idempotent; gaps never create event receipts. Closed-source writes must precede the immutable upload deadline.
+         */
+        post: operations["declareBrowserDeliveryGaps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read bounded per-event Browser receipts
+         * @description Return up to 64 retained receipts in ascending sequence order, omitting missing positions. next_sequence is the first retained sequence on the next page or null. Response is bounded at 16 KiB; current registered-key ownership and live Connection rules apply.
+         */
+        get: operations["browserDeliveryReceipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/seal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare a closed Browser source final boundary
+         * @description Current registered-key ownership is always rechecked. A live source additionally requires the exact current Connection headers. Declarations are canonical and idempotent; gaps never create event receipts. Closed-source writes must precede the immutable upload deadline.
+         */
+        post: operations["sealBrowserDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update cumulative unretained Browser delivery counts
+         * @description Current registered-key ownership is always rechecked. A live source additionally requires the exact current Connection headers. Declarations are canonical and idempotent; gaps never create event receipts. Closed-source writes must precede the immutable upload deadline.
+         */
+        post: operations["updateBrowserDeliverySummary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exam-attempts/{exam_attempt_id}/corrections/{exam_revision_id}/acknowledgement": {
         parameters: {
             query?: never;
@@ -1205,6 +1378,52 @@ export interface paths {
          */
         put: operations["acknowledgeExamAttemptCorrection"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/delivery-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read current delivery limits
+         * @description Return one owned Participation and the current lifetime Attempt counters across every generation, bounded at 8 KiB. Requires a current Session of the registered key that owns the Participation. Retirement and client spool deletion never refund quota; a snapshot grants no interaction or larger allowance.
+         */
+        get: operations["deliveryBudget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/delivery-limits/stop-details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop detailed delivery for a Participation
+         * @description Requires the current live registered Desktop Connection and Idempotency-Key. Local loss-inventory exhaustion irreversibly latches only the selected family for the current Participation, freezes allocated boundaries and records terminal omissions without fabricating receipts. Return the current budget and at most one native stream or 49 Browser sources, bounded at 1 MiB. Exact replay rechecks live authority and cannot affect a successor generation. No quota is replenished and no misconduct Flag, suspension or interaction denial follows solely from this request.
+         */
+        post: operations["stopDeliveryDetails"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1276,6 +1495,179 @@ export interface paths {
         get: operations["getStudentExamResult"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Append minimized native security evidence
+         * @description Atomically accepts one closed batch under its original verified release, matrix, policy, source instances, and Participation generation. Live delivery requires exact Connection continuity; closed streams use current owning registered-key authentication until the fixed upload deadline. Exact retries preserve the submitted prior acknowledgement and recover the original receipt. Out-of-order records wait behind recoverable holes; terminal gaps preserve unresolved openers. Native conditions do not automatically create Flags, warnings or suspension. Lifetime quotas include pending bytes, envelopes, receipts and bounded metadata. Repair has reserved headroom. Native append is limited across Sessions and transports to two requests per second with burst eight; replay consumes allowance. A 429 response supplies Retry-After.
+         */
+        post: operations["appendNativeDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Recover the active Desktop security receipt
+         * @description Returns the exact active Participation binding and original frozen configuration to its owning registered Desktop Session after transport ambiguity. Checks current Session, key, compatibility, eligibility and lease. An open transport Connection is not required. Ready reentry uses a fresh preflight. This read creates no authority and never renews the lease.
+         */
+        get: operations["recoverExamSecurityPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read native delivery settlement
+         * @description Requires the owning User and a currently valid Session for the registered key bound at admission. Live sources also require exact Connection continuity. After server-owned closure, historical delivery never revives interaction or extends the upload deadline. Exact replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance settlement without fabricating content. Source status is bounded at 16 KiB.
+         */
+        get: operations["nativeDeliveryStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare permanently unavailable native batches
+         * @description Requires the owning User and a currently valid Session for the registered key bound at admission. Live sources also require exact Connection continuity. After server-owned closure, historical delivery never revives interaction or extends the upload deadline. Exact replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance settlement without fabricating content. At most 8 KiB, 1..32 disjoint nonadjacent ranges within the current 1024-position receive window. Declaration revision and exact canonical metadata charge commit atomically.
+         */
+        post: operations["declareNativeDeliveryGaps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/receipts/{batch_sequence}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+                /** @description Exact retained batch sequence. */
+                batch_sequence: components["parameters"]["NativeBatchSequence"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Recover an exact native batch receipt
+         * @description Requires the owning User and a currently valid Session for the registered key bound at admission. Live sources also require exact Connection continuity. After server-owned closure, historical delivery never revives interaction or extends the upload deadline. Exact replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance settlement without fabricating content. Source status is bounded at 16 KiB.
+         */
+        get: operations["nativeDeliveryReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/seal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare the final boundary of a closed native stream
+         * @description Requires the owning User and a currently valid Session for the registered key bound at admission. Live sources also require exact Connection continuity. After server-owned closure, historical delivery never revives interaction or extends the upload deadline. Exact replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance settlement without fabricating content. At most 2 KiB. Only after closure. The final tail is bounded by known-at-close plus 1024 and remaining lifetime positions.
+         */
+        post: operations["sealNativeDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report cumulative unretained native records
+         * @description Requires the owning User and a currently valid Session for the registered key bound at admission. Live sources also require exact Connection continuity. After server-owned closure, historical delivery never revives interaction or extends the upload deadline. Exact replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance settlement without fabricating content. At most 2 KiB. Changed summaries at most once per five seconds except the one final summary; incomplete counts never become complete.
+         */
+        post: operations["updateNativeDeliverySummary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1449,6 +1841,29 @@ export interface paths {
          */
         put: operations["replaceCandidateExamWorkspaceFile"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-sittings/{exam_sitting_id}/security-preflights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a secure Desktop admission challenge
+         * @description Requires an eligible registered Desktop Session and an exact admitted build, registry, source manifest and configuration manifest. Stores one pending 120-second challenge per Session and Sitting; a successor supersedes it. Does not create an Attempt, Workspace or Participation. Ready rejoin returns frozen configuration; active and suspended Attempts cannot obtain a replacement preflight. Unavailable Institution catalogs or enforced native coverage fail closed.
+         */
+        post: operations["prepareSecurityPreflight"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1633,6 +2048,29 @@ export interface paths {
          * @description Replaces the complete Focus Loss rule on the mutable Draft at the expected revision. Duration, incident window, threshold, and outcome are validated together so published Revisions carry one coherent policy snapshot.
          */
         put: operations["configureExamDraftFocusLoss"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/draft/policies/native": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace native security selections on the active Exam Draft
+         * @description Replaces the complete ten-family native policy at the expected Draft revision. The mandatory desktop_candidate baseline cannot be disabled. Publication freezes these selections; live Participation native selections cannot be changed by a Draft edit. Catalog IDs must refer to server-admitted catalogs when resolved for admission.
+         */
+        put: operations["configureExamDraftNativePolicy"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2170,7 +2608,7 @@ export interface paths {
         };
         /**
          * List privacy-minimized Browser Activity for one managed Attempt
-         * @description Returns a no-store keyset page of minimized top-level browser navigation records after resolving the exact nested Attempt and checking the dedicated Browser Activity view authority. Session, Connection, Desktop Registration, credentials, page content, and private Review state are excluded.
+         * @description Returns a no-store keyset page of minimized top-level browser navigation records after resolving the exact nested Attempt and checking current exact Exam Manager membership and the dedicated Browser Activity view permission. Every page repeats these checks; administrator, teacher, integrity-review and general export grants provide no override. Session, Connection, Desktop Registration, credentials, page content, and private Review state are excluded.
          */
         get: operations["listExamAttemptBrowserActivity"];
         put?: never;
@@ -2460,7 +2898,7 @@ export interface paths {
         put?: never;
         /**
          * Create a Sitting export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
          */
         post: operations["createSittingExport"];
         delete?: never;
@@ -2478,7 +2916,7 @@ export interface paths {
         };
         /**
          * Get a Sitting export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
          */
         get: operations["getSittingExport"];
         put?: never;
@@ -2498,7 +2936,7 @@ export interface paths {
         };
         /**
          * Download a Sitting export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
          */
         get: operations["downloadSittingExport"];
         put?: never;
@@ -2644,7 +3082,7 @@ export interface paths {
         put?: never;
         /**
          * Create a Submission export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
          */
         post: operations["createSubmissionExport"];
         delete?: never;
@@ -2662,7 +3100,7 @@ export interface paths {
         };
         /**
          * Get a Submission export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
          */
         get: operations["getSubmissionExport"];
         put?: never;
@@ -2682,7 +3120,7 @@ export interface paths {
         };
         /**
          * Download a Submission export
-         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports additionally require current exact Exam Manager membership and the dedicated Browser Activity view permission on creation, replay, metadata read and download. The general export override cannot bypass these history checks. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
          */
         get: operations["downloadSubmissionExport"];
         put?: never;
@@ -3605,7 +4043,7 @@ export interface paths {
         };
         /**
          * List retention eligibility and retirement status
-         * @description Requires retention_policy.view. Does not expose filenames, answers, evidence or remarks. Limit counts Submissions; each contributes work and integrity items. The opaque cursor is bound to this listing. A retired category stays closed after detailed receipt expiry. Purge-verified counts represent an independent observation of exact current-key absence; they do not certify secure media erasure or deletion of backups, historical versions, or already-open streams.
+         * @description Requires retention_policy.view. Does not expose filenames, answers, evidence or remarks. Limit counts Submissions; each contributes work, integrity, Browser Activity and security operational items. The opaque cursor is bound to this listing. A retired category stays closed after detailed receipt expiry. Purge-verified counts represent an independent observation of exact current-key absence; they do not certify secure media erasure or deletion of backups, historical versions, or already-open streams.
          */
         get: operations["listRetentionRecords"];
         put?: never;
@@ -3716,6 +4154,29 @@ export interface paths {
          * @description Changes the presentation or complete permission set of one custom Role after rechecking current authority. Built-in Roles are protected, and a permission change can fail when active historical guarantees make the proposed replacement unsafe.
          */
         patch: operations["updateRole"];
+        trace?: never;
+    };
+    "/api/v1/security-preflights/{security_preflight_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Server-issued canonical preflight transaction ID returned by preparation. */
+                security_preflight_id: components["parameters"]["SecurityPreflightID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report minimized privileged preflight results
+         * @description Rechecks the same registered Session, candidate, build, Sitting and policy before storing the bounded report and its canonical digest. Enforced and baseline requirements must be ready; truthful degraded observe-only coverage can remain eligible. A blocked report creates no Attempt or misconduct Flag. Retry preserves the original receipt time; Connect must consume a current eligible report within 30 seconds.
+         */
+        post: operations["reportSecurityPreflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/student-progressions": {
@@ -3893,6 +4354,29 @@ export interface paths {
          * @description Lists only the bounded evidence retained for the exact authorized Flag and Submission. Evidence records are non-academic integrity signals, not guilt findings, and remain private to authorized review workflows.
          */
         get: operations["listExamIntegrityEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/submissions/{submission_id}/native-conditions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Inspect minimized native condition transitions for a Submission
+         * @description Requires the same current Submission integrity-view authorization as detailed evidence. Returns selected catalog-validated occurrence transitions without creating a Flag or declaring a violation. Includes original receipt and interpretation times, immutable stream/policy provenance and unresolved-opener state. Operational health, gaps and resets are excluded. Pages contain at most 100 records. Integrity retirement removes this material independently of native operational retention. No-store; cursors are purpose-specific opaque keysets.
+         */
+        get: operations["listNativeConditions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5016,12 +5500,31 @@ export interface components {
             acknowledged_at: string;
             /** @constant */
             acknowledgement_state: "acknowledged";
+            current_revision_id: components["schemas"]["ID"];
             revision_id: components["schemas"]["ID"];
+            runtime_capabilities: components["schemas"]["CandidateRuntimeCapabilities"];
         };
         AddExamManagerRequest: {
             /** Format: int64 */
             expected_exam_revision: number;
             user_id: components["schemas"]["ID"];
+        };
+        AdmittedSecurity: {
+            delivery_stream_id: string;
+            /** Format: int64 */
+            generation: number;
+            participation_id: string;
+            policy: components["schemas"]["EffectiveExamSecurityPolicy"];
+            policy_content_digest: string;
+            preflight_id: string;
+            preflight_policy_digest: string;
+            preflight_report_digest: string;
+            /**
+             * Format: int64
+             * @constant
+             */
+            renewal_interval_seconds: 5;
+            security_session_id: string;
         };
         /** @enum {string} */
         AffiliationKind: "student" | "teacher" | "staff" | "external";
@@ -5044,6 +5547,7 @@ export interface components {
         /** @description Revision-fenced complete content correction for one open or paused Sitting. */
         ApplyExamSittingCorrectionRequest: {
             acknowledgement_required: boolean;
+            affected_capabilities: components["schemas"]["CorrectionCapabilitySelection"];
             /** @description Omitted preserves the current Browser Policy; a present object replaces it atomically with the other correction content. */
             browser_policy?: components["schemas"]["BrowserPolicy"];
             /** @description Required trimmed candidate-facing plain text, limited to 500 Unicode scalar values and 2000 UTF-8 bytes with no control characters. */
@@ -5062,29 +5566,41 @@ export interface components {
             /** Format: int64 */
             expected_exam_revision: number;
         };
-        AttemptCommandBinding: {
-            command_id: string;
-            keybinding_id: string;
+        /** @description Complete proposed configuration, bounded at 16 KiB canonical bytes. Initial admission checks the acknowledged User Settings revision, exact admitted build and target, packaged registry and manifest, and Candidate-safe catalog membership. Out-of-range values are rejected without clamping. The digest of a frozen configuration covers this entire candidate, including its original provenance. */
+        AttemptConfigurationCandidate: {
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_commands: string[];
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_keybindings: string[];
+            desktop_build: string;
+            desktop_target: string;
+            manifest_fingerprint: string;
+            presentation: components["schemas"]["AttemptConfigurationPresentation"];
+            registry_fingerprint: string;
+            user_settings_revision: components["schemas"]["ID"];
         };
-        AttemptConfigurationPreferences: {
+        AttemptConfigurationPresentation: {
             /** @enum {string} */
-            announcement_detail: "standard" | "verbose";
-            candidate_command_bindings: components["schemas"]["AttemptCommandBinding"][];
+            announcement_mode: "auto" | "verbose" | "minimal";
             /** @enum {string} */
-            cursor_blinking: "blink" | "solid";
+            color_theme: "light" | "dark" | "hcLight" | "hcDark";
+            /** @enum {string} */
+            cursor_blinking: "blink" | "smooth" | "phase" | "expand" | "solid";
             /** @enum {string} */
             cursor_style: "line" | "block" | "underline";
+            /** @default 14 */
             editor_font_size_px: number;
-            editor_line_height_percent: number;
-            /** @enum {string} */
-            high_contrast_mode: "auto" | "on" | "off";
-            /** @enum {string} */
-            reduced_motion_mode: "auto" | "on" | "off";
+            /**
+             * @description Pixel height with bounds independent of font size.
+             * @default 22
+             */
+            editor_line_height_px: number;
+            prefer_high_contrast: boolean;
+            reduced_motion: boolean;
             /** @enum {string} */
             screen_reader_mode: "auto" | "on" | "off";
-            /** @enum {string} */
-            theme_mode: "follow_system" | "light" | "dark";
-            ui_zoom_percent: number;
+            /** @default 100 */
+            zoom_percent: number;
         };
         /** @enum {string} */
         AttemptConnectionCloseReason: "transport_closed" | "interrupted" | "lease_expired" | "kicked" | "submitted" | "sitting_closed";
@@ -5204,6 +5720,49 @@ export interface components {
             /** @description Canonical machine name for the Institution. */
             name: string;
         };
+        BrowserActivityAcknowledgement: {
+            /** Format: int64 */
+            allocated_through_sequence: number;
+            /** Format: int64 */
+            highest_contiguous_sequence: number;
+            /** Format: int64 */
+            highest_seen_sequence: number;
+            missing_ranges: components["schemas"]["SequenceRange"][];
+            missing_ranges_truncated: boolean;
+            receipts: components["schemas"]["BrowserEventReceipt"][];
+            /** Format: date-time */
+            server_time: string;
+            /** Format: int64 */
+            settled_through_sequence: number;
+            /** Format: uuid */
+            source_session_id: string;
+            /** Format: int64 */
+            terminal_missing_through_sequence: number;
+        };
+        /** @description At most 256 KiB. Events have strictly increasing unique sequences and the frozen source policy revision. Every event digest covers only its canonical record, independent of packing and transport. */
+        BrowserActivityBatch: {
+            events: components["schemas"]["BrowserDeliveryRecord"][];
+            /** Format: int64 */
+            generation: number;
+            participation_id: components["schemas"]["ID"];
+            policy_digest: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: uuid */
+            source_session_id: string;
+        };
+        /** @description Localized collection notice, not consent or history-read authority. Zero days means no configured automatic expiry. Holds, approval, grace and source reconciliation still apply; minimized integrity evidence can have a different period. */
+        BrowserActivityDisclosure: {
+            /** @constant */
+            audience: "exam_managers_with_browser_activity_permission";
+            browser_activity_retention_days: number;
+            may_create_integrity_evidence: boolean;
+            /** @constant */
+            notice_id: "integrated_browser_activity";
+            /** @constant */
+            retention_anchor: "eligible_closed_sitting_records_completion";
+            /** Format: int64 */
+            retention_policy_revision: number;
+        };
         BrowserActivityItemResponse: {
             /** @enum {string|null} */
             block_reason: "scheme_not_allowed" | "origin_not_allowed" | "path_not_allowed" | "redirect_not_allowed" | "invalid_url" | null;
@@ -5224,6 +5783,11 @@ export interface components {
             policy_revision_id: components["schemas"]["ID"];
             /** Format: date-time */
             received_at: string;
+            /**
+             * Format: int64
+             * @description Prior event sequence in the same source when the event records a redirect; null otherwise.
+             */
+            redirect_from_sequence: number | null;
             /** Format: int64 */
             sequence: number;
             /** Format: uuid */
@@ -5233,37 +5797,115 @@ export interface components {
             items: components["schemas"]["BrowserActivityItemResponse"][];
             next_cursor?: string;
         };
-        BrowserActivitySubmission: {
-            /** Format: int64 */
-            final_sequence?: number;
-            /** @enum {string} */
-            reason?: "spool_overflow" | "spool_corrupt" | "spool_key_unavailable" | "delivery_incomplete";
-            /** Format: uuid */
-            source_session_id?: string;
-            /** @enum {string} */
-            state: "not_applicable" | "complete" | "gapped";
-        } & (components["schemas"]["BrowserActivitySubmissionNotApplicable"] | components["schemas"]["BrowserActivitySubmissionComplete"] | components["schemas"]["BrowserActivitySubmissionGapped"]);
-        BrowserActivitySubmissionComplete: {
-            /** Format: int64 */
-            final_sequence: number;
-            /** Format: uuid */
-            source_session_id: string;
-            /** @constant */
-            state: "complete";
+        BrowserDeliveryGapResult: {
+            receipt: components["schemas"]["DeliveryGapReceipt"];
+            status: components["schemas"]["BrowserSourceStatus"];
         };
-        BrowserActivitySubmissionGapped: {
+        /** @description Strict closed record. Lifecycle records omit navigation members; optional members are omitted rather than null. Redirect selectors must reference an earlier successful hop in the same source and policy. Policy validation, canonical URL minimization, safe integer spelling and UTC millisecond precision are enforced by the server. */
+        BrowserDeliveryRecord: {
+            /** Format: date-time */
+            client_occurred_at: string;
+            /** @constant */
+            kind: "browser_opened";
+            policy_revision_id: components["schemas"]["ID"];
             /** Format: int64 */
-            final_sequence?: number;
+            sequence: number;
+        } | {
+            /** Format: date-time */
+            client_occurred_at: string;
+            /** @constant */
+            kind: "browser_closed";
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            sequence: number;
+        } | {
+            /** Format: date-time */
+            client_occurred_at: string;
+            /** @constant */
+            kind: "top_level_navigation";
+            location: {
+                host: string;
+                path: string;
+                port?: string;
+                scheme: string;
+            };
+            matched_rule_id: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            sequence: number;
+        } | {
+            /** Format: date-time */
+            client_occurred_at: string;
+            /** @constant */
+            kind: "top_level_redirect";
+            location: {
+                host: string;
+                path: string;
+                port?: string;
+                scheme: string;
+            };
+            matched_rule_id: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            redirect_from_sequence: number;
+            /** Format: int64 */
+            sequence: number;
+        } | {
             /** @enum {string} */
-            reason: "spool_overflow" | "spool_corrupt" | "spool_key_unavailable" | "delivery_incomplete";
-            /** Format: uuid */
-            source_session_id: string;
+            block_reason: "scheme_not_allowed" | "origin_not_allowed" | "path_not_allowed" | "redirect_not_allowed" | "invalid_url";
+            /** Format: date-time */
+            client_occurred_at: string;
             /** @constant */
-            state: "gapped";
+            kind: "blocked_top_level_navigation";
+            location: {
+                host: string;
+                path: string;
+                port?: string;
+                scheme: string;
+            };
+            matched_rule_id?: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            redirect_from_sequence?: number;
+            /** Format: int64 */
+            sequence: number;
         };
-        BrowserActivitySubmissionNotApplicable: {
-            /** @constant */
-            state: "not_applicable";
+        BrowserDeliverySummaryResult: {
+            status: components["schemas"]["BrowserSourceStatus"];
+            summary: components["schemas"]["UnretainedDeliverySummary"];
+        };
+        BrowserEventReceipt: {
+            event_digest: string;
+            /** Format: date-time */
+            received_at: string;
+            /** Format: int64 */
+            sequence: number;
+        };
+        /** @description Immutable minimized evidence copy independent of ordinary Browser Activity retention. */
+        BrowserIntegrityEvidence: {
+            event: components["schemas"]["BrowserDeliveryRecord"];
+            policy_revision_id: components["schemas"]["ID"];
+            rule_id: string;
+            source_session_id: components["schemas"]["BrowserSourceSessionID"];
+        };
+        /** @description Frozen Browser rule group with server-received overflow times. Counts exclude unretained client summaries. */
+        BrowserIntegrityGroup: {
+            overflow_first_received_at: string | null;
+            overflow_last_received_at: string | null;
+            participation_id: components["schemas"]["ID"];
+            policy_revision_id: components["schemas"]["ID"];
+            rule_id: string;
+        };
+        /** @description Count of verified events omitted because the Attempt already has 256 Browser Flag groups. This is neither another Flag nor a count of distinct omitted groups. */
+        BrowserIntegrityOverflow: {
+            /** Format: date-time */
+            first_received_at: string;
+            /** Format: date-time */
+            last_received_at: string;
+            /** @enum {string} */
+            reason: "group_capacity";
+            /** Format: int64 */
+            validated_event_count: number;
         };
         BrowserInvitationAcceptanceRequest: {
             display_name?: string;
@@ -5290,11 +5932,10 @@ export interface components {
             /** @enum {string} */
             requirement: "account" | "session";
         };
+        /** @description A canonically ordered policy of at most 128 rules and 32 KiB. Matching selects longest path prefix, exact host before wildcard, longest configured hostname, then lexically smallest rule ID; input array order never selects permissions. */
         BrowserPolicy: {
             enabled: boolean;
             rules?: components["schemas"]["BrowserPolicyRule"][];
-            /** @constant */
-            schema_version: 1;
             start_rule_id?: string;
         } & ({
             /** @constant */
@@ -5305,14 +5946,100 @@ export interface components {
         });
         BrowserPolicyRule: {
             allow_redirects: boolean;
-            /** @constant */
-            blocked_navigation_outcome: "record";
+            /** @enum {string} */
+            blocked_navigation_outcome: "record" | "integrity_evidence";
             /** @enum {string} */
             host_match: "exact" | "exact_and_subdomains";
-            /** Format: uri */
+            /** @description Required true only for an HTTP rule whose normalized host and explicit-port component equal the installation-owned canonical HTTPS origin. HTTPS requires false; this never authorizes HTTP credential transport. */
+            institution_http_exception: boolean;
+            /**
+             * Format: uri
+             * @description Bounded ASCII network origin. HTTPS is normal; HTTP requires the explicit institution exception. Normalize HTTPS 443 and HTTP 80 away. DNS labels or canonical browser IPv4 only; no IDN, punycode, IPv6, trailing dot, credentials, query, fragment or non-root path. Nondefault ports are decimal 1..65535 without leading zeros. IP rules require exact matching.
+             */
             origin: string;
+            /** @description ASCII prefix matched exactly or at a slash-delimited descendant. One non-root trailing slash is removed at authoring. Dot segments, malformed percent escapes and encoded slash or backslash are rejected. Repeated internal slashes, unreserved percent escapes and percent-triplet case remain distinct. */
             path_prefix: string;
             rule_id: string;
+        };
+        BrowserReceiptPage: {
+            /** Format: int64 */
+            next_sequence: number | null;
+            receipts: components["schemas"]["BrowserEventReceipt"][];
+        };
+        BrowserSourceList: {
+            sources: components["schemas"]["BrowserSourceStatus"][];
+        };
+        /** Format: uuid */
+        BrowserSourceSessionID: string;
+        /** @description At most 16 KiB. Immutable source policy and start provenance, server-owned first closure and finite historical delivery window. Counters are remaining successful starts across this Participation; retries and retirement never replenish them. Source status conveys no navigation authority. */
+        BrowserSourceStatus: {
+            /** Format: int64 */
+            allocated_through_sequence: number;
+            attempt_id: components["schemas"]["ID"];
+            /** @enum {string|null} */
+            budget_scope: "participation" | "attempt" | null;
+            closure: components["schemas"]["DeliveryClosure"];
+            /** Format: int64 */
+            declaration_revision: number;
+            /** @enum {string} */
+            detail_mode: "collecting" | "summary_only";
+            /** Format: int64 */
+            generation: number;
+            /** Format: int64 */
+            highest_contiguous_sequence: number;
+            /** Format: int64 */
+            highest_seen_sequence: number;
+            missing_ranges: components["schemas"]["SequenceRange"][];
+            missing_ranges_truncated: boolean;
+            participation_id: components["schemas"]["ID"];
+            policy_digest: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: uuid */
+            predecessor_source_session_id: string | null;
+            /** Format: int64 */
+            remaining_correction_starts: number;
+            /** Format: int64 */
+            remaining_runtime_reset_starts: number;
+            /** @enum {string|null} */
+            runtime_reset_reason: "coordinator_restarted" | "spool_unavailable" | "source_corrupt" | null;
+            /** Format: date-time */
+            server_time: string;
+            /** Format: int64 */
+            settled_through_sequence: number;
+            /** Format: uuid */
+            source_session_id: string;
+            /** @enum {string} */
+            start_transition: "initial" | "policy_correction" | "runtime_reset";
+            /** Format: date-time */
+            started_at: string;
+            summary: {
+                count_complete: boolean;
+                /** Format: date-time */
+                first_unretained_at: string | null;
+                /** Format: date-time */
+                last_unretained_at: string | null;
+                /** Format: int64 */
+                summary_sequence: number;
+                /** Format: int64 */
+                unretained_record_count: number;
+            } | null;
+            /** @enum {string|null} */
+            summary_only_reason: "records" | "bytes" | "positions" | "metadata" | "local_loss_inventory_exhausted" | null;
+            /** Format: int64 */
+            terminal_missing_through_sequence: number;
+        };
+        /** @description Server-owned inventory across every source and Participation in the Attempt. Pending takes precedence while any source remains settleable. Pending and incomplete counts describe independent facts. Every source must be complete for settled; not_applicable requires no source history. Eligible late delivery updates this inventory without changing submitted content. */
+        BrowserSubmissionSettlement: {
+            /** Format: int64 */
+            incomplete_source_count: number;
+            /** Format: int64 */
+            inventory_revision: number;
+            /** Format: int64 */
+            pending_source_count: number;
+            /** Format: int64 */
+            source_count: number;
+            /** @enum {string} */
+            state: "not_applicable" | "settled" | "pending" | "incomplete";
         };
         /** @description Public build provenance for the serving Proctor binary. */
         BuildInfoResponse: {
@@ -5335,18 +6062,21 @@ export interface components {
             /** @description Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes. */
             reason: string;
         };
+        /** @description Effective presentation and approved identifiers for the candidate renderer. The revision and digest identify the frozen configuration; private build, registry and User Settings provenance are delivered only to the owning privileged Desktop. */
         CandidateAttemptConfiguration: {
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_commands: string[];
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_keybindings: string[];
+            attempt_configuration_revision: string;
             digest: string;
-            manifest_fingerprint: string;
-            preferences: components["schemas"]["AttemptConfigurationPreferences"];
-            /** @enum {integer} */
-            schema_version: 1;
+            presentation: components["schemas"]["AttemptConfigurationPresentation"];
         };
         CandidateBrowserCapability: {
             policy_digest?: string;
             policy_revision_id?: components["schemas"]["ID"];
             /** @enum {string} */
-            state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required";
+            state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required" | "temporarily_unavailable";
         } & ({
             /** @enum {string} */
             state?: "disabled";
@@ -5354,18 +6084,27 @@ export interface components {
             policy_digest: string;
             policy_revision_id: components["schemas"]["ID"];
             /** @enum {string} */
-            state: "available" | "sitting_paused" | "acknowledgement_required";
+            state: "available" | "sitting_paused" | "acknowledgement_required" | "temporarily_unavailable";
         });
+        /** @description Current Browser Policy and separately revisioned collection notice. Revision number is a monotonic ordinal. The sha256-prefixed digest covers only canonical BrowserPolicy bytes, excluding revision metadata and disclosure. Disabled policies omit start_rule_id and rules. */
         CandidateBrowserPolicy: {
-            /** @constant */
-            enabled: true;
+            browser_activity_disclosure: components["schemas"]["BrowserActivityDisclosure"];
+            enabled: boolean;
             policy_digest: string;
             policy_revision_id: components["schemas"]["ID"];
-            rules: components["schemas"]["BrowserPolicyRule"][];
+            /** Format: int64 */
+            policy_revision_number: number;
+            rules?: components["schemas"]["BrowserPolicyRule"][];
+            start_rule_id?: string;
+        } & ({
             /** @constant */
-            schema_version: 1;
-            start_rule_id: string;
-        };
+            enabled?: false;
+        } | {
+            /** @constant */
+            enabled?: true;
+        });
+        /** @enum {string} */
+        CandidateCapability: "browser" | "submission" | "terminal" | "workspace";
         CandidateDepartureCapability: {
             /** @enum {boolean} */
             allowed: false;
@@ -5478,11 +6217,15 @@ export interface components {
             workspace_id: components["schemas"]["ID"];
         };
         CandidateLiveCorrection: {
-            /** Format: date-time */
-            acknowledged_at: string | null;
+            /**
+             * Format: date-time
+             * @description Present exactly when acknowledgement_state is acknowledged.
+             */
+            acknowledged_at?: string;
             acknowledgement_required: boolean;
             /** @enum {string} */
             acknowledgement_state: "not_required" | "pending" | "acknowledged";
+            affected_capabilities: components["schemas"]["CorrectionCapabilitySelection"];
             changed_areas: ("browser_policy" | "instructions" | "resources")[];
             /** Format: date-time */
             effective_at: string;
@@ -5499,6 +6242,8 @@ export interface components {
             focus_loss_collection_enabled: boolean;
             /** @enum {string} */
             interaction_state: "interactive" | "sitting_paused";
+            /** @description Sorted union of capabilities selected by currently pending required acknowledgements. */
+            pending_correction_capabilities: components["schemas"]["CandidateCapability"][];
             /** @enum {integer} */
             schema_version: 1;
             /** Format: date-time */
@@ -5508,6 +6253,12 @@ export interface components {
             workspace_mutation_allowed: boolean;
         };
         CandidateTerminalCapability: {
+            /** Format: int64 */
+            applied_workspace_cursor: number;
+            /** @description Host environment identity; null until an environment has been created. */
+            environment_epoch: string | null;
+            /** @enum {string} */
+            projection_state: "synchronizing" | "ready" | "conflict" | "unavailable";
             /** @enum {string} */
             state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required" | "temporarily_unavailable";
         };
@@ -5657,10 +6408,17 @@ export interface components {
              */
             window_milliseconds: number;
         };
+        ConfigureExamDraftNativePolicyRequest: {
+            /** Format: int64 */
+            expected_draft_revision: number;
+            native: components["schemas"]["NativeSecurityPolicy"];
+        };
         ConnectionLossPolicy: {
             /** @constant */
             outcome: "flag_and_suspend";
         };
+        /** @description Explicit sorted selection. A Browser Policy change requires browser; an instructions or resources change requires submission, terminal and workspace. Supersets are permitted. The selection cannot create a correction without an actual content change and remains present when acknowledgement is not required. */
+        CorrectionCapabilitySelection: components["schemas"]["CandidateCapability"][];
         /** @description Complete owner, presentation, and time window for a new Academic Period. */
         CreateAcademicPeriodRequest: {
             /**
@@ -5854,7 +6612,8 @@ export interface components {
             update_at?: number;
         };
         CreateExamExportRequest: {
-            categories: ("work" | "integrity")[];
+            /** @description Work and/or integrity, or Browser Activity alone. Browser Activity requires exact current Exam Manager membership and the dedicated history permission; generic exports contain no ordinary browsing URLs. */
+            categories: ("work" | "integrity" | "browser_activity")[];
         };
         CreateExamRequest: {
             /** @description The Academic Unit that owns the Exam. */
@@ -6013,6 +6772,16 @@ export interface components {
             /** @enum {string} */
             scope_type: "institution" | "academic_unit";
         };
+        DeclareDeliveryGaps: {
+            /** Format: int64 */
+            allocated_through_sequence: number;
+            declaration_id: string;
+            /** Format: int64 */
+            expected_declaration_revision: number;
+            ranges: components["schemas"]["SequenceRange"][];
+            /** @enum {string} */
+            reason: "spool_corrupt" | "spool_lost" | "local_capacity_exhausted";
+        };
         DeleteCandidateWorkspaceEntryRequest: {
             /** @description Required for file deletion; omitted for directories. */
             expected_content_version?: components["schemas"]["WorkspaceContentVersion"];
@@ -6031,6 +6800,98 @@ export interface components {
              */
             recursive: boolean;
         } & unknown;
+        DeliveryBudgetSnapshot: {
+            browser: components["schemas"]["DeliveryFamilyBudget"];
+            /** Format: int64 */
+            browser_evidence_bytes: number;
+            /** Format: int64 */
+            browser_evidence_records: number;
+            /** Format: int64 */
+            browser_flag_groups: number;
+            /** Format: int64 */
+            control_metadata_bytes: number;
+            /** Format: int64 */
+            explicit_missing_intervals: number;
+            /** Format: int64 */
+            generation: number;
+            native: components["schemas"]["DeliveryFamilyBudget"];
+            participation_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            server_time: string;
+        };
+        DeliveryClosure: {
+            /** @enum {string|null} */
+            close_reason: "submission" | "suspension" | "manager_end" | "sitting_closed" | "participation_ended" | "security_session_lost" | "policy_correction" | "runtime_reset" | "browser_disabled" | null;
+            /** Format: date-time */
+            closed_at: string | null;
+            /** @enum {string|null} */
+            final_boundary_origin: "client_declared" | "server_known" | null;
+            final_declaration_id: string | null;
+            /** Format: int64 */
+            final_sequence: number | null;
+            /** Format: int64 */
+            known_at_close: number | null;
+            unknown_tail: boolean;
+            /** Format: date-time */
+            upload_expires_at: string | null;
+        };
+        DeliveryFamilyBudget: {
+            attempt: components["schemas"]["DeliveryQuotaUsage"];
+            participation: components["schemas"]["DeliveryQuotaUsage"];
+            /**
+             * Format: int64
+             * @enum {integer}
+             */
+            pending_byte_limit: 2097152;
+            /** Format: int64 */
+            pending_bytes: number;
+        };
+        DeliveryGapReceipt: {
+            declaration_id: string;
+            /** Format: int64 */
+            declaration_revision: number;
+            request_digest: string;
+            /** Format: int64 */
+            settled_through_sequence: number;
+        };
+        DeliveryQuotaUsage: {
+            /** Format: int64 */
+            allocated_positions: number;
+            /** Format: int64 */
+            byte_limit: number;
+            /** Format: int64 */
+            position_limit: number;
+            /** Format: int64 */
+            record_limit: number;
+            /** Format: int64 */
+            retained_bytes: number;
+            /** Format: int64 */
+            retained_records: number;
+            /** @enum {string|null} */
+            stop_reason: "records" | "bytes" | "positions" | "metadata" | "local_loss_inventory_exhausted" | null;
+            summary_only: boolean;
+        };
+        /** @description Current authorized progress and budget after a delivery refusal, bounded at 32 KiB. These observations do not acknowledge rejected bytes. Independent reads may reflect concurrent progress. Omitted when fresh ownership cannot be established or the family has retired. Available on pending_capacity, replay_window_exceeded, detail_budget_exhausted, sequence_limit, declaration_conflict, upload_expired and delivery rate-limit errors. */
+        DeliveryRecovery: {
+            browser_status?: components["schemas"]["BrowserSourceStatus"];
+            budget: components["schemas"]["DeliveryBudgetSnapshot"];
+            /** @enum {string} */
+            family: "native" | "browser";
+            native_status?: components["schemas"]["NativeSecurityStreamStatus"];
+        } & ({
+            /** @constant */
+            family?: "native";
+        } | {
+            /** @constant */
+            family?: "browser";
+        });
+        DeliveryWatermarkRejection: {
+            /** @enum {string} */
+            family: "native" | "browser";
+            /** @enum {string} */
+            reason: "closed_source" | "position_limit";
+            source_id: string;
+        };
         DesktopAuthorizationAccountResponse: {
             display_name: string;
             id: string;
@@ -6188,6 +7049,89 @@ export interface components {
             display_name: string;
         } | {
             description_markdown: string;
+        };
+        /** @description Frozen native semantics for a Participation. issued_at and active_from use millisecond UTC precision, with issued_at <= active_from <= activation time. There is no policy expiry; the renewable Participation lease is the sole live authority. The digest excludes only digest; scope rebinding preserves the separately computed content digest. */
+        EffectiveExamSecurityPolicy: {
+            /** Format: date-time */
+            active_from: string;
+            application_release_id: string;
+            /** @description Exactly one family in this order: process_application, interactive_session, clipboard, printing, removable_storage, virtualization, network_configuration, camera, microphone, external_capture. */
+            capabilities: [
+                {
+                    /** @constant */
+                    id?: "process_application";
+                },
+                {
+                    /** @constant */
+                    id?: "interactive_session";
+                },
+                {
+                    /** @constant */
+                    id?: "clipboard";
+                },
+                {
+                    /** @constant */
+                    id?: "printing";
+                },
+                {
+                    /** @constant */
+                    id?: "removable_storage";
+                },
+                {
+                    /** @constant */
+                    id?: "virtualization";
+                },
+                {
+                    /** @constant */
+                    id?: "network_configuration";
+                },
+                {
+                    /** @constant */
+                    id?: "camera";
+                },
+                {
+                    /** @constant */
+                    id?: "microphone";
+                },
+                {
+                    /** @constant */
+                    id?: "external_capture";
+                }
+            ];
+            /** @constant */
+            connection_loss_mode: "enforce";
+            digest: string;
+            /** @constant */
+            evidence_class_id: "native_integrity";
+            exam_revision_id: string;
+            /** @enum {string} */
+            focus_loss_mode: "disabled" | "observe" | "enforce";
+            institution_id: string;
+            /** Format: date-time */
+            issued_at: string;
+            matrix_id: string;
+            /** Format: int64 */
+            ordinal: number;
+            policy_id: string;
+            /** @constant */
+            registry_digest: "sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0";
+            resolved_exception_refs: string[];
+            /** @constant */
+            retention_class_id: "native_minimized";
+            revision: string;
+            scope: {
+                admission_scope_id: string;
+                /** @constant */
+                kind: "admission";
+            } | {
+                attempt_id: string;
+                /** @constant */
+                kind: "attempt";
+            };
+            sitting_id: string;
+            target_tuple: string;
+            /** @constant */
+            visibility_class_id: "examiner_restricted";
         };
         EmailVerificationCompletionRequest: {
             token: string;
@@ -6366,7 +7310,8 @@ export interface components {
             archive_sha256?: string;
             /** Format: int64 */
             archive_size_bytes?: number;
-            categories: ("work" | "integrity")[];
+            /** @description Work and/or integrity, or Browser Activity alone. Browser Activity requires exact current Exam Manager membership and the dedicated history permission; generic exports contain no ordinary browsing URLs. */
+            categories: ("work" | "integrity" | "browser_activity")[];
             /** Format: date-time */
             construction_deadline: string;
             /** Format: date-time */
@@ -6458,6 +7403,7 @@ export interface components {
         };
         /** @description Purpose-specific retained signal evidence for one integrity Flag. */
         ExamIntegrityEvidenceResponse: {
+            browser?: components["schemas"]["BrowserIntegrityEvidence"];
             /**
              * Format: int64
              * @description Observed policy-signal duration in milliseconds.
@@ -6477,7 +7423,7 @@ export interface components {
             observed_at: string;
             participation_id: components["schemas"]["ID"];
             /** @enum {string} */
-            policy_kind: "connection_loss" | "focus_loss";
+            policy_kind: "connection_loss" | "focus_loss" | "browser_navigation";
             /** Format: date-time */
             recorded_at: string;
             /** Format: int64 */
@@ -6494,6 +7440,7 @@ export interface components {
         };
         /** @description Manager-safe lifecycle and bounded evidence counts for one integrity Flag. */
         ExamIntegrityFlagResponse: {
+            browser?: components["schemas"]["BrowserIntegrityGroup"];
             /** Format: date-time */
             created_at: string;
             evidence_count: number;
@@ -6507,7 +7454,7 @@ export interface components {
             generation: number;
             id: components["schemas"]["ID"];
             /** @enum {string} */
-            policy_kind: "connection_loss" | "focus_loss";
+            policy_kind: "connection_loss" | "focus_loss" | "browser_navigation";
             /** @enum {string} */
             state: "open" | "closed";
             /**
@@ -6523,6 +7470,8 @@ export interface components {
             decided_at: string;
             id: components["schemas"]["ID"];
             integrity_flag_id: components["schemas"]["ID"];
+            /** @description New accepted evidence arrived after this decision; a fresh decision revision is required. */
+            inventory_stale: boolean;
             /** @enum {string} */
             outcome: "confirmed" | "dismissed" | "inconclusive";
             /** @description Manager-only private rationale. */
@@ -6540,13 +7489,21 @@ export interface components {
         };
         /** @description Manager-authorized Submission integrity snapshot and current decision set. */
         ExamIntegrityReviewResponse: {
+            browser_activity: components["schemas"]["BrowserSubmissionSettlement"];
+            browser_evidence_overflow?: components["schemas"]["BrowserIntegrityOverflow"];
             candidate_user_id: components["schemas"]["ID"];
             decisions: components["schemas"]["ExamIntegrityReviewDecisionResponse"][];
+            /**
+             * Format: int64
+             * @description Server revision of accepted late delivery, used to fence a Review waiver even before drafting a Review.
+             */
+            delivery_inventory_revision: number;
             exam_attempt_id: components["schemas"]["ID"];
             exam_id: components["schemas"]["ID"];
             exam_sitting_id: components["schemas"]["ID"];
             /** @enum {string} */
             integrity_state: "settled" | "gapped";
+            native_conditions: components["schemas"]["NativeConditionInventory"];
             review?: components["schemas"]["ExamSubmissionReviewResponse"];
             submission_id: components["schemas"]["ID"];
             /**
@@ -6578,8 +7535,7 @@ export interface components {
         ExamPolicySet: {
             connection_loss: components["schemas"]["ConnectionLossPolicy"];
             focus_loss: components["schemas"]["FocusLossPolicy"];
-            /** @constant */
-            schema_version: 1;
+            native: components["schemas"]["NativeSecurityPolicy"];
         };
         ExamRecordsCompletionResponse: {
             /** Format: date-time */
@@ -6748,6 +7704,7 @@ export interface components {
         };
         /** @description Immutable correction Revision and updated Sitting state committed by the transition. */
         ExamSittingCorrectionResponse: {
+            affected_capabilities: components["schemas"]["CorrectionCapabilitySelection"];
             /** Format: date-time */
             effective_at: string;
             exam_id: components["schemas"]["ID"];
@@ -6923,6 +7880,7 @@ export interface components {
         };
         /** @description Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible. */
         ExamSubmissionManagerResponse: {
+            browser_activity: components["schemas"]["BrowserSubmissionSettlement"];
             exam_attempt_id: components["schemas"]["ID"];
             exam_id: components["schemas"]["ID"];
             /** @description Exact Exam Sitting Revision governing the atomic Submission commit. */
@@ -7003,6 +7961,7 @@ export interface components {
         ExamSubmissionProvenance: "candidate_submitted" | "manager_ended_attempt" | "sitting_closed";
         /** @description Candidate-safe retained receipt for an atomically sealed Submission. */
         ExamSubmissionReceiptResponse: {
+            browser_activity: components["schemas"]["BrowserSubmissionSettlement"];
             exam_attempt_id: components["schemas"]["ID"];
             exam_revision_id: components["schemas"]["ID"];
             /** @description SHA-256 digest of the immutable sealed Workspace manifest. */
@@ -7021,7 +7980,7 @@ export interface components {
              */
             workspace_cursor: number;
         };
-        /** @description Private manager Review state and bounded immutable inventory metadata. */
+        /** @description Current revision of the private manager Review. Newly accepted delivery inventory reopens it as a withheld draft. Earlier finalization inventories remain immutable integrity records. */
         ExamSubmissionReviewResponse: {
             /** Format: date-time */
             created_at: string;
@@ -7129,6 +8088,13 @@ export interface components {
             /** Format: uri */
             redirect_url: string;
         };
+        FinalDeliveryDeclaration: {
+            declaration_id: string;
+            /** Format: int64 */
+            expected_declaration_revision: number;
+            /** Format: int64 */
+            final_sequence: number;
+        };
         FocusLossPolicy: {
             enabled: boolean;
             incident_count: number;
@@ -7138,6 +8104,20 @@ export interface components {
             outcome: "flag" | "flag_and_warn" | "flag_and_suspend";
             /** Format: int64 */
             window_milliseconds: number;
+        };
+        FrozenAttemptConfiguration: {
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_commands: string[];
+            /** @description Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are rejected. */
+            approved_keybindings: string[];
+            attempt_configuration_revision: string;
+            desktop_build: string;
+            desktop_target: string;
+            digest: string;
+            manifest_fingerprint: string;
+            presentation: components["schemas"]["AttemptConfigurationPresentation"];
+            registry_fingerprint: string;
+            user_settings_revision: components["schemas"]["ID"];
         };
         /** @description Minimal successful health-check projection. */
         HealthResponse: {
@@ -7731,6 +8711,292 @@ export interface components {
             expected_draft_revision: number;
             path: components["schemas"]["StarterWorkspacePath"];
         };
+        NativeBaselineReport: {
+            /** @enum {string} */
+            constrained_window: "verified" | "unavailable";
+            /** @enum {string} */
+            content_protection: "verified" | "unavailable";
+            /** @enum {string} */
+            single_physical_display: "verified" | "unavailable";
+        };
+        NativeBatchReceipt: {
+            /** Format: int64 */
+            batch_sequence: number;
+            /** Format: date-time */
+            received_at: string;
+            request_digest: string;
+            stream_id: string;
+        };
+        NativeConditionEvidence: {
+            application_release_id: string;
+            attempt_id: string;
+            /** Format: int64 */
+            batch_sequence: number;
+            /** Format: int64 */
+            generation: number;
+            id: string;
+            /** Format: date-time */
+            interpreted_at: string;
+            matrix_id: string;
+            occurrence: components["schemas"]["NativeOccurrence"];
+            participation_id: string;
+            policy_digest: string;
+            policy_revision_id: string;
+            /** Format: date-time */
+            received_at: string;
+            record_index: number;
+            security_session_id: string;
+            stream_id: string;
+            unresolved_opener: boolean;
+        };
+        NativeConditionInventory: {
+            digest: string;
+            /** Format: int64 */
+            records: number;
+        };
+        NativeConditionListResponse: {
+            items: components["schemas"]["NativeConditionEvidence"][];
+            next_cursor?: string;
+        };
+        NativeCoverageClaim: {
+            /** @enum {string} */
+            claim: "enforce" | "observe" | "unavailable";
+            coverage_key: string;
+            source_schema_digest: string;
+            /** @enum {string} */
+            state: "ready" | "degraded" | "unavailable";
+        };
+        NativeCoverageTransition: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "coverage_transition";
+            /** Format: date-time */
+            occurred_at: string;
+            /** @enum {string} */
+            reason: "initial" | "health_changed" | "permission_changed" | "reconciled" | "stopped";
+            source: components["schemas"]["NativeSourceCoverage"];
+        };
+        NativeOccurrence: {
+            capability_id: string;
+            /** @enum {string} */
+            certainty: "complete" | "partial" | "unknown";
+            condition_id: string;
+            detector_id: string;
+            /** Format: int64 */
+            detector_version: number;
+            /** Format: date-time */
+            first_observed_at: string;
+            /** Format: int64 */
+            gap_count: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "occurrence";
+            /** Format: date-time */
+            last_confirmed_at: string;
+            /** @enum {string} */
+            mode: "observe" | "enforce";
+            occurrence_id: string;
+            /** Format: int64 */
+            repeat_count: number;
+            source_ranges: components["schemas"]["NativeSourceRange"][];
+            /** @enum {string} */
+            status: "opened" | "repeated" | "recovered";
+        };
+        NativeRecord: components["schemas"]["NativeOccurrence"] | components["schemas"]["NativeCoverageTransition"] | components["schemas"]["NativeSourceReset"] | components["schemas"]["NativeSourceGap"];
+        NativeSecurityAcknowledgement: {
+            /** Format: int64 */
+            highest_contiguous_batch_sequence: number;
+            /** Format: int64 */
+            highest_seen_batch_sequence: number;
+            missing_batch_ranges: components["schemas"]["SequenceRange"][];
+            missing_ranges_truncated: boolean;
+            receipt: components["schemas"]["NativeBatchReceipt"];
+            /** Format: date-time */
+            server_time: string;
+            /** Format: int64 */
+            settled_through_batch_sequence: number;
+        };
+        NativeSecurityBatch: {
+            application_release_id: string;
+            /** Format: int64 */
+            batch_sequence: number;
+            /** Format: int64 */
+            generation: number;
+            matrix_id: string;
+            participation_id: components["schemas"]["ID"];
+            policy_digest: string;
+            /** Format: int64 */
+            prior_acknowledgement: number;
+            records: components["schemas"]["NativeRecord"][];
+            security_session_id: string;
+            stream_id: string;
+        };
+        /** @description Complete native selection with an invariant baseline and exactly ten families in the documented order. Complete canonical ExamPolicySet bytes are limited to 64 KiB. */
+        NativeSecurityPolicy: {
+            /** @constant */
+            baseline_id: "desktop_candidate";
+            /** @description Exactly one family in this order: process_application, interactive_session, clipboard, printing, removable_storage, virtualization, network_configuration, camera, microphone, external_capture. */
+            families: [
+                {
+                    /** @constant */
+                    id?: "process_application";
+                },
+                {
+                    /** @constant */
+                    id?: "interactive_session";
+                },
+                {
+                    /** @constant */
+                    id?: "clipboard";
+                },
+                {
+                    /** @constant */
+                    id?: "printing";
+                },
+                {
+                    /** @constant */
+                    id?: "removable_storage";
+                },
+                {
+                    /** @constant */
+                    id?: "virtualization";
+                },
+                {
+                    /** @constant */
+                    id?: "network_configuration";
+                },
+                {
+                    /** @constant */
+                    id?: "camera";
+                },
+                {
+                    /** @constant */
+                    id?: "microphone";
+                },
+                {
+                    /** @constant */
+                    id?: "external_capture";
+                }
+            ];
+            /** @constant */
+            registry_digest: "sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0";
+        };
+        NativeSecurityStreamStatus: {
+            /** Format: int64 */
+            allocated_through_sequence: number;
+            /** @enum {string|null} */
+            budget_scope: "participation" | "attempt" | null;
+            closure: components["schemas"]["DeliveryClosure"];
+            /** Format: int64 */
+            declaration_revision: number;
+            /** @enum {string} */
+            detail_mode: "collecting" | "summary_only";
+            /** Format: int64 */
+            highest_contiguous_batch_sequence: number;
+            /** Format: int64 */
+            highest_seen_batch_sequence: number;
+            missing_batch_ranges: components["schemas"]["SequenceRange"][];
+            missing_ranges_truncated: boolean;
+            /** Format: date-time */
+            server_time: string;
+            /** Format: int64 */
+            settled_through_batch_sequence: number;
+            stream_id: string;
+            summary: {
+                count_complete: boolean;
+                /** Format: date-time */
+                first_unretained_at: string | null;
+                /** Format: date-time */
+                last_unretained_at: string | null;
+                /** Format: int64 */
+                summary_sequence: number;
+                /** Format: int64 */
+                unretained_record_count: number;
+            } | null;
+            /** @enum {string|null} */
+            summary_only_reason: "records" | "bytes" | "positions" | "metadata" | "local_loss_inventory_exhausted" | null;
+            /** Format: int64 */
+            terminal_missing_through_sequence: number;
+        };
+        /** @description Content-free native condition count and currently live source health. Contains no detector, occurrence or source-instance identities and makes no misconduct finding. */
+        NativeSecuritySummary: {
+            live_coverage_available: boolean;
+            /** Format: int64 */
+            retained_condition_records: number;
+            sources: {
+                complete: boolean;
+                /** @enum {string} */
+                health: "starting" | "healthy" | "degraded" | "failed" | "recovering" | "stopped";
+                /** @enum {string} */
+                permission: "denied" | "granted" | "not_determined" | "restricted" | "unavailable";
+                source_id: string;
+            }[];
+        };
+        NativeSourceCoverage: {
+            adapter_version: string;
+            complete: boolean;
+            /** Format: int64 */
+            gap_count: number;
+            /** @enum {string} */
+            health: "starting" | "healthy" | "degraded" | "failed" | "recovering" | "stopped";
+            /** @enum {string} */
+            permission: "denied" | "granted" | "not_determined" | "restricted" | "unavailable";
+            /** Format: int64 */
+            sequence: number;
+            /** @enum {string} */
+            source_id: "display-topology" | "candidate-window" | "capture-session" | "process-application" | "interactive-session" | "clipboard" | "print-spooler" | "removable-storage" | "virtualization" | "network-configuration" | "media-device";
+            source_instance_id: string;
+            source_schema_digest: string;
+        };
+        NativeSourceGap: {
+            /** Format: int64 */
+            first_missing_sequence: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "source_gap";
+            /** Format: int64 */
+            last_missing_sequence: number;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @enum {string} */
+            reason: "overflow" | "source_loss" | "corruption";
+            /** @enum {string} */
+            source_id: "display-topology" | "candidate-window" | "capture-session" | "process-application" | "interactive-session" | "clipboard" | "print-spooler" | "removable-storage" | "virtualization" | "network-configuration" | "media-device";
+            source_instance_id: string;
+        };
+        NativeSourceRange: {
+            /** Format: int64 */
+            first_sequence: number;
+            /** Format: int64 */
+            last_sequence: number;
+            /** @enum {string} */
+            source_id: "display-topology" | "candidate-window" | "capture-session" | "process-application" | "interactive-session" | "clipboard" | "print-spooler" | "removable-storage" | "virtualization" | "network-configuration" | "media-device";
+            source_instance_id: string;
+        };
+        NativeSourceReset: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "source_reset";
+            new_source_instance_id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** Format: int64 */
+            previous_final_sequence: number;
+            previous_source_instance_id: string;
+            /** @enum {string} */
+            reason: "restart" | "resume" | "permission_changed";
+            reset_id: string;
+            /** @enum {string} */
+            source_id: "display-topology" | "candidate-window" | "capture-session" | "process-application" | "interactive-session" | "clipboard" | "print-spooler" | "removable-storage" | "virtualization" | "network-configuration" | "media-device";
+        };
         OnboardingImportCommitRequest: {
             /** Format: int64 */
             expected_revision: number;
@@ -7828,15 +9094,42 @@ export interface components {
             update_at: number;
             user_id: components["schemas"]["ID"];
         };
+        PrepareSecurityPreflightRequest: {
+            attempt_id?: string;
+            configuration_manifest_fingerprint: string;
+            native_registry_digest: string;
+            source_manifest_digest: string;
+        };
         ProblemDetails: {
             code: string;
+            /**
+             * Format: int64
+             * @description Present only on an exam.delivery.metadata_capacity refusal.
+             */
+            control_metadata_bytes?: number;
+            /**
+             * Format: int64
+             * @description Present only on an exam.delivery.metadata_capacity refusal.
+             */
+            control_metadata_limit_bytes?: number;
+            delivery?: components["schemas"]["DeliveryRecovery"];
             detail?: string;
             fields?: {
                 [key: string]: string;
             };
             /** Format: uri-reference */
             instance?: string;
+            /**
+             * Format: int64
+             * @description Present only on an exam.delivery.metadata_capacity refusal.
+             */
+            remaining_reservable_bytes?: number;
             request_id?: string;
+            /**
+             * Format: int64
+             * @description Present only on an exam.delivery.metadata_capacity refusal.
+             */
+            required_reservation_bytes?: number;
             status: number;
             title: string;
             /** Format: uri-reference */
@@ -8132,7 +9425,7 @@ export interface components {
             /** Format: date-time */
             cancelled_at?: string;
             /** @enum {string} */
-            category: "work" | "integrity";
+            category: "work" | "integrity" | "browser_activity" | "security_operational";
             /** Format: date-time */
             created_at: string;
             delivery_error_code?: string;
@@ -8154,6 +9447,8 @@ export interface components {
         RetentionPolicyRequest: {
             /** @description Lifetime from each completed audit or receipt event. Zero is indefinite. Unfinished work and current references protect dependent records. */
             audit_retention_days: number;
+            /** @description Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks. */
+            browser_activity_retention_days: number;
             /**
              * @description Also create candidate notices when their records enter grace. Manager and operator notices are always reserved durably.
              * @default false
@@ -8170,6 +9465,8 @@ export interface components {
             export_retention_days: number;
             /** @description Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. Unresolved Reviews block completion. */
             integrity_retention_days: number;
+            /** @description Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks. */
+            security_operational_retention_days: number;
             /** @description Work lifetime from current Sitting Records Completion. Zero is indefinite. Supporting integrity, holds and source protections can extend preservation. */
             submission_retention_days: number;
         };
@@ -8178,6 +9475,8 @@ export interface components {
             audit_retention_days: number;
             /** @description True only when a separate active cleanup approval matches this exact policy revision and a positive grace period is configured. */
             readonly automatic_deletion_enabled: boolean;
+            /** @description Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks. */
+            browser_activity_retention_days: number;
             /** @description Whether candidate notices accompany mandatory manager and operator notices. */
             candidate_notices: boolean;
             /** Format: date-time */
@@ -8193,6 +9492,8 @@ export interface components {
              * @description Current policy revision.
              */
             revision: number;
+            /** @description Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks. */
+            security_operational_retention_days: number;
             /** @description Work lifetime from current Sitting Records Completion. Zero is indefinite; integrity dependencies and preservation holds remain effective. */
             submission_retention_days: number;
             /** Format: date-time */
@@ -8224,6 +9525,7 @@ export interface components {
         };
         RetentionPreviewResponse: {
             audit: components["schemas"]["RetentionExpiryCounts"];
+            browser_activity: components["schemas"]["RetentionPreviewCounts"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -8233,13 +9535,14 @@ export interface components {
             /** Format: int64 */
             policy_revision: number;
             receipts: components["schemas"]["RetentionExpiryCounts"];
+            security_operational: components["schemas"]["RetentionPreviewCounts"];
             work: components["schemas"]["RetentionPreviewCounts"];
         };
         RetentionRecord: {
             /** @enum {string} */
             blocker: "" | "retired" | "records_incomplete" | "preservation_hold" | "retention_unconfigured" | "supporting_integrity" | "export_in_progress" | "retention_period";
             /** @enum {string} */
-            category: "work" | "integrity";
+            category: "work" | "integrity" | "browser_activity" | "security_operational";
             /** Format: date-time */
             completed_at?: string;
             completion_current: boolean;
@@ -8382,6 +9685,89 @@ export interface components {
             /** Format: date-time */
             scheduled_start_at: string;
         };
+        SecurityCatalogBinding: {
+            catalog_id: string;
+            digest: string;
+            /** @enum {string} */
+            kind: "application" | "storage_function" | "managed_network_profile" | "network_adapter_class" | "tunnel_class" | "detector";
+            revision: string;
+        };
+        SecurityCoverageResult: {
+            /** @enum {string} */
+            coverage_result: "accepted" | "stale_control" | "reset_required" | "reset_conflict";
+            delivery_watermark_rejections: components["schemas"]["DeliveryWatermarkRejection"][];
+            /** @enum {string} */
+            execution_state: "not_allocated" | "ready" | "freeze_pending" | "frozen" | "thaw_pending" | "unavailable";
+            processed_control_digest: string | null;
+            /** Format: int64 */
+            processed_control_sequence: number;
+            security_interaction_allowed: boolean;
+            source_reset_receipts: components["schemas"]["SourceResetReceipt"][];
+        };
+        SecurityPolicyRecovery: {
+            current_coverage: components["schemas"]["NativeCoverageClaim"][];
+            current_sources: components["schemas"]["NativeSourceCoverage"][];
+            frozen_attempt_configuration: components["schemas"]["FrozenAttemptConfiguration"];
+            security: components["schemas"]["AdmittedSecurity"];
+            security_coverage: components["schemas"]["SecurityCoverageResult"];
+            /** Format: date-time */
+            server_time: string;
+            source_reset_receipts: components["schemas"]["SourceResetReceipt"][];
+        };
+        /** @description Privileged registered-Desktop response bounded to 128 KiB. Catalog bindings are unique and sorted by kind then catalog_id. First admission returns null configuration; Ready rejoin returns the original immutable configuration. */
+        SecurityPolicyResponse: {
+            browser_activity_disclosure: components["schemas"]["BrowserActivityDisclosure"];
+            capability_matrix_digest: string;
+            catalog_bindings: components["schemas"]["SecurityCatalogBinding"][];
+            frozen_attempt_configuration: components["schemas"]["FrozenAttemptConfiguration"] | null;
+            policy: components["schemas"]["EffectiveExamSecurityPolicy"];
+            policy_content_digest: string;
+            preflight_challenge: components["schemas"]["SecurityPreflightChallenge"];
+            /** Format: date-time */
+            server_time: string;
+        };
+        SecurityPreflightChallenge: {
+            challenge: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            issued_at: string;
+            preflight_id: string;
+        };
+        /** @description Minimized assertions, at most 64 KiB. Source order and categories must match the resolved policy; coverage keys are sorted and exact. No inventories, media, clipboard bytes, OS errors or arbitrary details are accepted. The server computes the report digest. Client reported_at is provenance; server time controls challenge expiry and admission freshness. */
+        SecurityPreflightReport: {
+            baseline: components["schemas"]["NativeBaselineReport"];
+            capability_matrix_digest: string;
+            challenge: string;
+            coverage: components["schemas"]["NativeCoverageClaim"][];
+            policy_content_digest: string;
+            policy_digest: string;
+            /** @enum {string} */
+            posture: "compliant" | "degraded" | "contained" | "failed";
+            /** Format: date-time */
+            reported_at: string;
+            security_session_id: string;
+            selected_source_categories: ("os-clipboard-change" | "removable-block-storage" | "portable-mtp" | "system-proxy-state" | "os-managed-vpn-state" | "tunnel-interface-state" | "route-change" | "network-source-health" | "camera" | "microphone")[];
+            source_manifest_digest: string;
+            sources: components["schemas"]["NativeSourceCoverage"][];
+        };
+        SecurityPreflightResult: {
+            /** @enum {string} */
+            admission: "eligible" | "blocked";
+            /** Format: date-time */
+            expires_at: string;
+            preflight_id: string;
+            reason_codes: ("policy_changed" | "unsupported_capability" | "source_unavailable" | "permission_required" | "baseline_unavailable" | "preflight_expired" | "preflight_superseded" | "posture_blocked" | "configuration_unsupported" | "session_changed")[];
+            report_digest: string;
+            /** Format: date-time */
+            server_time: string;
+        };
+        SequenceRange: {
+            /** Format: int64 */
+            first: number;
+            /** Format: int64 */
+            last: number;
+        };
         SessionAdministrationListResponse: components["schemas"]["SessionAdministrationResponse"][];
         SessionAdministrationResponse: {
             /** Format: int64 */
@@ -8509,6 +9895,7 @@ export interface components {
             current_class_membership: boolean;
             /** Format: int64 */
             integrity_attention_count: number;
+            native_security?: components["schemas"]["NativeSecuritySummary"];
             presence: components["schemas"]["SittingCandidatePresenceResponse"];
             suspension: components["schemas"]["SittingCandidateSuspensionResponse"] | null;
         };
@@ -8524,8 +9911,23 @@ export interface components {
             id: components["schemas"]["ID"];
             reallow_available: boolean;
         };
+        SourceResetReceipt: {
+            reset_digest: string;
+            reset_id: string;
+        };
         /** @description An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control characters, and the reserved .proctor root are rejected. */
         StarterWorkspacePath: string;
+        StopDeliveryDetails: {
+            /** @enum {string} */
+            family: "native" | "browser";
+            /** @enum {string} */
+            reason: "local_loss_inventory_exhausted";
+        };
+        StopDeliveryDetailsResult: {
+            browser: components["schemas"]["BrowserSourceStatus"][];
+            budget: components["schemas"]["DeliveryBudgetSnapshot"];
+            native: components["schemas"]["NativeSecurityStreamStatus"] | null;
+        };
         /** @description Explicitly released candidate result with private review content omitted. */
         StudentExamResultResponse: {
             exam_attempt_id: components["schemas"]["ID"];
@@ -8560,8 +9962,15 @@ export interface components {
         };
         SubmissionReviewWaiverResponse: {
             actor_user_id: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Exact accepted delivery inventory acknowledged by this waiver.
+             */
+            delivery_inventory_revision: number;
             /** Format: int64 */
             discrepancy_count: number;
+            /** @description Accepted delivery changed after this waiver; renewed acknowledgement is required. */
+            inventory_invalidated: boolean;
             /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
             private_reason: string;
             /**
@@ -8577,8 +9986,8 @@ export interface components {
             revision: number;
             submission_id: components["schemas"]["ID"];
         };
+        /** @description Submit the acknowledged Workspace and current Exam Revision with the existing Focus Loss final sequence. Browser settlement is calculated by the server across all Attempt sources; browser activity fields are not accepted. */
         SubmitExamAttemptRequest: {
-            browser_activity: components["schemas"]["BrowserActivitySubmission"];
             /** @description The current Exam Sitting Revision displayed by the client. */
             expected_current_revision_id: components["schemas"]["ID"];
             /**
@@ -8644,6 +10053,17 @@ export interface components {
             /** Format: int64 */
             expected_exam_revision: number;
             user_id: components["schemas"]["ID"];
+        };
+        UnretainedDeliverySummary: {
+            count_complete: boolean;
+            /** Format: date-time */
+            first_unretained_at: string | null;
+            /** Format: date-time */
+            last_unretained_at: string | null;
+            /** Format: int64 */
+            summary_sequence: number;
+            /** Format: int64 */
+            unretained_record_count: number;
         };
         /** @description Mutable Academic Period fields; omitted or null values leave the stored value unchanged. */
         UpdateAcademicPeriodRequest: {
@@ -8867,6 +10287,12 @@ export interface components {
             writable: boolean;
         };
         WaiveSubmissionReviewRequest: {
+            /**
+             * Format: int64
+             * @description Exact delivery_inventory_revision from the current private Review snapshot, including when no Review exists. Omission means zero and conflicts after any late delivery change.
+             * @default 0
+             */
+            expected_delivery_inventory_revision: number;
             /** Format: int64 */
             expected_discrepancy_count: number;
             /** Format: int64 */
@@ -9129,6 +10555,16 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /** @description Bounded authoritative Browser delivery result. No navigation or history-view authority is granted. */
+        BrowserActivityAcknowledgementOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserActivityAcknowledgement"];
+            };
+        };
         /** @description Bounded privacy-minimized Browser Activity page */
         BrowserActivityListOK: {
             headers: {
@@ -9137,6 +10573,26 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["BrowserActivityListResponse"];
+            };
+        };
+        /** @description Bounded authoritative Browser delivery result. No navigation or history-view authority is granted. */
+        BrowserDeliveryGapResultOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserDeliveryGapResult"];
+            };
+        };
+        /** @description Bounded authoritative Browser delivery result. No navigation or history-view authority is granted. */
+        BrowserDeliverySummaryResultOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserDeliverySummaryResult"];
             };
         };
         /** @description Invitation accepted or its exact durable outcome replayed */
@@ -9157,6 +10613,38 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["BrowserInvitationStartResponse"];
+            };
+        };
+        /** @description Bounded authoritative Browser delivery result. No navigation or history-view authority is granted. */
+        BrowserReceiptPageOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserReceiptPage"];
+            };
+        };
+        /** @description Bounded ordered source inventory. */
+        BrowserSourceListOK: {
+            headers: {
+                /** @description Always no-store. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserSourceList"];
+            };
+        };
+        /** @description Current owned source status. */
+        BrowserSourceStatusOK: {
+            headers: {
+                /** @description Always no-store. */
+                "Cache-Control"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserSourceStatus"];
             };
         };
         /** @description Build information */
@@ -9343,6 +10831,25 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["CurrentUserContextResponse"];
+            };
+        };
+        /** @description Current lifetime quota projection, bounded at 8 KiB. */
+        DeliveryBudgetOK: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DeliveryBudgetSnapshot"];
+            };
+        };
+        /** @description Authoritative native delivery result. This projection never grants interaction. */
+        DeliveryGapReceiptOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DeliveryGapReceipt"];
             };
         };
         /** @description DPoP-bound Desktop Session created */
@@ -10329,6 +11836,71 @@ export interface components {
                 "application/json": components["schemas"]["MailRekeyStatusResponse"];
             };
         };
+        /** @description Authoritative native delivery result. This projection never grants interaction. */
+        NativeBatchReceiptOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NativeBatchReceipt"];
+            };
+        };
+        /** @description Bounded private native condition transitions, never a guilt finding. */
+        NativeConditionListOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
+                "application/json": components["schemas"]["NativeConditionListResponse"];
+            };
+        };
+        /** @description The immutable source upload deadline has expired. */
+        NativeDeliveryExpired: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "idempotency.conflict",
+                 *       "detail": "The idempotency key was already used with different input.",
+                 *       "request_id": "req_docs_conflict",
+                 *       "status": 409,
+                 *       "title": "Request conflict",
+                 *       "type": "/problems/idempotency-conflict"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
+        /** @description Exact retained batch receipt with current actual and settled progression. Pending records are not interpreted until earlier positions are received or terminal. */
+        NativeSecurityAcknowledgementOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NativeSecurityAcknowledgement"];
+            };
+        };
+        /** @description Authoritative native delivery result. This projection never grants interaction. */
+        NativeSecurityStreamStatusOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NativeSecurityStreamStatus"];
+            };
+        };
         /** @description Resource not found */
         NotFound: {
             headers: {
@@ -10635,12 +12207,14 @@ export interface components {
                  * @example {
                  *       "audit_retention_days": 0,
                  *       "automatic_deletion_enabled": false,
+                 *       "browser_activity_retention_days": 0,
                  *       "candidate_notices": false,
                  *       "created_at": "2026-08-01T12:00:00Z",
                  *       "deletion_grace_days": 0,
                  *       "export_retention_days": 0,
                  *       "integrity_retention_days": 0,
                  *       "revision": 1,
+                 *       "security_operational_retention_days": 0,
                  *       "submission_retention_days": 0,
                  *       "updated_at": "2026-08-01T12:00:00Z"
                  *     }
@@ -10668,6 +12242,17 @@ export interface components {
                  *         "unconfigured": 0,
                  *         "unfinished": 0
                  *       },
+                 *       "browser_activity": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "export_protected": 0,
+                 *         "held": 0,
+                 *         "incomplete": 0,
+                 *         "retired": 0,
+                 *         "supporting_work": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0
+                 *       },
                  *       "created_at": "2026-09-01T12:00:00Z",
                  *       "expires_at": "2026-09-01T13:00:00Z",
                  *       "id": "4cbxoynrnbnzpkfcghhsy3qxuy",
@@ -10693,6 +12278,17 @@ export interface components {
                  *         "total": 0,
                  *         "unconfigured": 0,
                  *         "unfinished": 0
+                 *       },
+                 *       "security_operational": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "export_protected": 0,
+                 *         "held": 0,
+                 *         "incomplete": 0,
+                 *         "retired": 0,
+                 *         "supporting_work": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0
                  *       },
                  *       "work": {
                  *         "awaiting_deadline": 0,
@@ -10788,6 +12384,34 @@ export interface components {
                 "application/json": components["schemas"]["RoleResponse"];
             };
         };
+        /** @description The exact retained active security receipt and frozen configuration for its owning registered Desktop Session. */
+        SecurityPolicyRecoveryOK: {
+            headers: {
+                "Cache-Control"?: "no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SecurityPolicyRecovery"];
+            };
+        };
+        /** @description Authenticated security preflight result. */
+        SecurityPolicyResponseOK: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SecurityPolicyResponse"];
+            };
+        };
+        /** @description Authenticated security preflight result. */
+        SecurityPreflightResultOK: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SecurityPreflightResult"];
+            };
+        };
         /** @description Accepted */
         SensitiveAccepted: {
             headers: {
@@ -10860,6 +12484,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["SessionResponse"];
+            };
+        };
+        /** @description Committed family cutoff and current affected source inventory, bounded at 1 MiB. */
+        StopDeliveryDetailsOK: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["StopDeliveryDetailsResult"];
             };
         };
         /** @description Narrow explicitly released candidate result without evidence or private manager content */
@@ -11040,6 +12673,8 @@ export interface components {
         AffiliationID: components["schemas"]["ID"];
         /** @description The active Attempt Workspace entry identifier. */
         AttemptWorkspaceEntryID: components["schemas"]["ID"];
+        /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+        BrowserSourceSessionID: string;
         /** @description The durable open Attempt Connection bound to the current authenticated Session. */
         CandidateAttemptConnectionID: components["schemas"]["ID"];
         /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. */
@@ -11076,6 +12711,14 @@ export interface components {
         IntegrityFlagID: components["schemas"]["ID"];
         /** @description The Invitation identifier. */
         InvitationID: components["schemas"]["ID"];
+        /** @description Exact retained batch sequence. */
+        NativeBatchSequence: number;
+        /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+        NativeDeliveryConnectionID: components["schemas"]["ID"];
+        /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+        NativeDeliveryCredential: string;
+        /** @description Server-created native delivery stream identifier. */
+        NativeStreamID: components["schemas"]["ID"];
         /** @description The staged onboarding import identifier. */
         OnboardingImportID: components["schemas"]["ID"];
         /** @description Opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
@@ -11098,6 +12741,8 @@ export interface components {
         RoleBindingID: components["schemas"]["ID"];
         /** @description The Role identifier. */
         RoleID: components["schemas"]["ID"];
+        /** @description Server-issued canonical preflight transaction ID returned by preparation. */
+        SecurityPreflightID: string;
         /** @description The interactive Session identifier. */
         SessionID: components["schemas"]["ID"];
         /** @description The Exam Draft starter Workspace entry identifier. */
@@ -11141,6 +12786,11 @@ export interface components {
                 /**
                  * @example {
                  *       "acknowledgement_required": true,
+                 *       "affected_capabilities": [
+                 *         "submission",
+                 *         "terminal",
+                 *         "workspace"
+                 *       ],
                  *       "candidate_summary": "The formula sheet for Question 3 was corrected.",
                  *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
                  *       "expected_sitting_revision": 8,
@@ -11217,6 +12867,12 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["BootstrapInstallationRequest"];
+            };
+        };
+        /** @description Closed historical Browser Activity append using the same event codec as realtime. The source must already be closed. */
+        BrowserActivityBatch: {
+            content: {
+                "application/json": components["schemas"]["BrowserActivityBatch"];
             };
         };
         /** @description Browser handle plus account credentials and optional profile fields for account-creating acceptance. */
@@ -11372,8 +13028,7 @@ export interface components {
                 /**
                  * @example {
                  *       "browser_policy": {
-                 *         "enabled": false,
-                 *         "schema_version": 1
+                 *         "enabled": false
                  *       },
                  *       "expected_draft_revision": 4
                  *     }
@@ -11409,6 +13064,79 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["ConfigureExamDraftFocusLossRequest"];
+            };
+        };
+        /** @description Supplies the expected Draft revision and the complete replacement native security policy. */
+        ConfigureExamDraftNativePolicy: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_draft_revision": 4,
+                 *       "native": {
+                 *         "baseline_id": "desktop_candidate",
+                 *         "families": [
+                 *           {
+                 *             "allowed_application_ids": [],
+                 *             "id": "process_application",
+                 *             "mode": "disabled"
+                 *           },
+                 *           {
+                 *             "id": "interactive_session",
+                 *             "mode": "disabled"
+                 *           },
+                 *           {
+                 *             "id": "clipboard",
+                 *             "mode": "disabled",
+                 *             "observe_os_clipboard_changes": false,
+                 *             "strategy": "disabled"
+                 *           },
+                 *           {
+                 *             "candidate_print_commands": "not_applied",
+                 *             "id": "printing",
+                 *             "mode": "disabled",
+                 *             "monitored_spooler": "not_required"
+                 *           },
+                 *           {
+                 *             "allowed_storage_function_class_ids": [],
+                 *             "enabled_sub_capabilities": [],
+                 *             "id": "removable_storage",
+                 *             "mode": "disabled"
+                 *           },
+                 *           {
+                 *             "id": "virtualization",
+                 *             "mode": "disabled",
+                 *             "rule": "not_applied"
+                 *           },
+                 *           {
+                 *             "allowed_adapter_class_ids": [],
+                 *             "allowed_managed_profile_ids": [],
+                 *             "allowed_tunnel_class_ids": [],
+                 *             "enabled_sub_capabilities": [],
+                 *             "id": "network_configuration",
+                 *             "mode": "disabled"
+                 *           },
+                 *           {
+                 *             "concurrent_use_check": "not_required",
+                 *             "id": "camera",
+                 *             "mode": "disabled",
+                 *             "require_ready": false
+                 *           },
+                 *           {
+                 *             "concurrent_use_check": "not_required",
+                 *             "id": "microphone",
+                 *             "mode": "disabled",
+                 *             "require_ready": false
+                 *           },
+                 *           {
+                 *             "id": "external_capture",
+                 *             "mode": "disabled"
+                 *           }
+                 *         ],
+                 *         "registry_digest": "sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ConfigureExamDraftNativePolicyRequest"];
             };
         };
         /** @description Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period. */
@@ -11626,6 +13354,26 @@ export interface components {
                 "application/json": components["schemas"]["CreateRoleBindingRequest"];
             };
         };
+        /** @description Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are rejected. */
+        DeclareDeliveryGaps: {
+            content: {
+                /**
+                 * @example {
+                 *       "allocated_through_sequence": 4,
+                 *       "declaration_id": "loss-0001",
+                 *       "expected_declaration_revision": 0,
+                 *       "ranges": [
+                 *         {
+                 *           "first": 2,
+                 *           "last": 3
+                 *         }
+                 *       ],
+                 *       "reason": "spool_lost"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DeclareDeliveryGaps"];
+            };
+        };
         /** @description Supplies the active Participation generation and expected entry state that must still match before deletion. */
         DeleteCandidateWorkspaceEntry: {
             content: {
@@ -11826,6 +13574,19 @@ export interface components {
                 "application/json": components["schemas"]["ExternalReauthenticationRequest"];
             };
         };
+        /** @description Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are rejected. */
+        FinalDeliveryDeclaration: {
+            content: {
+                /**
+                 * @example {
+                 *       "declaration_id": "final-0001",
+                 *       "expected_declaration_revision": 1,
+                 *       "final_sequence": 4
+                 *     }
+                 */
+                "application/json": components["schemas"]["FinalDeliveryDeclaration"];
+            };
+        };
         /** @description The local login identifier, password, client type, optional device presentation, and optional MFA proof. Credentials are sensitive and must never be logged. */
         Login: {
             content: {
@@ -11889,6 +13650,12 @@ export interface components {
                 "application/json": components["schemas"]["InvitationMutationRequest"];
             };
         };
+        /** @description Exact original native batch, 1..64 closed records and at most 256 KiB. Retries preserve prior_acknowledgement and all canonical content. */
+        NativeSecurityBatch: {
+            content: {
+                "application/json": components["schemas"]["NativeSecurityBatch"];
+            };
+        };
         /** @description The current User's password, used to refresh primary proof for the existing password-authenticated Session before returning to the pending sensitive task. */
         PasswordReauthentication: {
             content: {
@@ -11930,6 +13697,19 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["AccessPolicySettingsRequest"];
+            };
+        };
+        /** @description Complete bounded artifact identities and optional Ready Attempt selector. */
+        PrepareSecurityPreflightRequest: {
+            content: {
+                /**
+                 * @example {
+                 *       "configuration_manifest_fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "native_registry_digest": "sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0",
+                 *       "source_manifest_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PrepareSecurityPreflightRequest"];
             };
         };
         /** @description Supplies the new account's required first and last names, unique username, normalized email address, and policy-compliant local password. Public registration does not accept a display name. */
@@ -12091,10 +13871,12 @@ export interface components {
                 /**
                  * @example {
                  *       "audit_retention_days": 0,
+                 *       "browser_activity_retention_days": 0,
                  *       "deletion_grace_days": 0,
                  *       "expected_revision": 1,
                  *       "export_retention_days": 0,
                  *       "integrity_retention_days": 0,
+                 *       "security_operational_retention_days": 0,
                  *       "submission_retention_days": 0
                  *     }
                  */
@@ -12227,6 +14009,32 @@ export interface components {
                 "application/json": components["schemas"]["ScheduleExamSittingRequest"];
             };
         };
+        /** @description Complete bounded minimized preflight report, with no native content or inventory. */
+        SecurityPreflightReport: {
+            content: {
+                /**
+                 * @example {
+                 *       "baseline": {
+                 *         "constrained_window": "unavailable",
+                 *         "content_protection": "unavailable",
+                 *         "single_physical_display": "unavailable"
+                 *       },
+                 *       "capability_matrix_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "challenge": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "coverage": [],
+                 *       "policy_content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "policy_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "posture": "failed",
+                 *       "reported_at": "2026-09-08T08:00:00.000Z",
+                 *       "security_session_id": "synthetic-security-session",
+                 *       "selected_source_categories": [],
+                 *       "source_manifest_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                 *       "sources": []
+                 *     }
+                 */
+                "application/json": components["schemas"]["SecurityPreflightReport"];
+            };
+        };
         /** @description Identifies the currently active non-primary key that this rotation must retire. */
         StartMailRekey: {
             content: {
@@ -12238,14 +14046,23 @@ export interface components {
                 "application/json": components["schemas"]["MailRekeyRequest"];
             };
         };
+        /** @description Closed family-scoped local loss-inventory exhaustion declaration. Maximum 2 KiB. */
+        StopDeliveryDetails: {
+            content: {
+                /**
+                 * @example {
+                 *       "family": "browser",
+                 *       "reason": "local_loss_inventory_exhausted"
+                 *     }
+                 */
+                "application/json": components["schemas"]["StopDeliveryDetails"];
+            };
+        };
         /** @description The active Participation generation and final acknowledged client positions required to atomically seal the Attempt Workspace as a Submission. */
         SubmitExamAttempt: {
             content: {
                 /**
                  * @example {
-                 *       "browser_activity": {
-                 *         "state": "not_applicable"
-                 *       },
                  *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza5",
                  *       "expected_workspace_cursor": 18,
                  *       "final_focus_loss_sequence": 3,
@@ -12278,6 +14095,21 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["TransferExamOwnershipRequest"];
+            };
+        };
+        /** @description Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are rejected. */
+        UnretainedDeliverySummary: {
+            content: {
+                /**
+                 * @example {
+                 *       "count_complete": true,
+                 *       "first_unretained_at": "2026-09-08T01:00:00Z",
+                 *       "last_unretained_at": "2026-09-08T01:00:01Z",
+                 *       "summary_sequence": 1,
+                 *       "unretained_record_count": 2
+                 *     }
+                 */
+                "application/json": components["schemas"]["UnretainedDeliverySummary"];
             };
         };
         /** @description Partial Academic Period presentation or bounds update; ownership cannot change. */
@@ -13927,6 +15759,233 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    browserSourceList: {
+        parameters: {
+            query: {
+                /** @description Owned Participation whose bounded source inventory is requested. */
+                participation_id: components["schemas"]["ID"];
+            };
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BrowserSourceListOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    browserSourceStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BrowserSourceStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    appendHistoricalBrowserDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["BrowserActivityBatch"];
+        responses: {
+            200: components["responses"]["BrowserActivityAcknowledgementOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    declareBrowserDeliveryGaps: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["DeclareDeliveryGaps"];
+        responses: {
+            200: components["responses"]["BrowserDeliveryGapResultOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    browserDeliveryReceipts: {
+        parameters: {
+            query: {
+                /** @description First sequence to examine, inclusive. */
+                first_sequence: number;
+                /** @description Maximum number of retained receipts. */
+                limit: number;
+            };
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BrowserReceiptPageOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    sealBrowserDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["FinalDeliveryDeclaration"];
+        responses: {
+            200: components["responses"]["BrowserSourceStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateBrowserDeliverySummary: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Canonical UUIDv4 source identity assigned by the privileged Desktop. */
+                source_session_id: components["parameters"]["BrowserSourceSessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["UnretainedDeliverySummary"];
+        responses: {
+            200: components["responses"]["BrowserDeliverySummaryResultOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     acknowledgeExamAttemptCorrection: {
         parameters: {
             query?: never;
@@ -13954,6 +16013,69 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deliveryBudget: {
+        parameters: {
+            query: {
+                /** @description Owned Participation whose bounded source inventory is requested. */
+                participation_id: components["schemas"]["ID"];
+            };
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DeliveryBudgetOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    stopDeliveryDetails: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. */
+                "X-Proctor-Attempt-Credential": components["parameters"]["CandidateAttemptCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. */
+                "X-Proctor-Attempt-Connection-ID": components["parameters"]["CandidateAttemptConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["StopDeliveryDetails"];
+        responses: {
+            200: components["responses"]["StopDeliveryDetailsOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -14031,6 +16153,223 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    appendNativeDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["NativeSecurityBatch"];
+        responses: {
+            200: components["responses"]["NativeSecurityAcknowledgementOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    recoverExamSecurityPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["SecurityPolicyRecoveryOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    nativeDeliveryStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["NativeSecurityStreamStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    declareNativeDeliveryGaps: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["DeclareDeliveryGaps"];
+        responses: {
+            200: components["responses"]["DeliveryGapReceiptOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    nativeDeliveryReceipt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+                /** @description Exact retained batch sequence. */
+                batch_sequence: components["parameters"]["NativeBatchSequence"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["NativeBatchReceiptOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    sealNativeDelivery: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["FinalDeliveryDeclaration"];
+        responses: {
+            200: components["responses"]["NativeSecurityStreamStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateNativeDeliverySummary: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Credential"?: components["parameters"]["NativeDeliveryCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. Required together while the source is live. May be omitted after server-owned closure; omission never establishes historical authority. */
+                "X-Proctor-Attempt-Connection-ID"?: components["parameters"]["NativeDeliveryConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description Server-created native delivery stream identifier. */
+                stream_id: components["parameters"]["NativeStreamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["UnretainedDeliverySummary"];
+        responses: {
+            200: components["responses"]["NativeSecurityStreamStatusOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["NativeDeliveryExpired"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -14318,6 +16657,32 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    prepareSecurityPreflight: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["PrepareSecurityPreflightRequest"];
+        responses: {
+            200: components["responses"]["SecurityPolicyResponseOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listExams: {
         parameters: {
             query?: {
@@ -14530,6 +16895,31 @@ export interface operations {
             cookie?: never;
         };
         requestBody: components["requestBodies"]["ConfigureExamDraftFocusLoss"];
+        responses: {
+            200: components["responses"]["ExamOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    configureExamDraftNativePolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ConfigureExamDraftNativePolicy"];
         responses: {
             200: components["responses"]["ExamOK"];
             400: components["responses"]["BadRequest"];
@@ -17374,6 +19764,32 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    reportSecurityPreflight: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description Server-issued canonical preflight transaction ID returned by preparation. */
+                security_preflight_id: components["parameters"]["SecurityPreflightID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["SecurityPreflightReport"];
+        responses: {
+            200: components["responses"]["SecurityPreflightResultOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     dryRunStudentProgression: {
         parameters: {
             query?: never;
@@ -17555,6 +19971,32 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["ExamIntegrityEvidenceListOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listNativeConditions: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of native condition transitions to return. */
+                limit?: number;
+                /** @description Opaque continuation from the preceding native condition page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["NativeConditionListOK"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];

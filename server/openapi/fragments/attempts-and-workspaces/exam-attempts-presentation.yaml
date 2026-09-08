@@ -13,7 +13,9 @@ paths:
       operationId: getCandidateExamPresentation
       summary: Get the protected current presentation for one candidate Attempt
       description: >-
-        Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included.
+        Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest
+        visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open
+        Connection; no answer or manager-only state is included.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -40,19 +42,19 @@ paths:
         - $ref: '#/components/parameters/CandidateAttemptCredential'
         - $ref: '#/components/parameters/CandidateAttemptConnectionID'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/CandidateExamPresentationOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
@@ -129,7 +131,7 @@ components:
         browser_policy:
           oneOf:
             - $ref: '#/components/schemas/CandidateBrowserPolicy'
-            - type: "null"
+            - type: 'null'
         live_corrections:
           type: array
           maxItems: 32
@@ -143,14 +145,15 @@ components:
     CandidateBrowserPolicy:
       type: object
       additionalProperties: false
-      required: [schema_version, enabled, start_rule_id, rules, policy_revision_id, policy_digest]
+      required:
+        - enabled
+        - policy_revision_id
+        - policy_revision_number
+        - policy_digest
+        - browser_activity_disclosure
       properties:
-        schema_version:
-          type: integer
-          const: 1
         enabled:
           type: boolean
-          const: true
         start_rule_id:
           type: string
           minLength: 1
@@ -158,18 +161,53 @@ components:
         rules:
           type: array
           minItems: 1
-          maxItems: 64
+          maxItems: 128
           items:
             $ref: '#/components/schemas/BrowserPolicyRule'
         policy_revision_id:
           $ref: '#/components/schemas/ID'
         policy_digest:
           type: string
-          pattern: '^sha256:[0-9a-f]{64}$'
+          pattern: ^sha256:[0-9a-f]{64}$
+        policy_revision_number:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        browser_activity_disclosure:
+          $ref: '#/components/schemas/BrowserActivityDisclosure'
+      oneOf:
+        - properties:
+            enabled:
+              const: false
+          not:
+            anyOf:
+              - required:
+                  - start_rule_id
+              - required:
+                  - rules
+        - properties:
+            enabled:
+              const: true
+          required:
+            - start_rule_id
+            - rules
+      description: >-
+        Current Browser Policy and separately revisioned collection notice. Revision number is a monotonic ordinal. The
+        sha256-prefixed digest covers only canonical BrowserPolicy bytes, excluding revision metadata and disclosure.
+        Disabled policies omit start_rule_id and rules.
     CandidateLiveCorrection:
       type: object
       additionalProperties: false
-      required: [revision_id, revision_number, effective_at, summary, changed_areas, acknowledgement_required, acknowledgement_state, acknowledged_at]
+      required:
+        - revision_id
+        - revision_number
+        - effective_at
+        - summary
+        - changed_areas
+        - affected_capabilities
+        - acknowledgement_required
+        - acknowledgement_state
       properties:
         revision_id:
           $ref: '#/components/schemas/ID'
@@ -191,35 +229,64 @@ components:
           uniqueItems: true
           items:
             type: string
-            enum: [browser_policy, instructions, resources]
+            enum:
+              - browser_policy
+              - instructions
+              - resources
+        affected_capabilities:
+          $ref: '#/components/schemas/CorrectionCapabilitySelection'
         acknowledgement_required:
           type: boolean
         acknowledgement_state:
           type: string
-          enum: [not_required, pending, acknowledged]
+          enum:
+            - not_required
+            - pending
+            - acknowledged
         acknowledged_at:
-          type:
-            - string
-            - "null"
+          type: string
           format: date-time
+          description: Present exactly when acknowledgement_state is acknowledged.
     CandidateRuntimeCapabilities:
       type: object
       additionalProperties: false
-      required: [schema_version, server_time, interaction_state, attempt_configuration, focus_loss_collection_enabled, workspace_mutation_allowed, submission_allowed, terminal, browser, exam_revision, departure]
+      required:
+        - schema_version
+        - server_time
+        - interaction_state
+        - attempt_configuration
+        - focus_loss_collection_enabled
+        - pending_correction_capabilities
+        - workspace_mutation_allowed
+        - submission_allowed
+        - terminal
+        - browser
+        - exam_revision
+        - departure
       properties:
         schema_version:
           type: integer
-          enum: [1]
+          enum:
+            - 1
         server_time:
           type: string
           format: date-time
         interaction_state:
           type: string
-          enum: [interactive, sitting_paused]
+          enum:
+            - interactive
+            - sitting_paused
         attempt_configuration:
           $ref: '#/components/schemas/CandidateAttemptConfiguration'
         focus_loss_collection_enabled:
           type: boolean
+        pending_correction_capabilities:
+          type: array
+          maxItems: 4
+          uniqueItems: true
+          description: Sorted union of capabilities selected by currently pending required acknowledgements.
+          items:
+            $ref: '#/components/schemas/CandidateCapability'
         workspace_mutation_allowed:
           type: boolean
         submission_allowed:
@@ -235,113 +302,248 @@ components:
     CandidateAttemptConfiguration:
       type: object
       additionalProperties: false
-      required: [schema_version, manifest_fingerprint, preferences, digest]
+      description: >-
+        Effective presentation and approved identifiers for the candidate renderer. The revision and digest identify the
+        frozen configuration; private build, registry and User Settings provenance are delivered only to the owning
+        privileged Desktop.
+      required:
+        - attempt_configuration_revision
+        - presentation
+        - approved_commands
+        - approved_keybindings
+        - digest
       properties:
-        schema_version:
-          type: integer
-          enum: [1]
-        manifest_fingerprint:
+        attempt_configuration_revision:
           type: string
-          pattern: '^sha256:[0-9a-f]{64}$'
-        preferences:
-          $ref: '#/components/schemas/AttemptConfigurationPreferences'
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        presentation:
+          $ref: '#/components/schemas/AttemptConfigurationPresentation'
+        approved_commands:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are
+            rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        approved_keybindings:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are
+            rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
         digest:
           type: string
-          pattern: '^sha256:[0-9a-f]{64}$'
-    AttemptConfigurationPreferences:
+          pattern: ^sha256:[0-9a-f]{64}$
+    AttemptConfigurationCandidate:
       type: object
       additionalProperties: false
-      required: [theme_mode, high_contrast_mode, ui_zoom_percent, editor_font_size_px, editor_line_height_percent, reduced_motion_mode, screen_reader_mode, announcement_detail, cursor_style, cursor_blinking, candidate_command_bindings]
+      description: >-
+        Complete proposed configuration, bounded at 16 KiB canonical bytes. Initial admission checks the acknowledged
+        User Settings revision, exact admitted build and target, packaged registry and manifest, and Candidate-safe
+        catalog membership. Out-of-range values are rejected without clamping. The digest of a frozen configuration
+        covers this entire candidate, including its original provenance.
+      required:
+        - manifest_fingerprint
+        - registry_fingerprint
+        - desktop_build
+        - desktop_target
+        - user_settings_revision
+        - presentation
+        - approved_commands
+        - approved_keybindings
       properties:
-        theme_mode:
+        manifest_fingerprint:
           type: string
-          enum: [follow_system, light, dark]
-        high_contrast_mode:
+          pattern: ^sha256:[0-9a-f]{64}$
+        registry_fingerprint:
           type: string
-          enum: [auto, on, off]
-        ui_zoom_percent:
+          pattern: ^fnv1a64:[0-9a-f]{16}$
+        desktop_build:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        desktop_target:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        user_settings_revision:
+          $ref: '#/components/schemas/ID'
+        presentation:
+          $ref: '#/components/schemas/AttemptConfigurationPresentation'
+        approved_commands:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are
+            rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        approved_keybindings:
+          type: array
+          description: >-
+            Sorted unique approved catalog IDs; keybindings must resolve to selected commands. Raw key chords are
+            rejected.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+    AttemptConfigurationPresentation:
+      type: object
+      additionalProperties: false
+      required:
+        - color_theme
+        - prefer_high_contrast
+        - zoom_percent
+        - editor_font_size_px
+        - editor_line_height_px
+        - reduced_motion
+        - screen_reader_mode
+        - announcement_mode
+        - cursor_style
+        - cursor_blinking
+      properties:
+        color_theme:
+          type: string
+          enum:
+            - light
+            - dark
+            - hcLight
+            - hcDark
+        prefer_high_contrast:
+          type: boolean
+        zoom_percent:
           type: integer
           minimum: 80
           maximum: 200
+          default: 100
         editor_font_size_px:
           type: integer
           minimum: 12
-          maximum: 32
-        editor_line_height_percent:
+          maximum: 24
+          default: 14
+        editor_line_height_px:
           type: integer
-          minimum: 120
-          maximum: 200
-        reduced_motion_mode:
-          type: string
-          enum: [auto, on, off]
+          description: Pixel height with bounds independent of font size.
+          minimum: 16
+          maximum: 40
+          default: 22
+        reduced_motion:
+          type: boolean
         screen_reader_mode:
           type: string
-          enum: [auto, on, off]
-        announcement_detail:
+          enum:
+            - auto
+            - 'on'
+            - 'off'
+        announcement_mode:
           type: string
-          enum: [standard, verbose]
+          enum:
+            - auto
+            - verbose
+            - minimal
         cursor_style:
           type: string
-          enum: [line, block, underline]
+          enum:
+            - line
+            - block
+            - underline
         cursor_blinking:
           type: string
-          enum: [blink, solid]
-        candidate_command_bindings:
-          type: array
-          maxItems: 32
-          items:
-            $ref: '#/components/schemas/AttemptCommandBinding'
-    AttemptCommandBinding:
-      type: object
-      additionalProperties: false
-      required: [command_id, keybinding_id]
-      properties:
-        command_id:
-          type: string
-        keybinding_id:
-          type: string
+          enum:
+            - blink
+            - smooth
+            - phase
+            - expand
+            - solid
     CandidateTerminalCapability:
       type: object
       additionalProperties: false
-      required: [state]
+      required:
+        - state
+        - environment_epoch
+        - applied_workspace_cursor
+        - projection_state
       properties:
         state:
           type: string
-          enum: [disabled, available, sitting_paused, acknowledgement_required, temporarily_unavailable]
+          enum:
+            - disabled
+            - available
+            - sitting_paused
+            - acknowledgement_required
+            - temporarily_unavailable
+        environment_epoch:
+          type: [string, 'null']
+          description: Host environment identity; null until an environment has been created.
+          pattern: '^[A-Za-z0-9_-]{1,128}$'
+        applied_workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        projection_state:
+          type: string
+          enum: [synchronizing, ready, conflict, unavailable]
     CandidateBrowserCapability:
       type: object
       additionalProperties: false
-      required: [state]
+      required:
+        - state
       properties:
         state:
           type: string
-          enum: [disabled, available, sitting_paused, acknowledgement_required]
+          enum:
+            - disabled
+            - available
+            - sitting_paused
+            - acknowledgement_required
+            - temporarily_unavailable
         policy_revision_id:
           $ref: '#/components/schemas/ID'
         policy_digest:
           type: string
-          pattern: '^sha256:[0-9a-f]{64}$'
+          pattern: ^sha256:[0-9a-f]{64}$
       oneOf:
         - type: object
           properties:
             state:
               type: string
-              enum: [disabled]
+              enum:
+                - disabled
         - type: object
-          required: [state, policy_revision_id, policy_digest]
+          required:
+            - state
+            - policy_revision_id
+            - policy_digest
           properties:
             state:
               type: string
-              enum: [available, sitting_paused, acknowledgement_required]
+              enum:
+                - available
+                - sitting_paused
+                - acknowledgement_required
+                - temporarily_unavailable
             policy_revision_id:
               $ref: '#/components/schemas/ID'
             policy_digest:
               type: string
-              pattern: '^sha256:[0-9a-f]{64}$'
+              pattern: ^sha256:[0-9a-f]{64}$
     CandidateExamRevisionCapability:
       type: object
       additionalProperties: false
-      required: [admission_revision_id, current_revision_id, acknowledgement_required]
+      required:
+        - admission_revision_id
+        - current_revision_id
+        - acknowledgement_required
       properties:
         admission_revision_id:
           $ref: '#/components/schemas/ID'
@@ -352,11 +554,15 @@ components:
     CandidateDepartureCapability:
       type: object
       additionalProperties: false
-      required: [allowed, reason]
+      required:
+        - allowed
+        - reason
       properties:
         allowed:
           type: boolean
-          enum: [false]
+          enum:
+            - false
         reason:
           type: string
-          enum: [attempt_in_progress]
+          enum:
+            - attempt_in_progress

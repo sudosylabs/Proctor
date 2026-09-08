@@ -14,7 +14,9 @@ paths:
       operationId: listExamAttempts
       summary: List bounded candidate Attempts for one Exam Sitting
       description: >-
-        Lists manager-safe Attempt projections for the exact Exam Sitting after rechecking current scope authority. Results may be filtered by lifecycle state and omit candidate credentials, answer content, private integrity evidence, and internal lease material.
+        Lists manager-safe Attempt projections for the exact Exam Sitting after rechecking current scope
+        authority. Results may be filtered by lifecycle state and omit candidate credentials, answer content,
+        private integrity evidence, and internal lease material.
       tags:
         - Attempts and workspaces
       x-proctor-auth: principal_required
@@ -64,23 +66,25 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged.
+          description: >-
+            Opaque versioned cursor over descending creation time and Attempt identity; clients return it
+            unchanged.
           schema:
             type: string
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamAttemptManagerListOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}:
     parameters:
@@ -91,7 +95,9 @@ paths:
       operationId: getExamAttempt
       summary: Get one manager-safe Exam Attempt projection
       description: >-
-        Returns one Attempt only after verifying its Exam and Sitting path ownership and the caller's current management authority. The projection exposes operational state but omits candidate credentials, answer content, and private evidence.
+        Returns one Attempt only after verifying its Exam and Sitting path ownership and the caller's current
+        management authority. The projection exposes operational state but omits candidate credentials, answer
+        content, and private evidence.
       tags:
         - Attempts and workspaces
       x-proctor-auth: principal_required
@@ -117,19 +123,19 @@ paths:
         - dpopAuth: []
         - sessionCookie: []
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamAttemptManagerOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity:
     parameters:
@@ -140,7 +146,11 @@ paths:
       operationId: listExamAttemptBrowserActivity
       summary: List privacy-minimized Browser Activity for one managed Attempt
       description: >-
-        Returns a no-store keyset page of minimized top-level browser navigation records after resolving the exact nested Attempt and checking the dedicated Browser Activity view authority. Session, Connection, Desktop Registration, credentials, page content, and private Review state are excluded.
+        Returns a no-store keyset page of minimized top-level browser navigation records after resolving the
+        exact nested Attempt and checking current exact Exam Manager membership and the dedicated Browser
+        Activity view permission. Every page repeats these checks; administrator, teacher, integrity-review
+        and general export grants provide no override. Session, Connection, Desktop Registration, credentials,
+        page content, and private Review state are excluded.
       tags:
         - Attempts and workspaces
       x-proctor-auth: principal_required
@@ -178,23 +188,25 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from it.
+          description: >-
+            Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from
+            it.
           schema:
             type: string
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/BrowserActivityListOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow:
     parameters:
@@ -207,7 +219,9 @@ paths:
       tags:
         - Attempts and workspaces
       description: >-
-        Closes only the identified active suspension episode and moves the Attempt to ready. It preserves integrity evidence and creates no continuity credential, Participation, Session binding, or Connection; the candidate must rejoin through full admission validation.
+        Closes only the identified active suspension episode and moves the Attempt to ready. It preserves
+        integrity evidence and creates no continuity credential, Participation, Session binding, or
+        Connection; the candidate must rejoin through full admission validation.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -247,27 +261,29 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/ReallowExamAttempt'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamAttemptReallowed'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     ReallowExamAttempt:
       required: true
-      description: Identifies the active suspension, expected Attempt revision, and private manager reason required for the audited re-allow transition.
+      description: >-
+        Identifies the active suspension, expected Attempt revision, and private manager reason required for
+        the audited re-allow transition.
       content:
         application/json:
           schema:
@@ -319,7 +335,8 @@ components:
     BrowserActivityListResponse:
       type: object
       additionalProperties: false
-      required: [items]
+      required:
+        - items
       properties:
         items:
           type: array
@@ -331,7 +348,18 @@ components:
     BrowserActivityItemResponse:
       type: object
       additionalProperties: false
-      required: [source_session_id, generation, sequence, kind, policy_revision_id, client_occurred_at, location, matched_rule_id, block_reason, received_at]
+      required:
+        - source_session_id
+        - generation
+        - sequence
+        - kind
+        - policy_revision_id
+        - client_occurred_at
+        - location
+        - matched_rule_id
+        - block_reason
+        - received_at
+        - redirect_from_sequence
       properties:
         source_session_id:
           type: string
@@ -346,7 +374,12 @@ components:
           minimum: 1
         kind:
           type: string
-          enum: [browser_opened, browser_closed, top_level_navigation, top_level_redirect, blocked_top_level_navigation]
+          enum:
+            - browser_opened
+            - browser_closed
+            - top_level_navigation
+            - top_level_redirect
+            - blocked_top_level_navigation
         policy_revision_id:
           $ref: '#/components/schemas/ID'
         client_occurred_at:
@@ -354,36 +387,39 @@ components:
           format: date-time
         location:
           description: >-
-            Reason-minimized navigation location. Successful navigation and HTTPS policy failures use a canonical HTTPS
-            host, optional non-default port, and path. A blocked HTTP navigation uses the same canonical network fields
-            with scheme `http`. Other disallowed schemes retain only their lowercase scheme while host and path are empty.
-            An `invalid_url` block uses empty scheme, host, and path values. Query, fragment, user information, local paths,
-            and scheme payloads are never retained.
+            Reason-minimized navigation location. Successful navigation and HTTPS policy failures use a
+            canonical HTTPS host, optional non-default port, and path. A blocked HTTP navigation uses the same
+            canonical network fields with scheme `http`. Other disallowed schemes retain only their lowercase
+            scheme while host and path are empty. An `invalid_url` block uses empty scheme, host, and path
+            values. Query, fragment, user information, local paths, and scheme payloads are never retained.
           type:
             - object
-            - "null"
+            - 'null'
           additionalProperties: false
-          required: [scheme, host, path]
+          required:
+            - scheme
+            - host
+            - path
           properties:
             scheme:
               type: string
               maxLength: 32
-              pattern: '^$|^[a-z][a-z0-9+.-]{0,31}$'
+              pattern: ^$|^[a-z][a-z0-9+.-]{0,31}$
             host:
               type: string
             port:
               type: string
-              pattern: '^[0-9]{1,5}$'
+              pattern: ^[0-9]{1,5}$
             path:
               type: string
         matched_rule_id:
           type:
             - string
-            - "null"
+            - 'null'
         block_reason:
           type:
             - string
-            - "null"
+            - 'null'
           enum:
             - scheme_not_allowed
             - origin_not_allowed
@@ -394,6 +430,14 @@ components:
         received_at:
           type: string
           format: date-time
+        redirect_from_sequence:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+          maximum: 50000
+          description: Prior event sequence in the same source when the event records a redirect; null otherwise.
+          format: int64
     ExamAttemptState:
       type: string
       enum:
@@ -663,4 +707,6 @@ components:
             $ref: '#/components/schemas/ExamAttemptManagerResponse'
         next_cursor:
           type: string
-          description: Opaque versioned cursor over descending creation time and Attempt identity; clients return it unchanged.
+          description: >-
+            Opaque versioned cursor over descending creation time and Attempt identity; clients return it
+            unchanged.

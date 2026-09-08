@@ -167,7 +167,7 @@ type recordsAuthorizerFake struct {
 	denied bool
 }
 
-func (f *recordsAuthorizerFake) DenySelf(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
+func (f *recordsAuthorizerFake) Deny(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
 	*f.order = append(*f.order, "records.deny_self")
 	f.denied = true
 	return &Fault{Code: "exam.not_found"}

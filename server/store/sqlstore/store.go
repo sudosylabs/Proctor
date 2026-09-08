@@ -133,6 +133,7 @@ type SQLStore struct {
 	stores              SQLStoreStores
 	settings            Settings
 	executionLeaseSlots chan struct{}
+	deliveryAppendSlots chan struct{}
 }
 
 func New(ctx context.Context, settings Settings) (*SQLStore, error) {
@@ -155,6 +156,10 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 		// A host-effect lease retains one connection while its owner performs
 		// ordinary Store operations. Those operations must still make progress.
 		executionLeaseSlots: make(chan struct{}, db.Stats().MaxOpenConnections-1),
+		// Detail intake cannot fill the pool with transactions waiting on
+		// Attempt locks. Leave at least half the connections for control reads
+		// and mutations, independently of the durable per-candidate rate limit.
+		deliveryAppendSlots: make(chan struct{}, min(8, settings.MaxOpenConnections/2)),
 	}
 	if err := sqlStore.Ping(ctx); err != nil {
 		_ = db.Close()

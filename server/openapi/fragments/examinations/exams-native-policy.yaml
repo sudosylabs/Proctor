@@ -1,0 +1,681 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/exams/{exam_id}/draft/policies/native:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    put:
+      operationId: configureExamDraftNativePolicy
+      summary: Replace native security selections on the active Exam Draft
+      description: >-
+        Replaces the complete ten-family native policy at the expected Draft revision. The mandatory desktop_candidate
+        baseline cannot be disabled. Publication freezes these selections; live Participation native selections cannot
+        be changed by a Draft edit. Catalog IDs must refer to server-admitted catalogs when resolved for admission.
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.draft.no_changes
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ConfigureExamDraftNativePolicy'
+      responses:
+        '200':
+          $ref: '#/components/responses/ExamOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ConfigureExamDraftNativePolicy:
+      required: true
+      description: Supplies the expected Draft revision and the complete replacement native security policy.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigureExamDraftNativePolicyRequest'
+          example:
+            expected_draft_revision: 4
+            native:
+              baseline_id: desktop_candidate
+              families:
+                - allowed_application_ids: []
+                  id: process_application
+                  mode: disabled
+                - id: interactive_session
+                  mode: disabled
+                - id: clipboard
+                  mode: disabled
+                  observe_os_clipboard_changes: false
+                  strategy: disabled
+                - candidate_print_commands: not_applied
+                  id: printing
+                  mode: disabled
+                  monitored_spooler: not_required
+                - allowed_storage_function_class_ids: []
+                  enabled_sub_capabilities: []
+                  id: removable_storage
+                  mode: disabled
+                - id: virtualization
+                  mode: disabled
+                  rule: not_applied
+                - allowed_adapter_class_ids: []
+                  allowed_managed_profile_ids: []
+                  allowed_tunnel_class_ids: []
+                  enabled_sub_capabilities: []
+                  id: network_configuration
+                  mode: disabled
+                - concurrent_use_check: not_required
+                  id: camera
+                  mode: disabled
+                  require_ready: false
+                - concurrent_use_check: not_required
+                  id: microphone
+                  mode: disabled
+                  require_ready: false
+                - id: external_capture
+                  mode: disabled
+              registry_digest: sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0
+  schemas:
+    ConfigureExamDraftNativePolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - native
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        native:
+          $ref: '#/components/schemas/NativeSecurityPolicy'
+    NativeSecurityPolicy:
+      type: object
+      additionalProperties: false
+      description: >-
+        Complete native selection with an invariant baseline and exactly ten families in the documented order. Complete
+        canonical ExamPolicySet bytes are limited to 64 KiB.
+      required:
+        - registry_digest
+        - baseline_id
+        - families
+      properties:
+        registry_digest:
+          type: string
+          const: sha256:79faa1141236b073dff2ff802ce67abce3082417a7a4fa2954615e4226acd1e0
+        baseline_id:
+          type: string
+          const: desktop_candidate
+        families:
+          type: array
+          minItems: 10
+          maxItems: 10
+          description: >-
+            Exactly one family in this order: process_application, interactive_session, clipboard, printing,
+            removable_storage, virtualization, network_configuration, camera, microphone, external_capture.
+          items:
+            oneOf:
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_application_ids
+                properties:
+                  id:
+                    type: string
+                    const: process_application
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_application_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular expressions are
+                      not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_application_ids:
+                          const: []
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                properties:
+                  id:
+                    type: string
+                    const: interactive_session
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - observe_os_clipboard_changes
+                  - strategy
+                properties:
+                  id:
+                    type: string
+                    const: clipboard
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  observe_os_clipboard_changes:
+                    type: boolean
+                  strategy:
+                    type: string
+                    enum:
+                      - disabled
+                      - private_attempt
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        observe_os_clipboard_changes:
+                          const: false
+                        strategy:
+                          const: disabled
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        strategy:
+                          const: disabled
+                        observe_os_clipboard_changes:
+                          const: true
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        strategy:
+                          const: private_attempt
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - candidate_print_commands
+                  - monitored_spooler
+                properties:
+                  id:
+                    type: string
+                    const: printing
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  candidate_print_commands:
+                    type: string
+                    enum:
+                      - not_applied
+                      - deny
+                  monitored_spooler:
+                    type: string
+                    enum:
+                      - not_required
+                      - required
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: not_applied
+                        monitored_spooler:
+                          const: not_required
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: not_applied
+                        monitored_spooler:
+                          const: required
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        candidate_print_commands:
+                          const: deny
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_storage_function_class_ids
+                  - enabled_sub_capabilities
+                properties:
+                  id:
+                    type: string
+                    const: removable_storage
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_storage_function_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular expressions are
+                      not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  enabled_sub_capabilities:
+                    type: array
+                    maxItems: 2
+                    uniqueItems: true
+                    items:
+                      type: string
+                      enum:
+                        - removable_block_storage
+                        - portable_mtp
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_storage_function_class_ids:
+                          const: []
+                        enabled_sub_capabilities:
+                          const: []
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - rule
+                properties:
+                  id:
+                    type: string
+                    const: virtualization
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  rule:
+                    type: string
+                    enum:
+                      - not_applied
+                      - block_recognized_guest
+                      - require_certified_physical_environment
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        rule:
+                          const: not_applied
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        rule:
+                          enum:
+                            - block_recognized_guest
+                            - require_certified_physical_environment
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        rule:
+                          enum:
+                            - block_recognized_guest
+                            - require_certified_physical_environment
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - allowed_adapter_class_ids
+                  - allowed_managed_profile_ids
+                  - allowed_tunnel_class_ids
+                  - enabled_sub_capabilities
+                properties:
+                  id:
+                    type: string
+                    const: network_configuration
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  allowed_adapter_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular expressions are
+                      not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  allowed_managed_profile_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular expressions are
+                      not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  allowed_tunnel_class_ids:
+                    type: array
+                    maxItems: 256
+                    uniqueItems: true
+                    description: >-
+                      Sorted unique opaque catalog IDs; executable paths, names, commands and regular expressions are
+                      not accepted.
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+                  enabled_sub_capabilities:
+                    type: array
+                    maxItems: 5
+                    uniqueItems: true
+                    items:
+                      type: string
+                      enum:
+                        - system_proxy_state
+                        - os_managed_vpn_state
+                        - tunnel_interface_state
+                        - route_change
+                        - network_source_health
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        allowed_adapter_class_ids:
+                          const: []
+                        allowed_managed_profile_ids:
+                          const: []
+                        allowed_tunnel_class_ids:
+                          const: []
+                        enabled_sub_capabilities:
+                          const: []
+                  - if:
+                      properties:
+                        mode:
+                          const: observe
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+                  - if:
+                      properties:
+                        mode:
+                          const: enforce
+                    then:
+                      properties:
+                        enabled_sub_capabilities:
+                          minItems: 1
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - concurrent_use_check
+                  - require_ready
+                properties:
+                  id:
+                    type: string
+                    const: camera
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  concurrent_use_check:
+                    type: string
+                    enum:
+                      - not_required
+                      - supported_required
+                  require_ready:
+                    type: boolean
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        concurrent_use_check:
+                          const: not_required
+                        require_ready:
+                          const: false
+                  - if:
+                      properties:
+                        mode:
+                          enum:
+                            - observe
+                            - enforce
+                    then:
+                      anyOf:
+                        - properties:
+                            require_ready:
+                              const: true
+                        - properties:
+                            concurrent_use_check:
+                              const: supported_required
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                  - concurrent_use_check
+                  - require_ready
+                properties:
+                  id:
+                    type: string
+                    const: microphone
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+                      - observe
+                      - enforce
+                  concurrent_use_check:
+                    type: string
+                    enum:
+                      - not_required
+                      - supported_required
+                  require_ready:
+                    type: boolean
+                allOf:
+                  - if:
+                      properties:
+                        mode:
+                          const: disabled
+                    then:
+                      properties:
+                        concurrent_use_check:
+                          const: not_required
+                        require_ready:
+                          const: false
+                  - if:
+                      properties:
+                        mode:
+                          enum:
+                            - observe
+                            - enforce
+                    then:
+                      anyOf:
+                        - properties:
+                            require_ready:
+                              const: true
+                        - properties:
+                            concurrent_use_check:
+                              const: supported_required
+              - type: object
+                additionalProperties: false
+                required:
+                  - id
+                  - mode
+                properties:
+                  id:
+                    type: string
+                    const: external_capture
+                  mode:
+                    type: string
+                    enum:
+                      - disabled
+          prefixItems:
+            - properties:
+                id:
+                  const: process_application
+            - properties:
+                id:
+                  const: interactive_session
+            - properties:
+                id:
+                  const: clipboard
+            - properties:
+                id:
+                  const: printing
+            - properties:
+                id:
+                  const: removable_storage
+            - properties:
+                id:
+                  const: virtualization
+            - properties:
+                id:
+                  const: network_configuration
+            - properties:
+                id:
+                  const: camera
+            - properties:
+                id:
+                  const: microphone
+            - properties:
+                id:
+                  const: external_capture

@@ -33,6 +33,8 @@ type ExamAttemptWorkspaceMutationAccess struct {
 	// SourceGrantID fences harvested guest writes to their exact ready grant.
 	// Candidate-originated commands leave it zero.
 	SourceGrantID model.ExecutionGrantID
+	// SourceObservation is required for the semantic host protocol; legacy callers omit it.
+	SourceObservation *ExecutionObservation
 }
 
 // ExamAttemptWorkspaceMutationTarget is the bounded preflight projection used
@@ -137,7 +139,8 @@ type CandidateWorkspaceJournalPage struct {
 // outcome and supplied audit attempt. Audit data is limited to safe scope,
 // operation, Entry identity, and resulting cursor; paths, content metadata,
 // bodies, and object identities are excluded. Conflicts or failed commits
-// change none of those facts. Exact replays recheck current write eligibility
+// change none of those facts. Required corrections selecting workspace are
+// checked under the same Sitting lock as publication. Exact replays recheck current write eligibility
 // and return the retained result. The durable journal records the command's
 // bounded KeyDigest for correlation, but candidate journal projections omit it.
 // At most the newest 4,096 entries remain; pruning and append are atomic.
@@ -157,6 +160,11 @@ type ExamAttemptWorkspaceStore interface {
 	List(context.Context, CandidateWorkspaceListOptions) (*CandidateAttemptWorkspacePage, error)
 	ResolveFile(context.Context, CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*CandidateWorkspaceContent, error)
 	ListJournal(context.Context, CandidateWorkspaceJournalOptions) (*CandidateWorkspaceJournalPage, error)
+	ResolveObservation(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExecutionObservationTarget, error)
+	// RecordIgnoredObservation advances only the durable host outcome/sequence
+	// for an event wholly within an ignored tree. Boundary moves are refused;
+	// no Workspace mutation or projection confirmation is fabricated.
+	RecordIgnoredObservation(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExecutionObservationTarget, error)
 	ResolveMutationTarget(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExamAttemptWorkspaceMutationTarget, error)
 	ReserveObject(context.Context, *ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error)
 	MarkObjectReady(context.Context, *ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error)

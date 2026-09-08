@@ -39,6 +39,13 @@ type EditExamDraftTextCommand struct {
 	IdempotencyKey        string
 }
 
+type ConfigureExamDraftNativePolicyCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	NativePolicy          model.NativeSecurityPolicy
+	IdempotencyKey        string
+}
+
 type ConfigureExamDraftFocusLossCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
@@ -76,6 +83,7 @@ type examUseCases interface {
 	Get(context.Context, examengine.Call, model.ExamID) (examengine.View, error)
 	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
 	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
+	ConfigureDraftNativePolicy(context.Context, examengine.Call, examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error)
 	ConfigureDraftExecutionProfile(context.Context, examengine.Call, examengine.ConfigureDraftExecutionProfileCommand) (examengine.View, error)
 	ConfigureDraftBrowserPolicy(context.Context, examengine.Call, examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error)
 	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
@@ -326,3 +334,15 @@ var _ examengine.Authorizer = examAuthorizationAdapter{}
 var _ examengine.Auditor = examAuditAdapter{}
 var _ examengine.Effects = examRealtimeEffects{}
 var _ examengine.EffectFailures = examRealtimeEffects{}
+
+func (a *App) ConfigureExamDraftNativePolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftNativePolicyCommand) (ExamView, error) {
+	view, err := a.exams.ConfigureDraftNativePolicy(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftNativePolicyCommand{
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
+		NativePolicy:   command.NativePolicy.Clone(),
+		IdempotencyKey: command.IdempotencyKey,
+	})
+	if err != nil {
+		return ExamView{}, examError(err, true)
+	}
+	return view, nil
+}

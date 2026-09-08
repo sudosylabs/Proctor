@@ -72,7 +72,7 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 		ExamRevisionID: NewExamRevisionID(),
 		WorkspaceID:    ExamAttemptWorkspaceID(strings.Repeat("m", IdLength)), Manifest: manifest,
 		FinalFocusLossSequence: 9, UnresolvedIntegrityCount: 2, Provenance: ExamSubmissionCandidateSubmitted, SubmittedAt: at,
-		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
+		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestExamSubmissionSettledIntegrityRequiresNoUnresolvedGaps(t *testing.T) {
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
 		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
-		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
+		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
 	})
 	if err != nil {
@@ -124,7 +124,7 @@ func TestExamSubmissionIntegrityRetirementRequiresRedactedState(t *testing.T) {
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
 		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
-		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
+		BrowserActivity: BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
 	})
 	if err != nil {
@@ -132,17 +132,16 @@ func TestExamSubmissionIntegrityRetirementRequiresRedactedState(t *testing.T) {
 	}
 	submission.IntegrityState = SubmissionIntegrityRetired
 	submission.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(200, 0))
-	submission.BrowserActivity = BrowserActivitySubmission{}
 	if err := submission.Validate(); err != nil {
 		t.Fatalf("retired integrity with retained work: %v", err)
 	}
 	for name, corrupt := range map[string]func(*ExamSubmission){
-		"missing retirement time":      func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTime{} },
-		"time before submission":       func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(99, 0)) },
-		"old focus sequence":           func(value *ExamSubmission) { value.FinalFocusLossSequence = 9 },
-		"old unresolved count":         func(value *ExamSubmission) { value.UnresolvedIntegrityCount = 3 },
-		"old browser state":            func(value *ExamSubmission) { value.BrowserActivity.State = BrowserActivitySubmissionNotApplicable },
-		"settled with retirement time": func(value *ExamSubmission) { value.IntegrityState = SubmissionIntegritySettled },
+		"missing retirement time":            func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTime{} },
+		"time before submission":             func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(99, 0)) },
+		"old focus sequence":                 func(value *ExamSubmission) { value.FinalFocusLossSequence = 9 },
+		"old unresolved count":               func(value *ExamSubmission) { value.UnresolvedIntegrityCount = 3 },
+		"invalid retained browser inventory": func(value *ExamSubmission) { value.BrowserActivity.InventoryRevision = 0 },
+		"settled with retirement time":       func(value *ExamSubmission) { value.IntegrityState = SubmissionIntegritySettled },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := *submission

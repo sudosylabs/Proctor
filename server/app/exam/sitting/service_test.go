@@ -108,6 +108,67 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	}
 }
 
+func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *testing.T) {
+	for _, test := range []struct {
+		name                                                      string
+		removeManager, removeUnit, denyPermission, failMembership bool
+	}{
+		{name: "exact manager"}, {name: "administrator grant without manager", removeManager: true},
+		{name: "manager without exact unit", removeUnit: true}, {name: "manager without action", denyPermission: true},
+		{name: "unrelated unit membership is not consulted", failMembership: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: f.sitting(t)}
+			f.access.snapshot.ActorIsManager = !test.removeManager
+			if test.removeUnit {
+				f.memberships.items = nil
+			}
+			if test.denyPermission {
+				f.authorizer.err = errors.New("permission denied")
+			}
+			if test.failMembership {
+				f.memberships.err = errors.New("membership unavailable")
+			}
+			unit, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID)
+			wantAllowed := !test.removeManager && !test.denyPermission
+			if (err == nil) != wantAllowed {
+				t.Fatalf("AuthorizeBrowserActivityView() = %s, %v", unit, err)
+			}
+			if wantAllowed && unit != f.unitID {
+				t.Fatal("wrong authorized unit")
+			}
+			if !wantAllowed && unit != "" {
+				t.Fatal("denial returned a scope")
+			}
+			if f.authorizer.action != model.ActionExamAttemptBrowserActivityView ||
+				f.authorizer.resource.ID != f.sittingID.String() {
+				t.Fatal("used an unrelated action or resource")
+			}
+			if f.authorizer.denied != test.removeManager {
+				t.Fatal("relationship denial was not audited")
+			}
+		})
+	}
+}
+
+func TestBrowserActivityRechecksMembershipBetweenPagesAndFailsClosedOnAudit(t *testing.T) {
+	f := newFixture(t)
+	f.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: f.sitting(t)}
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); err != nil {
+		t.Fatal(err)
+	}
+	f.access.snapshot.ActorIsManager = false
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); err == nil || !f.authorizer.denied {
+		t.Fatal("later page retained removed Manager authority")
+	}
+	auditErr := errors.New("audit unavailable")
+	f.authorizer.denyErr = auditErr
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); !errors.Is(err, auditErr) {
+		t.Fatalf("audit failure = %v", err)
+	}
+}
+
 func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
@@ -858,11 +919,21 @@ type authorizerFake struct {
 	action   model.Action
 	resource model.Resource
 	err      error
+	denied   bool
+	denyErr  error
 }
 
 func (fake *authorizerFake) Authorize(_ context.Context, _ Call, action model.Action, resource model.Resource) error {
 	fake.action, fake.resource = action, resource
 	return fake.err
+}
+
+func (fake *authorizerFake) Deny(_ context.Context, _ Call, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
+	fake.action, fake.resource, fake.denied = action, resource, true
+	if fake.denyErr != nil {
+		return fake.denyErr
+	}
+	return &Fault{Code: "exam.sitting.not_found"}
 }
 
 type auditorFake struct {

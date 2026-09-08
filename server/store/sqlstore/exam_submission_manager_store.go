@@ -238,7 +238,7 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 		return zero, invalidPersistedState("exam_submission", "integrity_gaps", errors.New("unresolved gap count overflows"))
 	}
 	unresolved += pendingAcknowledgements
-	browserUnresolved, browserActivity, err := settleAutomaticBrowserActivity(ctx, tx, target.AttemptID, sealAt)
+	browserUnresolved, browserActivity, err := settleSubmissionBrowserSources(ctx, tx, target.AttemptID, model.DeliveryClosedManagerEnd, sealAt)
 	if err != nil {
 		return zero, err
 	}
@@ -281,7 +281,7 @@ func endExamAttemptByManager(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	if err = insertTerminalIntegrityDiscrepancies(ctx, tx, submission, automaticIntegrityDiscrepancyTarget(target),
 		terminalIntegrityDiscrepancies{FocusUnresolved: focusUnresolved, FocusReason: focusReason,
-			BrowserUnresolved: browserUnresolved, BrowserActivity: browserActivity,
+			BrowserUnresolved:  browserUnresolved,
 			MissingCorrections: missingCorrections}); err != nil {
 		return zero, err
 	}
@@ -337,6 +337,11 @@ func persistManagerEndedExamAttempt(ctx context.Context, tx *sqlxTxWrapper, atte
 		}
 		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
 			return store.NewErrConflict("attempt_participation", "attempt_participation_expired", rowsErr)
+		}
+	}
+	if beforeParticipation == model.AttemptParticipationActive {
+		if err := closeNativeDelivery(ctx, tx, participation.ID, model.DeliveryClosedManagerEnd, participation.EndedAt.Time); err != nil {
+			return err
 		}
 	}
 	if beforeConnection == model.AttemptConnectionOpen {

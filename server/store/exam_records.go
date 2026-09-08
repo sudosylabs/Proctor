@@ -54,6 +54,7 @@ type ExamRecordsCompletion struct {
 }
 
 type ExamRecordsReviewWaiver struct {
+	ExpectedDeliveryInventoryRevision int64
 	ExamRecordsMutation
 	ExpectedRevision         int64 // zero creates the first waiver
 	ExpectedReviewRevision   int64

@@ -40,6 +40,27 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
 
 ## API reference data
 
+Exam agreement document codecs use the
+[`canonicaljson` byte contract](../internal/canonicaljson/README.md) before
+canonical storage and hashing. Their raw JSON validation rejects duplicate
+members, malformed Unicode, and non-integral or unsafe number spellings before
+typed decoding. Packaged Desktop registry selectors use `fnv1a64:` plus sixteen
+lowercase hex digits; configuration manifests and cryptographic content
+fingerprints retain SHA-256. A registry selector is not authenticity evidence.
+Individual operation schemas still own field sets, presence, bounds and the
+exact semantic fields selected for each digest.
+
+Attempt Configuration admission uses one `configuration_manifest_fingerprint`,
+not a supported-manifest list. Its closed proposed object contains exact
+presentation, approved command/keybinding IDs and original build/target,
+registry and User Settings provenance. The server freezes it once with an opaque
+revision; its SHA-256 covers every candidate field. Pixel line height is bounded
+independently of font size. Boolean fields must be present and non-null. Frozen
+storage and privileged recovery preserve provenance, while candidate runtime
+responses expose only presentation, approved IDs, configuration revision and
+digest. The reduced response deliberately lacks the provenance needed to
+recompute that full digest. Newer compatible builds retain the original object.
+
 `server/openapi/` is the human authoring interface for wire shapes and API
 reference data. Its small resource-oriented YAML modules co-locate paths with
 definitions that have one owner; area and root shared modules contain only
@@ -124,8 +145,8 @@ changes pause cleanup and cancel outstanding grace.
 Retention preview/control and record APIs accept interactive Sessions. Only
 strong recent protected administrator approval with a fresh one-hour preview,
 matching policy and control revisions, positive grace, and an idempotency key
-can enable cleanup. Record pages count Submissions and project their two
-content categories without answer content. Audit and receipt previews expose
+can enable cleanup. Record pages count Submissions and project work, integrity,
+Browser Activity and security operational categories without answer content. Audit and receipt previews expose
 only counts and dependency blockers. Durable own-recipient notices use a
 separate opaque retirement cursor; they grant no underlying examination access
 and have no read-acknowledgement effect. Every projection is private/no-store.
@@ -141,8 +162,11 @@ APIs add no broad hosted administration pages.
 
 The `exam-exports` resource owns Session-only creation, requester-only metadata,
 and binary downloads for individual Submission or Sitting scope. Creation is
-idempotent and returns 202; category arrays contain explicit, distinct work or
-integrity selections. Ready metadata advertises the full archive SHA-256 and
+idempotent and returns 202; category arrays select explicit work and/or
+integrity, or `browser_activity` alone. Generic work/integrity archives contain
+no ordinary browsing URLs. Browser Activity archives independently require exact
+current Exam Manager membership and the dedicated history action at every read
+and retry. Their source protection belongs to Browser Activity retention. Ready metadata advertises the full archive SHA-256 and
 length. Binary responses use a fixed opaque attachment name, private/no-store,
 application/zip, checksum ETag, and nosniff; no storage URL or key is public.
 Current record authority, readiness, and fixed expiry are rechecked by the use
@@ -1019,7 +1043,7 @@ File Revision, rendition, upload-lease, VFS key, path, and URL identities never
 cross the transport boundary.
 
 The apply body carries the expected Sitting revision, expected current Exam
-Revision, required private manager reason, optional `instructions_markdown`,
+Revision, required private manager reason, explicit sorted `affected_capabilities`, optional `instructions_markdown`,
 and a required complete resource manifest bounded by the base Revision's frozen
 resource-count limit, within the server ceiling of 100 items. Omitting
 `instructions_markdown` preserves it; a present empty string clears it and
@@ -1083,7 +1107,7 @@ candidates use Attempt-scoped protected delivery routes:
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/candidate-statuses` | principal plus current Sitting-view authorization | bounded manager-safe candidate-status page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts` | principal plus current management authorization | bounded manager-safe Attempt page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}` | principal plus current management authorization | exact manager-safe Attempt |
-| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity` | principal plus dedicated current Browser Activity authorization | bounded privacy-minimized activity page |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity` | principal plus current exact Exam Manager membership and dedicated Browser Activity permission | bounded privacy-minimized activity page |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/end` | principal plus current management authorization and required idempotency key | candidate-safe manager-ended Submission receipt |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow` | principal plus current management authorization and required idempotency key | exact suspension re-allowed |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
@@ -1149,26 +1173,33 @@ sensitive selector failed.
 
 Correction acknowledgement uses strict JSON containing the current
 `participation_id`, `generation`, and `expected_current_revision_id`. The path
-Revision must be the oldest pending required correction. A pending required
-notice blocks Workspace mutations, terminal use, governed navigation, and
-voluntary Submission, but acknowledgement and integrity delivery remain
-available while the Sitting is paused. Exact replay repeats current
-authorization and audit checks and returns `200` without another mutation.
+Revision must be the oldest pending required correction. Each pending required
+notice blocks only its selected capabilities. Browser Policy changes require
+`browser`; instructions/resources require `submission`, `terminal`, and
+`workspace`, with deliberate supersets permitted. Empty or omitted selections
+are invalid, including notice-only corrections. Candidate notices carry the
+immutable selection; runtime state carries `pending_correction_capabilities`.
+Pending browser acknowledgement withholds usable policy content. Acknowledgement,
+protected correction/resource reads and integrity delivery remain available,
+including while paused. Exact replay repeats current authorization and audit
+checks and returns `200` with the original acknowledgement time, fresh current
+Revision and runtime capabilities. `acknowledged_at` on a notice is present
+only in its acknowledged state.
 
 Submission repeats `participation_id` and `generation`, and requires the
-expected current Exam Revision, acknowledged Workspace Cursor, client's final
-Focus Loss sequence, and a closed Browser Activity terminal object; zero is a
-valid Focus Loss sequence. Browser Activity is exactly `not_applicable`,
-`complete` with the current source UUID and final sequence, or `gapped` with a
-closed client reason. A truthful gap records discrepancy provenance but does
-not block sealing. The operation rechecks current Class membership, absence of
-pending correction acknowledgements, and all active continuity selectors
-inside the named atomic Store operation. Both an initial commit and its exact
-replay return `201`; replay repeats current authorization/audit but suppresses
-duplicate mutation, realtime, and unbind effects. The candidate receipt
-contains only Submission and Attempt identities, `submitted` state, governing
-Revision, provenance, Workspace Cursor, manifest digest, and server submission
-time. Candidates have no Submission browse or content route.
+expected current Exam Revision, acknowledged Workspace Cursor and client's final
+Focus Loss sequence; zero is valid. The server closes every live Browser source
+atomically and derives Browser settlement across all Participations. Clients do
+not supply a completeness claim. Pending uploads do not block sealing. The
+operation checks current Class membership, the submission capability's pending
+correction gates and active continuity selectors inside the named atomic Store
+operation. Initial commit and exact replay return `201`; replay repeats current
+authorization/audit and returns current Browser settlement while preserving the
+original sealed content and suppressing duplicate mutation/unbind effects.
+The candidate receipt includes Submission/Attempt identities, state, governing
+Revision, Workspace Cursor, manifest digest, submission time and the five-field
+`browser_activity` settlement. Its counts contain no history, URLs or evidence.
+Candidates have no Submission browse or content route.
 
 The manager `end` command requires strict JSON with the expected Attempt
 revision and a private trimmed reason plus `Idempotency-Key`. Before the
@@ -1204,7 +1235,12 @@ candidate-status board returns one common `server_time` and derives presence
 from the authoritative Participation lease; it never projects a Session,
 Registration, credential, Connection, evidence, private reason, or Review
 decision. Manager Browser Activity uses a separate no-store keyset ordered by
-receipt time, source, and sequence with the same 50/200 bounds.
+receipt time, source, and sequence with the same 50/200 bounds. Each page rechecks
+current exact Exam Manager membership plus the dedicated
+Browser Activity view permission. No administrator or general export override
+grants browser history. History-bearing export creation, replay, metadata reads
+and downloads repeat this requirement. Denial remains audited and non-disclosing;
+an audit failure never releases a page or archive.
 
 Manager Submission JSON is `no-store`. Submission file content has the same
 `private, no-store`, `nosniff`, strong-ETag, no-`Content-Disposition` contract.
@@ -1222,7 +1258,16 @@ Mutation JSON is strict, duplicate-free, closed, and requires
 The existing authenticated Attempt WebSocket carries the terminal; there is no
 candidate-to-host endpoint. After `exam_attempt.connect`, the client may send
 `exam_attempt.terminal.open` with the current generation, continuity
-credential, and non-zero window, followed by bounded base64
+credential, non-zero window, and required safe-integer `expected_workspace_cursor`.
+A future cursor is invalid. Temporary projection lag returns
+`execution.projection_pending`; successful attachment requires an acknowledged
+projection through the requested cursor and returns `environment_epoch`,
+`applied_workspace_cursor`, and `projection_state: ready`. Candidate terminal
+capabilities always include these projection fields; `environment_epoch` is
+`null` until creation, with cursor zero and state `unavailable` before projection.
+The open response assigns an opaque `terminal_id`, required on every subsequent
+input, resize, close, output, and closed frame. Frames and callbacks from a
+replaced PTY cannot affect its successor. Clients send bounded base64
 `exam_attempt.terminal.input`, `exam_attempt.terminal.resize`, and
 `exam_attempt.terminal.close` actions. The server emits bounded base64
 `exam_attempt.terminal.output` and a terminal `exam_attempt.terminal.closed`
@@ -1254,22 +1299,46 @@ outcome, and raw policy never enter the candidate projection. Workspace pages
 expose logical entries and content versions, never starter/Attempt object
 identities or VFS keys.
 
-Browser Activity starts and appends through the authenticated Attempt
-WebSocket actions `exam_attempt.browser_activity.start` and
-`exam_attempt.browser_activity.append`. One Participation may own at most 16
-sequential UUIDv4 sources; reset declares the exact predecessor and one closed
-reason. Append batches contain 1 to 64 events and at most 256 KiB. The server
-returns the source, highest contiguous and seen sequences, no more than 32
-missing ranges, truncation state, and authoritative time. Events contain only
-their sequence/kind/policy Revision/client time, a reason-minimized location,
-and an applicable rule or block reason. Successful navigation and HTTPS policy
-failures retain a canonical HTTPS host, optional non-default port, and path. A
-blocked HTTP navigation retains those canonical network fields with scheme
-`http`; other disallowed schemes retain only their lowercase scheme with empty
-host and path; and `invalid_url` uses empty scheme, host, and path values.
-Query, fragment, credentials, local paths, scheme payloads, title, referrer,
-headers, page content, cookies, DOM, and download bodies are outside the wire
-contract.
+Browser Activity source creation remains the authenticated Attempt WebSocket
+`exam_attempt.browser_activity.start` action. Its closed declaration binds the
+Participation generation, UUIDv4 source, immutable policy Revision/digest and
+initial, policy-correction or runtime-reset transition. The server derives
+User, registered key and opening Session/Connection provenance. A Participation
+has one initial start, at most 32 correction starts and 16 runtime-reset starts;
+retries do not spend another start. A valid runtime-reset refusal still closes
+its predecessor and makes browser capability temporarily unavailable.
+
+Live events use `exam_attempt.browser_activity.append`; historical delivery uses
+`POST /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/events`.
+The HTTP operation requires an already closed source and current registered-key
+ownership, rejects candidate Connection headers, and revalidates the retained
+source's original policy. Both transports use one closed event codec and 1..64
+sorted events bounded at 256 KiB. Source/sequence/canonical SHA-256 is the durable
+per-event identity across repacking. Acknowledgements contain exactly the
+submitted receipts, actual contiguous and seen sequences, settled and allocated
+boundaries, terminal cutoff, earliest 32 recoverable ranges, truncation and time.
+A permanent gap advances settlement without inventing a receipt.
+
+Under that same source resource, GET returns status, GET `receipts` returns up
+to 64 retained receipts with sparse sequence pagination, POST `gaps` returns a
+declaration receipt and current status, POST `seal` fixes an already closed
+source's final boundary, and POST `summary` returns cumulative unretained counts
+and status. Every HTTP mutation requires Idempotency-Key. Status is bounded at
+16 KiB; the Participation list contains at most 49 statuses in start order and
+is bounded at 1 MiB. Live controls require current candidate Connection headers;
+closed-source controls require the current owner key and unexpired upload
+window. Neither path grants manager history access or navigation authority.
+
+Lifecycle records omit navigation fields. Navigation records include only a
+reason-minimized location and applicable rule/block reason; redirects reference
+the earlier successful hop so source-rule permission is verified in sequence.
+Missing provenance remains unresolved. Successful HTTPS and institution-pinned
+HTTP navigation retain canonical network components. Other denied schemes keep
+only their lowercase scheme with empty host/path; invalid URLs have all-empty
+location components. Query, fragment, credentials, local paths, scheme payloads,
+title, referrer, headers, page content, cookies, DOM and download bodies remain
+outside the wire contract. Candidate browser disclosure is independently
+revisioned from policy and reflects current history retention settings.
 
 Re-allow requires the exact active Suspension identity, expected Attempt
 revision, and a trimmed private manager reason. The reason is retained only in
@@ -1346,3 +1415,243 @@ revision-fence and mutate the existing Delivery and its Job atomically, retain
 the same recipient, occurrence, and Message-ID, and complete a payload-free
 audit event in the same transaction. Sending or terminal races return
 `mail.conflict` and no endpoint creates arbitrary mail.
+
+
+## Desktop security admission and recovery
+
+A registered Desktop prepares one pending challenge per Session and Sitting at
+`POST /api/v1/exam-sittings/{exam_sitting_id}/security-preflights` and submits
+its minimized report to `POST /api/v1/security-preflights/{security_preflight_id}/report`.
+Both require idempotency keys. Preparation supersedes the previous challenge,
+has a one-second per-owner rate floor and a 120-second lifetime, and allocates
+no Attempt, Workspace or Participation. Expired pending rows are reclaimed in
+bounded, nonblocking pages. An exact preparation replay preserves its challenge
+and policy but returns current server time. A report replay preserves its
+original receipt time; it cannot extend admission freshness.
+
+`exam_attempt.connect` requires a closed `security` union. First admission and
+Ready rejoin use `kind=preflight`, `preflight_id`, and `report_digest`. The atomic
+admission operation rechecks current eligibility, registered key, admitted
+build/compatibility revision, current published policy and catalogs, frozen
+configuration, challenge expiry, and a report receipt no older than 30 seconds.
+It consumes the preflight and allocates the security stream/control owner with
+the Participation. First admission rebinds policy scope to the new Attempt;
+its full digest changes while its content digest remains identical. The
+`security` response contains the immutable admitted binding receipt. Exact
+command replay returns that receipt without consuming or reserving again.
+
+A same-generation reconnect supplies `kind=resume`, `participation_id`,
+`generation`, and `policy_digest`, alongside the existing continuity proof.
+It requires the retained owning Session/key and an unexpired lease. Reusing a
+consumed preflight with a different command does not substitute for resume.
+`GET /api/v1/exam-attempts/{exam_attempt_id}/security-policy` recovers the exact
+active receipt and original frozen configuration for the owning registered
+Desktop Session, including after transport closure. It neither renews authority
+nor returns an ended generation; Ready reentry uses preflight.
+
+Before a new security owner is allocated, its closed bounded binding, latest
+report, control-cache, closure, final, quota and summary slots reserve lifetime
+capacity under the Attempt's 2-MiB metadata ceiling. Capacity is never refunded.
+A refusal returns `exam.delivery.metadata_capacity` (HTTP 409 and the same
+realtime code) with four numeric capacity fields, and leaves the preflight and
+Ready state intact. It is a permanent allocation refusal, not a retryable 429.
+
+Effective native policies have no independent expiry; the Participation lease
+is the live authority. Native evidence and control processing have separate
+owners and do not acquire authority merely by possessing this receipt. Release
+admission remains fail closed while the production signed-artifact catalog is
+empty. A signed matrix restricts claims; authenticated reports do not constitute
+independent attestation of the physical OS or utility-process continuity.
+
+
+The required `security_coverage` in `exam_attempt.renew` and the independent
+`exam_attempt.security.update` action use one persisted processed-control boundary.
+The latter carries generation, continuity_credential, and security_coverage and
+never extends the lease. Both whole requests are bounded at 64 KiB. Reset faults
+are processed outcomes; a stale or faulted control can accompany a valid renewal
+without restoring interaction. A retained identical sequence replays its original
+outcome with current gates and the latest processed sequence/digest. Changed bytes
+at a retained sequence return `exam.security.control_conflict`; an unknown older
+sequence returns `stale_control`. Faulted source continuity retains the last usable
+source heads until a greater valid control establishes new continuity.
+
+Active security-policy recovery includes current sources, coverage, current-head
+reset receipts, and the latest processed control projection. Neither its receipt
+nor a healthy historical outcome grants interaction. Workspace mutation, voluntary
+Submission, execution reservation, and execution access recheck current durable
+security state in addition to their existing lifecycle and correction gates.
+Recording `freeze_pending` is only durable intent; it does not attest that guest
+execution has stopped. Source reset facts have separately charged immutable
+receipts; processing and current coverage occupy distinct reserved bounded slots.
+
+
+Native delivery controls live under
+`/api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}`. Status,
+exact receipt lookup, gap declarations, final declarations (`seal`), and cumulative
+summaries require the source's owning User and registered key in a currently valid
+Session. Live sources additionally require both existing Attempt Connection and
+continuity headers. After recorded closure those headers may be omitted; omission
+never selects historical authority. Status contains no unrelated append receipt.
+
+Permanent gaps and actually received batches have distinct ledgers. The native
+receive-window base is the greater of actual contiguous receipt and settled
+progress, with 1,024 positions of allowance. Gap declarations are at most 8 KiB and
+32 sorted disjoint nonadjacent ranges; they require Idempotency-Key and a semantic
+declaration ID. Their original exact receipt survives newer progress. Final
+boundaries require a closed source, at most 2 KiB, a matching declaration revision,
+and Idempotency-Key. A final declaration can add at most 1,024 positions beyond
+known-at-close, subject to lifetime capacity, and never extends the upload deadline.
+Missing batches never acquire a fabricated content receipt.
+
+The closure owner records the first loss of collection authority independently
+of client delivery. Voluntary Submission, manager/automatic end, suspension and
+lease expiry close native delivery within their lifecycle transaction. A delayed
+expiry observation uses the original lease boundary. Closed status expires absent
+client finalization at the server-known boundary with explicit unknown-tail state;
+received content remains separately acknowledged. Summary counts and client times
+are operational uncertainty. Summary writes require Idempotency-Key and atomically
+complete their audit; retries repeat current ownership and upload-deadline checks.
+Changed summaries have a separate five-second rate
+bound, with one final-summary exception, and false completeness cannot become true.
+Metadata exhaustion commits summary-only state before returning its bounded refusal;
+existing closure and summary slots were reserved at admission.
+
+
+Native batches are appended to
+`/api/v1/exam-attempts/{exam_attempt_id}/security-batches` with Idempotency-Key.
+The original closed envelope identifies the stream, Participation, generation,
+security session, policy and release/matrix; retries preserve its original
+prior acknowledgement. A batch contains 1..64 minimized records and is bounded
+at 256 KiB before decoding. Source ranges and detector meanings are checked
+against the admitted release catalog, including for historical delivery from a
+new Session. No packaged detector catalog means ingestion remains unavailable.
+
+Exact batch receipts and current progression commit with counted canonical
+records, envelope, fixed metadata and pending/retained/allocated counters. Native
+append uses one User/Attempt allowance across Sessions, including replay, at two
+requests per second with burst eight. Pending admission preserves 320 KiB repair
+headroom. Detail and position exhaustion permanently latch the applicable scope;
+retries recover retained receipts without charging retained quota again. Refused
+new bytes never receive a content receipt.
+
+Occurrence interpretation waits for received or terminally omitted earlier
+positions. A missing opener remains explicitly unresolved after later recovery.
+Counts, condition/detector identity and source lifetimes cannot change across an
+occurrence, and recurrence requires another occurrence ID. A live detailed reset
+links its already accepted control edge. A new historical reset establishes only
+evidence continuity, never live coverage or permission. Native operational records
+remain distinct from condition projections and do not create misconduct Flags.
+
+### Late delivery and Browser evidence review
+
+Verified blocked redirects create Browser integrity groups only when the frozen
+source rule selects `integrity_evidence` and its prior hop is verified. The group
+identity is Attempt, Participation, Policy Revision and rule. The first 100
+eligible detail copies are immutable, within the Attempt's 10,000-record/8-MiB
+copy allowance. Further qualifying accepted events increment exact count-only
+overflow. At 256 groups, one Attempt overflow counts additional verified events;
+it neither creates another Flag nor guesses distinct omitted groups. Receipt
+replays and unresolved redirects add no evidence. Ordinary history and copied
+evidence have independent authorization and retirement purposes.
+
+Manager Flag responses optionally include `browser` group metadata; evidence
+responses optionally include the minimized `browser` copy. Review snapshots may
+include `browser_evidence_overflow`. No such fields appear in candidate results.
+New accepted late delivery invalidates the current Review and waiver and makes
+Sitting records completion stale. The current Review advances to a withheld draft;
+its previous finalization, exact identities, decision revisions and bounded
+snapshot remain integrity records. An affected decision reports
+`inventory_stale=true` until a manager records a new revision. Finalization cannot
+accept a stale decision. The complete inventory permits 456 Flags and 30,000
+copied evidence rows (the existing bounds plus the separate Browser allowance).
+A finalization digest binds delivery revision and all-source Browser settlement,
+including changes that add only overflow counts. Waivers expose
+`inventory_invalidated`; a stale waiver cannot authorize records completion.
+A later approved release has a distinct revision-derived mail occurrence; exact
+retries cannot send another notice. Current candidate results are withheld while
+the revised inventory awaits approval. Immutable Submission work does not change.
+
+Owning Desktop reads `GET /exam-attempts/{exam_attempt_id}/delivery-limits` with
+one owned Participation query selector. Its current-key-authorized snapshot is
+bounded at 8 KiB. `POST .../delivery-limits/stop-details` requires current live
+fences and Idempotency-Key and accepts only family plus
+`local_loss_inventory_exhausted`. It returns `budget`, nullable `native` and a
+required `browser` array for the selected current Participation, at most 49 Browser
+sources, bounded at 1 MiB. This control never replenishes lifetime quotas or
+changes otherwise valid participation, submission or live security authority.
+
+Review snapshots expose `delivery_inventory_revision`, including before a Review
+exists. Waiver requests compare `expected_delivery_inventory_revision` to that
+current value under the Sitting and Submission fences. Omission means zero and
+cannot acknowledge later delivery. Waiver responses retain the exact acknowledged
+`delivery_inventory_revision` independently of their invalidation marker.
+
+Recoverable delivery refusals can include `delivery`, bounded at 32 KiB, with
+`family`, the current `budget`, and that family's `native_status` or
+`browser_status`. Each projection rechecks current registered-key ownership;
+a missing or retired owner, revoked Session, or invalid projection omits the
+extension. Independent observations can include concurrent progress and never
+acknowledge the rejected request. This extension is restricted to delivery
+capacity, replay-window, detail/position, declaration, deadline and rate-limit
+codes. HTTP retryable capacity/rate refusals return `Retry-After: 1`; equivalent
+live Browser WebSocket refusals return `retry_after_seconds: 1`. Native status,
+receipt and target reads do not persist lifecycle or interpretation changes.
+
+Live controls accept at most 50 delivery watermarks: the admitted native stream
+and owned Browser sources in the current Participation. A foreign selector or
+fabricated contiguous acknowledgement rejects the complete control. Owned closed
+Browser sources and position exhaustion return per-source rejections without
+rejecting otherwise valid coverage or lease renewal. Allocations charge the
+existing lifetime counters and never fabricate receipts; replays resolve compact
+immutable source slots without allocating again or moving a closure boundary.
+
+### Native condition review
+
+`GET /submissions/{submission_id}/native-conditions` uses the existing detailed
+Submission integrity-view authorization, a separate cursor kind, and pages of at
+most 100 immutable occurrence transitions. Each record carries the admitted
+stream, Participation, policy/release provenance, original receipt time and
+ordered interpretation time. Unresolved openers remain explicit. Conditions
+require no Flag, decision row, or automatic consequence; operational health,
+permission, reset and gap records never enter this evidence endpoint.
+
+The manager Review projection includes `native_conditions` (retained transition
+count and inventory digest). Finalization binds that exact native inventory
+alongside the existing review inventory. New interpreted native condition
+material invalidates a finalized Review, release and waiver; exact receipt
+replays do not. Historical finalization records retain the prior digest and
+count without copying an unbounded list into each snapshot. Integrity exports
+include these purpose-specific records. Integrity retirement deletes native
+condition evidence and its delivery copies and prevents fresh condition intake;
+security operational retirement cannot delete independent integrity evidence.
+
+The Sitting candidate-status board may include `native_security`: a retained
+condition-record count, whether live coverage is available, and a bounded list
+of source health/permission/completeness. It excludes occurrence, detector,
+condition and source-instance identities and all detailed native records.
+
+Detail intake has a bounded per-node database admission budget shared by native
+and Browser delivery and by live and historical transports. It uses at most half
+the configured SQL connections (and at most eight concurrent append operations),
+leaving pool capacity for delivery status, declarations and live controls. A full
+admission budget refuses intake with `exam.delivery.append_rate_limited` and
+one-second retry advice before reserving a database connection; the durable
+User/Attempt token bucket still applies to admitted requests. Per-Attempt database
+serialization remains authoritative and uses bounded query deadlines.
+
+On WebSocket, Browser append has one running worker and one waiting request per
+connection. A full append queue returns the same bounded retry refusal. The reader
+continues handling renewal and security updates independently. Disconnect cancels
+and joins the append worker before Attempt finalization; queued bytes grant no
+receipt or renewed authority. Existing Hub connection limits and outbound
+backpressure bound the aggregate transport queues.
+
+Candidate control abuse protection is per node and per authenticated User across
+Sessions. Live renewal/security updates and delivery recovery/status/declarations
+(including preflight prepare/report) each have their own 32 concurrent workers and 20 requests/second allowance with a
+burst of 40. Each lane retains at most 4,096 User allowances, reclaiming idle slots
+after a minute. Saturation returns `exam.delivery.control_rate_limited`, HTTP 429
+or a WebSocket error with one-second retry advice, before domain work or recovery
+reads. The limits are load protection, not a lease or authorization decision;
+ordinary current authority checks still run for admitted work. Detail quotas,
+append rate buckets and historical work cannot spend the live-control allowance.

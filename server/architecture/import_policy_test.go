@@ -186,11 +186,19 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "canonical agreement JSON",
+		sources:        []pathPattern{exact(serverModule + "/internal/canonicaljson")},
+		deniedStandard: standardInfrastructure,
+	},
+	{
 		name:           "domain model",
 		sources:        []pathPattern{exact(serverModule + "/model")},
 		deniedStandard: standardInfrastructure,
-		project:        only(exact(serverModule + "/identityprovider")),
-		thirdParty:     only(exact("golang.org/x/net/idna")),
+		project: only(
+			exact(serverModule+"/identityprovider"),
+			exact(serverModule+"/internal/canonicaljson"),
+		),
+		thirdParty: only(exact("golang.org/x/net/idna")),
 	},
 	{
 		name:           "store contracts",
@@ -206,6 +214,7 @@ var dependencyRules = []dependencyRule{
 		sources: []pathPattern{subtree(serverModule + "/store/sqlstore")},
 		project: only(
 			exact(serverModule+"/model"),
+			exact(serverModule+"/internal/canonicaljson"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/config"),
 			exact(serverModule+"/migrations"),
@@ -361,6 +370,12 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "Desktop release verification",
+		sources:        []pathPattern{exact(serverModule + "/desktoprelease")},
+		deniedStandard: standardInfrastructure,
+		project:        only(exact(serverModule+"/model"), exact(serverModule+"/internal/canonicaljson")),
+	},
+	{
 		name:           "secret sealing",
 		sources:        []pathPattern{exact(serverModule + "/secretseal")},
 		deniedStandard: standardInfrastructure,
@@ -463,7 +478,7 @@ var dependencyRules = []dependencyRule{
 	{
 		name:    "execution-host adapter",
 		sources: []pathPattern{exact(serverModule + "/executionhost")},
-		project: only(exact(serverModule + "/app/execution")),
+		project: only(exact(serverModule+"/app/execution"), exact(serverModule+"/model"), exact(serverModule+"/store")),
 		thirdParty: only(
 			subtree("github.com/sudosylabs/execenv"),
 		),

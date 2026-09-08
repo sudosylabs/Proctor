@@ -22,24 +22,33 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ProjectionStatus is the acknowledged projection at the point of attachment.
+type ProjectionStatus struct {
+	EnvironmentEpoch       string
+	AppliedWorkspaceCursor int64
+	State                  store.ExecutionProjectionState
+}
+
 const PendingRevocationPageSize = 100
 const CurrentReconciliationPageSize = 100
 const SittingGrantPageSize = 200
 
 type Request struct {
-	AttemptID model.ExamAttemptID
-	Image     string
-	Network   Network
+	ExpectedWorkspaceCursor int64
+	AttemptID               model.ExamAttemptID
+	Image                   string
+	Network                 Network
 }
 
 type Placement struct {
-	GrantID   model.ExecutionGrantID
-	AttemptID model.ExamAttemptID
-	HostID    string
-	Image     string
-	Network   Network
-	Ready     bool
-	Revision  int64
+	Projection ProjectionStatus
+	GrantID    model.ExecutionGrantID
+	AttemptID  model.ExamAttemptID
+	HostID     string
+	Image      string
+	Network    Network
+	Ready      bool
+	Revision   int64
 }
 
 type ImageOption struct {
@@ -72,9 +81,18 @@ func New(grants store.ExecutionGrantStore, hosts HostDirectory, content Content,
 // authoritative PostgreSQL/VFS tree exact before reporting readiness.
 // Capacity or availability failures reassign deterministically.
 func (s *Service) Ensure(ctx context.Context, request Request) (*Placement, error) {
-	if !request.AttemptID.IsValid() || request.Image == "" ||
+	if !request.AttemptID.IsValid() || request.Image == "" || request.ExpectedWorkspaceCursor < 0 || request.ExpectedWorkspaceCursor > (1<<53)-1 ||
 		(request.Network != NetworkNone && request.Network != NetworkAllowlist) {
 		return nil, ErrInvalid
+	}
+	if request.ExpectedWorkspaceCursor > 0 {
+		snapshot, err := s.grants.WorkspaceSnapshot(ctx, request.AttemptID)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot == nil || request.ExpectedWorkspaceCursor > snapshot.Cursor {
+			return nil, ErrInvalid
+		}
 	}
 	catalog, err := s.hosts.Catalog(ctx)
 	if err != nil {
@@ -94,6 +112,16 @@ func (s *Service) Ensure(ctx context.Context, request Request) (*Placement, erro
 	candidates := suitableHosts(catalog, request.Image, request.Network, currentHostID)
 	if len(candidates) == 0 {
 		return nil, ErrUnavailable
+	}
+	if current != nil && current.EnvironmentEpoch != "" {
+		resumed, err := s.resumeProjection(ctx, current.ID)
+		if err != nil {
+			if resumed != nil && errors.Is(err, ErrProjectionPending) {
+				return placement(resumed), err
+			}
+			return nil, err
+		}
+		return placement(resumed), nil
 	}
 	if current != nil && current.State == model.ExecutionGrantReady {
 		// A ready grant may still have guest processes or an observation. The
@@ -183,6 +211,15 @@ func (s *Service) prepareEnvironment(ctx context.Context, grant *model.Execution
 	environment, err := s.hosts.Ensure(ctx, current.HostID, Spec{ID: current.ID.String(), Image: current.Image, Network: Network(current.Network)})
 	if err != nil {
 		return current, err
+	}
+	if controlled, ok := environment.(ControlledEnvironment); ok {
+		current, err = s.controlEnvironment(ctx, current, controlled, lease)
+		if err != nil || current.DesiredControlState != model.ExecutionControlRunning {
+			return current, s.projectionFailed(ctx, current, errors.Join(ErrUnavailable, err))
+		}
+	}
+	if projection, ok := environment.(ProjectionEnvironment); ok {
+		return s.projectEnvironment(ctx, current, projection, lease)
 	}
 	snapshot, err := s.grants.WorkspaceSnapshot(ctx, current.AttemptID)
 	if err != nil {
@@ -387,6 +424,10 @@ func (s *Service) syncChange(ctx context.Context, attemptID model.ExamAttemptID,
 	if alreadyApplied && grant.ID != sourceGrantID {
 		return nil
 	}
+	if grant.EnvironmentEpoch != "" {
+		_, err := s.resumeProjection(ctx, grant.ID)
+		return err
+	}
 	lease, err := s.grants.AcquireLifecycleLease(ctx, grant.ID)
 	if err != nil {
 		return err
@@ -585,8 +626,24 @@ func (s *Service) Attach(ctx context.Context, attemptID model.ExamAttemptID, gra
 }
 
 func (s *Service) Watch(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID, after Cursor) (Observation, error) {
+	if !attemptID.IsValid() || !grantID.IsValid() {
+		return nil, ErrInvalid
+	}
+	current, err := s.grants.Current(ctx, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	if current.ID != grantID {
+		return nil, ErrUnavailable
+	}
+	if current.EnvironmentEpoch != "" {
+		if after != "" {
+			return nil, ErrInvalid
+		}
+		return s.observeProjection(ctx, current)
+	}
 	var observation Observation
-	err := s.withOpenEnvironment(ctx, attemptID, grantID, func(environment Environment) error {
+	err = s.withOpenEnvironment(ctx, attemptID, grantID, func(environment Environment) error {
 		var err error
 		observation, err = environment.Watch(ctx, after)
 		return err
@@ -681,10 +738,29 @@ func (s *Service) convergeGrant(ctx context.Context, grantID model.ExecutionGran
 			return fmt.Errorf("read leased execution lifecycle: %w", err)
 		}
 		grant := convergence.Grant
+		if grant.EnvironmentEpoch != "" {
+			environment, openErr := s.hosts.Existing(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
+			controlled, supported := environment.(ControlledEnvironment)
+			if openErr != nil || !supported || controlled.Epoch() != grant.EnvironmentEpoch {
+				return errors.Join(ErrUnavailable, openErr, s.releaseGrant(ctx, grant))
+			}
+			current, controlErr := s.controlEnvironment(ctx, grant, controlled, lease)
+			if controlErr != nil {
+				return controlErr
+			}
+			if current.DesiredControlState == model.ExecutionControlRevoked {
+				return s.releaseGrant(ctx, current)
+			}
+			if projection, supported := environment.(ProjectionEnvironment); supported && current.DesiredControlState == model.ExecutionControlRunning {
+				_, err := s.projectEnvironment(ctx, current, projection, lease)
+				return err
+			}
+			return nil
+		}
 		if grant.LifecyclePending || grant.WorkspacePending || grant.AppliedWorkspaceCursor != convergence.WorkspaceCursor {
 			return s.releaseGrant(ctx, grant)
 		}
-		if convergence.AttemptState != model.ExamAttemptActive || convergence.AcknowledgementRequired ||
+		if convergence.AttemptState != model.ExamAttemptActive || convergence.AcknowledgementRequired || convergence.SecurityBlocked ||
 			(convergence.SittingState != model.ExamSittingOpen && convergence.SittingState != model.ExamSittingPaused) ||
 			grant.State != model.ExecutionGrantReady {
 			return s.releaseGrant(ctx, grant)
@@ -801,9 +877,24 @@ func (s *Service) open(ctx context.Context, attemptID model.ExamAttemptID, grant
 	}
 	if convergence == nil || convergence.Grant == nil || convergence.Grant.ID != grant.ID ||
 		convergence.AttemptState != model.ExamAttemptActive || convergence.SittingState != model.ExamSittingOpen ||
-		convergence.AcknowledgementRequired || convergence.Grant.LifecyclePending || convergence.Grant.WorkspacePending ||
-		convergence.Grant.AppliedWorkspaceCursor != convergence.WorkspaceCursor {
+		convergence.AcknowledgementRequired || convergence.SecurityBlocked || convergence.Grant.LifecyclePending {
+		return nil, nil, ErrInteractionBlocked
+	}
+	if convergence.Grant.WorkspacePending || convergence.Grant.AppliedWorkspaceCursor != convergence.WorkspaceCursor {
+		if grant.EnvironmentEpoch != "" {
+			return nil, nil, ErrProjectionPending
+		}
 		return nil, nil, ErrUnavailable
+	}
+	if grant.EnvironmentEpoch != "" {
+		current, controlErr := s.grants.PrepareControl(ctx, grant.ID, grant.EnvironmentEpoch, s.now())
+		if controlErr != nil {
+			return nil, nil, controlErr
+		}
+		if current.DesiredControlState != model.ExecutionControlRunning || current.ControlAcknowledgedRevision != current.ControlRevision {
+			return nil, nil, ErrInteractionBlocked
+		}
+		grant = current
 	}
 	environment, err := s.hosts.Existing(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
 	if err != nil {
@@ -867,6 +958,14 @@ func containsNetwork(values []Network, wanted Network) bool {
 }
 
 func placement(grant *model.ExecutionGrant) *Placement {
-	return &Placement{GrantID: grant.ID, AttemptID: grant.AttemptID, HostID: grant.HostID, Image: grant.Image,
+	state := store.ExecutionProjectionUnavailable
+	if grant.EnvironmentEpoch != "" {
+		state = store.ExecutionProjectionSynchronizing
+		if grant.State == model.ExecutionGrantReady && !grant.WorkspacePending && !grant.LifecyclePending &&
+			grant.ControlAcknowledgedRevision == grant.ControlRevision && grant.DesiredControlState == model.ExecutionControlRunning {
+			state = store.ExecutionProjectionReady
+		}
+	}
+	return &Placement{Projection: ProjectionStatus{EnvironmentEpoch: grant.EnvironmentEpoch, AppliedWorkspaceCursor: grant.AppliedWorkspaceCursor, State: state}, GrantID: grant.ID, AttemptID: grant.AttemptID, HostID: grant.HostID, Image: grant.Image,
 		Network: Network(grant.Network), Ready: grant.State == model.ExecutionGrantReady, Revision: grant.Revision}
 }

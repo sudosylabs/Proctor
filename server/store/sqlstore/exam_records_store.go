@@ -93,12 +93,12 @@ func getRecordsCompletion(ctx context.Context, executor sqlxExecutor, id model.E
 
 const recordsPendingReviewPredicate = `sub.integrity_retired_at IS NULL AND NOT EXISTS (SELECT 1 FROM submission_reviews r WHERE r.submission_id=sub.id AND r.state='finalized')
 	AND NOT EXISTS (SELECT 1 FROM submission_review_waivers w
-		WHERE w.submission_id=sub.id
+		WHERE w.submission_id=sub.id AND NOT w.inventory_invalidated
 		AND w.review_revision=COALESCE((SELECT r.revision FROM submission_reviews r WHERE r.submission_id=sub.id),0)
 		AND w.discrepancy_count=(SELECT count(*) FROM integrity_discrepancies d WHERE d.submission_id=sub.id)
 		AND NOT EXISTS (SELECT 1 FROM integrity_flags f WHERE f.exam_attempt_id=a.id AND NOT EXISTS
 			(SELECT 1 FROM integrity_review_decisions d JOIN submission_reviews r ON r.id=d.submission_review_id
-			 WHERE r.submission_id=sub.id AND d.integrity_flag_id=f.id)))`
+			 WHERE r.submission_id=sub.id AND d.integrity_flag_id=f.id AND NOT d.inventory_stale)))`
 
 func (s *SQLExamRecordsStore) GetCompletion(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
 	if !examID.IsValid() || !sittingID.IsValid() {
@@ -127,18 +127,20 @@ func (s *SQLExamRecordsStore) GetCompletion(ctx context.Context, examID model.Ex
 }
 
 type recordsWaiverRow struct {
-	SubmissionID     string    `db:"submission_id"`
-	Revision         int64     `db:"revision"`
-	ReviewRevision   int64     `db:"review_revision"`
-	DiscrepancyCount int64     `db:"discrepancy_count"`
-	ActorID          string    `db:"actor_user_id"`
-	RecordedAt       time.Time `db:"recorded_at"`
-	ReasonCode       string    `db:"reason_code"`
-	PrivateReason    string    `db:"private_reason"`
+	DeliveryInventoryRevision int64     `db:"delivery_inventory_revision"`
+	InventoryInvalidated      bool      `db:"inventory_invalidated"`
+	SubmissionID              string    `db:"submission_id"`
+	Revision                  int64     `db:"revision"`
+	ReviewRevision            int64     `db:"review_revision"`
+	DiscrepancyCount          int64     `db:"discrepancy_count"`
+	ActorID                   string    `db:"actor_user_id"`
+	RecordedAt                time.Time `db:"recorded_at"`
+	ReasonCode                string    `db:"reason_code"`
+	PrivateReason             string    `db:"private_reason"`
 }
 
 func (r recordsWaiverRow) value() (*model.SubmissionReviewWaiver, error) {
-	w := &model.SubmissionReviewWaiver{SubmissionID: model.SubmissionID(r.SubmissionID), Revision: r.Revision, ReviewRevision: r.ReviewRevision,
+	w := &model.SubmissionReviewWaiver{DeliveryInventoryRevision: r.DeliveryInventoryRevision, InventoryInvalidated: r.InventoryInvalidated, SubmissionID: model.SubmissionID(r.SubmissionID), Revision: r.Revision, ReviewRevision: r.ReviewRevision,
 		DiscrepancyCount: r.DiscrepancyCount, ActorUserID: model.UserID(r.ActorID), RecordedAt: model.TimeUTC(r.RecordedAt), ReasonCode: r.ReasonCode, PrivateReason: r.PrivateReason}
 	if err := w.Validate(); err != nil {
 		return nil, invalidPersistedState("submission_review_waiver", "value", err)
@@ -158,7 +160,7 @@ func findRecordsWaiver(ctx context.Context, executor sqlxExecutor, id model.Subm
 		return nil, false, store.NewErrInvalidInput("submission_review_waiver", "identity", nil)
 	}
 	var row recordsWaiverRow
-	err := executor.Get(ctx, &row, `SELECT submission_id,revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason FROM submission_review_waivers WHERE submission_id=?
+	err := executor.Get(ctx, &row, `SELECT submission_id,revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason,inventory_invalidated,delivery_inventory_revision FROM submission_review_waivers WHERE submission_id=?
 		AND EXISTS(SELECT 1 FROM exam_submissions sub WHERE sub.id=submission_review_waivers.submission_id AND sub.integrity_retired_at IS NULL)`, id.String())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -404,7 +406,7 @@ func (s *SQLExamRecordsStore) CompleteRecords(ctx context.Context, input *store.
 
 func (s *SQLExamRecordsStore) WaiveReview(ctx context.Context, input *store.ExamRecordsReviewWaiver, command *store.CommandIdempotency) (*store.ExamRecordsWaiverResult, error) {
 	if input == nil || !validExamRecordsMutation(input.ExamRecordsMutation, command, store.ExamRecordsWaiveReviewOperation, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride) ||
-		!input.Scope.SubmissionID.IsValid() || input.ExpectedRevision < 0 || input.ExpectedReviewRevision < 0 || input.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(input.ReasonCode, input.PrivateReason) != nil {
+		!input.Scope.SubmissionID.IsValid() || input.ExpectedRevision < 0 || input.ExpectedReviewRevision < 0 || input.ExpectedDeliveryInventoryRevision < 0 || input.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(input.ReasonCode, input.PrivateReason) != nil {
 		return nil, store.NewErrInvalidInput("exam_records", "review_waiver", nil)
 	}
 	r, err := runExamRecordsMutation(ctx, s.SQLStore, input.ExamRecordsMutation, command, 0,
@@ -427,10 +429,17 @@ func (s *SQLExamRecordsStore) WaiveReview(ctx context.Context, input *store.Exam
 			}
 			err := tx.Get(ctx, &inventory, `SELECT COALESCE((SELECT revision FROM submission_reviews WHERE submission_id=?),0) AS revision,
 				(SELECT count(*) FROM integrity_discrepancies WHERE submission_id=?) AS count,
-				EXISTS(SELECT 1 FROM integrity_flags f WHERE f.exam_attempt_id=? AND NOT EXISTS(SELECT 1 FROM integrity_review_decisions d JOIN submission_reviews r ON r.id=d.submission_review_id WHERE r.submission_id=? AND d.integrity_flag_id=f.id)) AS undecided,
+				EXISTS(SELECT 1 FROM integrity_flags f WHERE f.exam_attempt_id=? AND NOT EXISTS(SELECT 1 FROM integrity_review_decisions d JOIN submission_reviews r ON r.id=d.submission_review_id WHERE r.submission_id=? AND d.integrity_flag_id=f.id AND NOT d.inventory_stale)) AS undecided,
 				EXISTS(SELECT 1 FROM submission_reviews WHERE submission_id=? AND state='finalized') AS finalized`, input.Scope.SubmissionID.String(), input.Scope.SubmissionID.String(), scope.AttemptID.String(), input.Scope.SubmissionID.String(), input.Scope.SubmissionID.String())
 			if err != nil {
 				return nil, err
+			}
+			var deliveryRevision int64
+			if err := tx.Get(ctx, &deliveryRevision, `SELECT review_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, scope.AttemptID.String()); err != nil {
+				return nil, err
+			}
+			if deliveryRevision != input.ExpectedDeliveryInventoryRevision {
+				return nil, store.NewErrConflict("exam_records", "inventory_changed", nil)
 			}
 			if inventory.Undecided {
 				return nil, store.NewErrConflict("exam_records", "undecided_flags", nil)
@@ -448,13 +457,13 @@ func (s *SQLExamRecordsStore) WaiveReview(ctx context.Context, input *store.Exam
 			if found && prior.Revision != input.ExpectedRevision || !found && input.ExpectedRevision != 0 || input.ExpectedRevision == math.MaxInt64 {
 				return nil, store.NewErrConflict("exam_records", "revision", nil)
 			}
-			w := &model.SubmissionReviewWaiver{SubmissionID: input.Scope.SubmissionID, Revision: input.ExpectedRevision + 1, ReviewRevision: inventory.Revision, DiscrepancyCount: inventory.Count, ActorUserID: input.Principal.UserID, RecordedAt: at, ReasonCode: input.ReasonCode, PrivateReason: input.PrivateReason}
+			w := &model.SubmissionReviewWaiver{DeliveryInventoryRevision: deliveryRevision, SubmissionID: input.Scope.SubmissionID, Revision: input.ExpectedRevision + 1, ReviewRevision: inventory.Revision, DiscrepancyCount: inventory.Count, ActorUserID: input.Principal.UserID, RecordedAt: at, ReasonCode: input.ReasonCode, PrivateReason: input.PrivateReason}
 			if err = w.Validate(); err != nil {
 				return nil, err
 			}
-			_, err = tx.Exec(ctx, `INSERT INTO submission_review_waivers (submission_id,revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason,audit_event_id) VALUES (?,?,?,?,?,?,?,?,?)
-				ON CONFLICT (submission_id) DO UPDATE SET revision=EXCLUDED.revision,review_revision=EXCLUDED.review_revision,discrepancy_count=EXCLUDED.discrepancy_count,
-				actor_user_id=EXCLUDED.actor_user_id,recorded_at=EXCLUDED.recorded_at,reason_code=EXCLUDED.reason_code,private_reason=EXCLUDED.private_reason,audit_event_id=EXCLUDED.audit_event_id`, w.SubmissionID.String(), w.Revision, w.ReviewRevision, w.DiscrepancyCount, w.ActorUserID.String(), w.RecordedAt, w.ReasonCode, w.PrivateReason, input.AuditEventID)
+			_, err = tx.Exec(ctx, `INSERT INTO submission_review_waivers (submission_id,revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason,audit_event_id,delivery_inventory_revision) VALUES (?,?,?,?,?,?,?,?,?,?)
+				ON CONFLICT (submission_id) DO UPDATE SET inventory_invalidated=false,delivery_inventory_revision=EXCLUDED.delivery_inventory_revision,revision=EXCLUDED.revision,review_revision=EXCLUDED.review_revision,discrepancy_count=EXCLUDED.discrepancy_count,
+				actor_user_id=EXCLUDED.actor_user_id,recorded_at=EXCLUDED.recorded_at,reason_code=EXCLUDED.reason_code,private_reason=EXCLUDED.private_reason,audit_event_id=EXCLUDED.audit_event_id`, w.SubmissionID.String(), w.Revision, w.ReviewRevision, w.DiscrepancyCount, w.ActorUserID.String(), w.RecordedAt, w.ReasonCode, w.PrivateReason, input.AuditEventID, w.DeliveryInventoryRevision)
 			return w, err
 		}, func(w *model.SubmissionReviewWaiver) error { return w.Validate() }, func(w *model.SubmissionReviewWaiver) map[string]any {
 			return map[string]any{"waiver_revision": w.Revision, "review_revision": w.ReviewRevision, "reason_code": w.ReasonCode}

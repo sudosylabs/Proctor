@@ -193,23 +193,31 @@ func lockExamExportAuthority(ctx context.Context, tx *sqlxTxWrapper, a store.Exa
 			return time.Time{}, err
 		}
 	}
+	if !ordinary && slices.Contains(a.Categories, model.RetentionCategoryBrowserActivity) {
+		var manager bool
+		err = tx.Get(ctx, &manager, `SELECT true FROM exam_managers WHERE exam_id=? AND user_id=? FOR SHARE`, a.Scope.ExamID.String(), a.Principal.UserID.String())
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, store.NewErrConflict("authorization", "authority", nil)
+		}
+		if err != nil {
+			return time.Time{}, err
+		}
+	}
 	if err = tx.Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
 		return time.Time{}, err
 	}
 	view := model.ActionSubmissionViewOverride
 	sittingView := model.ActionExamSittingViewOverride
-	browser := model.ActionExamAttemptBrowserActivityViewOverride
 	if ordinary {
 		view = model.ActionSubmissionView
 		sittingView = model.ActionExamSittingView
-		browser = model.ActionExamAttemptBrowserActivityView
 	}
 	actions := []model.Action{a.Action, view}
 	if a.Scope.SubmissionID.IsZero() {
 		actions = append(actions, sittingView)
 	}
-	if slices.Contains(a.Categories, model.RetentionCategoryIntegrity) {
-		actions = append(actions, browser)
+	if slices.Contains(a.Categories, model.RetentionCategoryBrowserActivity) {
+		actions = append(actions, model.ActionExamAttemptBrowserActivityView)
 	}
 	for _, action := range actions {
 		if err = requirePrincipalActionAtScope(ctx, tx, a.Principal, action, model.RoleScopeAcademicUnit, scope.AcademicUnitID.String(), at, false); err != nil {

@@ -14,3 +14,97 @@ components:
       schema:
         $ref: '#/components/schemas/ID'
       description: The Integrity Flag identifier.
+  schemas:
+    BrowserIntegrityGroup:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - policy_revision_id
+        - rule_id
+        - overflow_first_received_at
+        - overflow_last_received_at
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        rule_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        overflow_first_received_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        overflow_last_received_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+      description: >-
+        Frozen Browser rule group with server-received overflow times. Counts exclude unretained client
+        summaries.
+    BrowserIntegrityEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - source_session_id
+        - policy_revision_id
+        - rule_id
+        - event
+      properties:
+        source_session_id:
+          $ref: '#/components/schemas/BrowserSourceSessionID'
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        rule_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        event:
+          $ref: '#/components/schemas/BrowserDeliveryRecord'
+      description: Immutable minimized evidence copy independent of ordinary Browser Activity retention.
+    BrowserIntegrityOverflow:
+      type: object
+      additionalProperties: false
+      required:
+        - validated_event_count
+        - first_received_at
+        - last_received_at
+        - reason
+      properties:
+        validated_event_count:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        first_received_at:
+          type: string
+          format: date-time
+        last_received_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          enum:
+            - group_capacity
+      description: >-
+        Count of verified events omitted because the Attempt already has 256 Browser Flag groups. This is
+        neither another Flag nor a count of distinct omitted groups.
+    NativeConditionInventory:
+      type: object
+      additionalProperties: false
+      required:
+        - records
+        - digest
+      properties:
+        records:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 200000
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$

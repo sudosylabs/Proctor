@@ -24,7 +24,6 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 		ConnectionID: model.NewAttemptConnectionID(), CandidateUserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), ExpectedCurrentRevisionID: model.NewExamRevisionID(),
 		ExpectedWorkspaceCursor: 41, FinalFocusLossSequence: 9,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
 	}
 	command := ExamSubmissionSeal{
 		SubmissionID: model.NewSubmissionID(), Access: access,
@@ -35,7 +34,7 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 		CandidateUserID: access.CandidateUserID, WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		CurrentRevisionID: access.ExpectedCurrentRevisionID,
 	}
-	receipt := ExamSubmissionReceipt{
+	receipt := ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		SubmissionID: command.SubmissionID, AttemptID: access.AttemptID, ExamRevisionID: access.ExpectedCurrentRevisionID,
 		State:           model.ExamAttemptSubmitted,
 		WorkspaceCursor: 41, ManifestDigest: strings.Repeat("a", 64), SubmittedAt: time.Unix(100, 0).UTC(),

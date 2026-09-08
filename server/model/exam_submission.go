@@ -178,7 +178,7 @@ type ExamSubmissionSpecification struct {
 	WorkspaceID              ExamAttemptWorkspaceID
 	Manifest                 ExamSubmissionManifest
 	FinalFocusLossSequence   int64
-	BrowserActivity          BrowserActivitySubmission
+	BrowserActivity          BrowserSubmissionSettlement
 	UnresolvedIntegrityCount int64
 	Provenance               ExamSubmissionProvenance
 	SubmittedAt              time.Time
@@ -199,7 +199,7 @@ type ExamSubmission struct {
 	ManifestEntryCount       int
 	ManifestTotalFileBytes   int64
 	FinalFocusLossSequence   int64
-	BrowserActivity          BrowserActivitySubmission
+	BrowserActivity          BrowserSubmissionSettlement
 	IntegrityState           SubmissionIntegrityState
 	IntegrityRetiredAt       OptionalTime
 	UnresolvedIntegrityCount int64
@@ -243,10 +243,13 @@ func (submission *ExamSubmission) Validate() error {
 	if submission.ManifestEntryCount == 0 && submission.ManifestTotalFileBytes != 0 {
 		return errors.New("model: empty Exam Submission manifest has content bytes")
 	}
+	if err := submission.BrowserActivity.Validate(); err != nil {
+		return err
+	}
 	if submission.IntegrityState == SubmissionIntegrityRetired {
 		if !submission.IntegrityRetiredAt.Valid || submission.IntegrityRetiredAt.Time.IsZero() ||
 			submission.IntegrityRetiredAt.Time.Before(submission.SubmittedAt) || submission.FinalFocusLossSequence != 0 ||
-			submission.UnresolvedIntegrityCount != 0 || submission.BrowserActivity != (BrowserActivitySubmission{}) {
+			submission.UnresolvedIntegrityCount != 0 {
 			return errors.New("model: retired Exam Submission retains integrity data or lacks its retirement time")
 		}
 		return nil
@@ -254,9 +257,7 @@ func (submission *ExamSubmission) Validate() error {
 	if submission.IntegrityRetiredAt.Valid || !submission.IntegrityRetiredAt.Time.IsZero() {
 		return errors.New("model: retained Exam Submission integrity has a retirement time")
 	}
-	if err := submission.BrowserActivity.Validate(); err != nil {
-		return err
-	}
+
 	if (submission.IntegrityState == SubmissionIntegritySettled) != (submission.UnresolvedIntegrityCount == 0) {
 		return errors.New("model: inconsistent Exam Submission integrity state")
 	}

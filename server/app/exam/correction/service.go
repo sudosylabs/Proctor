@@ -126,6 +126,7 @@ type ApplyCommand struct {
 	Resources                 []ResourceManifestItem
 	CandidateSummary          string
 	AcknowledgementRequired   bool
+	AffectedCapabilities      []model.CandidateCapability
 	PrivateReason             string
 	IdempotencyKey            string
 }
@@ -139,10 +140,12 @@ type Result struct {
 	SittingRevision         int64
 	EffectiveAt             time.Time
 	AcknowledgementRequired bool
+	AffectedCapabilities    []model.CandidateCapability
 	Replayed                bool
 }
 
 type Service struct {
+	institutionOrigin string
 	persistence       store.ExamCorrectionStore
 	revisions         Revisions
 	access            AccessStore
@@ -162,11 +165,11 @@ type Service struct {
 	newExamRevisionID func() model.ExamRevisionID
 }
 
-func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content Content, now func() time.Time, newStageID func() model.ExamCorrectionResourceStageID, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newFileRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID, newRenditionID func() model.FileRenditionID, newExamRevisionID func() model.ExamRevisionID) (*Service, error) {
+func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content Content, now func() time.Time, newStageID func() model.ExamCorrectionResourceStageID, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newFileRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID, newRenditionID func() model.FileRenditionID, newExamRevisionID func() model.ExamRevisionID, institutionOrigin string) (*Service, error) {
 	if p == nil || revisions == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || content == nil || now == nil || newStageID == nil || newResourceID == nil || newEntryID == nil || newFileRevisionID == nil || newLeaseID == nil || newRenditionID == nil || newExamRevisionID == nil {
 		return nil, errors.New("exam correction dependencies are required")
 	}
-	return &Service{
+	return &Service{institutionOrigin: institutionOrigin,
 		persistence: p, revisions: revisions, access: access, memberships: memberships,
 		authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, content: content, now: now,
 		newStageID: newStageID, newResourceID: newResourceID, newEntryID: newEntryID,
@@ -292,6 +295,11 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 		return Result{}, err
 	}
 	c.Resources = append([]ResourceManifestItem(nil), c.Resources...)
+	if c.BrowserPolicy.Present {
+		if err := c.BrowserPolicy.Policy.ValidateInstitutionOrigin(s.institutionOrigin); err != nil {
+			return Result{}, invalidCause("browser_policy", err)
+		}
+	}
 	idempotency, err := prepareApplyIdempotency(call, c)
 	if err != nil {
 		return Result{}, err
@@ -320,7 +328,7 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 	for i, r := range c.Resources {
 		resources[i] = store.ExamCorrectionResourceManifestItem{ResourceID: r.ResourceID, DisplayName: strings.TrimSpace(r.DisplayName), DescriptionMarkdown: r.DescriptionMarkdown, StageID: r.StageID}
 	}
-	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.institutionOrigin, RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
 	}
@@ -349,7 +357,7 @@ func validateApply(c ApplyCommand) error {
 	if !c.BrowserPolicy.Present && c.BrowserPolicy.Policy.SchemaVersion != 0 || c.BrowserPolicy.Present && c.BrowserPolicy.Policy.Validate() != nil {
 		return invalid("browser_policy")
 	}
-	if _, err := model.NewCandidateCorrectionNotice(c.CandidateSummary, []model.ExamCorrectionChangedArea{model.ExamCorrectionChangedInstructions}, c.AcknowledgementRequired); err != nil {
+	if err := model.ValidateCandidateCorrectionSelection(c.CandidateSummary, c.AffectedCapabilities); err != nil {
 		return invalid("candidate_summary")
 	}
 	resourceIDs := map[model.ExamResourceID]struct{}{}
@@ -433,7 +441,7 @@ func projectResult(stored *store.ExamCorrectionResult, c ApplyCommand) (Result, 
 	return Result{ExamID: c.ExamID, SittingID: c.SittingID, PreviousRevisionID: stored.PreviousRevisionID,
 		RevisionID: stored.Revision.ID, RevisionNumber: stored.Revision.Number, SittingState: s.State,
 		SittingRevision: s.Revision, EffectiveAt: model.TimeUTC(stored.EffectiveAt),
-		AcknowledgementRequired: c.AcknowledgementRequired, Replayed: stored.Replayed}, nil
+		AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), Replayed: stored.Replayed}, nil
 }
 func invalid(field string) error {
 	return &Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": field}}

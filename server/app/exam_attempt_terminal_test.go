@@ -238,7 +238,7 @@ func validTerminalOpenFixture() (examattempt.Presentation, OpenCandidateExamTerm
 		AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
 		ExecutionProfile: model.ExecutionProfile{Enabled: true, Image: "go", Network: model.ExecutionNetworkNone},
 		RuntimeCapabilities: store.CandidateRuntimeCapabilities{
-			Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalAvailable},
+			Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalAvailable, EnvironmentEpoch: func() *string { epoch := "test_epoch"; return &epoch }(), ProjectionState: store.ExecutionProjectionReady},
 		},
 	}
 	command := OpenCandidateExamTerminalCommand{
@@ -255,7 +255,7 @@ func TestExamAttemptTerminalOpenOrderingAndOwnership(t *testing.T) {
 	presentation, command := validTerminalOpenFixture()
 	observation, native := &terminalTrackedObservation{}, newTerminalTrackedPTY()
 	execution := &terminalExecutionPortFake{
-		placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true},
+		placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}},
 		observation: observation, terminal: native,
 	}
 	audit := &terminalAuditPortFake{order: &execution.order}
@@ -367,7 +367,7 @@ func TestExamAttemptTerminalPartialFailureCleanup(t *testing.T) {
 			execution.placement = &appexecution.Placement{}
 		}},
 		{name: "mismatched placement", configure: func(execution *terminalExecutionPortFake, _ *terminalAuditPortFake) {
-			execution.placement = &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: model.NewExamAttemptID(), Ready: true}
+			execution.placement = &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: model.NewExamAttemptID(), Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}}
 		}, wantRelease: 1},
 		{name: "Watch", configure: func(execution *terminalExecutionPortFake, _ *terminalAuditPortFake) {
 			execution.watchErr = failure
@@ -394,7 +394,7 @@ func TestExamAttemptTerminalPartialFailureCleanup(t *testing.T) {
 			t.Parallel()
 			observation, native := &terminalTrackedObservation{}, newTerminalTrackedPTY()
 			execution := &terminalExecutionPortFake{
-				placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true},
+				placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}},
 				observation: observation, terminal: native,
 			}
 			audit := &terminalAuditPortFake{}
@@ -432,7 +432,7 @@ func TestExamAttemptTerminalPreReturnReleaseDetachesRequestCancellation(t *testi
 	t.Parallel()
 	presentation, command := validTerminalOpenFixture()
 	execution := &terminalExecutionPortFake{
-		placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true},
+		placement:   &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}},
 		watchErr:    context.Canceled,
 		releaseErrs: []error{errors.New("transient release failure"), nil},
 	}
@@ -1269,3 +1269,64 @@ func TestExamAttemptTerminalManifestAndFileBounds(t *testing.T) {
 type terminalErrorReader struct{ err error }
 
 func (reader terminalErrorReader) Read([]byte) (int, error) { return 0, reader.err }
+
+func (*executionUseCasesStub) ReconcileAttempt(context.Context, model.ExamAttemptID) error {
+	return nil
+}
+
+func TestTerminalProjectionLagPreservesGrantAndDoesNotAttach(t *testing.T) {
+	t.Parallel()
+	presentation, command := validTerminalOpenFixture()
+	command.ExpectedWorkspaceCursor = 12
+	execution := &terminalExecutionPortFake{placement: &appexecution.Placement{
+		GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true,
+		Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "epoch", AppliedWorkspaceCursor: 11, State: store.ExecutionProjectionReady},
+	}, observation: &terminalTrackedObservation{}}
+	service, err := newExamAttemptTerminalService(&terminalAttemptPortFake{presentation: presentation}, execution, &terminalAuditPortFake{order: &execution.order})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := service.Open(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+	failure, ok := As(err)
+	if terminal != nil || !ok || failure.Code() != "execution.projection_pending" {
+		t.Fatalf("lag outcome: %v", err)
+	}
+	if execution.attachCalls != 0 || execution.watchCalls != 1 || execution.releaseCalls != 0 {
+		t.Fatal("lag attached a PTY or destroyed a recoverable grant")
+	}
+}
+
+func (fake *terminalExecutionPortFake) ValidateTerminalInteraction(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) error {
+	return nil
+}
+
+func TestTerminalSaveLagKeepsExistingPTYUsable(t *testing.T) {
+	t.Parallel()
+	presentation, command := validTerminalOpenFixture()
+	presentation.RuntimeCapabilities.Terminal.State = store.CandidateTerminalTemporarilyUnavailable
+	presentation.RuntimeCapabilities.Terminal.ProjectionState = store.ExecutionProjectionSynchronizing
+	native := newTerminalTrackedPTY()
+	execution := &terminalExecutionPortFake{placement: &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}}, observation: &terminalTrackedObservation{}, terminal: native}
+	service, err := newExamAttemptTerminalService(&terminalAttemptPortFake{presentation: presentation}, execution, &terminalAuditPortFake{order: &execution.order})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := service.Open(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	if _, err = terminal.Write([]byte("pwd\n")); err != nil {
+		t.Fatalf("save lag closed PTY: %v", err)
+	}
+	execution.mu.Lock()
+	releases := execution.releaseCalls
+	execution.mu.Unlock()
+	if releases != 0 {
+		t.Fatal("save lag retired environment")
+	}
+}
+
+func (fake *terminalWorkspaceExecutionFake) ValidateTerminalInteraction(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) error {
+	return nil
+}

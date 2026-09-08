@@ -133,7 +133,6 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		ContinuityCredentialHash: credentialHash, ExpectedWorkspaceCursor: mutation.Change.Cursor,
 		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID,
-		BrowserActivity:           model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
 	}
 	target, err := submissions.ResolveSealTarget(ctx, access)
 	requireNoError(t, err)
@@ -342,7 +341,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &firstInstructions,
-			CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: firstAudit.ID.String(), AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-first", "correction-acknowledgement-first"))
@@ -353,7 +352,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: first.Revision.ID, ExpectedSittingRevision: first.Sitting.Sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &secondInstructions,
-			CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-second", "correction-acknowledgement-second"))
@@ -521,8 +520,8 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: second.Revision.ID, ExpectedSittingRevision: resumed.Value.Sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &thirdInstructions,
-			CandidateSummary: "A later correction changes the instructions without requiring acknowledgement.",
-			PrivateReason:    "prove retained acknowledgement replay after a later correction", AppliedAt: model.NowUTC(),
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "A later correction changes the instructions without requiring acknowledgement.",
+			PrivateReason: "prove retained acknowledgement replay after a later correction", AppliedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(),
 			AuditAt:      model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1",
@@ -678,6 +677,13 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 
 		noShowFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(-time.Minute))
 		lateFixture := addExamAttemptCandidate(t, ctx, ss, fixture, fixture.sitting.OpenedAt.Time.Add(time.Minute))
+		renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1,
+			AttemptID: active.Attempt.ID, ParticipationID: active.Participation.ID, ConnectionID: active.Connection.ID,
+			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: active.Participation.Generation,
+			DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
+			Sequence: 1, ContinuityCredentialHash: activeAccess.ContinuityCredentialHash,
+		}
+		prepareParticipationRenewalCoverage(t, ctx, ss, renewal)
 		closeAt := model.NowUTC()
 		closing, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
@@ -690,12 +696,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		if !closing.Changed || closing.Value.Sitting.State != model.ExamSittingClosing {
 			t.Fatalf("EarlyClose() = %#v", closing)
 		}
-		_, err = ss.ExamAttempt().RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
-			AttemptID: active.Attempt.ID, ParticipationID: active.Participation.ID, ConnectionID: active.Connection.ID,
-			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: active.Participation.Generation,
-			DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
-			Sequence: 1, ContinuityCredentialHash: activeAccess.ContinuityCredentialHash,
-		})
+		_, err = ss.ExamAttempt().RenewParticipation(ctx, renewal)
 		assertExamAttemptConflict(t, err, "exam_sitting_state")
 
 		unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
@@ -1080,7 +1081,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 		ConnectionID: reconnected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		ContinuityCredentialHash: secondCredentialHash, ExpectedWorkspaceCursor: reconnected.Workspace.Cursor,
 		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID, FinalFocusLossSequence: 2,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}}
+	}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
@@ -1300,5 +1301,5 @@ func submissionAccess(access store.ExamAttemptFocusLossAccess, currentRevisionID
 		SessionID: access.SessionID, ContinuityCredentialHash: access.ContinuityCredentialHash,
 		ExpectedCurrentRevisionID: currentRevisionID, ExpectedWorkspaceCursor: workspaceCursor,
 		FinalFocusLossSequence: finalFocusLossSequence,
-		BrowserActivity:        model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}}
+	}
 }

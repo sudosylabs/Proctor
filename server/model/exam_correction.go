@@ -18,6 +18,76 @@ import (
 
 const ExamSittingMaximumLiveCorrections = 32
 
+// CandidateCapability identifies an independently gated candidate operation family.
+type CandidateCapability string
+
+const (
+	CandidateCapabilityBrowser    CandidateCapability = "browser"
+	CandidateCapabilitySubmission CandidateCapability = "submission"
+	CandidateCapabilityTerminal   CandidateCapability = "terminal"
+	CandidateCapabilityWorkspace  CandidateCapability = "workspace"
+)
+
+func (capability CandidateCapability) IsValid() bool {
+	switch capability {
+	case CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateCandidateCapabilities checks the bounded, sorted, unique projection.
+// An empty set is valid for a pending union; authored selections must be nonempty.
+func ValidateCandidateCapabilities(capabilities []CandidateCapability) error {
+	if len(capabilities) > 4 {
+		return errors.New("model: invalid Candidate capabilities")
+	}
+	for index, capability := range capabilities {
+		if !capability.IsValid() || index > 0 && capabilities[index-1] >= capability {
+			return errors.New("model: invalid Candidate capabilities")
+		}
+	}
+	return nil
+}
+
+// ValidateCandidateCorrectionSelection checks authoring metadata before actual
+// changed areas are known. Revision creation also enforces their semantic minimum.
+func ValidateCandidateCorrectionSelection(summary string, capabilities []CandidateCapability) error {
+	if !validCandidateCorrectionSummary(summary) || len(capabilities) == 0 {
+		return errors.New("model: invalid Candidate Correction selection")
+	}
+	return ValidateCandidateCapabilities(capabilities)
+}
+
+// MinimumCorrectionCapabilities returns the sorted union required by actual
+// semantic changes. A browser-only correction has no execution or submission gate.
+func MinimumCorrectionCapabilities(areas []ExamCorrectionChangedArea) []CandidateCapability {
+	result := make([]CandidateCapability, 0, 4)
+	if slices.Contains(areas, ExamCorrectionChangedBrowserPolicy) {
+		result = append(result, CandidateCapabilityBrowser)
+	}
+	if slices.Contains(areas, ExamCorrectionChangedInstructions) || slices.Contains(areas, ExamCorrectionChangedResources) {
+		result = append(result, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace)
+	}
+	return result
+}
+
+// PendingCorrectionCapabilities derives a projection from validated immutable
+// notices. Acknowledging one notice cannot remove another notice's gate.
+func PendingCorrectionCapabilities(corrections []CandidateLiveCorrection) []CandidateCapability {
+	pending := make([]CandidateCapability, 0, 4)
+	for _, capability := range []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace} {
+		for _, correction := range corrections {
+			if correction.AcknowledgementState == CorrectionAcknowledgementPending && slices.Contains(correction.AffectedCapabilities, capability) {
+				pending = append(pending, capability)
+				break
+			}
+		}
+	}
+	return pending
+}
+
 type ExamCorrectionChangedArea string
 
 const (
@@ -36,11 +106,12 @@ func (area ExamCorrectionChangedArea) IsValid() bool {
 type CandidateCorrectionNotice struct {
 	Summary                 string
 	ChangedAreas            []ExamCorrectionChangedArea
+	AffectedCapabilities    []CandidateCapability
 	AcknowledgementRequired bool
 }
 
-func NewCandidateCorrectionNotice(summary string, changedAreas []ExamCorrectionChangedArea, acknowledgementRequired bool) (*CandidateCorrectionNotice, error) {
-	notice := &CandidateCorrectionNotice{Summary: summary, ChangedAreas: slices.Clone(changedAreas), AcknowledgementRequired: acknowledgementRequired}
+func NewCandidateCorrectionNotice(summary string, changedAreas []ExamCorrectionChangedArea, affectedCapabilities []CandidateCapability, acknowledgementRequired bool) (*CandidateCorrectionNotice, error) {
+	notice := &CandidateCorrectionNotice{Summary: summary, ChangedAreas: slices.Clone(changedAreas), AffectedCapabilities: slices.Clone(affectedCapabilities), AcknowledgementRequired: acknowledgementRequired}
 	if err := notice.Validate(); err != nil {
 		return nil, err
 	}
@@ -48,12 +119,17 @@ func NewCandidateCorrectionNotice(summary string, changedAreas []ExamCorrectionC
 }
 
 func (notice *CandidateCorrectionNotice) Validate() error {
-	if notice == nil || !validCandidateCorrectionSummary(notice.Summary) || len(notice.ChangedAreas) < 1 || len(notice.ChangedAreas) > 3 {
+	if notice == nil || ValidateCandidateCorrectionSelection(notice.Summary, notice.AffectedCapabilities) != nil || len(notice.ChangedAreas) < 1 || len(notice.ChangedAreas) > 3 {
 		return errors.New("model: invalid Candidate Correction Notice")
 	}
 	for index, area := range notice.ChangedAreas {
 		if !area.IsValid() || index > 0 && strings.Compare(string(notice.ChangedAreas[index-1]), string(area)) >= 0 {
 			return errors.New("model: invalid Candidate Correction Notice changed areas")
+		}
+	}
+	for _, required := range MinimumCorrectionCapabilities(notice.ChangedAreas) {
+		if !slices.Contains(notice.AffectedCapabilities, required) {
+			return errors.New("model: Candidate Correction selection omits an affected capability")
 		}
 	}
 	return nil
@@ -65,6 +141,7 @@ func (notice *CandidateCorrectionNotice) Clone() *CandidateCorrectionNotice {
 	}
 	clone := *notice
 	clone.ChangedAreas = slices.Clone(notice.ChangedAreas)
+	clone.AffectedCapabilities = slices.Clone(notice.AffectedCapabilities)
 	return &clone
 }
 
@@ -94,13 +171,14 @@ type CandidateLiveCorrection struct {
 	EffectiveAt             time.Time
 	Summary                 string
 	ChangedAreas            []ExamCorrectionChangedArea
+	AffectedCapabilities    []CandidateCapability
 	AcknowledgementRequired bool
 	AcknowledgementState    CorrectionAcknowledgementState
 	AcknowledgedAt          OptionalTime
 }
 
 func (correction CandidateLiveCorrection) Validate() error {
-	notice, err := NewCandidateCorrectionNotice(correction.Summary, correction.ChangedAreas, correction.AcknowledgementRequired)
+	notice, err := NewCandidateCorrectionNotice(correction.Summary, correction.ChangedAreas, correction.AffectedCapabilities, correction.AcknowledgementRequired)
 	if err != nil || !correction.RevisionID.IsValid() || correction.RevisionNumber < 1 || correction.EffectiveAt.IsZero() {
 		return errors.New("model: invalid Candidate Live Correction")
 	}
@@ -129,6 +207,7 @@ func CloneCandidateLiveCorrections(values []CandidateLiveCorrection) []Candidate
 	copy(cloned, values)
 	for index := range cloned {
 		cloned[index].ChangedAreas = slices.Clone(values[index].ChangedAreas)
+		cloned[index].AffectedCapabilities = slices.Clone(values[index].AffectedCapabilities)
 	}
 	return cloned
 }

@@ -28,11 +28,24 @@ func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *t
 }
 
 type recordingExamAttemptExpiryUseCases struct {
-	limit int
-	err   error
+	limit         int
+	deliveryLimit int
+	err           error
 }
 
 func (fake *recordingExamAttemptExpiryUseCases) ScanExpiredParticipations(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
 	fake.limit = limit
 	return examattempt.ExpiryScanResult{}, fake.err
+}
+
+func (fake *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Context, limit int) (examattempt.ExpiryScanResult, error) {
+	fake.deliveryLimit = limit
+	return examattempt.ExpiryScanResult{}, nil
+}
+
+func TestExpiryRunnerAlsoSettlesAbandonedDeliveries(t *testing.T) {
+	fake := &recordingExamAttemptExpiryUseCases{}
+	if err := (examAttemptExpiryPeriodicRunner{attempts: fake}).Run(context.Background()); err != nil || fake.deliveryLimit != 200 {
+		t.Fatalf("delivery scan bound=%d: %v", fake.deliveryLimit, err)
+	}
 }

@@ -9,58 +9,32 @@ package model
 
 import "testing"
 
-func TestBrowserActivitySubmissionClosedVariants(t *testing.T) {
-	t.Parallel()
-
-	sourceID := BrowserSourceSessionID("018f47a0-6e53-4cc4-9d0b-97c9b6d98011")
-	finalSequence := int64(7)
-	tests := []struct {
-		name        string
-		value       BrowserActivitySubmission
-		clientValid bool
-	}{
-		{name: "not applicable", value: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable}, clientValid: true},
-		{name: "complete", value: BrowserActivitySubmission{State: BrowserActivitySubmissionComplete,
-			SourceSessionID: sourceID, FinalSequence: &finalSequence}, clientValid: true},
-		{name: "client gap", value: BrowserActivitySubmission{State: BrowserActivitySubmissionGapped,
-			SourceSessionID: sourceID, FinalSequence: &finalSequence, GapReason: BrowserActivityGapDeliveryIncomplete}, clientValid: true},
-		{name: "automatic gap", value: BrowserActivitySubmission{State: BrowserActivitySubmissionGapped,
-			SourceSessionID: sourceID, GapReason: BrowserActivityGapSourceNotFinalized}},
+func TestBrowserSubmissionSettlementStatePrecedenceAndCounts(t *testing.T) {
+	cases := []BrowserSubmissionSettlement{
+		{State: "not_applicable", InventoryRevision: 1},
+		{State: "settled", InventoryRevision: 2, SourceCount: 2},
+		{State: "pending", InventoryRevision: 3, SourceCount: 2, PendingSourceCount: 1},
+		{State: "pending", InventoryRevision: 4, SourceCount: 2, PendingSourceCount: 1, IncompleteSourceCount: 2},
+		{State: "incomplete", InventoryRevision: 5, SourceCount: 2, IncompleteSourceCount: 1},
 	}
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			if err := test.value.Validate(); err != nil {
-				t.Fatalf("Validate() error = %v", err)
+	for _, v := range cases {
+		if err := v.Validate(); err != nil {
+			t.Fatalf("valid settlement %#v: %v", v, err)
+		}
+		for _, state := range []string{"not_applicable", "settled", "pending", "incomplete", "complete", "gapped"} {
+			if state == v.State {
+				continue
 			}
-			if err := test.value.ValidateClient(); (err == nil) != test.clientValid {
-				t.Fatalf("ValidateClient() error = %v, clientValid = %t", err, test.clientValid)
+			bad := v
+			bad.State = state
+			if bad.Validate() == nil {
+				t.Fatalf("accepted state inconsistent with server counts: %#v", bad)
 			}
-			clone := test.value.Clone()
-			if clone.FinalSequence != nil && clone.FinalSequence == test.value.FinalSequence {
-				t.Fatal("Clone() retained the caller's sequence pointer")
-			}
-		})
+		}
 	}
-}
-
-func TestBrowserActivitySubmissionRejectsMixedOrInvalidStates(t *testing.T) {
-	t.Parallel()
-
-	sourceID := BrowserSourceSessionID("018f47a0-6e53-4cc4-9d0b-97c9b6d98011")
-	zero := int64(0)
-	values := []BrowserActivitySubmission{
-		{},
-		{State: BrowserActivitySubmissionNotApplicable, SourceSessionID: sourceID},
-		{State: BrowserActivitySubmissionComplete, SourceSessionID: sourceID},
-		{State: BrowserActivitySubmissionComplete, SourceSessionID: sourceID, FinalSequence: &zero},
-		{State: BrowserActivitySubmissionGapped, SourceSessionID: sourceID},
-		{State: BrowserActivitySubmissionGapped, SourceSessionID: sourceID, GapReason: "future_reason"},
-	}
-	for _, value := range values {
-		if err := value.Validate(); err == nil {
-			t.Fatalf("Validate(%#v) succeeded", value)
+	for _, v := range []BrowserSubmissionSettlement{{State: "not_applicable"}, {State: "not_applicable", InventoryRevision: 1, SourceCount: -1}, {State: "pending", InventoryRevision: 1, PendingSourceCount: 1}, {State: "incomplete", InventoryRevision: 1, SourceCount: 1, IncompleteSourceCount: 2}, {State: "settled", InventoryRevision: 9007199254740992, SourceCount: 1}} {
+		if v.Validate() == nil {
+			t.Fatalf("accepted invalid settlement %#v", v)
 		}
 	}
 }

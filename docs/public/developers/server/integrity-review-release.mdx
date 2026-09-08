@@ -50,12 +50,18 @@ Review, verifies the exact revision, and freezes stable Flag, evidence,
 discrepancy, decision, and decision-revision identities in a canonical SHA-256
 digest.
 
-The limits—200 Flags, 20,000 evidence rows, and 200 discrepancies—are integrity
-guards. Do not page around them or truncate data in application code. A limit
-failure remains visible for investigation.
+Finalization combines the bounded existing integrity inventory with Browser
+groups, retained copies and overflow, and the ordered native-condition digest.
+Native conditions do not become Flags or require invented per-condition decisions.
+Do not silently truncate an inventory to make finalization succeed.
 
-Finalized Reviews are immutable. Rows serialized before finalization enter the
-digest; late records enter append-only discrepancies and never rewrite it.
+Historical finalization snapshots are immutable. Fresh qualifying Browser or
+native condition records invalidate current approval, withhold a released result,
+and make any Review waiver and Records Completion stale. Replayed receipts do not.
+A Browser group whose inventory changed also requires a fresh decision. A waiver
+must acknowledge the current delivery inventory revision even when no Review
+exists. Refinalization creates a new immutable snapshot and needs explicit release;
+its release notification has a distinct revision-bound occurrence.
 
 ## Release Less Than Managers Can See
 

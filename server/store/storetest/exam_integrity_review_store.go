@@ -22,7 +22,8 @@ import (
 func attachResultReleaseMail(t *testing.T, candidate *model.User, input *store.ExamIntegrityReviewRelease) {
 	t.Helper()
 	at := input.ChangedAt
-	occurrenceID := model.MailOccurrenceID(input.ReviewID.String())
+	occurrenceID, err := model.ResultReleaseOccurrenceID(input.ReviewID, input.ExpectedReviewRevision)
+	requireNoError(t, err)
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
 	requireNoError(t, err)
@@ -294,7 +295,7 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	}
 	releaseDelivery, err := ss.Mail().GetDelivery(ctx, releaseInput.Notice.Delivery.ID)
 	requireNoError(t, err)
-	if releaseDelivery.OccurrenceID != model.MailOccurrenceID(reviewID.String()) ||
+	if releaseDelivery.OccurrenceID != releaseInput.Notice.Occurrence.ID ||
 		releaseDelivery.TargetUserID != fixture.candidate.ID ||
 		releaseDelivery.TemplateKey != model.MailTemplateExamResultReleased {
 		t.Fatalf("released-result delivery = %#v", releaseDelivery)
@@ -542,9 +543,6 @@ func newIntegrityReviewFixtureWithFinalSequence(t *testing.T, ctx context.Contex
 		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID,
 		ExpectedWorkspaceCursor:   connected.Workspace.Cursor,
 		FinalFocusLossSequence:    finalSequence,
-		BrowserActivity: model.BrowserActivitySubmission{
-			State: model.BrowserActivitySubmissionNotApplicable,
-		},
 	}
 	sealTarget, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
 	requireNoError(t, err)

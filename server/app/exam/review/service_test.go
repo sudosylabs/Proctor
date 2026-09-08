@@ -106,7 +106,7 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 		t.Fatal(prepareErr)
 	}
 	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantRelease)
-	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ReviewID != f.reviewID ||
+	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ReviewID != f.reviewID || f.mail.request.ExpectedReviewRevision != 3 ||
 		!f.mail.request.ReleasedAt.Equal(f.at.Add(time.Minute)) || f.persistence.release == nil ||
 		f.persistence.release.Notice == nil || f.persistence.release.ExpectedRecipientRevision != 2 {
 		t.Fatalf("mail=%#v release=%#v", f.mail.request, f.persistence.release)
@@ -320,3 +320,7 @@ func (fake *reviewEffectsFake) ResultReleased(context.Context, Result) error {
 	return nil
 }
 func (*reviewEffectsFake) Report(context.Context, string, error) {}
+
+func (fake *reviewStoreFake) ListNativeConditions(context.Context, store.NativeConditionListOptions) (*store.NativeConditionPage, error) {
+	return &store.NativeConditionPage{Items: []model.NativeConditionEvidence{}}, nil
+}

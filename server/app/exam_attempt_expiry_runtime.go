@@ -26,6 +26,7 @@ const (
 
 type examAttemptExpiryUseCases interface {
 	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
+	ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error)
 }
 
 // examAttemptExpiryPeriodicRunner adapts the bounded application scan to the
@@ -35,6 +36,10 @@ type examAttemptExpiryPeriodicRunner struct{ attempts examAttemptExpiryUseCases 
 
 func (runner examAttemptExpiryPeriodicRunner) Run(ctx context.Context) error {
 	_, err := runner.attempts.ScanExpiredParticipations(ctx, examAttemptExpiryBatchLimit)
+	if err != nil {
+		return err
+	}
+	_, err = runner.attempts.ScanExpiredDeliveries(ctx, examAttemptExpiryBatchLimit)
 	return err
 }
 

@@ -36,9 +36,9 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	input := f.persistence.connect
 	if input == nil || input.ContinuityCredentialHash != model.HashToken(credential) ||
 		strings.Contains(input.ContinuityCredentialHash, credential) || input.InitialConfiguration == nil ||
-		input.InitialConfiguration.Digest != f.configuration.Digest || input.DesktopBuild != f.desktopBuild ||
+		input.InitialConfiguration.UserSettingsRevision != f.configuration.UserSettingsRevision || input.DesktopBuild != f.desktopBuild ||
 		input.DesktopCompatibilityPolicyRevision != 1 ||
-		len(input.SupportedConfigurationManifests) != 1 || result.Configuration.Digest != f.configuration.Digest ||
+		input.ConfigurationManifestFingerprint != model.CurrentAttemptConfigurationManifestFingerprint() || result.Configuration.Digest != f.configuration.Digest ||
 		result.RuntimeCapabilities.AttemptConfiguration.Digest != f.configuration.Digest {
 		t.Fatalf("persistence credential = %#v", input)
 	}
@@ -78,6 +78,11 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 	f.persistence.correctionAcknowledgementResult = &store.ExamAttemptCorrectionAcknowledgementResult{
 		AttemptID: f.attemptID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
 		AcknowledgedAt: f.at,
+	}
+	f.persistence.presentation = &store.CandidateExamPresentation{
+		AttemptID: f.attemptID, SittingID: f.sitting.ID,
+		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentRevisionID),
+		Title: "Algorithms", Resources: []store.CandidateExamResource{},
 	}
 	command := AcknowledgeCorrectionCommand{
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{
@@ -142,6 +147,11 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		AttemptID: f.attemptID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
 		AcknowledgedAt: f.at.Add(-time.Minute), Replayed: true,
 	}
+	f.persistence.presentation = &store.CandidateExamPresentation{
+		AttemptID: f.attemptID, SittingID: f.sitting.ID,
+		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentRevisionID),
+		Title: "Algorithms", Resources: []store.CandidateExamResource{},
+	}
 	command := AcknowledgeCorrectionCommand{Access: validWorkspaceMutationAccess(f), CorrectionRevisionID: correctionRevisionID,
 		ExpectedCurrentRevisionID: currentRevisionID, IdempotencyKey: "replay-key"}
 
@@ -153,6 +163,28 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		strings.Join(f.order, ",") != "correction.acknowledgement.resolve,audit.authorization,audit.prepare,correction.acknowledgement.commit" {
 		t.Fatalf("result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
 	}
+	// An exact replay retains its acknowledgement time while a later correction
+	// controls the fresh capability response.
+	laterRevisionID := model.NewExamRevisionID()
+	caps := runtimeCapabilitiesFixture(f, laterRevisionID)
+	caps.ExamRevision.AcknowledgementRequired = true
+	caps.PendingCorrectionCapabilities = []model.CandidateCapability{model.CandidateCapabilityBrowser}
+	caps.Browser = store.CandidateBrowserCapability{State: store.CandidateBrowserAcknowledgementRequired,
+		PolicyRevisionID: laterRevisionID, PolicyDigest: "sha256:" + strings.Repeat("a", 64)}
+	f.persistence.presentation.RuntimeCapabilities = caps
+	f.persistence.presentation.BrowserPolicy = nil
+	f.persistence.presentation.LiveCorrections = []model.CandidateLiveCorrection{{RevisionID: laterRevisionID,
+		RevisionNumber: 9, EffectiveAt: f.at, Summary: "Browser policy changed again.",
+		ChangedAreas:            []model.ExamCorrectionChangedArea{model.ExamCorrectionChangedBrowserPolicy},
+		AffectedCapabilities:    []model.CandidateCapability{model.CandidateCapabilityBrowser},
+		AcknowledgementRequired: true, AcknowledgementState: model.CorrectionAcknowledgementPending}}
+	result, err = f.service.AcknowledgeCorrection(context.Background(), f.call, command)
+	if err != nil || result.CurrentRevisionID != laterRevisionID || result.AcknowledgedAt.Time != f.at.Add(-time.Minute) ||
+		result.RuntimeCapabilities.Browser.State != store.CandidateBrowserAcknowledgementRequired ||
+		!result.RuntimeCapabilities.WorkspaceMutationAllowed || !result.RuntimeCapabilities.SubmissionAllowed {
+		t.Fatalf("stale acknowledgement reopened capability: %#v, %v", result, err)
+	}
+
 }
 
 func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafeChange(t *testing.T) {
@@ -462,12 +494,12 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 	credential := model.NewCredentialToken()
 	participationID := model.NewAttemptParticipationID()
 	databaseNow := f.at.Add(5 * time.Second)
-	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{
+	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: renewalCoverageResultFixture(),
 		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		CandidateUserID: f.call.Principal().UserID, ParticipationID: participationID, Generation: 3, AcceptedSequence: 7,
 		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
 	}
-	result, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+	result, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 3, Sequence: 7, ContinuityCredential: credential,
 	})
@@ -485,20 +517,21 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 	}
 }
 
-func TestDuplicateParticipationRenewalPublishesNoEffect(t *testing.T) {
+func TestDuplicateParticipationRenewalRepairsControlWithoutRepublishingRenewal(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	participationID := model.NewAttemptParticipationID()
-	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{
+	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: renewalCoverageResultFixture(),
 		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		CandidateUserID: f.call.Principal().UserID, ParticipationID: participationID, Generation: 2,
 		AcceptedSequence: 4, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease), Duplicate: true,
 	}
-	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+	f.effects.securityError = errors.New("host response lost")
+	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 4, ContinuityCredential: model.NewCredentialToken(),
 	})
-	if err != nil || f.effects.renewed != 0 {
+	if err != nil || f.effects.renewed != 0 || f.effects.securityChanges != 1 || f.effects.securityReports != 1 {
 		t.Fatalf("error=%v renewal effects=%d", err, f.effects.renewed)
 	}
 }
@@ -517,7 +550,7 @@ func TestRenewParticipationRejectsInvalidPrincipalAndFieldsBeforeStore(t *testin
 		func(_ *fixture, command *RenewParticipationCommand) { command.ContinuityCredential = "not-canonical" },
 	} {
 		f := newFixture(t)
-		command := RenewParticipationCommand{AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(),
+		command := RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(), AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: f.connectionID, Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken()}
 		mutate(f, &command)
 		if _, err := f.service.RenewParticipation(context.Background(), f.call, command); err == nil || f.persistence.renew != nil {
@@ -529,11 +562,11 @@ func TestRenewParticipationRejectsInvalidPrincipalAndFieldsBeforeStore(t *testin
 func TestRenewParticipationRejectsInconsistentStoreProjection(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{
+	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{SecurityCoverage: renewalCoverageResultFixture(),
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), Generation: 1,
 		AcceptedSequence: 1, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease),
 	}
-	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -556,7 +589,7 @@ func TestRenewParticipationMapsStableCandidateFaults(t *testing.T) {
 			t.Parallel()
 			f := newFixture(t)
 			f.persistence.renewErr = store.NewErrConflict("attempt_participation", test.constraint, nil)
-			_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+			_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 				AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 				Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 			})
@@ -575,7 +608,7 @@ func TestLateRenewalUsesExactExpiryTransitionAndReturnsSafeConnectionLoss(t *tes
 	f.persistence.renewErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	f.persistence.resolvedExpiry = &due
 	f.persistence.expireResult = expiryResultFixture(t, f, due, false)
-	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, ConnectionID: f.connectionID,
 		Generation: due.Generation, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -591,7 +624,7 @@ func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.renewErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	f.persistence.resolveExpiryErr = store.NewErrNotFound("attempt_participation", "ended")
-	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -901,8 +934,8 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	currentID := model.NewExamRevisionID()
 	f.persistence.presentation = &store.CandidateExamPresentation{
 		AttemptID: f.attemptID, SittingID: f.sitting.ID,
-		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentID),
-		Title:               "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
+		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentID),
+		Title: "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
 		Resources: []store.CandidateExamResource{{ResourceID: model.NewExamResourceID(), DisplayName: "Reference",
 			DescriptionMarkdown: "Read _carefully_. <iframe src=https://evil.test></iframe> [data](data:text/html,bad)", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 4, SHA256: strings.Repeat("a", 64)}},
 	}
@@ -1236,17 +1269,11 @@ func newFixture(t *testing.T) *fixture {
 	f.desktopBuild = model.DesktopBuildTuple{DesktopRelease: "1.0.0", DesktopBuildID: "attempt-test",
 		Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64, RealtimeProtocol: 1,
 		AttemptConfigurationManifestFingerprint: model.CurrentAttemptConfigurationManifestFingerprint(),
-		DesktopSettingsRegistryFingerprint:      "sha256:" + strings.Repeat("b", 64), CapabilityMatrixIdentity: "attempt-test-matrix"}
+		DesktopSettingsRegistryFingerprint:      "fnv1a64:" + strings.Repeat("b", 16), DesktopTarget: "darwin-arm64", ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
+		CapabilityMatrixIdentity: "attempt-test-matrix"}
+	f.desktopBuild.NativeAgreement = syntheticNativeAgreement(t, f.desktopBuild)
 	var configurationErr error
-	f.configuration, configurationErr = model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion,
-		f.desktopBuild.AttemptConfigurationManifestFingerprint, model.NewUserSettingsRevision(),
-		f.desktopBuild.DesktopSettingsRegistryFingerprint, model.AttemptConfigurationPreferences{
-			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
-			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
-			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
-			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
-			CandidateCommandBindings: []model.AttemptCommandBinding{},
-		})
+	f.configuration, configurationErr = (model.AttemptConfigurationCandidate{ManifestFingerprint: f.desktopBuild.AttemptConfigurationManifestFingerprint, RegistryFingerprint: f.desktopBuild.DesktopSettingsRegistryFingerprint, UserSettingsRevision: model.NewUserSettingsRevision(), DesktopBuild: f.desktopBuild.DesktopBuildID, DesktopTarget: f.desktopBuild.TargetTuple(), Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}).Freeze(model.NewId())
 	if configurationErr != nil {
 		t.Fatal(configurationErr)
 	}
@@ -1300,9 +1327,9 @@ func newFixture(t *testing.T) *fixture {
 
 func validConnectCommand(f *fixture, credential, key string) ConnectCommand {
 	configuration := f.configuration.Clone()
-	return ConnectCommand{SittingID: f.sitting.ID, ContinuityCredential: credential,
-		SupportedConfigurationManifests: []string{model.CurrentAttemptConfigurationManifestFingerprint()},
-		InitialConfiguration:            &configuration, IdempotencyKey: key}
+	return ConnectCommand{Security: model.ConnectSecurity{Kind: "preflight", PreflightID: "fixture-preflight", ReportDigest: model.SHA256Fingerprint([]byte("fixture-report"))}, SittingID: f.sitting.ID, ContinuityCredential: credential,
+		ConfigurationManifestFingerprint: model.CurrentAttemptConfigurationManifestFingerprint(),
+		InitialConfiguration:             &configuration.AttemptConfigurationCandidate, IdempotencyKey: key}
 }
 
 func useManagerCall(f *fixture) model.UserID {
@@ -1339,10 +1366,10 @@ func runtimeCapabilitiesFixture(f *fixture, currentRevisionID model.ExamRevision
 	configuration := f.configuration.Clone()
 	return store.CandidateRuntimeCapabilities{SchemaVersion: 1, ServerTime: f.at,
 		InteractionState: store.CandidateInteractionInteractive,
-		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
-			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: configuration.Preferences, Digest: configuration.Digest},
+		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision, Presentation: configuration.Presentation,
+			ApprovedCommands: append([]string{}, configuration.ApprovedCommands...), ApprovedKeybindings: append([]string{}, configuration.ApprovedKeybindings...), Digest: configuration.Digest},
 		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
-		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled},
+		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled, ProjectionState: store.ExecutionProjectionUnavailable},
 		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: f.revision.ID,
 			CurrentRevisionID: currentRevisionID},
@@ -1377,9 +1404,9 @@ func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ Call, subm
 	fake.f.submissionAuthorizationID = submissionID
 	return nil
 }
-func (fake *managerFake) AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, bool, error) {
+func (fake *managerFake) AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, error) {
 	fake.f.order = append(fake.f.order, "browser.authorize")
-	return model.NewAcademicUnitID(), fake.f.managerOverride, nil
+	return model.NewAcademicUnitID(), nil
 }
 
 type auditFake struct {
@@ -1443,6 +1470,9 @@ func (fake *auditFake) Complete(_ context.Context, _ string, _ map[string]any) e
 }
 
 type effectsFake struct {
+	securityChanges  int
+	securityError    error
+	securityReports  int
 	f                *fixture
 	opened, closed   int
 	renewed          int
@@ -1503,7 +1533,11 @@ func (fake *effectsFake) AttemptSealedForSittingClose(context.Context, Automatic
 	fake.submitted++
 	return nil
 }
-func (*effectsFake) Report(context.Context, string, error) {}
+func (fake *effectsFake) Report(_ context.Context, kind string, _ error) {
+	if kind == "exam_attempt_security_coverage_changed" {
+		fake.securityReports++
+	}
+}
 
 type contentFake struct {
 	f               *fixture
@@ -1749,10 +1783,19 @@ func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemp
 			return nil, err
 		}
 	}
+	resolved, err := model.ResolveNativePolicy(model.NativePolicyResolution{PolicyID: "fixture-policy", Revision: fake.f.revision.ID.String(), Ordinal: 1, InstitutionID: model.NewInstitutionID(), ExamRevisionID: fake.f.revision.ID, SittingID: fake.f.sitting.ID, Scope: model.SecurityPolicyScope{Kind: "admission", AdmissionScopeID: input.Security.PreflightID}, IssuedAt: fake.f.at, ActiveFrom: fake.f.at, ActivationTime: fake.f.at, Selections: model.DefaultExamPolicySet(), Build: fake.f.desktopBuild})
+	if err != nil {
+		return nil, err
+	}
+	policy, err := resolved.Policy.RebindAttempt(input.AttemptID, fake.f.at)
+	if err != nil {
+		return nil, err
+	}
+	security := model.AdmittedSecurity{Policy: policy, PolicyContentDigest: resolved.PolicyContentDigest, PreflightID: input.Security.PreflightID, PreflightReportDigest: input.Security.ReportDigest, PreflightPolicyDigest: resolved.Policy.Digest, ParticipationID: input.ParticipationID, Generation: 1, SecuritySessionID: "fixture-security-session", DeliveryStreamID: "fixture-delivery", RenewalIntervalSeconds: 5}
 	configuration := fake.f.configuration.Clone()
-	return &store.ExamAttemptConnectResult{Attempt: fake.attempt, Workspace: fake.workspace, Participation: fake.participation,
+	return &store.ExamAttemptConnectResult{Security: security, Attempt: fake.attempt, Workspace: fake.workspace, Participation: fake.participation,
 		Connection: fake.connection, ClassID: fake.f.sitting.ClassID, FirstAdmission: fake.firstAdmission,
-		Configuration: configuration, RuntimeCapabilities: runtimeCapabilitiesFixture(fake.f, fake.f.sitting.ExamRevisionID),
+		Configuration: configuration, RuntimeCapabilities: runtimeCapabilitiesFixture(fake.f, fake.f.sitting.ExamRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(fake.f.sitting.ExamRevisionID),
 		ConnectionOpened: fake.connectionOpened, Replayed: fake.replayed}, nil
 }
 func (fake *attemptStoreFake) RenewParticipation(_ context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
@@ -1845,7 +1888,7 @@ func (fake *attemptStoreFake) GetCandidatePresentation(_ context.Context, access
 	return fake.presentation, nil
 }
 
-func (fake *attemptStoreFake) StartBrowserActivity(context.Context, *store.BrowserActivitySourceStart) (*model.BrowserActivityAcknowledgement, error) {
+func (fake *attemptStoreFake) StartBrowserActivity(context.Context, *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
 	return nil, nil
 }
 func (fake *attemptStoreFake) AppendBrowserActivity(context.Context, *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
@@ -1867,4 +1910,146 @@ func (fake *attemptStoreFake) AcknowledgeCorrection(_ context.Context, input *st
 }
 func (*attemptStoreFake) ResolveCandidateResource(context.Context, store.CandidateAttemptAccess, model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	return nil, errors.New("not configured")
+}
+
+func (fake *attemptStoreFake) PrepareSecurityPreflight(context.Context, *store.SecurityPreflightPrepare, *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
+	return nil, errors.New("unexpected preflight preparation")
+}
+func (fake *attemptStoreFake) ReportSecurityPreflight(context.Context, *store.SecurityPreflightReport, *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
+	return nil, errors.New("unexpected preflight report")
+}
+
+func (fake *attemptStoreFake) ResolveSecurityPreflightSitting(context.Context, string, model.UserID, model.SessionID) (model.ExamSittingID, error) {
+	return "", errors.New("unexpected preflight lookup")
+}
+
+func (fake *attemptStoreFake) RecoverSecurityPolicy(context.Context, store.SecurityPreflightAccess, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+	return nil, errors.New("unexpected security recovery")
+}
+
+func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *model.DesktopNativeAgreement {
+	t.Helper()
+	digest := model.SHA256Fingerprint([]byte("synthetic-source-schema"))
+	definitions := []model.NativeCoverageDefinition{}
+	matrix := model.NativeCapabilityMatrix{RegistryDigest: model.NativeRegistryDigest, MatrixID: build.CapabilityMatrixIdentity, ReleaseID: "synthetic-release", TargetTuple: build.DesktopTarget}
+	for _, item := range []struct {
+		key    string
+		source model.NativeSourceID
+	}{{"baseline.capture", model.NativeSourceCapture}, {"baseline.display", model.NativeSourceDisplay}, {"baseline.window", model.NativeSourceWindow}} {
+		definitions = append(definitions, model.NativeCoverageDefinition{CoverageKey: item.key, CapabilityID: "baseline", SourceID: item.source, SourceSchemaDigest: digest, PermittedClaims: []model.NativeCapabilityClaim{model.NativeClaimEnforce}, RequiredPermissions: []string{}, Baseline: true})
+		matrix.Entries = append(matrix.Entries, model.NativeCapabilityMatrixEntry{CoverageKey: item.key, SourceSchemaDigest: digest, Claim: model.NativeClaimEnforce, ComponentID: "synthetic-component", AdapterVersion: "synthetic-adapter", RequiredPermissions: []string{}, Limitations: []string{}, Verification: "passed"})
+	}
+	agreement, err := model.NewDesktopNativeAgreement(model.NativeRegistryDigest, model.SHA256Fingerprint([]byte("synthetic-manifest")), model.SHA256Fingerprint([]byte("synthetic-matrix")), model.SHA256Fingerprint([]byte("synthetic-detectors")), definitions, matrix, []model.NativeDetectorDefinition{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agreement
+}
+
+func (fake *attemptStoreFake) UpdateSecurityCoverage(context.Context, *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
+	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
+}
+
+func renewalCoverageFixture() model.SecurityCoverageRenewal {
+	return model.SecurityCoverageRenewal{ControlSequence: 1, PolicyDigest: model.SHA256Fingerprint([]byte("renewal-policy")), SecuritySessionID: model.NewId(), StreamID: model.NewId(), Posture: "compliant", Sources: []model.NativeSourceCoverage{}, Coverage: []model.NativeCoverageClaim{}, SourceResets: []model.NativeSourceReset{}, DeliveryWatermarks: []model.DeliveryWatermark{}}
+}
+func renewalCoverageResultFixture() model.SecurityCoverageResult {
+	digest := model.SHA256Fingerprint([]byte("renewal-control"))
+	return model.SecurityCoverageResult{ProcessedControlSequence: 1, ProcessedControlDigest: &digest, CoverageResult: "accepted", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: true, ExecutionState: "not_allocated", DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
+}
+
+func (fake *attemptStoreFake) NativeDeliveryStatus(context.Context, store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected NativeDeliveryStatus")
+}
+
+func (fake *attemptStoreFake) NativeDeliveryReceipt(context.Context, store.NativeDeliveryAccess, int64) (*model.NativeBatchReceipt, error) {
+	return nil, errors.New("unexpected NativeDeliveryReceipt")
+}
+
+func (fake *attemptStoreFake) DeclareNativeDeliveryGaps(context.Context, *store.NativeDeliveryGapDeclaration, *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
+	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
+}
+
+func (fake *attemptStoreFake) SealNativeDelivery(context.Context, *store.NativeDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected SealNativeDelivery")
+}
+
+func (fake *attemptStoreFake) UpdateNativeDeliverySummary(context.Context, *store.NativeDeliverySummaryUpdate, *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
+}
+
+func (fake *attemptStoreFake) ResolveNativeDeliveryTarget(context.Context, store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
+	return nil, errors.New("unexpected native delivery target")
+}
+
+func (fake *desktopBuildResolverFake) ResolveNativeDeliveryBuild(context.Context, NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
+	return fake.f.desktopBuild, nil
+}
+
+func (fake *attemptStoreFake) AppendNativeDelivery(context.Context, *store.NativeDeliveryAppend, *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendNativeDelivery")
+}
+
+func disabledCandidateBrowserPolicyFixture(revisionID model.ExamRevisionID) *store.CandidateBrowserPolicy {
+	policy := model.DisabledBrowserPolicy()
+	digest, _ := model.BrowserPolicyDigest(policy)
+	return &store.CandidateBrowserPolicy{Policy: policy, PolicyRevisionID: revisionID, PolicyRevisionNumber: 1, PolicyDigest: digest,
+		BrowserActivityDisclosure: model.BrowserActivityDisclosure{NoticeID: "integrated_browser_activity", Audience: "exam_managers_with_browser_activity_permission", RetentionPolicyRevision: 1, RetentionAnchor: "eligible_closed_sitting_records_completion"}}
+}
+
+func (fake *attemptStoreFake) BrowserSourceStatus(context.Context, store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
+	return nil, errors.New("unexpected browser source query")
+}
+func (fake *attemptStoreFake) BrowserSourceList(context.Context, store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
+	return nil, errors.New("unexpected browser source query")
+}
+
+func (fake *attemptStoreFake) ResolveLiveDeliveryTarget(context.Context, store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
+	return nil, errors.New("unexpected browser source target")
+}
+
+func (fake *attemptStoreFake) AppendHistoricalBrowserDelivery(context.Context, *store.BrowserActivityAppend, *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
+}
+func (fake *attemptStoreFake) ResolveBrowserDeliveryTarget(context.Context, store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
+	return nil, errors.New("unexpected ResolveBrowserDeliveryTarget")
+}
+func (fake *attemptStoreFake) BrowserDeliveryReceipts(context.Context, store.BrowserDeliveryAccess, int64, int) (*model.BrowserReceiptPage, error) {
+	return nil, errors.New("unexpected BrowserDeliveryReceipts")
+}
+func (fake *attemptStoreFake) DeclareBrowserDeliveryGaps(context.Context, *store.BrowserDeliveryGapDeclaration, *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
+	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
+}
+func (fake *attemptStoreFake) SealBrowserDelivery(context.Context, *store.BrowserDeliveryFinalDeclaration, *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
+	return nil, errors.New("unexpected SealBrowserDelivery")
+}
+func (fake *attemptStoreFake) UpdateBrowserDeliverySummary(context.Context, *store.BrowserDeliverySummaryUpdate, *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
+	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
+}
+
+func (fake *attemptStoreFake) ListExpiredDeliveries(context.Context, int) ([]store.DeliveryExpiryDue, error) {
+	return nil, nil
+}
+func (fake *attemptStoreFake) ExpireDelivery(context.Context, *store.DeliveryExpiry) (bool, error) {
+	return false, errors.New("unexpected ExpireDelivery")
+}
+
+func (fake *attemptStoreFake) DeliveryBudget(context.Context, store.DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error) {
+	return nil, errors.New("unexpected DeliveryBudget")
+}
+func (fake *attemptStoreFake) StopDeliveryDetails(context.Context, *store.DeliveryDetailsStop, *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
+	return nil, errors.New("unexpected StopDeliveryDetails")
+}
+
+func (fake *effectsFake) SecurityCoverageChanged(context.Context, model.ExamAttemptID) error {
+	fake.securityChanges++
+	return fake.securityError
+}
+
+func (*attemptWorkspaceStoreFake) ResolveObservation(context.Context, store.ExamAttemptWorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
+	return nil, store.NewErrInvalidInput("execution_observation", "unsupported", nil)
+}
+
+func (*attemptWorkspaceStoreFake) RecordIgnoredObservation(context.Context, store.ExamAttemptWorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
+	return nil, store.NewErrInvalidInput("execution_observation", "unsupported", nil)
 }

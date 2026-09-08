@@ -25,6 +25,7 @@ import (
 const examIntegrityReviewCursorVersion = 1
 
 type ExamIntegrityReviewApplication interface {
+	ListNativeConditions(context.Context, application.Invocation, application.NativeConditionListQuery) (*application.NativeConditionPage, error)
 	GetExamIntegrityReview(context.Context, application.Invocation, model.SubmissionID) (*application.ExamSubmissionReviewSnapshot, error)
 	ListExamIntegrityFlags(context.Context, application.Invocation, application.ListExamIntegrityFlagsQuery) (*application.ExamIntegrityFlagPage, error)
 	ListExamIntegrityEvidence(context.Context, application.Invocation, application.ListExamIntegrityEvidenceQuery) (*application.ExamIntegrityEvidencePage, error)
@@ -164,6 +165,7 @@ func decodeDuplicateFreeExamIntegrityReviewObject(encoded []byte, target any) er
 }
 
 type examIntegrityReviewDecisionResponse struct {
+	InventoryStale   bool   `json:"inventory_stale"`
 	ID               string `json:"id"`
 	IntegrityFlagID  string `json:"integrity_flag_id"`
 	Outcome          string `json:"outcome"`
@@ -195,15 +197,19 @@ type examSubmissionReviewResponse struct {
 }
 
 type examIntegrityReviewResponse struct {
-	SubmissionID             string                                `json:"submission_id"`
-	ExamID                   string                                `json:"exam_id"`
-	ExamSittingID            string                                `json:"exam_sitting_id"`
-	ExamAttemptID            string                                `json:"exam_attempt_id"`
-	CandidateUserID          string                                `json:"candidate_user_id"`
-	IntegrityState           string                                `json:"integrity_state"`
-	UnresolvedIntegrityCount int64                                 `json:"unresolved_integrity_count"`
-	Review                   *examSubmissionReviewResponse         `json:"review,omitempty"`
-	Decisions                []examIntegrityReviewDecisionResponse `json:"decisions"`
+	NativeConditions          model.NativeConditionInventory        `json:"native_conditions"`
+	DeliveryInventoryRevision int64                                 `json:"delivery_inventory_revision"`
+	BrowserEvidenceOverflow   *model.BrowserIntegrityOverflow       `json:"browser_evidence_overflow,omitempty"`
+	BrowserActivity           model.BrowserSubmissionSettlement     `json:"browser_activity"`
+	SubmissionID              string                                `json:"submission_id"`
+	ExamID                    string                                `json:"exam_id"`
+	ExamSittingID             string                                `json:"exam_sitting_id"`
+	ExamAttemptID             string                                `json:"exam_attempt_id"`
+	CandidateUserID           string                                `json:"candidate_user_id"`
+	IntegrityState            string                                `json:"integrity_state"`
+	UnresolvedIntegrityCount  int64                                 `json:"unresolved_integrity_count"`
+	Review                    *examSubmissionReviewResponse         `json:"review,omitempty"`
+	Decisions                 []examIntegrityReviewDecisionResponse `json:"decisions"`
 }
 
 type examIntegrityReviewMutationResponse struct {
@@ -215,15 +221,16 @@ type examIntegrityReviewMutationResponse struct {
 }
 
 type examIntegrityFlagResponse struct {
-	ID                     string `json:"id"`
-	ExamAttemptID          string `json:"exam_attempt_id"`
-	Generation             int64  `json:"generation"`
-	PolicyKind             string `json:"policy_kind"`
-	State                  string `json:"state"`
-	CreatedAt              string `json:"created_at"`
-	EvidenceCount          int    `json:"evidence_count"`
-	EvidenceOverflowCount  int64  `json:"evidence_overflow_count"`
-	UnresolvedMissingCount int64  `json:"unresolved_missing_count"`
+	Browser                *model.BrowserIntegrityGroup `json:"browser,omitempty"`
+	ID                     string                       `json:"id"`
+	ExamAttemptID          string                       `json:"exam_attempt_id"`
+	Generation             int64                        `json:"generation"`
+	PolicyKind             string                       `json:"policy_kind"`
+	State                  string                       `json:"state"`
+	CreatedAt              string                       `json:"created_at"`
+	EvidenceCount          int                          `json:"evidence_count"`
+	EvidenceOverflowCount  int64                        `json:"evidence_overflow_count"`
+	UnresolvedMissingCount int64                        `json:"unresolved_missing_count"`
 }
 
 type examIntegrityFlagListResponse struct {
@@ -232,19 +239,20 @@ type examIntegrityFlagListResponse struct {
 }
 
 type examIntegrityEvidenceResponse struct {
-	ID                   string `json:"id"`
-	ExamAttemptID        string `json:"exam_attempt_id"`
-	ParticipationID      string `json:"participation_id"`
-	IntegrityFlagID      string `json:"integrity_flag_id"`
-	Generation           int64  `json:"generation"`
-	PolicyKind           string `json:"policy_kind"`
-	SignalID             string `json:"signal_id,omitempty"`
-	Sequence             int64  `json:"sequence"`
-	DurationMilliseconds int64  `json:"duration_milliseconds"`
-	Source               string `json:"source,omitempty"`
-	MissingBefore        int64  `json:"missing_before"`
-	ObservedAt           string `json:"observed_at"`
-	RecordedAt           string `json:"recorded_at"`
+	Browser              *model.BrowserIntegrityEvidence `json:"browser,omitempty"`
+	ID                   string                          `json:"id"`
+	ExamAttemptID        string                          `json:"exam_attempt_id"`
+	ParticipationID      string                          `json:"participation_id"`
+	IntegrityFlagID      string                          `json:"integrity_flag_id"`
+	Generation           int64                           `json:"generation"`
+	PolicyKind           string                          `json:"policy_kind"`
+	SignalID             string                          `json:"signal_id,omitempty"`
+	Sequence             int64                           `json:"sequence"`
+	DurationMilliseconds int64                           `json:"duration_milliseconds"`
+	Source               string                          `json:"source,omitempty"`
+	MissingBefore        int64                           `json:"missing_before"`
+	ObservedAt           string                          `json:"observed_at"`
+	RecordedAt           string                          `json:"recorded_at"`
 }
 
 type examIntegrityEvidenceListResponse struct {
@@ -308,6 +316,7 @@ func examIntegrityReviewResource(application ExamIntegrityReviewApplication) res
 	return newResource("exam-integrity-reviews",
 		principalRoute(http.MethodGet, flags, readErrors, module.listFlags),
 		principalRoute(http.MethodGet, evidence, readErrors, module.listEvidence),
+		principalRoute(http.MethodGet, appendRoutePath(base, literal("native-conditions")), readErrors, module.listNativeConditions),
 		principalRoute(http.MethodGet, discrepancies, readErrors, module.listDiscrepancies),
 		principalRoute(http.MethodGet, review, readErrors, module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, review, mutationErrors, module.update),
@@ -352,7 +361,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 	}
 	response := examIntegrityFlagListResponse{Items: make([]examIntegrityFlagResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
-		response.Items = append(response.Items, examIntegrityFlagResponse{ID: item.Flag.ID.String(),
+		response.Items = append(response.Items, examIntegrityFlagResponse{Browser: item.Browser, ID: item.Flag.ID.String(),
 			ExamAttemptID: item.Flag.AttemptID.String(), Generation: item.Flag.Generation, PolicyKind: string(item.Flag.Kind),
 			State: string(item.Flag.State), CreatedAt: model.TimeUTC(item.Flag.CreatedAt).Format(time.RFC3339Nano),
 			EvidenceCount: item.EvidenceCount, EvidenceOverflowCount: item.OverflowCount,
@@ -392,7 +401,7 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 	}
 	response := examIntegrityEvidenceListResponse{Items: make([]examIntegrityEvidenceResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
-		response.Items = append(response.Items, examIntegrityEvidenceResponse{ID: item.ID.String(),
+		response.Items = append(response.Items, examIntegrityEvidenceResponse{Browser: item.Browser, ID: item.ID.String(),
 			ExamAttemptID: item.AttemptID.String(), ParticipationID: item.ParticipationID.String(),
 			IntegrityFlagID: item.FlagID.String(), Generation: item.Generation, PolicyKind: string(item.Kind),
 			SignalID: item.SignalID.String(), Sequence: item.Sequence, DurationMilliseconds: item.DurationMilliseconds,
@@ -594,7 +603,7 @@ func examIntegrityReviewSnapshotResponse(snapshot *application.ExamSubmissionRev
 	if snapshot == nil || snapshot.Submission == nil {
 		return examIntegrityReviewResponse{}, errors.New("Integrity Review application returned an empty snapshot")
 	}
-	response := examIntegrityReviewResponse{SubmissionID: snapshot.Authorization.SubmissionID.String(),
+	response := examIntegrityReviewResponse{NativeConditions: snapshot.NativeConditions, DeliveryInventoryRevision: snapshot.DeliveryInventoryRevision, BrowserEvidenceOverflow: snapshot.BrowserEvidenceOverflow, BrowserActivity: snapshot.Submission.BrowserActivity, SubmissionID: snapshot.Authorization.SubmissionID.String(),
 		ExamID: snapshot.Authorization.ExamID.String(), ExamSittingID: snapshot.Authorization.SittingID.String(),
 		ExamAttemptID: snapshot.Authorization.AttemptID.String(), CandidateUserID: snapshot.Authorization.CandidateUserID.String(),
 		IntegrityState:           string(snapshot.Submission.IntegrityState),
@@ -631,7 +640,7 @@ func examSubmissionReviewDTO(review model.SubmissionReview) examSubmissionReview
 }
 
 func examIntegrityReviewDecisionDTO(decision model.IntegrityReviewDecision) examIntegrityReviewDecisionResponse {
-	return examIntegrityReviewDecisionResponse{ID: decision.ID.String(), IntegrityFlagID: decision.FlagID.String(),
+	return examIntegrityReviewDecisionResponse{InventoryStale: decision.InventoryStale, ID: decision.ID.String(), IntegrityFlagID: decision.FlagID.String(),
 		Outcome: string(decision.Outcome), Revision: decision.Revision, ActorUserID: decision.ActorUserID.String(),
 		PrivateRationale: decision.PrivateRationale,
 		DecidedAt:        model.TimeUTC(decision.DecidedAt).Format(time.RFC3339Nano)}
@@ -687,4 +696,40 @@ func applyReviewPageQuery(request operationRequest, kind string, limit *int, set
 		}
 	}
 	return nil
+}
+
+type nativeConditionListResponse struct {
+	Items      []model.NativeConditionEvidence `json:"items"`
+	NextCursor string                          `json:"next_cursor,omitempty"`
+}
+
+func (module examIntegrityReviewHTTPModule) listNativeConditions(request operationRequest) (operationResult, error) {
+	submissionID, err := reviewSubmissionID(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.NativeConditionListQuery{SubmissionID: submissionID, Limit: 50}
+	if err = applyReviewPageQuery(request, "native_condition", &query.Limit, func(id string) error { query.AfterID, err = model.ParseIntegrityEvidenceID(id); return err }); err != nil {
+		return operationResult{}, err
+	}
+	page, err := module.application.ListNativeConditions(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	if page == nil || page.Items == nil || len(page.Items) > query.Limit || page.HasMore && len(page.Items) != query.Limit {
+		return operationResult{}, application.NewError("exam.integrity_review.unavailable")
+	}
+	response := nativeConditionListResponse{Items: page.Items}
+	for _, value := range response.Items {
+		if value.Validate() != nil {
+			return operationResult{}, application.NewError("exam.integrity_review.unavailable")
+		}
+	}
+	if page.HasMore {
+		response.NextCursor, err = encodeExamIntegrityReviewCursor("native_condition", page.Items[len(page.Items)-1].ID.String())
+		if err != nil {
+			return operationResult{}, err
+		}
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }

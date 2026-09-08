@@ -75,6 +75,7 @@ type ListExamIntegrityDiscrepanciesQuery struct {
 }
 
 type examReviewUseCases interface {
+	ListNativeConditions(context.Context, examreview.Call, examreview.NativeConditionListQuery) (*store.NativeConditionPage, error)
 	SaveDecision(context.Context, examreview.Call, examreview.SaveDecisionCommand) (examreview.Result, error)
 	UpdateDraft(context.Context, examreview.Call, examreview.UpdateDraftCommand) (examreview.Result, error)
 	Finalize(context.Context, examreview.Call, examreview.FinalizeCommand) (examreview.Result, error)
@@ -367,4 +368,15 @@ func (effects examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Con
 
 func (effects examIntegrityReviewRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	effects.realtime.reportTransientFailure(ctx, operation, err)
+}
+
+type NativeConditionListQuery = examreview.NativeConditionListQuery
+type NativeConditionPage = store.NativeConditionPage
+
+func (a *App) ListNativeConditions(ctx context.Context, invocation Invocation, query NativeConditionListQuery) (*NativeConditionPage, error) {
+	result, err := a.examReviews.ListNativeConditions(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return nil, examReviewError(err, true)
+	}
+	return result, nil
 }

@@ -1,0 +1,184 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/submissions/{submission_id}/native-conditions:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: listNativeConditions
+      summary: Inspect minimized native condition transitions for a Submission
+      tags:
+        - Integrity review
+      description: >-
+        Requires the same current Submission integrity-view authorization as detailed evidence. Returns
+        selected catalog-validated occurrence transitions without creating a Flag or declaring a violation.
+        Includes original receipt and interpretation times, immutable stream/policy provenance and
+        unresolved-opener state. Operational health, gaps and resets are excluded. Pages contain at most 100
+        records. Integrity retirement removes this material independently of native operational retention.
+        No-store; cursors are purpose-specific opaque keysets.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Maximum number of native condition transitions to return.
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: Opaque versioned native condition identity cursor.
+          description: Opaque continuation from the preceding native condition page.
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeConditionListOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  schemas:
+    NativeConditionEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - attempt_id
+        - participation_id
+        - generation
+        - stream_id
+        - security_session_id
+        - policy_revision_id
+        - policy_digest
+        - application_release_id
+        - matrix_id
+        - batch_sequence
+        - record_index
+        - occurrence
+        - unresolved_opener
+        - received_at
+        - interpreted_at
+      properties:
+        id:
+          type: string
+          minLength: 26
+          maxLength: 26
+        attempt_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+        participation_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        stream_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        security_session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        policy_revision_id:
+          type: string
+          minLength: 26
+          maxLength: 26
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        application_release_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        matrix_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        batch_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 20000
+        record_index:
+          type: integer
+          minimum: 0
+          maximum: 63
+        occurrence:
+          $ref: '#/components/schemas/NativeOccurrence'
+        unresolved_opener:
+          type: boolean
+        received_at:
+          type: string
+          format: date-time
+        interpreted_at:
+          type: string
+          format: date-time
+    NativeConditionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/NativeConditionEvidence'
+        next_cursor:
+          type: string
+  responses:
+    NativeConditionListOK:
+      description: Bounded private native condition transitions, never a guilt finding.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NativeConditionListResponse'
+          example:
+            items: []

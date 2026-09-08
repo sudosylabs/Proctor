@@ -466,7 +466,8 @@ func testDesktopBuildTuple(
 		Architecture:                            architecture,
 		RealtimeProtocol:                        realtimeProtocol,
 		AttemptConfigurationManifestFingerprint: model.CurrentAttemptConfigurationManifestFingerprint(),
-		DesktopSettingsRegistryFingerprint:      "sha256:" + strings.Repeat("b", 64),
-		CapabilityMatrixIdentity:                "matrix-" + buildID,
+		DesktopSettingsRegistryFingerprint:      "fnv1a64:" + strings.Repeat("b", 16),
+		DesktopTarget:                           string(platform) + "-" + string(architecture), ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
+		CapabilityMatrixIdentity: "matrix-" + buildID,
 	}
 }

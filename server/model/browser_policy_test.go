@@ -10,19 +10,21 @@ package model
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
 
 func TestBrowserPolicyCanonicalizationAndMatching(t *testing.T) {
 	policy, err := NewBrowserPolicy(true, "start", []BrowserPolicyRule{
-		{RuleID: "sub", Origin: "https://EXAMPLE.com:443/", PathPrefix: "/exam/../exam", HostMatch: BrowserPolicyHostExactAndSubdomains, AllowRedirects: true, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
-		{RuleID: "start", Origin: "https://bücher.example", PathPrefix: "/start/%7euser", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
+		{RuleID: "sub", Origin: "https://EXAMPLE.com:443/", PathPrefix: "/exam/", HostMatch: BrowserPolicyHostExactAndSubdomains, AllowRedirects: true, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
+		{RuleID: "start", Origin: "https://library.example", PathPrefix: "/start/%7euser", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord},
 	})
 	if err != nil {
 		t.Fatalf("NewBrowserPolicy() error = %v", err)
 	}
-	if policy.Rules[0].RuleID != "start" || policy.Rules[0].Origin != "https://xn--bcher-kva.example" || policy.Rules[0].PathPrefix != "/start/~user" ||
+	if policy.Rules[0].RuleID != "start" || policy.Rules[0].Origin != "https://library.example" || policy.Rules[0].PathPrefix != "/start/%7euser" ||
 		policy.Rules[1].Origin != "https://example.com" || policy.Rules[1].PathPrefix != "/exam" {
 		t.Fatalf("canonical policy = %#v", policy)
 	}
@@ -55,7 +57,7 @@ func TestBrowserPolicyStrictCanonicalCodec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncodeBrowserPolicy() error = %v", err)
 	}
-	if want := []byte(`{"schema_version":1,"enabled":false}`); !bytes.Equal(encoded, want) {
+	if want := []byte(`{"enabled":false}`); !bytes.Equal(encoded, want) {
 		t.Fatalf("encoded = %s, want %s", encoded, want)
 	}
 	decoded, err := DecodeBrowserPolicy(encoded)
@@ -76,12 +78,12 @@ func TestBrowserPolicyStrictCanonicalCodec(t *testing.T) {
 }
 
 func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T) {
-	parsed, err := ParseBrowserPolicyDocument([]byte(`{"enabled": false, "schema_version": 1}`))
+	parsed, err := ParseBrowserPolicyDocument([]byte(`{ "enabled": false }`))
 	if err != nil || parsed.Enabled || parsed.SchemaVersion != BrowserPolicySchemaVersion {
 		t.Fatalf("ParseBrowserPolicyDocument(reordered disabled) = %#v, %v", parsed, err)
 	}
 	for _, document := range []string{
-		`null`, `{}`, `{"enabled":false}`, `{"schema_version":1}`,
+		`null`, `{}`, `{"enabled":null}`, `{"schema_version":1}`,
 		`{"schema_version":0,"enabled":false}`,
 		`{"schema_version":2,"enabled":false}`,
 		`{"schema_version":1,"enabled":null}`,
@@ -100,6 +102,18 @@ func TestBrowserPolicyDocumentParserPreservesSchemaAndCanonicalSize(t *testing.T
 		t.Fatal(err)
 	}
 	encoded, err := EncodeBrowserPolicy(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fill the total limit with individually bounded, distinct rules.
+	for index := 1; index < 15; index++ {
+		policy.Rules = append(policy.Rules, BrowserPolicyRule{
+			RuleID: fmt.Sprintf("z%02d", index), Origin: "https://example.edu",
+			PathPrefix: fmt.Sprintf("/%02d", index) + strings.Repeat("a", 2040),
+			HostMatch:  BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord,
+		})
+	}
+	encoded, err = EncodeBrowserPolicy(policy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,5 +154,114 @@ func TestBrowserPolicyRejectsUnsafeURLsAndDuplicateMatches(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("NewBrowserPolicy() accepted duplicate match rules")
+	}
+}
+
+func TestBrowserPolicyInstitutionHTTPException(t *testing.T) {
+	for _, test := range []struct {
+		pin, origin string
+		valid       bool
+	}{
+		{"https://institution.example", "http://INSTITUTION.example:80/", true},
+		{"https://institution.example:443", "http://institution.example", true},
+		{"https://institution.example:8443", "http://institution.example:8443", true},
+		{"https://institution.example:8443", "http://institution.example", false},
+		{"https://institution.example", "http://institution.example:443", false},
+		{"https://institution.example", "http://other.example", false},
+		{"http://institution.example", "http://institution.example", false},
+	} {
+		policy, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/exam", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = policy.ValidateInstitutionOrigin(test.pin)
+		if (err == nil) != test.valid {
+			t.Errorf("pin %q rule %q validity=%v: %v", test.pin, test.origin, test.valid, err)
+		}
+		raw, err := EncodeBrowserPolicy(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "schema_version") || !strings.Contains(string(raw), `"institution_http_exception":true`) {
+			t.Fatal("wrong browser policy wire envelope")
+		}
+		decoded, err := DecodeBrowserPolicy(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest, err := BrowserPolicyDigest(decoded)
+		if err != nil || digest != SHA256Fingerprint(raw) {
+			t.Fatal("policy digest does not cover exact canonical policy")
+		}
+		rule, _, err := policy.Match(policy.Rules[0].Origin + "/exam/part?ignored=private#fragment")
+		if err != nil || rule == nil || rule.BlockedNavigationOutcome != BrowserPolicyBlockedNavigationIntegrityEvidence {
+			t.Fatal("explicit HTTP rule failed", err)
+		}
+		opposite := strings.Replace(policy.Rules[0].Origin, "http:", "https:", 1) + "/exam/part"
+		if rule, _, err := policy.Match(opposite); err != nil || rule != nil {
+			t.Fatal("HTTP exception matched an unconfigured scheme")
+		}
+	}
+	for _, test := range []struct {
+		origin    string
+		exception bool
+	}{{"https://institution.example", true}, {"http://institution.example", false}} {
+		if _, err := NewBrowserPolicy(true, "institution", []BrowserPolicyRule{{RuleID: "institution", Origin: test.origin, PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord, InstitutionHTTPException: test.exception}}); err == nil {
+			t.Fatal("accepted mismatched scheme/exception")
+		}
+	}
+}
+
+func TestBrowserPolicyRequiresExplicitExceptionField(t *testing.T) {
+	policy, err := NewBrowserPolicy(true, "start", []BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: "/", HostMatch: BrowserPolicyHostExact, BlockedNavigationOutcome: BrowserPolicyBlockedNavigationRecord}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := EncodeBrowserPolicy(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{strings.Replace(string(raw), `"institution_http_exception":false,`, "", 1), strings.Replace(string(raw), `"institution_http_exception":false`, `"institution_http_exception":null`, 1), strings.Replace(string(raw), `"enabled":true`, `"enabled":true,"schema_version":1`, 1)} {
+		if _, err := ParseBrowserPolicyDocument([]byte(bad)); err == nil {
+			t.Fatal("accepted old or incomplete rule codec")
+		}
+	}
+}
+
+func TestBrowserPolicyCanonicalAgreementFixtures(t *testing.T) {
+	raw, err := os.ReadFile("testdata/browser_policies.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures struct {
+		Cases []struct {
+			Name              string          `json:"name"`
+			InstitutionOrigin string          `json:"institution_origin"`
+			Policy            json.RawMessage `json:"policy"`
+			Canonical         string          `json:"canonical"`
+			Digest            string          `json:"digest"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range fixtures.Cases {
+		t.Run(fixture.Name, func(t *testing.T) {
+			policy, err := ParseBrowserPolicyDocument(fixture.Policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := policy.ValidateInstitutionOrigin(fixture.InstitutionOrigin); err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := EncodeBrowserPolicy(policy)
+			if err != nil || string(encoded) != fixture.Canonical {
+				t.Fatalf("canonical=%s, %v", encoded, err)
+			}
+			digest, err := BrowserPolicyDigest(policy)
+			if err != nil || digest != fixture.Digest {
+				t.Fatalf("digest=%s, %v", digest, err)
+			}
+		})
 	}
 }

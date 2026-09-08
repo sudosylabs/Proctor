@@ -25,6 +25,7 @@ type exportAuthorizerFake struct {
 	actions []model.Action
 	deny    model.Action
 	self    bool
+	denyErr error
 }
 
 func (a *exportAuthorizerFake) Authorize(_ context.Context, _ Call, action model.Action, _ model.Resource) error {
@@ -34,9 +35,50 @@ func (a *exportAuthorizerFake) Authorize(_ context.Context, _ Call, action model
 	}
 	return nil
 }
-func (a *exportAuthorizerFake) DenySelf(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error {
+func (a *exportAuthorizerFake) Deny(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error {
 	a.self = true
+	if a.denyErr != nil {
+		return a.denyErr
+	}
 	return &Fault{Code: "exam.not_found"}
+}
+
+func TestBrowserHistoryExportRejectsOverrideAndRechecksBeforeOpeningBytes(t *testing.T) {
+	for _, removed := range []string{"manager"} {
+		t.Run(removed, func(t *testing.T) {
+			f, service, persistence, auth, content := newExportFixture(t)
+			f.persistence.actorIsManager = true
+			f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID, UserID: f.userID}}
+			persistence.value.Categories = []model.RetentionCategory{model.RetentionCategoryBrowserActivity}
+			query := ExportQuery{Scope: persistence.value.Scope, ExportID: persistence.value.ID}
+			if _, err := service.Get(context.Background(), f.call, query); err != nil {
+				t.Fatal(err)
+			}
+			// Unit membership is part of ordinary export authorization;
+			// the independently permitted export override leaves the exact
+			// Browser Activity Manager predicate and permission intact.
+			f.memberships.items = nil
+			if _, err := service.Get(context.Background(), f.call, query); err != nil {
+				t.Fatal(err)
+			}
+			f.persistence.actorIsManager = false
+			if _, err := service.Get(context.Background(), f.call, query); err == nil || !auth.self {
+				t.Fatal("export metadata retained removed Browser Activity access")
+			}
+			if _, err := service.Open(context.Background(), f.call, query); err == nil || content.opens != 0 {
+				t.Fatal("unauthorized history reached archive bytes")
+			}
+			_, err := service.Create(context.Background(), f.call, CreateExportCommand{Scope: query.Scope, Categories: persistence.value.Categories, IdempotencyKey: "replay"})
+			if err == nil || persistence.create != nil {
+				t.Fatal("override created browser history export")
+			}
+			auditErr := errors.New("denial audit unavailable")
+			auth.denyErr = auditErr
+			if _, err := service.Get(context.Background(), f.call, query); !errors.Is(err, auditErr) {
+				t.Fatalf("audit failure: %v", err)
+			}
+		})
+	}
 }
 
 type exportStoreFake struct {
@@ -160,15 +202,15 @@ func newExportFixture(t *testing.T) (authoringFixture, *Exports, *exportStoreFak
 
 func TestExamExportsRequireDedicatedAndEveryOrdinaryReadPermission(t *testing.T) {
 	for _, test := range []struct {
-		name                                string
-		manager, member, integrity, sitting bool
-		deny                                model.Action
+		name                                         string
+		manager, member, integrity, browser, sitting bool
+		deny                                         model.Action
 	}{
 		{name: "ordinary manager", manager: true, member: true}, {name: "scoped override"}, {name: "manager without membership", manager: true},
-		{name: "integrity", manager: true, member: true, integrity: true}, {name: "Sitting", sitting: true},
+		{name: "integrity", manager: true, member: true, integrity: true}, {name: "Browser history", manager: true, member: true, browser: true}, {name: "Sitting", sitting: true},
 		{name: "missing export", deny: model.ActionExamRecordsExportOverride},
 		{name: "missing Submission read", deny: model.ActionSubmissionViewOverride},
-		{name: "missing browser read", integrity: true, deny: model.ActionExamAttemptBrowserActivityViewOverride},
+		{name: "missing browser read", manager: true, member: true, browser: true, deny: model.ActionExamAttemptBrowserActivityView},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f, service, s, auth, _ := newExportFixture(t)
@@ -184,6 +226,9 @@ func TestExamExportsRequireDedicatedAndEveryOrdinaryReadPermission(t *testing.T)
 			categories := []model.RetentionCategory{model.RetentionCategoryWork}
 			if test.integrity {
 				categories = append(categories, model.RetentionCategoryIntegrity)
+			}
+			if test.browser {
+				categories = []model.RetentionCategory{model.RetentionCategoryBrowserActivity}
 			}
 			_, err := service.Create(context.Background(), f.call, CreateExportCommand{Scope: scope, Categories: categories, IdempotencyKey: "export-key"})
 			if test.deny != "" {

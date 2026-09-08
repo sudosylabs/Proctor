@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -116,7 +117,7 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 	fake := newExamAttemptHTTPFake(t)
 	httpAPI := newExamAttemptFocusedAPI(t, fake)
 	body := `{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_current_revision_id":"` +
-		fake.submissionReceipt.ExamRevisionID.String() + `","expected_workspace_cursor":4,"final_focus_loss_sequence":0,"browser_activity":{"state":"not_applicable"}}`
+		fake.submissionReceipt.ExamRevisionID.String() + `","expected_workspace_cursor":4,"final_focus_loss_sequence":0}`
 	path := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/submissions"
 	request := fake.candidateRequest(http.MethodPost, path)
 	request.Body = io.NopCloser(strings.NewReader(body))
@@ -127,12 +128,12 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" ||
 		fake.submit.Access.AttemptID != fake.attempt.ID || fake.submit.Access.ParticipationID != fake.participation.ID ||
 		fake.submit.Access.Generation != 1 || fake.submit.ExpectedCurrentRevisionID != fake.submissionReceipt.ExamRevisionID ||
-		fake.submit.ExpectedWorkspaceCursor != 4 || fake.submit.BrowserActivity.State != model.BrowserActivitySubmissionNotApplicable ||
+		fake.submit.ExpectedWorkspaceCursor != 4 ||
 		fake.submit.FinalFocusLossSequence != 0 || fake.submit.IdempotencyKey != "submit-once" {
 		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 7 ||
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 ||
 		string(payload["exam_revision_id"]) != `"`+fake.submissionReceipt.ExamRevisionID.String()+`"` ||
 		string(payload["state"]) != `"submitted"` || string(payload["workspace_cursor"]) != "4" {
 		t.Fatalf("receipt=%v error=%v", payload, err)
@@ -168,7 +169,7 @@ func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T
 		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 3 ||
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 5 ||
 		string(payload["revision_id"]) != `"`+correctionID.String()+`"` ||
 		string(payload["acknowledgement_state"]) != `"acknowledged"` {
 		t.Fatalf("acknowledgement response = %v, %v", payload, err)
@@ -419,7 +420,7 @@ func TestManagerSubmissionIntegrityRetirementOmitsFormerCounters(t *testing.T) {
 			if retired {
 				submission.IntegrityState = model.SubmissionIntegrityRetired
 				submission.IntegrityRetiredAt = model.OptionalTimeFrom(submission.SubmittedAt.Add(time.Hour))
-				submission.BrowserActivity = model.BrowserActivitySubmission{}
+				submission.BrowserActivity = model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}
 			}
 			httpAPI := newExamAttemptFocusedAPI(t, fake)
 			path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
@@ -922,7 +923,7 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		ParticipationID: fake.participation.ID, Generation: 1, SourceSessionID: sourceID,
 		Event: model.BrowserActivityEvent{Sequence: 1, Kind: model.BrowserActivityOpened, PolicyRevisionID: model.NewExamRevisionID(),
 			ClientOccurredAt: at, ReceivedAt: at.Add(time.Second)}}}}
-	fake.submissionReceipt = application.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: attempt.ID,
+	fake.submissionReceipt = application.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: attempt.ID,
 		ExamRevisionID: attempt.AdmissionRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 4,
 		ManifestDigest: strings.Repeat("d", 64), SubmittedAt: at.Add(time.Minute)}
 	submissionManifest, err := model.NewExamSubmissionManifest(4, []model.ExamSubmissionManifestEntry{{
@@ -936,7 +937,7 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: fake.submissionReceipt.SubmissionID,
 		AttemptID: attempt.ID, ExamRevisionID: attempt.AdmissionRevisionID, WorkspaceID: workspace.ID, Manifest: submissionManifest,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at.Add(time.Minute)})
 	if err != nil {
 		t.Fatal(err)
@@ -955,23 +956,16 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 func candidateTestRuntimeCapabilities(t *testing.T, at time.Time, attempt *model.ExamAttempt) store.CandidateRuntimeCapabilities {
 	t.Helper()
 	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
-	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest,
-		model.NewUserSettingsRevision(), "sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
-			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
-			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
-			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
-			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
-			CandidateCommandBindings: []model.AttemptCommandBinding{},
-		})
+	configuration, err := (model.AttemptConfigurationCandidate{ManifestFingerprint: manifest, RegistryFingerprint: "fnv1a64:" + strings.Repeat("b", 16), UserSettingsRevision: model.NewUserSettingsRevision(), DesktopBuild: "test-build", DesktopTarget: "darwin-arm64", Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}).Freeze(model.NewId())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return store.CandidateRuntimeCapabilities{SchemaVersion: 1, ServerTime: at,
 		InteractionState: store.CandidateInteractionInteractive,
-		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
-			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: configuration.Preferences, Digest: configuration.Digest},
+		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision, Presentation: configuration.Presentation,
+			ApprovedCommands: append([]string{}, configuration.ApprovedCommands...), ApprovedKeybindings: append([]string{}, configuration.ApprovedKeybindings...), Digest: configuration.Digest},
 		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
-		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled},
+		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled, ProjectionState: store.ExecutionProjectionUnavailable},
 		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: attempt.AdmissionRevisionID,
 			CurrentRevisionID: model.NewExamRevisionID()},
@@ -1036,8 +1030,10 @@ func (fake *examAttemptHTTPFake) AcknowledgeExamAttemptCorrection(_ context.Cont
 	command application.AcknowledgeExamCorrectionCommand,
 ) (application.ExamCorrectionAcknowledgementResult, error) {
 	fake.correctionAcknowledgement = command
+	capabilities := fake.presentation.RuntimeCapabilities
+	capabilities.ExamRevision.CurrentRevisionID = command.ExpectedCurrentRevisionID
 	return application.ExamCorrectionAcknowledgementResult{CorrectionRevisionID: command.CorrectionRevisionID,
-		CurrentRevisionID: command.ExpectedCurrentRevisionID, AcknowledgedAt: model.OptionalTimeFrom(fake.attempt.UpdatedAt.Add(time.Minute))}, nil
+		CurrentRevisionID: command.ExpectedCurrentRevisionID, RuntimeCapabilities: capabilities, AcknowledgedAt: model.OptionalTimeFrom(fake.attempt.UpdatedAt.Add(time.Minute))}, nil
 }
 
 func (fake *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocation application.Invocation, command application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error) {
@@ -1142,4 +1138,69 @@ func (fake *examAttemptHTTPFake) OpenCandidateExamWorkspaceFile(_ context.Contex
 	fake.content.Body = io.NopCloser(strings.NewReader("protected"))
 	fake.content.ContentVersion = fake.workspaceContentVersion
 	return fake.content, nil
+}
+
+func (fake *examAttemptHTTPFake) PrepareExamSecurityPreflight(context.Context, application.Invocation, application.PrepareSecurityPreflightCommand) (*application.PreparedSecurityPreflight, error) {
+	return nil, errors.New("unexpected preflight prepare")
+}
+func (fake *examAttemptHTTPFake) ReportExamSecurityPreflight(context.Context, application.Invocation, application.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+	return nil, errors.New("unexpected preflight report")
+}
+
+func (fake *examAttemptHTTPFake) RecoverExamSecurityPolicy(context.Context, application.Invocation, model.ExamAttemptID) (*application.RecoveredSecurityPolicy, error) {
+	return nil, errors.New("unexpected security recovery")
+}
+
+func (fake *examAttemptHTTPFake) NativeDeliveryStatus(context.Context, application.Invocation, application.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected NativeDeliveryStatus")
+}
+
+func (fake *examAttemptHTTPFake) NativeDeliveryReceipt(context.Context, application.Invocation, application.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
+	return nil, errors.New("unexpected NativeDeliveryReceipt")
+}
+
+func (fake *examAttemptHTTPFake) DeclareNativeDeliveryGaps(context.Context, application.Invocation, application.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
+}
+
+func (fake *examAttemptHTTPFake) SealNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected SealNativeDelivery")
+}
+
+func (fake *examAttemptHTTPFake) UpdateNativeDeliverySummary(context.Context, application.Invocation, application.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
+}
+
+func (fake *examAttemptHTTPFake) AppendNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendNativeDelivery")
+}
+
+func (fake *examAttemptHTTPFake) BrowserSourceStatus(context.Context, application.Invocation, application.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+	return nil, application.NewError("exam.attempt.unavailable")
+}
+func (fake *examAttemptHTTPFake) BrowserSourceList(context.Context, application.Invocation, application.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+	return nil, application.NewError("exam.attempt.unavailable")
+}
+
+func (fake *examAttemptHTTPFake) BrowserDeliveryReceipts(context.Context, application.Invocation, application.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
+	return nil, errors.New("unexpected BrowserDeliveryReceipts")
+}
+func (fake *examAttemptHTTPFake) DeclareBrowserDeliveryGaps(context.Context, application.Invocation, application.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
+}
+func (fake *examAttemptHTTPFake) SealBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+	return nil, errors.New("unexpected SealBrowserDelivery")
+}
+func (fake *examAttemptHTTPFake) UpdateBrowserDeliverySummary(context.Context, application.Invocation, application.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
+}
+func (fake *examAttemptHTTPFake) AppendHistoricalBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
+}
+
+func (fake *examAttemptHTTPFake) DeliveryBudget(context.Context, application.Invocation, application.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+	return nil, errors.New("unexpected DeliveryBudget")
+}
+func (fake *examAttemptHTTPFake) StopDeliveryDetails(context.Context, application.Invocation, application.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+	return nil, errors.New("unexpected StopDeliveryDetails")
 }

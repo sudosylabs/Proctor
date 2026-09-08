@@ -78,7 +78,7 @@ func validExamSubmissionSealAccess(access store.ExamSubmissionSealAccess) bool {
 	return access.AttemptID.IsValid() && access.ParticipationID.IsValid() && access.Generation > 0 &&
 		access.ConnectionID.IsValid() && access.CandidateUserID.IsValid() && access.SessionID.IsValid() &&
 		model.IsValidTokenHash(access.ContinuityCredentialHash) && access.ExpectedWorkspaceCursor >= 0 &&
-		access.ExpectedCurrentRevisionID.IsValid() && access.FinalFocusLossSequence >= 0 && access.BrowserActivity.ValidateClient() == nil
+		access.ExpectedCurrentRevisionID.IsValid() && access.FinalFocusLossSequence >= 0
 }
 
 func (s *SQLExamSubmissionStore) ResolveSealTarget(ctx context.Context, access store.ExamSubmissionSealAccess) (*store.ExamSubmissionSealTarget, error) {
@@ -197,21 +197,16 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 	}
 	if allowCommittedCausal && row.AttemptState == string(model.ExamAttemptSubmitted) {
 		var causal struct {
-			ExamRevisionID         string         `db:"exam_revision_id"`
-			WorkspaceCursor        int64          `db:"workspace_cursor"`
-			FinalFocusLossSequence int64          `db:"final_focus_loss_sequence"`
-			ParticipationID        string         `db:"participation_id"`
-			Generation             int64          `db:"generation"`
-			ConnectionID           string         `db:"connection_id"`
-			Sealed                 bool           `db:"sealed"`
-			BrowserActivityState   string         `db:"browser_activity_state"`
-			BrowserSourceSessionID sql.NullString `db:"browser_activity_source_session_id"`
-			BrowserFinalSequence   sql.NullInt64  `db:"browser_activity_final_sequence"`
-			BrowserGapReason       sql.NullString `db:"browser_activity_gap_reason"`
+			ExamRevisionID         string `db:"exam_revision_id"`
+			WorkspaceCursor        int64  `db:"workspace_cursor"`
+			FinalFocusLossSequence int64  `db:"final_focus_loss_sequence"`
+			ParticipationID        string `db:"participation_id"`
+			Generation             int64  `db:"generation"`
+			ConnectionID           string `db:"connection_id"`
+			Sealed                 bool   `db:"sealed"`
 		}
 		if causalErr := tx.Get(ctx, &causal, `SELECT exam_revision_id,workspace_cursor,final_focus_loss_sequence,participation_id,
-			generation,connection_id,sealed,browser_activity_state,browser_activity_source_session_id::text,
-			browser_activity_final_sequence,browser_activity_gap_reason FROM exam_submissions WHERE exam_attempt_id=? FOR UPDATE`, access.AttemptID.String()); causalErr != nil {
+			generation,connection_id,sealed FROM exam_submissions WHERE exam_attempt_id=? FOR UPDATE`, access.AttemptID.String()); causalErr != nil {
 			return zero, examSubmissionIntegrityTail{}, time.Time{}, translateError("exam_submission", access.AttemptID.String(), causalErr)
 		}
 		if causal.ParticipationID != access.ParticipationID.String() || causal.Generation != access.Generation {
@@ -227,8 +222,7 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 		if causal.FinalFocusLossSequence != access.FinalFocusLossSequence {
 			return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrConflict("focus_loss_signal", "focus_loss_sequence", nil)
 		}
-		if causal.ExamRevisionID != access.ExpectedCurrentRevisionID.String() || !samePersistedBrowserActivitySubmission(causal.BrowserActivityState,
-			causal.BrowserSourceSessionID, causal.BrowserFinalSequence, causal.BrowserGapReason, access.BrowserActivity) {
+		if causal.ExamRevisionID != access.ExpectedCurrentRevisionID.String() {
 			return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrConflict("exam_submission", "exam_submission_causal_selector", nil)
 		}
 		if !causal.Sealed || row.ParticipationState != string(model.AttemptParticipationEnded) ||
@@ -249,6 +243,9 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 	if row.AttemptState != string(model.ExamAttemptActive) {
 		return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
+	if err := lockSecurityInteraction(ctx, tx, access.AttemptID); err != nil {
+		return zero, examSubmissionIntegrityTail{}, time.Time{}, err
+	}
 	if row.CurrentRevisionID != access.ExpectedCurrentRevisionID.String() {
 		return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrConflict("exam_sitting", "exam_sitting_revision_selection", nil)
 	}
@@ -259,6 +256,7 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 		JOIN exam_revisions current_revision ON current_revision.id=? AND current_revision.exam_id=live.exam_id
 		WHERE live.exam_sitting_id=? AND correction.number>admission.number AND correction.number<=current_revision.number
 		AND correction.candidate_correction_acknowledgement_required=true
+		AND 'submission' = ANY(correction.candidate_correction_affected_capabilities)
 		AND NOT EXISTS (SELECT 1 FROM exam_attempt_correction_acknowledgements acknowledgement
 			WHERE acknowledgement.exam_attempt_id=? AND acknowledgement.correction_revision_id=correction.id)`,
 		row.AdmissionRevisionID, row.CurrentRevisionID, row.SittingID, access.AttemptID.String()); err != nil {
@@ -340,6 +338,17 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 			if _, err := examSubmissionSealResult(outcome); err != nil {
 				return outcome, err
 			}
+			return outcome, nil
+		},
+		hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1) (examSubmissionSealOutcomeV1, error) {
+			if _, _, _, err := lockExamSubmissionSealAccess(ctx, tx, prepared.Access, true); err != nil {
+				return outcome, err
+			}
+			value, err := browserSubmissionSettlement(ctx, tx, prepared.Access.AttemptID)
+			if err != nil {
+				return outcome, err
+			}
+			outcome.Receipt.BrowserActivity = value
 			return outcome, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1, originalAuditID string) error {
@@ -459,14 +468,12 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if _, err = tx.Exec(ctx, `INSERT INTO exam_submissions
 		(id,exam_attempt_id,exam_revision_id,workspace_id,participation_id,generation,connection_id,manifest_schema_version,
 		workspace_cursor,manifest_digest,manifest_entry_count,manifest_total_file_bytes,final_focus_loss_sequence,
-		browser_activity_state,browser_activity_source_session_id,browser_activity_final_sequence,browser_activity_gap_reason,
 		integrity_state,unresolved_integrity_count,provenance,submitted_at,sealed)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`, submission.ID.String(), submission.AttemptID.String(),
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`, submission.ID.String(), submission.AttemptID.String(),
 		submission.ExamRevisionID.String(), submission.WorkspaceID.String(), input.Access.ParticipationID.String(), input.Access.Generation,
 		input.Access.ConnectionID.String(), submission.ManifestSchemaVersion, submission.WorkspaceCursor,
 		submission.ManifestDigest, submission.ManifestEntryCount, submission.ManifestTotalFileBytes,
-		submission.FinalFocusLossSequence, string(submission.BrowserActivity.State), nullableString(string(submission.BrowserActivity.SourceSessionID)),
-		nullableInt64Pointer(submission.BrowserActivity.FinalSequence), nullableString(string(submission.BrowserActivity.GapReason)),
+		submission.FinalFocusLossSequence,
 		string(submission.IntegrityState), submission.UnresolvedIntegrityCount, string(submission.Provenance),
 		submission.SubmittedAt); err != nil {
 		return zero, fmt.Errorf("insert Exam Submission: %w", translateError("exam_submission", submission.ID.String(), err))
@@ -476,7 +483,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		Generation: input.Access.Generation, ConnectionID: input.Access.ConnectionID,
 	}, terminalIntegrityDiscrepancies{FocusUnresolved: focusUnresolved,
 		FocusReason:       model.IntegrityDiscrepancyFocusLossSequenceGap,
-		BrowserUnresolved: browserUnresolved, BrowserActivity: browserActivity}); err != nil {
+		BrowserUnresolved: browserUnresolved}); err != nil {
 		return zero, err
 	}
 	for index, entry := range manifest.Entries {
@@ -518,7 +525,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err != nil {
 		return zero, err
 	}
-	outcome := examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{SubmissionID: submission.ID,
+	outcome := examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
 		AttemptID: submission.AttemptID, ExamRevisionID: submission.ExamRevisionID, State: attempt.State, WorkspaceCursor: submission.WorkspaceCursor,
 		ManifestDigest: submission.ManifestDigest, SubmittedAt: submission.SubmittedAt}, ExamID: target.ExamID.String(),
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),
@@ -546,146 +553,8 @@ func nullableInt64Pointer(value *int64) any {
 	return *value
 }
 
-type browserActivitySubmissionSourceRow struct {
-	ID                       string       `db:"id"`
-	ParticipationID          string       `db:"participation_id"`
-	Generation               int64        `db:"generation"`
-	State                    string       `db:"state"`
-	HighestContiguous        int64        `db:"highest_contiguous"`
-	HighestSeen              int64        `db:"highest_seen"`
-	ReceivedBeyondContiguous int64        `db:"received_beyond_contiguous"`
-	EndedAt                  sql.NullTime `db:"ended_at"`
-}
-
-func settleVoluntaryBrowserActivity(ctx context.Context, tx *sqlxTxWrapper, access store.ExamSubmissionSealAccess,
-	databaseNow time.Time,
-) (int64, model.BrowserActivitySubmission, error) {
-	var sources []browserActivitySubmissionSourceRow
-	if err := tx.Select(ctx, &sources, `SELECT source.id::text,source.participation_id,source.generation,source.state,
-		source.highest_contiguous,source.highest_seen,source.ended_at,
-		(SELECT count(*) FROM browser_activity_events event WHERE event.source_session_id=source.id
-			AND event.sequence>source.highest_contiguous AND event.sequence<=source.highest_seen) AS received_beyond_contiguous
-		FROM browser_activity_sources source WHERE source.exam_attempt_id=? ORDER BY source.started_at,source.id FOR UPDATE OF source`, access.AttemptID.String()); err != nil {
-		return 0, model.BrowserActivitySubmission{}, err
-	}
-	declaration := access.BrowserActivity.Clone()
-	if declaration.State == model.BrowserActivitySubmissionNotApplicable {
-		if len(sources) != 0 {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_not_applicable", nil)
-		}
-		return 0, declaration, nil
-	}
-	declaredIndex := -1
-	for index, source := range sources {
-		if source.ID == string(declaration.SourceSessionID) {
-			declaredIndex = index
-			break
-		}
-	}
-	if declaredIndex < 0 {
-		return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source", nil)
-	}
-	declared := sources[declaredIndex]
-	if declared.ParticipationID != access.ParticipationID.String() || declared.Generation != access.Generation || declared.State != "current" {
-		return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source_fence", nil)
-	}
-	switch declaration.State {
-	case model.BrowserActivitySubmissionComplete:
-		finalSequence := *declaration.FinalSequence
-		if declared.HighestContiguous != finalSequence || declared.HighestSeen != finalSequence {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_incomplete", nil)
-		}
-		var finalKind string
-		if err := tx.Get(ctx, &finalKind, `SELECT kind FROM browser_activity_events WHERE source_session_id=?::uuid AND sequence=?`,
-			declared.ID, finalSequence); err != nil {
-			return 0, model.BrowserActivitySubmission{}, translateError("browser_activity_event", declared.ID, err)
-		}
-		if finalKind != string(model.BrowserActivityClosed) {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_not_closed", nil)
-		}
-		result, updateErr := tx.Exec(ctx, `UPDATE browser_activity_sources SET state='closed',ended_at=? WHERE id=?::uuid AND state='current'`,
-			databaseNow, declared.ID)
-		if updateErr != nil {
-			return 0, model.BrowserActivitySubmission{}, updateErr
-		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source_fence", rowsErr)
-		}
-		sources[declaredIndex].State = "closed"
-	case model.BrowserActivitySubmissionGapped:
-		if declaration.FinalSequence != nil && *declaration.FinalSequence < declared.HighestSeen {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_final_sequence", nil)
-		}
-		result, updateErr := tx.Exec(ctx, `UPDATE browser_activity_sources SET state='gapped',ended_at=? WHERE id=?::uuid AND state='current'`,
-			databaseNow, declared.ID)
-		if updateErr != nil {
-			return 0, model.BrowserActivitySubmission{}, updateErr
-		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source_fence", rowsErr)
-		}
-		sources[declaredIndex].State = "gapped"
-	}
-	for index, source := range sources {
-		if index == declaredIndex || source.State != "current" {
-			continue
-		}
-		result, updateErr := tx.Exec(ctx, `UPDATE browser_activity_sources SET state='gapped',ended_at=? WHERE id=?::uuid AND state='current'`,
-			databaseNow, source.ID)
-		if updateErr != nil {
-			return 0, model.BrowserActivitySubmission{}, updateErr
-		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source_fence", rowsErr)
-		}
-		sources[index].State = "gapped"
-	}
-	unresolved, err := browserActivitySourceUnresolved(sources)
-	if err != nil {
-		return 0, model.BrowserActivitySubmission{}, err
-	}
-	if declaration.State == model.BrowserActivitySubmissionGapped && declaration.FinalSequence != nil &&
-		*declaration.FinalSequence > declared.HighestSeen {
-		additional := *declaration.FinalSequence - declared.HighestSeen
-		if additional > math.MaxInt64-unresolved {
-			return 0, model.BrowserActivitySubmission{}, invalidPersistedState("browser_activity", "unresolved_count",
-				errors.New("Browser Activity unresolved count overflows"))
-		}
-		unresolved += additional
-	}
-	return unresolved, declaration, nil
-}
-
-func browserActivitySourceUnresolved(sources []browserActivitySubmissionSourceRow) (int64, error) {
-	var unresolved int64
-	for _, source := range sources {
-		if source.State == "gapped" {
-			if unresolved == math.MaxInt64 {
-				return 0, invalidPersistedState("browser_activity", "unresolved_count",
-					errors.New("Browser Activity unresolved count overflows"))
-			}
-			unresolved++
-		}
-		span := source.HighestSeen - source.HighestContiguous
-		missing := span - source.ReceivedBeyondContiguous
-		if span < 0 || source.ReceivedBeyondContiguous < 0 || source.ReceivedBeyondContiguous > span ||
-			missing > math.MaxInt64-unresolved {
-			return 0, invalidPersistedState("browser_activity", "unresolved_count",
-				errors.New("Browser Activity unresolved count overflows"))
-		}
-		unresolved += missing
-	}
-	return unresolved, nil
-}
-
-func samePersistedBrowserActivitySubmission(state string, source sql.NullString, final sql.NullInt64, reason sql.NullString,
-	expected model.BrowserActivitySubmission,
-) bool {
-	if state != string(expected.State) || source.String != string(expected.SourceSessionID) || source.Valid != expected.SourceSessionID.IsValid() ||
-		reason.String != string(expected.GapReason) || reason.Valid != expected.GapReason.IsValid() || final.Valid != (expected.FinalSequence != nil) {
-		return false
-	}
-	return expected.FinalSequence == nil || final.Int64 == *expected.FinalSequence
+func settleVoluntaryBrowserActivity(ctx context.Context, tx *sqlxTxWrapper, access store.ExamSubmissionSealAccess, databaseNow time.Time) (int64, model.BrowserSubmissionSettlement, error) {
+	return settleSubmissionBrowserSources(ctx, tx, access.AttemptID, model.DeliveryClosedSubmission, databaseNow)
 }
 
 type examSubmissionIntegrityTail struct {
@@ -836,6 +705,9 @@ func persistSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper, attempt
 	if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
 		return store.NewErrConflict("attempt_participation", "attempt_participation_expired", rowsErr)
 	}
+	if err := closeNativeDelivery(ctx, tx, participation.ID, model.DeliveryClosedSubmission, participation.EndedAt.Time); err != nil {
+		return err
+	}
 	result, err = tx.Exec(ctx, `UPDATE exam_attempt_connections SET state=?,closed_at=?,close_reason=?
 		WHERE id=? AND exam_attempt_id=? AND participation_id=? AND state='open'`, string(connection.State),
 		connection.ClosedAt.Time, string(connection.CloseReason), connection.ID.String(), connection.AttemptID.String(),
@@ -920,10 +792,11 @@ type examSubmissionHeaderRow struct {
 	ManifestEntryCount       sql.NullInt64  `db:"manifest_entry_count"`
 	ManifestTotalFileBytes   sql.NullInt64  `db:"manifest_total_file_bytes"`
 	FinalFocusLossSequence   sql.NullInt64  `db:"final_focus_loss_sequence"`
-	BrowserActivityState     sql.NullString `db:"browser_activity_state"`
-	BrowserSourceSessionID   sql.NullString `db:"browser_activity_source_session_id"`
-	BrowserFinalSequence     sql.NullInt64  `db:"browser_activity_final_sequence"`
-	BrowserGapReason         sql.NullString `db:"browser_activity_gap_reason"`
+	BrowserState             string         `db:"browser_state"`
+	BrowserInventoryRevision int64          `db:"browser_inventory_revision"`
+	BrowserSourceCount       int64          `db:"browser_source_count"`
+	BrowserPendingCount      int64          `db:"browser_pending_count"`
+	BrowserIncompleteCount   int64          `db:"browser_incomplete_count"`
 	IntegrityState           string         `db:"integrity_state"`
 	UnresolvedIntegrityCount sql.NullInt64  `db:"unresolved_integrity_count"`
 	WorkRetiredAt            sql.NullTime   `db:"work_retired_at"`
@@ -933,9 +806,14 @@ type examSubmissionHeaderRow struct {
 }
 
 const examSubmissionHeaderSelect = `SELECT id,exam_attempt_id,exam_revision_id,workspace_id,manifest_schema_version,workspace_cursor,
-	manifest_digest,manifest_entry_count,manifest_total_file_bytes,final_focus_loss_sequence,browser_activity_state,
-	browser_activity_source_session_id::text,browser_activity_final_sequence,browser_activity_gap_reason,integrity_state,
-	unresolved_integrity_count,work_retired_at,integrity_retired_at,provenance,submitted_at FROM exam_submissions`
+ manifest_digest,manifest_entry_count,manifest_total_file_bytes,final_focus_loss_sequence,integrity_state,
+ unresolved_integrity_count,work_retired_at,integrity_retired_at,provenance,submitted_at,
+ (SELECT browser_state FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id) AS browser_state,
+ (SELECT browser_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id) AS browser_inventory_revision,
+ (SELECT browser_source_count FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id) AS browser_source_count,
+ (SELECT browser_pending_count FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id) AS browser_pending_count,
+ (SELECT browser_incomplete_count FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id) AS browser_incomplete_count
+ FROM exam_submissions`
 
 func (row examSubmissionHeaderRow) model() (*model.ExamSubmission, error) {
 	// Work retirement leaves only a permanent receipt, never a readable header
@@ -950,11 +828,10 @@ func (row examSubmissionHeaderRow) model() (*model.ExamSubmission, error) {
 	}
 	if row.IntegrityRetiredAt.Valid {
 		if row.IntegrityState != string(model.SubmissionIntegrityRetired) || row.FinalFocusLossSequence.Valid ||
-			row.UnresolvedIntegrityCount.Valid || row.BrowserActivityState.Valid || row.BrowserSourceSessionID.Valid ||
-			row.BrowserFinalSequence.Valid || row.BrowserGapReason.Valid {
+			row.UnresolvedIntegrityCount.Valid {
 			return nil, invalidPersistedState("exam_submission", "integrity", errors.New("retired integrity header retains private data"))
 		}
-	} else if !row.FinalFocusLossSequence.Valid || !row.UnresolvedIntegrityCount.Valid || !row.BrowserActivityState.Valid {
+	} else if !row.FinalFocusLossSequence.Valid || !row.UnresolvedIntegrityCount.Valid {
 		return nil, invalidPersistedState("exam_submission", "integrity", errors.New("retained integrity header is incomplete"))
 	}
 	id, err := model.ParseSubmissionID(row.ID)
@@ -973,19 +850,12 @@ func (row examSubmissionHeaderRow) model() (*model.ExamSubmission, error) {
 	if err != nil {
 		return nil, invalidPersistedState("exam_submission", "workspace_id", err)
 	}
-	var finalSequence *int64
-	if row.BrowserFinalSequence.Valid {
-		value := row.BrowserFinalSequence.Int64
-		finalSequence = &value
-	}
 	submission := &model.ExamSubmission{ID: id, AttemptID: attemptID, ExamRevisionID: revisionID, WorkspaceID: workspaceID,
 		ManifestSchemaVersion: row.ManifestSchemaVersion, WorkspaceCursor: row.WorkspaceCursor.Int64,
 		ManifestDigest: row.ManifestDigest.String, ManifestEntryCount: int(row.ManifestEntryCount.Int64),
 		ManifestTotalFileBytes: row.ManifestTotalFileBytes.Int64, FinalFocusLossSequence: row.FinalFocusLossSequence.Int64,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionState(row.BrowserActivityState.String),
-			SourceSessionID: model.BrowserSourceSessionID(row.BrowserSourceSessionID.String), FinalSequence: finalSequence,
-			GapReason: model.BrowserActivitySubmissionGapReason(row.BrowserGapReason.String)},
-		IntegrityState: model.SubmissionIntegrityState(row.IntegrityState), UnresolvedIntegrityCount: row.UnresolvedIntegrityCount.Int64,
+		BrowserActivity: model.BrowserSubmissionSettlement{State: row.BrowserState, InventoryRevision: row.BrowserInventoryRevision, SourceCount: row.BrowserSourceCount, PendingSourceCount: row.BrowserPendingCount, IncompleteSourceCount: row.BrowserIncompleteCount},
+		IntegrityState:  model.SubmissionIntegrityState(row.IntegrityState), UnresolvedIntegrityCount: row.UnresolvedIntegrityCount.Int64,
 		Provenance: model.ExamSubmissionProvenance(row.Provenance), SubmittedAt: model.TimeUTC(row.SubmittedAt)}
 	if row.IntegrityRetiredAt.Valid {
 		submission.IntegrityRetiredAt = model.OptionalTimeFrom(row.IntegrityRetiredAt.Time)

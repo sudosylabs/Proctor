@@ -237,6 +237,7 @@ type LiveCorrectionExamRevisionSpecification struct {
 	Resources               []ExamRevisionResource
 	BrowserPolicy           BrowserPolicy
 	CandidateSummary        string
+	AffectedCapabilities    []CandidateCapability
 	AcknowledgementRequired bool
 	PublishedByUserID       UserID
 	PublishedAt             time.Time
@@ -257,7 +258,7 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRe
 	if err != nil {
 		return nil, err
 	}
-	notice, err := NewCandidateCorrectionNotice(spec.CandidateSummary, changedAreas, spec.AcknowledgementRequired)
+	notice, err := NewCandidateCorrectionNotice(spec.CandidateSummary, changedAreas, spec.AffectedCapabilities, spec.AcknowledgementRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -493,6 +494,7 @@ type examRevisionWorkspaceWire struct {
 type candidateCorrectionNoticeWire struct {
 	Summary                 string                      `json:"summary"`
 	ChangedAreas            []ExamCorrectionChangedArea `json:"changed_areas"`
+	AffectedCapabilities    []CandidateCapability       `json:"affected_capabilities"`
 	AcknowledgementRequired bool                        `json:"acknowledgement_required"`
 }
 
@@ -552,7 +554,7 @@ func candidateCorrectionNoticeWireFromModel(notice *CandidateCorrectionNotice) *
 	if notice == nil {
 		return nil
 	}
-	return &candidateCorrectionNoticeWire{Summary: notice.Summary, ChangedAreas: slices.Clone(notice.ChangedAreas),
+	return &candidateCorrectionNoticeWire{Summary: notice.Summary, ChangedAreas: slices.Clone(notice.ChangedAreas), AffectedCapabilities: slices.Clone(notice.AffectedCapabilities),
 		AcknowledgementRequired: notice.AcknowledgementRequired}
 }
 

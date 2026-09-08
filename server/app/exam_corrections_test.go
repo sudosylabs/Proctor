@@ -47,7 +47,7 @@ func TestCorrectionApplyPreservesOptionalInputsAndOwnsManifest(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			command := ApplyExamSittingCorrectionCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 				ExpectedSittingRevision: 2, ExpectedCurrentRevisionID: model.NewExamRevisionID(), Instructions: test.instructions,
-				BrowserPolicy: test.policy, Resources: test.resources, CandidateSummary: " raw summary ", AcknowledgementRequired: true,
+				BrowserPolicy: test.policy, Resources: test.resources, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: " raw summary ", AcknowledgementRequired: true,
 				PrivateReason: " raw reason ", IdempotencyKey: " raw-key "}
 			fake := &examCorrectionUseCasesFake{}
 			if _, err := (&App{examCorrections: fake}).ApplyExamSittingCorrection(ctx, invocation, command); err != nil {
@@ -110,7 +110,7 @@ func TestCorrectionApplyNarrowsInternalResult(t *testing.T) {
 		EffectiveAt: want.EffectiveAt, AcknowledgementRequired: true, Replayed: true,
 	}}
 	got, err := (&App{examCorrections: fake}).ApplyExamSittingCorrection(context.Background(), Invocation{}, ApplyExamSittingCorrectionCommand{})
-	if err != nil || got != want {
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("correction result = %#v, %v; want %#v", got, err, want)
 	}
 	for _, private := range []string{"AcknowledgementRequired", "Replayed"} {
@@ -141,7 +141,7 @@ func TestCorrectionFacadeConcealsFailuresAndDiscardsResults(t *testing.T) {
 			application := &App{examCorrections: fake}
 			stage, stageErr := application.StageExamSittingCorrectionResourceContent(context.Background(), Invocation{}, StageExamSittingCorrectionResourceContentCommand{})
 			result, applyErr := application.ApplyExamSittingCorrection(context.Background(), Invocation{}, ApplyExamSittingCorrectionCommand{})
-			if stage != (ExamSittingCorrectionResourceStage{}) || result != (ExamSittingCorrectionResult{}) {
+			if stage != (ExamSittingCorrectionResourceStage{}) || !reflect.DeepEqual(result, ExamSittingCorrectionResult{}) {
 				t.Fatalf("failed command returned a result: %#v, %#v", stage, result)
 			}
 			for _, err := range []error{stageErr, applyErr} {
@@ -201,6 +201,26 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 		events[3].Name != "candidate.exam_activity.changed" || events[3].UserID != candidateID.String() {
 		t.Fatalf("events = %#v", events)
 	}
+	for _, test := range []struct {
+		selected    []model.CandidateCapability
+		required    bool
+		wantRelease int
+	}{
+		{[]model.CandidateCapability{model.CandidateCapabilityBrowser}, true, 0},
+		{[]model.CandidateCapability{model.CandidateCapabilityTerminal}, false, 0},
+		{[]model.CandidateCapability{model.CandidateCapabilityTerminal}, true, 1},
+	} {
+		execution := &correctionExecutionFake{}
+		err := (examCorrectionRealtimeEffects{realtime: realtime, collections: collections, execution: execution}).Corrected(context.Background(), examcorrection.Result{
+			ExamID: examID, SittingID: sittingID, PreviousRevisionID: previousRevisionID,
+			RevisionID: revisionID, SittingRevision: 7, EffectiveAt: at,
+			AffectedCapabilities: test.selected, AcknowledgementRequired: test.required,
+		})
+		if err != nil || execution.releases != test.wantRelease {
+			t.Fatalf("correction release=%d, want=%d, err=%v", execution.releases, test.wantRelease, err)
+		}
+	}
+
 }
 
 type examCorrectionUseCasesFake struct {
@@ -220,4 +240,12 @@ func (f *examCorrectionUseCasesFake) StageResourceContent(ctx context.Context, c
 func (f *examCorrectionUseCasesFake) Apply(ctx context.Context, call examcorrection.Call, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
 	f.ctx, f.call, f.apply = ctx, call, c
 	return f.applyResult, f.err
+}
+
+// This verifies selection of the existing protective release, not actual freeze.
+type correctionExecutionFake struct{ releases int }
+
+func (fake *correctionExecutionFake) ReleaseSitting(context.Context, model.ExamSittingID) error {
+	fake.releases++
+	return nil
 }

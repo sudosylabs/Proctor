@@ -227,6 +227,7 @@ func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 }
 
 type examUseCasesFake struct {
+	nativePolicy     examengine.ConfigureDraftNativePolicyCommand
 	call             examengine.Call
 	create           examengine.CreateCommand
 	edit             examengine.EditDraftTextCommand
@@ -315,4 +316,9 @@ func testExamPrincipal(userID model.UserID) model.Principal {
 		AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: time.Now().UTC(),
 	}
+}
+
+func (f *examUseCasesFake) ConfigureDraftNativePolicy(_ context.Context, call examengine.Call, command examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error) {
+	f.call, f.nativePolicy = call, command
+	return f.view, f.err
 }

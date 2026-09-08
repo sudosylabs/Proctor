@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -57,25 +56,21 @@ func prepareExamAttemptConnect(t *testing.T, ctx context.Context, ss store.Store
 	settings, err := ss.UserSettings().Get(ctx, input.CandidateUserID)
 	requireNoError(t, err)
 	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
-	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest, settings.Revision,
-		"sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
-			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
-			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
-			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
-			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
-			CandidateCommandBindings: []model.AttemptCommandBinding{},
-		})
+	configuration := model.AttemptConfigurationCandidate{ManifestFingerprint: manifest, RegistryFingerprint: "fnv1a64:" + strings.Repeat("b", 16), UserSettingsRevision: settings.Revision, DesktopBuild: session.DesktopBuildID, DesktopTarget: string(session.DesktopPlatform) + "-" + string(session.DesktopArchitecture), Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}
+	err = configuration.Validate()
 	requireNoError(t, err)
-	input.SupportedConfigurationManifests = []string{manifest}
+	input.ConfigurationManifestFingerprint = manifest
 	input.InitialConfiguration = &configuration
 	input.DesktopBuild = model.DesktopBuildTuple{DesktopRelease: session.DesktopRelease, DesktopBuildID: session.DesktopBuildID,
 		Platform: session.DesktopPlatform, Architecture: session.DesktopArchitecture, RealtimeProtocol: session.DesktopRealtimeProtocol,
 		AttemptConfigurationManifestFingerprint: manifest,
-		DesktopSettingsRegistryFingerprint:      configuration.SourceDesktopRegistryFingerprint,
-		CapabilityMatrixIdentity:                "storetest-matrix"}
+		DesktopSettingsRegistryFingerprint:      configuration.RegistryFingerprint,
+		DesktopTarget:                           configuration.DesktopTarget, ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
+		CapabilityMatrixIdentity: "storetest-matrix"}
 	policy, err := ss.DesktopCompatibilityPolicy().Get(ctx)
 	requireNoError(t, err)
 	input.DesktopCompatibilityPolicyRevision = policy.Revision
+	prepareConnectSecurityFixture(t, ctx, ss, input)
 }
 
 func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQLProbe) {
@@ -117,10 +112,8 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	}
 	prepareExamAttemptConnect(t, ctx, ss, configurationInput)
 	stale := configurationInput.InitialConfiguration.Clone()
-	stale.SourceUserSettingsRevision = model.NewUserSettingsRevision()
-	stale, err = model.NewAttemptConfiguration(stale.SchemaVersion, stale.ManifestFingerprint,
-		stale.SourceUserSettingsRevision, stale.SourceDesktopRegistryFingerprint, stale.Preferences)
-	requireNoError(t, err)
+	stale.UserSettingsRevision = model.NewUserSettingsRevision()
+	requireNoError(t, stale.Validate())
 	configurationInput.InitialConfiguration = &stale
 	configurationInput.AttemptID = model.NewExamAttemptID()
 	configurationInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, configurationFixture).ID.String()
@@ -156,6 +149,23 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		t.Fatalf("Connect() = %#v", connected)
 	}
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
+	if connected.Configuration.Validate() != nil || connected.Configuration.Revision == "" ||
+		connected.Configuration.UserSettingsRevision != input.InitialConfiguration.UserSettingsRevision ||
+		connected.Configuration.DesktopBuild != input.InitialConfiguration.DesktopBuild {
+		t.Fatal("first admission did not freeze the complete proposed configuration")
+	}
+	frozenDocument, err := connected.Configuration.CanonicalAdmission()
+	requireNoError(t, err)
+	settings, err := ss.UserSettings().Get(ctx, fixture.candidate.ID)
+	requireNoError(t, err)
+	nextSettingsRevision := model.NewUserSettingsRevision()
+	changedSource := "{\"workbench.colorTheme\":\"hcLight\"}"
+	_, err = ss.UserSettings().Replace(ctx, &store.UserSettingsReplacement{
+		UserID: fixture.candidate.ID, Source: changedSource, FormatVersion: 1,
+		ExpectedRevision: settings.Revision, NextRevision: nextSettingsRevision, UpdatedAt: settings.UpdatedAt.Add(time.Second),
+		AuditEvent: userSettingsAudit(fixture.candidate.ID, fixture.institutionID, settings.Revision, nextSettingsRevision, len(changedSource)),
+	}, userSettingsCommand(fixture.candidate.ID, "after-attempt-freeze", changedSource))
+	requireNoError(t, err)
 	connectedAudit, err := ss.Audit().Get(ctx, input.AuditEventID)
 	requireNoError(t, err)
 	if bytes.Contains(connectedAudit.Result, []byte(credentialHash)) {
@@ -167,6 +177,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	requireNoError(t, err)
 	if !replayed.Replayed || replayed.ConnectionOpened || replayed.Attempt.ID != connected.Attempt.ID || replayed.Connection.ID != connected.Connection.ID {
 		t.Fatalf("Connect(replay) = %#v", replayed)
+	}
+	replayDocument, err := replayed.Configuration.CanonicalAdmission()
+	requireNoError(t, err)
+	if !bytes.Equal(replayDocument, frozenDocument) || replayed.Configuration.UserSettingsRevision == nextSettingsRevision {
+		t.Fatal("replay regenerated frozen configuration from newer User Settings")
 	}
 	testExamAttemptParticipationRenewal(t, ctx, ss, fixture, connected, credentialHash)
 
@@ -243,6 +258,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		t.Fatalf("Resume() = %#v", resumed)
 	}
 	openConnectionInput := *input
+	openConnectionInput.Security = model.ConnectSecurity{Kind: "resume", ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyDigest: connected.Security.Policy.Digest}
 	openConnectionInput.AttemptID, openConnectionInput.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	openConnectionInput.ParticipationID, openConnectionInput.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
 	openConnectionInput.AuditEventID, openConnectionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
@@ -348,6 +364,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	}
 
 	reconnectInput := *input
+	reconnectInput.Security = model.ConnectSecurity{Kind: "resume", ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, PolicyDigest: connected.Security.Policy.Digest}
 	reconnectInput.AttemptID, reconnectInput.WorkspaceID = model.NewExamAttemptID(), model.NewExamAttemptWorkspaceID()
 	reconnectInput.ParticipationID, reconnectInput.ConnectionID = model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
 	reconnectInput.AuditEventID, reconnectInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
@@ -619,10 +636,11 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-expiry-connect", "attempt-expiry-connect"))
 	requireNoError(t, err)
 	if probe.FenceRenewalPastDeadline != nil {
-		renewal := &store.ExamAttemptParticipationRenewal{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
+		renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1, AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 			ConnectionID: connected.Connection.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
 			DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 			Generation: connected.Participation.Generation, Sequence: 1, ContinuityCredentialHash: credentialHash}
+		prepareParticipationRenewalCoverage(t, ctx, ss, renewal)
 		renewErr := probe.FenceRenewalPastDeadline(t, ctx, connected.Participation.ID, func() error {
 			_, contenderErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
 			return contenderErr
@@ -906,12 +924,13 @@ func testExamAttemptParticipationRenewal(t *testing.T, ctx context.Context, ss s
 	connected *store.ExamAttemptConnectResult, credentialHash string,
 ) {
 	t.Helper()
-	input := &store.ExamAttemptParticipationRenewal{
+	input := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1,
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: connected.Participation.Generation,
 		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		Sequence: 1, ContinuityCredentialHash: credentialHash,
 	}
+	prepareParticipationRenewalCoverage(t, ctx, ss, input)
 	renewed, err := ss.ExamAttempt().RenewParticipation(ctx, input)
 	requireNoError(t, err)
 	if renewed == nil || renewed.AttemptID != input.AttemptID || renewed.ParticipationID != input.ParticipationID ||
@@ -1094,7 +1113,7 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID.String(), AuditAt: model.GetMillis()}
 		prepareExamAttemptConnect(t, ctx, ss, inputs[index])
 		commands[index] = examCommand(candidate.ID, store.ExamAttemptConnectOperation,
-			fmt.Sprintf("attempt-concurrent-%d", index), fmt.Sprintf("attempt-concurrent-%d", index))
+			"attempt-concurrent-retry", "attempt-concurrent-retry")
 	}
 	start := make(chan struct{})
 	results := make(chan *store.ExamAttemptConnectResult, 2)
@@ -1123,7 +1142,7 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 	}
 	if len(connected) != 2 || connected[0] == nil || connected[1] == nil || connected[0].Attempt.ID != connected[1].Attempt.ID ||
 		connected[0].Workspace.ID != connected[1].Workspace.ID || connected[0].Participation.ID != connected[1].Participation.ID ||
-		connected[0].Connection.ID != connected[1].Connection.ID || connected[0].FirstAdmission == connected[1].FirstAdmission ||
+		connected[0].Connection.ID != connected[1].Connection.ID || connected[0].Replayed == connected[1].Replayed ||
 		connected[0].ConnectionOpened == connected[1].ConnectionOpened {
 		t.Fatalf("concurrent Connect results = %#v", connected)
 	}

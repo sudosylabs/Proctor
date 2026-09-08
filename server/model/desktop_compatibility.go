@@ -233,18 +233,45 @@ type DesktopBuildTuple struct {
 	AttemptConfigurationManifestFingerprint string
 	DesktopSettingsRegistryFingerprint      string
 	CapabilityMatrixIdentity                string
+	ConfigurationManifest                   *AttemptConfigurationManifest
+	DesktopTarget                           string
+	NativeAgreement                         *DesktopNativeAgreement
 }
 
 // Validate checks one immutable build-catalog entry.
 func (t DesktopBuildTuple) Validate() error {
 	if !IsValidDesktopRelease(t.DesktopRelease) || !IsValidDesktopBuildID(t.DesktopBuildID) ||
-		!t.Platform.IsValid() || !t.Architecture.IsValid() || t.RealtimeProtocol < 1 ||
+		!t.Platform.IsValid() || !t.Architecture.IsValid() || !IsValidAgreementID(t.DesktopTarget) || t.RealtimeProtocol < 1 ||
 		!IsValidSHA256Fingerprint(t.AttemptConfigurationManifestFingerprint) ||
-		!IsValidSHA256Fingerprint(t.DesktopSettingsRegistryFingerprint) ||
+		t.ConfigurationManifest.Fingerprint() != t.AttemptConfigurationManifestFingerprint ||
+		!IsValidRegistryFingerprint(t.DesktopSettingsRegistryFingerprint) ||
 		!validBoundedDesktopIdentity(t.CapabilityMatrixIdentity, DesktopCapabilityMatrixIdentityMaxBytes) {
 		return errors.New("desktop build tuple is invalid")
 	}
+	if t.NativeAgreement != nil && (t.NativeAgreement.Matrix().MatrixID != t.CapabilityMatrixIdentity || t.NativeAgreement.Matrix().TargetTuple != t.DesktopTarget) {
+		return errors.New("desktop build native agreement binding is invalid")
+	}
 	return nil
+}
+
+// TargetTuple returns the exact packaged executable target identity.
+func (t DesktopBuildTuple) TargetTuple() string {
+	return t.DesktopTarget
+}
+
+// IsValidRegistryFingerprint recognizes the packaged FNV-1a registry selector.
+// It is not a cryptographic digest or proof of an admitted Desktop build.
+func IsValidRegistryFingerprint(value string) bool {
+	const prefix = "fnv1a64:"
+	if len(value) != len(prefix)+16 || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	for _, character := range value[len(prefix):] {
+		if !(character >= '0' && character <= '9' || character >= 'a' && character <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // IsValid reports whether the platform is recognized by this protocol.

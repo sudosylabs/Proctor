@@ -105,7 +105,7 @@ components:
         archived_at:
           type:
             - string
-            - "null"
+            - 'null'
           format: date-time
         revision:
           type: integer
@@ -175,30 +175,37 @@ components:
             - allowlist
     BrowserPolicy:
       type: object
+      description: >-
+        A canonically ordered policy of at most 128 rules and 32 KiB. Matching selects longest path prefix,
+        exact host before wildcard, longest configured hostname, then lexically smallest rule ID; input array
+        order never selects permissions.
       additionalProperties: false
       required:
-        - schema_version
         - enabled
       properties:
-        schema_version:
-          type: integer
-          const: 1
         enabled:
           type: boolean
         start_rule_id:
           type: string
           minLength: 1
           maxLength: 64
+          pattern: ^[a-z0-9_-]{1,64}$
         rules:
           type: array
           minItems: 1
-          maxItems: 64
+          maxItems: 128
           items:
             $ref: '#/components/schemas/BrowserPolicyRule'
       oneOf:
         - properties:
             enabled:
               const: false
+          not:
+            anyOf:
+              - required:
+                  - start_rule_id
+              - required:
+                  - rules
         - required:
             - start_rule_id
             - rules
@@ -215,37 +222,60 @@ components:
         - host_match
         - allow_redirects
         - blocked_navigation_outcome
+        - institution_http_exception
       properties:
         rule_id:
           type: string
           minLength: 1
           maxLength: 64
+          pattern: ^[a-z0-9_-]{1,64}$
         origin:
           type: string
           format: uri
-          pattern: '^https://'
+          pattern: ^https?://
+          maxLength: 2048
+          description: >-
+            Bounded ASCII network origin. HTTPS is normal; HTTP requires the explicit institution exception.
+            Normalize HTTPS 443 and HTTP 80 away. DNS labels or canonical browser IPv4 only; no IDN, punycode,
+            IPv6, trailing dot, credentials, query, fragment or non-root path. Nondefault ports are decimal
+            1..65535 without leading zeros. IP rules require exact matching.
         path_prefix:
           type: string
-          pattern: '^/'
+          pattern: ^/
+          maxLength: 2048
+          description: >-
+            ASCII prefix matched exactly or at a slash-delimited descendant. One non-root trailing slash is
+            removed at authoring. Dot segments, malformed percent escapes and encoded slash or backslash are
+            rejected. Repeated internal slashes, unreserved percent escapes and percent-triplet case remain
+            distinct.
         host_match:
           type: string
-          enum: [exact, exact_and_subdomains]
+          enum:
+            - exact
+            - exact_and_subdomains
         allow_redirects:
           type: boolean
         blocked_navigation_outcome:
           type: string
-          const: record
+          enum:
+            - record
+            - integrity_evidence
+        institution_http_exception:
+          type: boolean
+          description: >-
+            Required true only for an HTTP rule whose normalized host and explicit-port component equal the
+            installation-owned canonical HTTPS origin. HTTPS requires false; this never authorizes HTTP
+            credential transport.
     ExamPolicySet:
       type: object
       additionalProperties: false
       required:
-        - schema_version
+        - native
         - connection_loss
         - focus_loss
       properties:
-        schema_version:
-          type: integer
-          const: 1
+        native:
+          $ref: '#/components/schemas/NativeSecurityPolicy'
         connection_loss:
           $ref: '#/components/schemas/ConnectionLossPolicy'
         focus_loss:

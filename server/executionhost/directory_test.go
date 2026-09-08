@@ -29,7 +29,7 @@ func TestDirectoryDialsCatalogAndProjectsTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog) != 1 || !catalog[0].Usable || !catalog[0].Isolated || catalog[0].Slots != 2 ||
+	if len(catalog) != 1 || !catalog[0].Usable || catalog[0].Isolated != fixture.directory.hosts["runner-a"].capabilities().Isolated || catalog[0].Slots != 2 ||
 		len(catalog[0].Images) != 1 || catalog[0].Images[0] != "toolchain" {
 		t.Fatalf("Catalog() = %#v", catalog)
 	}
@@ -330,7 +330,7 @@ func TestDisabledDirectoryDoesNotReadTLSFiles(t *testing.T) {
 func TestEnvironmentRefusesUnsafeIncrementalProjectionBeforeHostIO(t *testing.T) {
 	t.Parallel()
 	// No host is installed: touching the transport would panic. The refusal
-	// protects the real v0.2 watcher contract, independent of memory semantics.
+	// prevents bypassing fenced journal projection, independent of host semantics.
 	env := &environment{}
 	if err := env.Apply(t.Context(), []appexecution.Mutation{{Operation: appexecution.OperationCreate, Kind: appexecution.NodeFile, Path: "saved", Version: "v1", Data: []byte("acknowledged")}}); !errors.Is(err, appexecution.ErrConflict) {
 		t.Fatalf("Apply = %v, want an explicit projection conflict", err)

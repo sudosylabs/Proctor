@@ -46,6 +46,12 @@ occurrence or permanent deduplication ledger. Both mechanisms call application
 use cases with fenced durable state; neither infers authority from an in-memory
 connection or cluster notification.
 
+The same bounded runtime pass also settles at most 200 closed delivery owners
+using indexed upload deadlines. Each native or Browser expiry rechecks the
+Sitting/Attempt fence and PostgreSQL time, commits a system audit and marks its
+source processed. Pending interpretation and explicit loss converge without
+requiring a client read. The sweep creates no content receipt or live authority.
+
 WebSocket liveness, authenticated Attempt Participation renewal, and native
 process health are separate signals. A successful connection response gives
 the privileged external client coordinator the server-owned renewal interval.

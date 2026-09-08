@@ -24,17 +24,19 @@ type SQLRetentionPolicyStore struct {
 }
 
 type retentionPolicyRow struct {
-	InstitutionID            string    `db:"institution_id"`
-	Revision                 int64     `db:"revision"`
-	SubmissionRetentionDays  int       `db:"submission_retention_days"`
-	IntegrityRetentionDays   int       `db:"integrity_retention_days"`
-	AuditRetentionDays       int       `db:"audit_retention_days"`
-	ExportRetentionDays      int       `db:"export_retention_days"`
-	DeletionGraceDays        int       `db:"deletion_grace_days"`
-	CandidateNotices         bool      `db:"candidate_notices"`
-	AutomaticDeletionEnabled bool      `db:"automatic_deletion_enabled"`
-	CreatedAt                time.Time `db:"created_at"`
-	UpdatedAt                time.Time `db:"updated_at"`
+	InstitutionID                    string    `db:"institution_id"`
+	Revision                         int64     `db:"revision"`
+	SubmissionRetentionDays          int       `db:"submission_retention_days"`
+	IntegrityRetentionDays           int       `db:"integrity_retention_days"`
+	BrowserActivityRetentionDays     int       `db:"browser_activity_retention_days"`
+	SecurityOperationalRetentionDays int       `db:"security_operational_retention_days"`
+	AuditRetentionDays               int       `db:"audit_retention_days"`
+	ExportRetentionDays              int       `db:"export_retention_days"`
+	DeletionGraceDays                int       `db:"deletion_grace_days"`
+	CandidateNotices                 bool      `db:"candidate_notices"`
+	AutomaticDeletionEnabled         bool      `db:"automatic_deletion_enabled"`
+	CreatedAt                        time.Time `db:"created_at"`
+	UpdatedAt                        time.Time `db:"updated_at"`
 }
 
 type retentionPolicyReplacementOutcome struct {
@@ -97,10 +99,10 @@ func (s SQLRetentionPolicyStore) Replace(
 				if changed {
 					result, updateErr := tx.Exec(ctx, `
                         UPDATE retention_policies
-                           SET revision=?, submission_retention_days=?, integrity_retention_days=?,
+                           SET revision=?, submission_retention_days=?, integrity_retention_days=?,browser_activity_retention_days=?,security_operational_retention_days=?,
                                audit_retention_days=?, export_retention_days=?, deletion_grace_days=?, candidate_notices=?, updated_at=?
                          WHERE institution_id=? AND revision=?`,
-						candidate.Revision, candidate.SubmissionRetentionDays, candidate.IntegrityRetentionDays,
+						candidate.Revision, candidate.SubmissionRetentionDays, candidate.IntegrityRetentionDays, candidate.BrowserActivityRetentionDays, candidate.SecurityOperationalRetentionDays,
 						candidate.AuditRetentionDays, candidate.ExportRetentionDays, candidate.DeletionGraceDays,
 						candidate.CandidateNotices, candidate.UpdatedAt, current.InstitutionID.String(), current.Revision,
 					)
@@ -199,7 +201,7 @@ func getRetentionPolicy(
 	executor sqlxExecutor,
 	lock string,
 ) (*model.RetentionPolicy, error) {
-	query := `SELECT p.institution_id, p.revision, p.submission_retention_days, p.integrity_retention_days,
+	query := `SELECT p.institution_id, p.revision, p.submission_retention_days, p.integrity_retention_days,p.browser_activity_retention_days,p.security_operational_retention_days,
   p.audit_retention_days, p.export_retention_days, p.deletion_grace_days, p.candidate_notices, p.created_at, p.updated_at,
   EXISTS(SELECT 1 FROM retention_controls c WHERE c.institution_id=p.institution_id AND c.state='enabled'
     AND c.approved_policy_revision=p.revision AND p.deletion_grace_days>0) AS automatic_deletion_enabled
@@ -223,7 +225,7 @@ func (r retentionPolicyRow) model() (*model.RetentionPolicy, error) {
 	policy := &model.RetentionPolicy{
 		InstitutionID: institutionID, Revision: r.Revision,
 		RetentionPolicySettings: model.RetentionPolicySettings{
-			SubmissionRetentionDays: r.SubmissionRetentionDays, IntegrityRetentionDays: r.IntegrityRetentionDays,
+			SubmissionRetentionDays: r.SubmissionRetentionDays, IntegrityRetentionDays: r.IntegrityRetentionDays, BrowserActivityRetentionDays: r.BrowserActivityRetentionDays, SecurityOperationalRetentionDays: r.SecurityOperationalRetentionDays,
 			AuditRetentionDays: r.AuditRetentionDays, ExportRetentionDays: r.ExportRetentionDays,
 			DeletionGraceDays: r.DeletionGraceDays, CandidateNotices: r.CandidateNotices,
 		},
@@ -314,9 +316,9 @@ func insertInitialRetentionPolicy(ctx context.Context, executor sqlxExecutor, po
 		return store.NewErrInvalidInput("retention_policy", "initial", nil)
 	}
 	_, err := executor.Exec(ctx, `INSERT INTO retention_policies (
-        institution_id, revision, submission_retention_days, integrity_retention_days,
+        institution_id, revision, submission_retention_days, integrity_retention_days,browser_activity_retention_days,security_operational_retention_days,
         audit_retention_days, export_retention_days, deletion_grace_days, created_at, updated_at
-    ) VALUES (?, 1, 0, 0, 0, 0, 0, ?, ?)`, policy.InstitutionID.String(), policy.CreatedAt, policy.UpdatedAt)
+    ) VALUES (?, 1, 0, 0, 0, 0, 0, 0, 0, ?, ?)`, policy.InstitutionID.String(), policy.CreatedAt, policy.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save initial retention policy: %w", translateError("retention_policy", policy.InstitutionID.String(), err))
 	}

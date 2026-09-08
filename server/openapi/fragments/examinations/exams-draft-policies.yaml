@@ -144,7 +144,6 @@ components:
           example:
             expected_draft_revision: 4
             browser_policy:
-              schema_version: 1
               enabled: false
     ConfigureExamDraftFocusLoss:
       required: true

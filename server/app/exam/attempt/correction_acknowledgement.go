@@ -26,6 +26,7 @@ type CorrectionAcknowledgementResult struct {
 	CorrectionRevisionID model.ExamRevisionID
 	CurrentRevisionID    model.ExamRevisionID
 	AcknowledgedAt       model.OptionalTime
+	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 }
 
 func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, command AcknowledgeCorrectionCommand) (CorrectionAcknowledgementResult, error) {
@@ -79,6 +80,16 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, co
 		stored.CurrentRevisionID != command.ExpectedCurrentRevisionID || stored.AcknowledgedAt.IsZero() {
 		return CorrectionAcknowledgementResult{}, unavailable(errors.New("inconsistent correction acknowledgement outcome"))
 	}
+	// The receipt is immutable; the gates are freshly resolved after commit,
+	// including an exact replay or another correction published in the meantime.
+	presentation, err := service.GetPresentation(ctx, call, command.Access.CandidateAccess)
+	if err != nil {
+		return CorrectionAcknowledgementResult{}, err
+	}
+	if presentation.AttemptID != target.AttemptID || presentation.SittingID != target.SittingID {
+		return CorrectionAcknowledgementResult{}, unavailable(errors.New("inconsistent current acknowledgement presentation"))
+	}
 	return CorrectionAcknowledgementResult{CorrectionRevisionID: stored.CorrectionRevisionID,
-		CurrentRevisionID: stored.CurrentRevisionID, AcknowledgedAt: model.OptionalTimeFrom(stored.AcknowledgedAt)}, nil
+		CurrentRevisionID: presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID,
+		AcknowledgedAt:    model.OptionalTimeFrom(stored.AcknowledgedAt), RuntimeCapabilities: presentation.RuntimeCapabilities}, nil
 }

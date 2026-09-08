@@ -23,13 +23,15 @@ Use a fresh Review snapshot and verify all of the following:
 
 Finalization locks the sealed Submission and freezes stable Flag, decision,
 evidence, and discrepancy identities in a canonical digest. The operation is
-bounded to 200 Flags, 20,000 evidence rows, and 200 explicit discrepancies. A
-larger inventory must be investigated; it cannot be silently truncated to make
-finalization succeed.
+bounded and includes Browser groups, retained copies, overflow counts and the
+native-condition inventory. An inventory limit cannot be bypassed by silently
+omitting records.
 
-After finalization, notes, remarks, and decisions have no mutable backdoor.
-Late integrity records remain visible as append-only discrepancies, but they do
-not rewrite the finalized inventory or released projection.
+Historical finalization snapshots stay immutable. New qualifying Browser evidence
+or native conditions arriving within the upload window withdraw current approval
+and withhold any released result. Inspect the changed inventory, refresh affected
+Browser Flag decisions, finalize and explicitly release again. Exact delivery
+replays do not trigger this process.
 
 ## Release Is a Separate Decision
 

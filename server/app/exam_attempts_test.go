@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -225,7 +226,7 @@ func TestRenewExamAttemptParticipationDelegatesWithoutInventingTransportPingStat
 	command := RenewExamAttemptParticipationCommand{AttemptID: want.AttemptID, ParticipationID: want.ParticipationID,
 		ConnectionID: model.NewAttemptConnectionID(), Generation: 2, Sequence: 8, ContinuityCredential: model.NewCredentialToken()}
 	got, err := application.RenewExamAttemptParticipation(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
-	if err != nil || got != want || len(fake.renewals) != 1 || fake.renewals[0] != examattempt.RenewParticipationCommand(command) {
+	if err != nil || !reflect.DeepEqual(got, want) || len(fake.renewals) != 1 || !reflect.DeepEqual(fake.renewals[0], examattempt.RenewParticipationCommand(command)) {
 		t.Fatalf("result=%#v error=%v calls=%#v", got, err, fake.renewals)
 	}
 }
@@ -241,7 +242,7 @@ func TestEvaluateExamAttemptFocusLossDelegatesExactTrustedClaim(t *testing.T) {
 		ConnectionID: model.NewAttemptConnectionID(), Generation: 2, Sequence: 8, DurationMilliseconds: 2500,
 		Source: model.FocusLossSourceWindowBlur, ContinuityCredential: model.NewCredentialToken()}
 	got, err := application.EvaluateExamAttemptFocusLoss(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
-	if err != nil || got != want || len(fake.focusLoss) != 1 || fake.focusLoss[0] != examattempt.FocusLossCommand(command) {
+	if err != nil || !reflect.DeepEqual(got, want) || len(fake.focusLoss) != 1 || fake.focusLoss[0] != examattempt.FocusLossCommand(command) {
 		t.Fatalf("result=%#v error=%v calls=%#v", got, err, fake.focusLoss)
 	}
 }
@@ -316,7 +317,7 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
-	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{
+	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(), State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 13, ManifestDigest: strings.Repeat("d", 64),
 		SubmittedAt: time.Date(2026, time.August, 21, 11, 0, 0, 0, time.UTC),
@@ -358,7 +359,7 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 		t.Fatal(err)
 	}
 	result := examattempt.AutomaticSubmissionResult{SubmissionResult: examattempt.SubmissionResult{
-		Receipt: store.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
+		Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
 			State: model.ExamAttemptSubmitted, WorkspaceCursor: 21, ManifestDigest: strings.Repeat("e", 64),
 			SubmittedAt: time.Date(2026, time.August, 22, 11, 0, 0, 0, time.UTC)},
 		Provenance: model.ExamSubmissionSittingClosed, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
@@ -622,8 +623,8 @@ func (fake *examAttemptUseCasesFake) ListCandidateActivity(context.Context, exam
 func (fake *examAttemptUseCasesFake) ListSittingCandidateStatuses(context.Context, examattempt.Call, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error) {
 	return examattempt.SittingCandidateStatusesPage{}, fake.err
 }
-func (fake *examAttemptUseCasesFake) StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
-	return model.BrowserActivityAcknowledgement{}, fake.err
+func (fake *examAttemptUseCasesFake) StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
+	return model.BrowserSourceStatus{}, fake.err
 }
 func (fake *examAttemptUseCasesFake) AppendBrowserActivity(context.Context, examattempt.Call, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
 	return model.BrowserActivityAcknowledgement{}, fake.err
@@ -678,3 +679,76 @@ func (fake *examAttemptUseCasesFake) SealForSittingClose(context.Context, examat
 }
 
 var _ examAttemptUseCases = (*examAttemptUseCasesFake)(nil)
+
+func (fake *examAttemptUseCasesFake) PrepareSecurityPreflight(context.Context, examattempt.Call, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
+	return nil, errors.New("unexpected preflight prepare")
+}
+func (fake *examAttemptUseCasesFake) ReportSecurityPreflight(context.Context, examattempt.Call, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+	return nil, errors.New("unexpected preflight report")
+}
+
+func (fake *examAttemptUseCasesFake) RecoverSecurityPolicy(context.Context, examattempt.Call, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+	return nil, errors.New("unexpected security recovery")
+}
+
+func (fake *examAttemptUseCasesFake) UpdateSecurityCoverage(context.Context, examattempt.Call, examattempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
+}
+
+func (fake *examAttemptUseCasesFake) NativeDeliveryStatus(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected NativeDeliveryStatus")
+}
+
+func (fake *examAttemptUseCasesFake) NativeDeliveryReceipt(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
+	return nil, errors.New("unexpected NativeDeliveryReceipt")
+}
+
+func (fake *examAttemptUseCasesFake) DeclareNativeDeliveryGaps(context.Context, examattempt.Call, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
+}
+
+func (fake *examAttemptUseCasesFake) SealNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected SealNativeDelivery")
+}
+
+func (fake *examAttemptUseCasesFake) UpdateNativeDeliverySummary(context.Context, examattempt.Call, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
+}
+
+func (fake *examAttemptUseCasesFake) AppendNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendNativeDelivery")
+}
+
+func (fake *examAttemptUseCasesFake) BrowserSourceStatus(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+	return nil, fake.err
+}
+func (fake *examAttemptUseCasesFake) BrowserSourceList(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+	return nil, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) BrowserDeliveryReceipts(context.Context, examattempt.Call, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
+	return nil, errors.New("unexpected BrowserDeliveryReceipts")
+}
+func (fake *examAttemptUseCasesFake) DeclareBrowserDeliveryGaps(context.Context, examattempt.Call, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
+}
+func (fake *examAttemptUseCasesFake) SealBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+	return nil, errors.New("unexpected SealBrowserDelivery")
+}
+func (fake *examAttemptUseCasesFake) UpdateBrowserDeliverySummary(context.Context, examattempt.Call, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
+}
+func (fake *examAttemptUseCasesFake) AppendHistoricalBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
+}
+
+func (fake *examAttemptUseCasesFake) ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error) {
+	return examattempt.ExpiryScanResult{}, nil
+}
+
+func (fake *examAttemptUseCasesFake) DeliveryBudget(context.Context, examattempt.Call, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+	return nil, errors.New("unexpected DeliveryBudget")
+}
+func (fake *examAttemptUseCasesFake) StopDeliveryDetails(context.Context, examattempt.Call, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+	return nil, errors.New("unexpected StopDeliveryDetails")
+}

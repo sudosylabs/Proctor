@@ -54,12 +54,12 @@ func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "RetentionPolicyRequest", DTO: reflect.TypeOf(retentionPolicyRequest{}),
-				Required:    []string{"expected_revision", "submission_retention_days", "integrity_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days"},
-				NonNullable: []string{"expected_revision", "submission_retention_days", "integrity_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days", "candidate_notices"},
+				Required:    []string{"expected_revision", "submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days"},
+				NonNullable: []string{"expected_revision", "submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days", "candidate_notices"},
 			},
 			{
 				Name: "RetentionPolicyResponse", DTO: reflect.TypeOf(retentionPolicyResponse{}),
-				Required: []string{"revision", "submission_retention_days", "integrity_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days", "candidate_notices", "automatic_deletion_enabled", "created_at", "updated_at"},
+				Required: []string{"revision", "submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days", "candidate_notices", "automatic_deletion_enabled", "created_at", "updated_at"},
 			},
 		},
 		OperationSelector: func(_ string, path string) bool {
@@ -80,7 +80,7 @@ func TestRetentionPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 		t.Fatal("RetentionPolicyOK must require private no-store")
 	}
 	for _, name := range []string{"RetentionPolicyRequest", "RetentionPolicyResponse"} {
-		for _, field := range []string{"submission_retention_days", "integrity_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days"} {
+		for _, field := range []string{"submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days", "export_retention_days", "deletion_grace_days"} {
 			var bounds struct {
 				Minimum *int `json:"minimum"`
 				Maximum *int `json:"maximum"`

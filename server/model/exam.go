@@ -8,6 +8,7 @@
 package model
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -139,7 +140,7 @@ type ExamDraft struct {
 func NewExamDraft(examID ExamID, title, instructionsMarkdown string, policy ExamPolicySet, at time.Time) (*ExamDraft, error) {
 	draft := &ExamDraft{
 		ExamID: examID, Title: strings.TrimSpace(title),
-		InstructionsMarkdown: instructionsMarkdown, Policy: policy, ExecutionProfile: DefaultExecutionProfile(), BrowserPolicy: DisabledBrowserPolicy(),
+		InstructionsMarkdown: instructionsMarkdown, Policy: policy.Clone(), ExecutionProfile: DefaultExecutionProfile(), BrowserPolicy: DisabledBrowserPolicy(),
 		UpdatedAt: TimeUTC(at), Revision: 1,
 	}
 	if err := draft.Validate(); err != nil {
@@ -172,7 +173,7 @@ func (d *ExamDraft) Validate() error {
 	if d.Revision < 1 {
 		return invalidModelError(where, "exam_draft", "revision", "must be positive", details)
 	}
-	if err := d.Policy.Validate(); err != nil {
+	if _, err := EncodeExamPolicySet(d.Policy); err != nil {
 		return fmt.Errorf("%s: policy: %w", where, err)
 	}
 	if err := d.ExecutionProfile.Validate(); err != nil {
@@ -329,3 +330,33 @@ func (m *ExamManager) Validate() error {
 }
 
 var _ Auditable = (*Exam)(nil)
+
+// ApplyNativePolicy replaces optional family selections while preserving the mandatory baseline.
+func (d *ExamDraft) ApplyNativePolicy(policy NativeSecurityPolicy, at time.Time) (bool, error) {
+	if d == nil {
+		return false, invalidModelError("ExamDraft.ApplyNativePolicy", "exam_draft", "value", "is required", "")
+	}
+	if policy.Validate() != nil {
+		return false, errNativePolicy
+	}
+	before, _ := encodeCanonicalExamDocument(d.Policy.Native)
+	after, err := encodeCanonicalExamDocument(policy)
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(before, after) {
+		return false, nil
+	}
+	candidate := *d
+	candidate.Policy.Native = policy.Clone()
+	candidate.Revision++
+	candidate.UpdatedAt = TimeUTC(at)
+	if candidate.UpdatedAt.Before(d.UpdatedAt) {
+		candidate.UpdatedAt = d.UpdatedAt
+	}
+	if err := candidate.Validate(); err != nil {
+		return false, err
+	}
+	*d = candidate
+	return true, nil
+}

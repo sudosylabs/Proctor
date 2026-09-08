@@ -317,7 +317,7 @@ func TestAcademicUnitOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "AcademicUnitResponse", DTO: reflect.TypeOf(academicUnitResponse{}), Required: []string{"revision", "id", "create_at", "update_at", "delete_at", "institution_id", "name", "display_name", "description"}},
 			{Name: "CreateAcademicUnitRequest", DTO: reflect.TypeOf(createAcademicUnitRequest{}), Required: []string{"name", "display_name"}},
 			{Name: "UpdateAcademicUnitRequest", DTO: reflect.TypeOf(updateAcademicUnitRequest{}), NonNullable: []string{"expected_revision"}},
-			{Name: "ProblemDetails", DTO: reflect.TypeOf(Problem{}), Required: []string{"type", "title", "status", "code"}},
+			{Name: "ProblemDetails", DTO: reflect.TypeOf(Problem{}), Required: []string{"type", "title", "status", "code"}, Nullable: deliveryRecoveryNullablePaths()},
 		},
 		OperationSelector: academicUnitOperation,
 	}

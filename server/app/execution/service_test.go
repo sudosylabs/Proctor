@@ -617,3 +617,28 @@ func TestAuthoritativeTreeVerifiesPinnedContent(t *testing.T) {
 		t.Fatalf("treeFromSnapshot(corrupt) = %v, want invalid", err)
 	}
 }
+
+func (*grantStoreFake) PrepareControl(context.Context, model.ExecutionGrantID, string, time.Time) (*model.ExecutionGrant, error) {
+	return nil, ErrUnavailable
+}
+func (*grantStoreFake) AcknowledgeControl(context.Context, model.ExecutionFence, model.ExecutionControlState, time.Time) (*model.ExecutionGrant, error) {
+	return nil, ErrUnavailable
+}
+
+func (*grantStoreFake) WorkspaceChanges(context.Context, model.ExecutionFence, int) (*store.ExecutionWorkspacePage, error) {
+	return nil, ErrUnavailable
+}
+
+func (*grantStoreFake) PrepareProjection(context.Context, store.ExecutionProjectionRequest) (*store.ExecutionProjectionEffect, error) {
+	return nil, ErrUnavailable
+}
+func (*grantStoreFake) PendingProjection(context.Context, model.ExecutionGrantID) (*store.ExecutionProjectionRequest, error) {
+	return nil, store.NewErrNotFound("execution_projection", "pending")
+}
+func (*grantStoreFake) CompleteProjection(context.Context, store.ExecutionProjectionReceipt) (*model.ExecutionGrant, error) {
+	return nil, ErrUnavailable
+}
+
+func (*grantStoreFake) RejectProjection(context.Context, model.ExecutionFence, string) (*model.ExecutionGrant, error) {
+	return nil, ErrUnavailable
+}

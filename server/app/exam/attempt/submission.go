@@ -21,7 +21,6 @@ type SubmitCommand struct {
 	ExpectedCurrentRevisionID model.ExamRevisionID
 	ExpectedWorkspaceCursor   int64
 	FinalFocusLossSequence    int64
-	BrowserActivity           model.BrowserActivitySubmission
 	IdempotencyKey            string
 }
 
@@ -225,12 +224,11 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	if !command.ExpectedCurrentRevisionID.IsValid() || command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 ||
-		command.BrowserActivity.ValidateClient() != nil {
+	if !command.ExpectedCurrentRevisionID.IsValid() || command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 {
 		return SubmissionResult{}, invalid("submission")
 	}
 	idempotency, err := prepareSubmissionIdempotency(call, command.IdempotencyKey, workspaceAccess.AttemptID,
-		command.ExpectedCurrentRevisionID, command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence, command.BrowserActivity)
+		command.ExpectedCurrentRevisionID, command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence)
 	if err != nil {
 		return SubmissionResult{}, err
 	}
@@ -239,7 +237,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 		ConnectionID: workspaceAccess.ConnectionID, CandidateUserID: workspaceAccess.CandidateUserID,
 		SessionID: workspaceAccess.SessionID, ContinuityCredentialHash: workspaceAccess.ContinuityCredentialHash,
 		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID, ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor,
-		FinalFocusLossSequence: command.FinalFocusLossSequence, BrowserActivity: command.BrowserActivity.Clone()}
+		FinalFocusLossSequence: command.FinalFocusLossSequence}
 	target, err := service.deps.Submissions.ResolveSealTarget(ctx, access)
 	if err != nil {
 		return SubmissionResult{}, mapStore(err)
@@ -304,7 +302,7 @@ func projectSubmissionResult(stored *store.ExamSubmissionSealResult, target *sto
 	if stored == nil || !stored.Receipt.SubmissionID.IsValid() || stored.Receipt.AttemptID != access.AttemptID ||
 		stored.Receipt.State != model.ExamAttemptSubmitted || stored.Receipt.WorkspaceCursor != access.ExpectedWorkspaceCursor ||
 		stored.Receipt.ExamRevisionID != access.ExpectedCurrentRevisionID ||
-		!validWorkspaceSHA256(stored.Receipt.ManifestDigest) || stored.Receipt.SubmittedAt.IsZero() ||
+		!validWorkspaceSHA256(stored.Receipt.ManifestDigest) || stored.Receipt.SubmittedAt.IsZero() || stored.Receipt.BrowserActivity.Validate() != nil ||
 		stored.ExamID != target.ExamID || stored.SittingID != target.SittingID || stored.ClassID != target.ClassID ||
 		stored.CandidateUserID != target.CandidateUserID || stored.ParticipationID != access.ParticipationID ||
 		stored.Generation != access.Generation || stored.ConnectionID != access.ConnectionID ||

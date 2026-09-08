@@ -486,3 +486,21 @@ func desktopCompatibilityBounds(
 		MaximumRealtimeProtocol: maximumRealtime,
 	}
 }
+
+// ResolveNativeDeliveryBuild preserves the immutable interpretation catalog of
+// a retained stream even after its owning key authenticates a newer Desktop.
+// It grants no live admission; source ownership is checked by the use case and
+// atomically again by the delivery Store.
+func (s *desktopCompatibilityService) ResolveNativeDeliveryBuild(_ context.Context, identity examattempt.NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error) {
+	for _, entry := range s.catalog.entries {
+		agreement := entry.NativeAgreement
+		if agreement == nil {
+			continue
+		}
+		matrix := agreement.Matrix()
+		if matrix.ReleaseID == identity.ReleaseID && matrix.MatrixID == identity.MatrixID && matrix.TargetTuple == identity.TargetTuple && agreement.MatrixDigest() == identity.MatrixDigest {
+			return entry, nil
+		}
+	}
+	return model.DesktopBuildTuple{}, errors.New("original native delivery build is missing from the verified catalog")
+}

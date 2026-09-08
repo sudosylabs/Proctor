@@ -56,7 +56,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	const body = `{"expected_revision":1,"submission_retention_days":730,"integrity_retention_days":365,"audit_retention_days":0,"export_retention_days":7,"deletion_grace_days":30}`
+	const body = `{"expected_revision":1,"submission_retention_days":730,"integrity_retention_days":365,"browser_activity_retention_days":0,"security_operational_retention_days":0,"audit_retention_days":0,"export_retention_days":7,"deletion_grace_days":30}`
 	request := func(handler http.Handler, method, key, token string) *httptest.ResponseRecorder {
 		content := ""
 		if method == http.MethodPut {
@@ -200,7 +200,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	}
 	for _, days := range []int{-1, 8, 36500} {
 		invalid := commandRequest(primary.Handler(), http.MethodPut, "/api/v1/retention-policy", "invalid-export-"+strconv.Itoa(days), login.Tokens.AccessToken,
-			map[string]any{"expected_revision": 2, "submission_retention_days": 730, "integrity_retention_days": 365,
+			map[string]any{"expected_revision": 2, "submission_retention_days": 730, "integrity_retention_days": 365, "browser_activity_retention_days": 0, "security_operational_retention_days": 0,
 				"audit_retention_days": 0, "export_retention_days": days, "deletion_grace_days": 30})
 		if invalid.Code != http.StatusBadRequest || !bytes.Contains(invalid.Body.Bytes(), []byte(`"code":"retention_policy.invalid"`)) {
 			t.Fatalf("invalid export period %d: %d %s", days, invalid.Code, invalid.Body.String())
@@ -228,7 +228,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	}
 	for index, days := range []int{0, 1, 7} {
 		accepted := commandRequest(secondary.Handler(), http.MethodPut, "/api/v1/retention-policy", "export-boundary-"+strconv.Itoa(days), login.Tokens.AccessToken,
-			map[string]any{"expected_revision": 2 + index, "submission_retention_days": 730, "integrity_retention_days": 365,
+			map[string]any{"expected_revision": 2 + index, "submission_retention_days": 730, "integrity_retention_days": 365, "browser_activity_retention_days": 0, "security_operational_retention_days": 0,
 				"audit_retention_days": 0, "export_retention_days": days, "deletion_grace_days": 30})
 		if accepted.Code != http.StatusOK {
 			t.Fatalf("valid export period %d: %d %s", days, accepted.Code, accepted.Body.String())

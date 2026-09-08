@@ -23,26 +23,30 @@ type RetentionPolicyApplication interface {
 }
 
 type retentionPolicyRequest struct {
-	ExpectedRevision        int64          `json:"expected_revision"`
-	SubmissionRetentionDays Optional[int]  `json:"submission_retention_days"`
-	IntegrityRetentionDays  Optional[int]  `json:"integrity_retention_days"`
-	AuditRetentionDays      Optional[int]  `json:"audit_retention_days"`
-	ExportRetentionDays     Optional[int]  `json:"export_retention_days"`
-	DeletionGraceDays       Optional[int]  `json:"deletion_grace_days"`
-	CandidateNotices        Optional[bool] `json:"candidate_notices"`
+	ExpectedRevision                 int64          `json:"expected_revision"`
+	SubmissionRetentionDays          Optional[int]  `json:"submission_retention_days"`
+	IntegrityRetentionDays           Optional[int]  `json:"integrity_retention_days"`
+	BrowserActivityRetentionDays     Optional[int]  `json:"browser_activity_retention_days"`
+	SecurityOperationalRetentionDays Optional[int]  `json:"security_operational_retention_days"`
+	AuditRetentionDays               Optional[int]  `json:"audit_retention_days"`
+	ExportRetentionDays              Optional[int]  `json:"export_retention_days"`
+	DeletionGraceDays                Optional[int]  `json:"deletion_grace_days"`
+	CandidateNotices                 Optional[bool] `json:"candidate_notices"`
 }
 
 type retentionPolicyResponse struct {
-	Revision                 int64  `json:"revision"`
-	SubmissionRetentionDays  int    `json:"submission_retention_days"`
-	IntegrityRetentionDays   int    `json:"integrity_retention_days"`
-	AuditRetentionDays       int    `json:"audit_retention_days"`
-	ExportRetentionDays      int    `json:"export_retention_days"`
-	DeletionGraceDays        int    `json:"deletion_grace_days"`
-	CandidateNotices         bool   `json:"candidate_notices"`
-	AutomaticDeletionEnabled bool   `json:"automatic_deletion_enabled"`
-	CreatedAt                string `json:"created_at"`
-	UpdatedAt                string `json:"updated_at"`
+	Revision                         int64  `json:"revision"`
+	SubmissionRetentionDays          int    `json:"submission_retention_days"`
+	IntegrityRetentionDays           int    `json:"integrity_retention_days"`
+	BrowserActivityRetentionDays     int    `json:"browser_activity_retention_days"`
+	SecurityOperationalRetentionDays int    `json:"security_operational_retention_days"`
+	AuditRetentionDays               int    `json:"audit_retention_days"`
+	ExportRetentionDays              int    `json:"export_retention_days"`
+	DeletionGraceDays                int    `json:"deletion_grace_days"`
+	CandidateNotices                 bool   `json:"candidate_notices"`
+	AutomaticDeletionEnabled         bool   `json:"automatic_deletion_enabled"`
+	CreatedAt                        string `json:"created_at"`
+	UpdatedAt                        string `json:"updated_at"`
 }
 
 type retentionPolicyResourceModule struct {
@@ -143,6 +147,8 @@ func requiredRetentionPolicySettings(body retentionPolicyRequest) (model.Retenti
 	}{
 		{"submission_retention_days", body.SubmissionRetentionDays, &settings.SubmissionRetentionDays},
 		{"integrity_retention_days", body.IntegrityRetentionDays, &settings.IntegrityRetentionDays},
+		{"browser_activity_retention_days", body.BrowserActivityRetentionDays, &settings.BrowserActivityRetentionDays},
+		{"security_operational_retention_days", body.SecurityOperationalRetentionDays, &settings.SecurityOperationalRetentionDays},
 		{"audit_retention_days", body.AuditRetentionDays, &settings.AuditRetentionDays},
 		{"export_retention_days", body.ExportRetentionDays, &settings.ExportRetentionDays},
 		{"deletion_grace_days", body.DeletionGraceDays, &settings.DeletionGraceDays},
@@ -163,7 +169,7 @@ func retentionPolicyResponseFromModel(policy *model.RetentionPolicy) retentionPo
 	}
 	return retentionPolicyResponse{
 		Revision:                policy.Revision,
-		SubmissionRetentionDays: policy.SubmissionRetentionDays, IntegrityRetentionDays: policy.IntegrityRetentionDays,
+		SubmissionRetentionDays: policy.SubmissionRetentionDays, IntegrityRetentionDays: policy.IntegrityRetentionDays, BrowserActivityRetentionDays: policy.BrowserActivityRetentionDays, SecurityOperationalRetentionDays: policy.SecurityOperationalRetentionDays,
 		AuditRetentionDays: policy.AuditRetentionDays, ExportRetentionDays: policy.ExportRetentionDays,
 		DeletionGraceDays:        policy.DeletionGraceDays,
 		CandidateNotices:         policy.CandidateNotices,

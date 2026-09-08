@@ -43,8 +43,9 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 		Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64,
 		RealtimeProtocol:                        1,
 		AttemptConfigurationManifestFingerprint: model.CurrentAttemptConfigurationManifestFingerprint(),
-		DesktopSettingsRegistryFingerprint:      "sha256:" + strings.Repeat("b", 64),
-		CapabilityMatrixIdentity:                "integration-matrix",
+		DesktopSettingsRegistryFingerprint:      "fnv1a64:" + strings.Repeat("b", 16),
+		DesktopTarget:                           "darwin-arm64", ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
+		CapabilityMatrixIdentity: "integration-matrix",
 	}
 	primary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(primaryStore), testlib.WithDesktopBuildCatalog(build))
 	secondary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(secondaryStore), testlib.WithDesktopBuildCatalog(build))

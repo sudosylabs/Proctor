@@ -61,7 +61,7 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 		api.ServeHTTP(response, request)
 		return response
 	}
-	const valid = `{"expected_revision":1,"submission_retention_days":730,"integrity_retention_days":365,"audit_retention_days":0,"export_retention_days":7,"deletion_grace_days":30}`
+	const valid = `{"expected_revision":1,"submission_retention_days":730,"integrity_retention_days":365,"browser_activity_retention_days":0,"security_operational_retention_days":0,"audit_retention_days":0,"export_retention_days":7,"deletion_grace_days":30}`
 	response := serve(http.MethodPut, valid)
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
 		t.Fatalf("replace: %d %s", response.Code, response.Body.String())
@@ -89,7 +89,7 @@ func TestRetentionPolicyHTTPRequiresCompleteSettingsAndNeverEnablesDeletion(t *t
 			t.Fatal(err)
 		}
 	}
-	for _, field := range []string{"submission_retention_days", "integrity_retention_days", "audit_retention_days",
+	for _, field := range []string{"submission_retention_days", "integrity_retention_days", "browser_activity_retention_days", "security_operational_retention_days", "audit_retention_days",
 		"export_retention_days", "deletion_grace_days"} {
 		for _, invalid := range []string{"missing", "null", "fraction", "string"} {
 			t.Run(field+"/"+invalid, func(t *testing.T) {

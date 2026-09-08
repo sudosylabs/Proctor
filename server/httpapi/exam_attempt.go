@@ -228,6 +228,25 @@ func candidateWorkspaceCursorSpec() opaqueCursorSpec[candidateWorkspaceCursorWir
 }
 
 type ExamAttemptApplication interface {
+	BrowserSourceStatus(context.Context, application.Invocation, application.BrowserSourceQuery) (*model.BrowserSourceStatus, error)
+	BrowserDeliveryReceipts(context.Context, application.Invocation, application.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error)
+	DeclareBrowserDeliveryGaps(context.Context, application.Invocation, application.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error)
+	SealBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error)
+	UpdateBrowserDeliverySummary(context.Context, application.Invocation, application.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error)
+	AppendHistoricalBrowserDelivery(context.Context, application.Invocation, application.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error)
+
+	BrowserSourceList(context.Context, application.Invocation, application.BrowserSourceQuery) ([]model.BrowserSourceStatus, error)
+	AppendNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error)
+	DeliveryBudget(context.Context, application.Invocation, application.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error)
+	StopDeliveryDetails(context.Context, application.Invocation, application.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error)
+	NativeDeliveryStatus(context.Context, application.Invocation, application.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error)
+	NativeDeliveryReceipt(context.Context, application.Invocation, application.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error)
+	DeclareNativeDeliveryGaps(context.Context, application.Invocation, application.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error)
+	SealNativeDelivery(context.Context, application.Invocation, application.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error)
+	UpdateNativeDeliverySummary(context.Context, application.Invocation, application.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error)
+	RecoverExamSecurityPolicy(context.Context, application.Invocation, model.ExamAttemptID) (*application.RecoveredSecurityPolicy, error)
+	PrepareExamSecurityPreflight(context.Context, application.Invocation, application.PrepareSecurityPreflightCommand) (*application.PreparedSecurityPreflight, error)
+	ReportExamSecurityPreflight(context.Context, application.Invocation, application.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error)
 	GetExamAttempt(context.Context, application.Invocation, application.GetExamAttemptQuery) (application.ExamAttemptManagerView, error)
 	ListExamAttempts(context.Context, application.Invocation, application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error)
 	ListSittingCandidateStatuses(context.Context, application.Invocation, application.ListSittingCandidateStatusesQuery) (application.SittingCandidateStatusesPage, error)
@@ -268,6 +287,7 @@ type sittingCandidateStatusListResponse struct {
 }
 
 type sittingCandidateStatusItemResponse struct {
+	NativeSecurity          *model.NativeSecuritySummary        `json:"native_security,omitempty"`
 	Candidate               sittingCandidateIdentityResponse    `json:"candidate"`
 	CurrentClassMembership  bool                                `json:"current_class_membership"`
 	Attempt                 *sittingCandidateAttemptResponse    `json:"attempt"`
@@ -379,16 +399,17 @@ type browserActivityListResponse struct {
 }
 
 type browserActivityItemResponse struct {
-	SourceSessionID string                            `json:"source_session_id"`
-	Generation      int64                             `json:"generation"`
-	Sequence        int64                             `json:"sequence"`
-	Kind            model.BrowserActivityKind         `json:"kind"`
-	PolicyRevision  string                            `json:"policy_revision_id"`
-	ClientOccurred  string                            `json:"client_occurred_at"`
-	Location        *browserActivityLocationResponse  `json:"location"`
-	MatchedRuleID   *string                           `json:"matched_rule_id"`
-	BlockReason     *model.BrowserActivityBlockReason `json:"block_reason"`
-	ReceivedAt      string                            `json:"received_at"`
+	RedirectFromSequence *int64                            `json:"redirect_from_sequence"`
+	SourceSessionID      string                            `json:"source_session_id"`
+	Generation           int64                             `json:"generation"`
+	Sequence             int64                             `json:"sequence"`
+	Kind                 model.BrowserActivityKind         `json:"kind"`
+	PolicyRevision       string                            `json:"policy_revision_id"`
+	ClientOccurred       string                            `json:"client_occurred_at"`
+	Location             *browserActivityLocationResponse  `json:"location"`
+	MatchedRuleID        *string                           `json:"matched_rule_id"`
+	BlockReason          *model.BrowserActivityBlockReason `json:"block_reason"`
+	ReceivedAt           string                            `json:"received_at"`
 }
 
 type browserActivityLocationResponse struct {
@@ -432,18 +453,20 @@ type candidateLiveCorrectionResponse struct {
 	EffectiveAt             string                               `json:"effective_at"`
 	Summary                 string                               `json:"summary"`
 	ChangedAreas            []model.ExamCorrectionChangedArea    `json:"changed_areas"`
+	AffectedCapabilities    []model.CandidateCapability          `json:"affected_capabilities"`
 	AcknowledgementRequired bool                                 `json:"acknowledgement_required"`
 	AcknowledgementState    model.CorrectionAcknowledgementState `json:"acknowledgement_state"`
-	AcknowledgedAt          *string                              `json:"acknowledged_at"`
+	AcknowledgedAt          *string                              `json:"acknowledged_at,omitempty"`
 }
 
 type candidateBrowserPolicyResponse struct {
-	SchemaVersion    int                                  `json:"schema_version"`
-	Enabled          bool                                 `json:"enabled"`
-	StartRuleID      string                               `json:"start_rule_id"`
-	Rules            []candidateBrowserPolicyRuleResponse `json:"rules"`
-	PolicyRevisionID string                               `json:"policy_revision_id"`
-	PolicyDigest     string                               `json:"policy_digest"`
+	PolicyRevisionNumber      int64                                `json:"policy_revision_number"`
+	BrowserActivityDisclosure model.BrowserActivityDisclosure      `json:"browser_activity_disclosure"`
+	Enabled                   bool                                 `json:"enabled"`
+	StartRuleID               string                               `json:"start_rule_id,omitempty"`
+	Rules                     []candidateBrowserPolicyRuleResponse `json:"rules,omitempty"`
+	PolicyRevisionID          string                               `json:"policy_revision_id"`
+	PolicyDigest              string                               `json:"policy_digest"`
 }
 
 type candidateBrowserPolicyRuleResponse struct {
@@ -453,30 +476,36 @@ type candidateBrowserPolicyRuleResponse struct {
 	HostMatch                string `json:"host_match"`
 	AllowRedirects           bool   `json:"allow_redirects"`
 	BlockedNavigationOutcome string `json:"blocked_navigation_outcome"`
+	InstitutionHTTPException bool   `json:"institution_http_exception"`
 }
 
 type candidateRuntimeCapabilitiesResponse struct {
-	SchemaVersion              int                                   `json:"schema_version"`
-	ServerTime                 string                                `json:"server_time"`
-	InteractionState           string                                `json:"interaction_state"`
-	AttemptConfiguration       candidateAttemptConfigurationResponse `json:"attempt_configuration"`
-	FocusLossCollectionEnabled bool                                  `json:"focus_loss_collection_enabled"`
-	WorkspaceMutationAllowed   bool                                  `json:"workspace_mutation_allowed"`
-	SubmissionAllowed          bool                                  `json:"submission_allowed"`
-	Terminal                   candidateTerminalCapabilityResponse   `json:"terminal"`
-	Browser                    candidateBrowserCapabilityResponse    `json:"browser"`
-	ExamRevision               candidateExamRevisionResponse         `json:"exam_revision"`
-	Departure                  candidateDepartureResponse            `json:"departure"`
+	SchemaVersion                 int                                   `json:"schema_version"`
+	ServerTime                    string                                `json:"server_time"`
+	InteractionState              string                                `json:"interaction_state"`
+	AttemptConfiguration          candidateAttemptConfigurationResponse `json:"attempt_configuration"`
+	FocusLossCollectionEnabled    bool                                  `json:"focus_loss_collection_enabled"`
+	PendingCorrectionCapabilities []model.CandidateCapability           `json:"pending_correction_capabilities"`
+	WorkspaceMutationAllowed      bool                                  `json:"workspace_mutation_allowed"`
+	SubmissionAllowed             bool                                  `json:"submission_allowed"`
+	Terminal                      candidateTerminalCapabilityResponse   `json:"terminal"`
+	Browser                       candidateBrowserCapabilityResponse    `json:"browser"`
+	ExamRevision                  candidateExamRevisionResponse         `json:"exam_revision"`
+	Departure                     candidateDepartureResponse            `json:"departure"`
 }
 
 type candidateAttemptConfigurationResponse struct {
-	SchemaVersion       int                                   `json:"schema_version"`
-	ManifestFingerprint string                                `json:"manifest_fingerprint"`
-	Preferences         model.AttemptConfigurationPreferences `json:"preferences"`
-	Digest              string                                `json:"digest"`
+	Revision            string                                 `json:"attempt_configuration_revision"`
+	Presentation        model.AttemptConfigurationPresentation `json:"presentation"`
+	ApprovedCommands    []string                               `json:"approved_commands"`
+	ApprovedKeybindings []string                               `json:"approved_keybindings"`
+	Digest              string                                 `json:"digest"`
 }
 type candidateTerminalCapabilityResponse struct {
-	State string `json:"state"`
+	State                  string  `json:"state"`
+	EnvironmentEpoch       *string `json:"environment_epoch"`
+	AppliedWorkspaceCursor int64   `json:"applied_workspace_cursor"`
+	ProjectionState        string  `json:"projection_state"`
 }
 type candidateBrowserCapabilityResponse struct {
 	State            string `json:"state"`
@@ -575,70 +604,11 @@ type candidateWorkspaceMutationResponse struct {
 }
 
 type submitExamAttemptRequest struct {
-	ParticipationID           string                           `json:"participation_id"`
-	Generation                int64                            `json:"generation"`
-	ExpectedCurrentRevisionID string                           `json:"expected_current_revision_id"`
-	ExpectedWorkspaceCursor   int64                            `json:"expected_workspace_cursor"`
-	FinalFocusLossSequence    int64                            `json:"final_focus_loss_sequence"`
-	BrowserActivity           browserActivitySubmissionRequest `json:"browser_activity"`
-}
-
-type browserActivitySubmissionRequest struct {
-	State           string `json:"state"`
-	SourceSessionID string `json:"source_session_id,omitempty"`
-	FinalSequence   *int64 `json:"final_sequence,omitempty"`
-	Reason          string `json:"reason,omitempty"`
-}
-
-func (body *browserActivitySubmissionRequest) UnmarshalJSON(encoded []byte) error {
-	type wire browserActivitySubmissionRequest
-	var decoded wire
-	if err := rejectDuplicateTopLevelJSONMembers(encoded); err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
-		return err
-	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &members); err != nil {
-		return err
-	}
-	hasSource := members["source_session_id"] != nil
-	hasFinal := members["final_sequence"] != nil
-	hasReason := members["reason"] != nil
-	if hasFinal && decoded.FinalSequence == nil {
-		return errors.New("browser_activity.final_sequence must be an integer when present")
-	}
-	switch model.BrowserActivitySubmissionState(decoded.State) {
-	case model.BrowserActivitySubmissionNotApplicable:
-		if len(members) != 1 || hasSource || hasFinal || hasReason {
-			return errors.New("not_applicable browser_activity must contain only state")
-		}
-	case model.BrowserActivitySubmissionComplete:
-		if len(members) != 3 || !hasSource || !hasFinal || hasReason {
-			return errors.New("complete browser_activity requires source_session_id and final_sequence")
-		}
-	case model.BrowserActivitySubmissionGapped:
-		if !hasSource || !hasReason || len(members) < 3 || len(members) > 4 {
-			return errors.New("gapped browser_activity requires source_session_id and reason")
-		}
-	default:
-		return errors.New("invalid browser_activity state")
-	}
-	*body = browserActivitySubmissionRequest(decoded)
-	return nil
-}
-
-func (body browserActivitySubmissionRequest) model() (model.BrowserActivitySubmission, error) {
-	value := model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionState(body.State),
-		SourceSessionID: model.BrowserSourceSessionID(body.SourceSessionID), FinalSequence: body.FinalSequence,
-		GapReason: model.BrowserActivitySubmissionGapReason(body.Reason)}
-	if err := value.ValidateClient(); err != nil {
-		return model.BrowserActivitySubmission{}, err
-	}
-	return value, nil
+	ParticipationID           string `json:"participation_id"`
+	Generation                int64  `json:"generation"`
+	ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
+	ExpectedWorkspaceCursor   int64  `json:"expected_workspace_cursor"`
+	FinalFocusLossSequence    int64  `json:"final_focus_loss_sequence"`
 }
 
 type acknowledgeExamCorrectionRequest struct {
@@ -648,9 +618,11 @@ type acknowledgeExamCorrectionRequest struct {
 }
 
 type acknowledgeExamCorrectionResponse struct {
-	RevisionID           string `json:"revision_id"`
-	AcknowledgementState string `json:"acknowledgement_state"`
-	AcknowledgedAt       string `json:"acknowledged_at"`
+	CurrentRevisionID    string                               `json:"current_revision_id"`
+	RuntimeCapabilities  candidateRuntimeCapabilitiesResponse `json:"runtime_capabilities"`
+	RevisionID           string                               `json:"revision_id"`
+	AcknowledgementState string                               `json:"acknowledgement_state"`
+	AcknowledgedAt       string                               `json:"acknowledged_at"`
 }
 
 type endExamAttemptByManagerRequest struct {
@@ -659,32 +631,34 @@ type endExamAttemptByManagerRequest struct {
 }
 
 type examSubmissionReceiptResponse struct {
-	SubmissionID    string `json:"submission_id"`
-	ExamAttemptID   string `json:"exam_attempt_id"`
-	ExamRevisionID  string `json:"exam_revision_id"`
-	State           string `json:"state"`
-	WorkspaceCursor int64  `json:"workspace_cursor"`
-	ManifestDigest  string `json:"manifest_digest"`
-	SubmittedAt     string `json:"submitted_at"`
+	BrowserActivity model.BrowserSubmissionSettlement `json:"browser_activity"`
+	SubmissionID    string                            `json:"submission_id"`
+	ExamAttemptID   string                            `json:"exam_attempt_id"`
+	ExamRevisionID  string                            `json:"exam_revision_id"`
+	State           string                            `json:"state"`
+	WorkspaceCursor int64                             `json:"workspace_cursor"`
+	ManifestDigest  string                            `json:"manifest_digest"`
+	SubmittedAt     string                            `json:"submitted_at"`
 }
 
 type examSubmissionManagerResponse struct {
-	SubmissionID             string `json:"submission_id"`
-	ExamID                   string `json:"exam_id"`
-	ExamSittingID            string `json:"exam_sitting_id"`
-	ExamAttemptID            string `json:"exam_attempt_id"`
-	ExamRevisionID           string `json:"exam_revision_id"`
-	WorkspaceID              string `json:"workspace_id"`
-	ManifestSchemaVersion    int    `json:"manifest_schema_version"`
-	WorkspaceCursor          int64  `json:"workspace_cursor"`
-	ManifestDigest           string `json:"manifest_digest"`
-	ManifestEntryCount       int    `json:"manifest_entry_count"`
-	ManifestTotalFileBytes   int64  `json:"manifest_total_file_bytes"`
-	FinalFocusLossSequence   *int64 `json:"final_focus_loss_sequence,omitempty"`
-	IntegrityState           string `json:"integrity_state"`
-	IntegrityRetiredAt       string `json:"integrity_retired_at,omitempty"`
-	UnresolvedIntegrityCount *int64 `json:"unresolved_integrity_count,omitempty"`
-	SubmittedAt              string `json:"submitted_at"`
+	BrowserActivity          model.BrowserSubmissionSettlement `json:"browser_activity"`
+	SubmissionID             string                            `json:"submission_id"`
+	ExamID                   string                            `json:"exam_id"`
+	ExamSittingID            string                            `json:"exam_sitting_id"`
+	ExamAttemptID            string                            `json:"exam_attempt_id"`
+	ExamRevisionID           string                            `json:"exam_revision_id"`
+	WorkspaceID              string                            `json:"workspace_id"`
+	ManifestSchemaVersion    int                               `json:"manifest_schema_version"`
+	WorkspaceCursor          int64                             `json:"workspace_cursor"`
+	ManifestDigest           string                            `json:"manifest_digest"`
+	ManifestEntryCount       int                               `json:"manifest_entry_count"`
+	ManifestTotalFileBytes   int64                             `json:"manifest_total_file_bytes"`
+	FinalFocusLossSequence   *int64                            `json:"final_focus_loss_sequence,omitempty"`
+	IntegrityState           string                            `json:"integrity_state"`
+	IntegrityRetiredAt       string                            `json:"integrity_retired_at,omitempty"`
+	UnresolvedIntegrityCount *int64                            `json:"unresolved_integrity_count,omitempty"`
+	SubmittedAt              string                            `json:"submitted_at"`
 }
 
 type examSubmissionManifestItemResponse struct {
@@ -823,7 +797,7 @@ func (module examAttemptHTTPModule) endByManager(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := examSubmissionReceiptResponse{SubmissionID: receipt.SubmissionID.String(),
+	response := examSubmissionReceiptResponse{BrowserActivity: receipt.BrowserActivity, SubmissionID: receipt.SubmissionID.String(),
 		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
 		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
 		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
@@ -866,6 +840,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 		return operationResult{}, application.NewError("exam.attempt.unavailable")
 	}
 	return jsonResult(http.StatusOK, acknowledgeExamCorrectionResponse{RevisionID: result.CorrectionRevisionID.String(),
+		CurrentRevisionID: result.CurrentRevisionID.String(), RuntimeCapabilities: candidateRuntimeCapabilitiesFromStore(result.RuntimeCapabilities),
 		AcknowledgementState: string(model.CorrectionAcknowledgementAcknowledged),
 		AcknowledgedAt:       model.TimeUTC(result.AcknowledgedAt.Time).Format(time.RFC3339Nano)}).withHeaders(noStoreHeaders()), nil
 }
@@ -900,9 +875,9 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 	for _, item := range page.Items {
 		mapped := sittingCandidateStatusItemResponse{Candidate: sittingCandidateIdentityResponse{UserID: item.Candidate.UserID.String(),
 			Username: item.Candidate.Username, DisplayName: item.Candidate.DisplayName},
-			CurrentClassMembership:  item.CurrentClassMembership,
-			Presence:                sittingCandidatePresenceResponse{State: item.Presence.State},
-			IntegrityAttentionCount: item.IntegrityAttentionCount}
+			CurrentClassMembership: item.CurrentClassMembership,
+			Presence:               sittingCandidatePresenceResponse{State: item.Presence.State},
+			NativeSecurity:         item.NativeSecurity, IntegrityAttentionCount: item.IntegrityAttentionCount}
 		if item.Presence.LastLeaseRenewedAt.Valid {
 			value := model.TimeUTC(item.Presence.LastLeaseRenewedAt.Time).Format(time.RFC3339Nano)
 			mapped.Presence.LastLeaseRenewedAt = &value
@@ -1101,7 +1076,7 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 	response := browserActivityListResponse{Items: make([]browserActivityItemResponse, 0, len(page.Items))}
 	for _, record := range page.Items {
 		event := record.Event
-		item := browserActivityItemResponse{SourceSessionID: string(record.SourceSessionID), Generation: record.Generation,
+		item := browserActivityItemResponse{RedirectFromSequence: event.RedirectFromSequence, SourceSessionID: string(record.SourceSessionID), Generation: record.Generation,
 			Sequence: event.Sequence, Kind: event.Kind, PolicyRevision: event.PolicyRevisionID.String(),
 			ClientOccurred: model.TimeUTC(event.ClientOccurredAt).Format(time.RFC3339Nano), MatchedRuleID: event.MatchedRuleID,
 			BlockReason: event.BlockReason, ReceivedAt: model.TimeUTC(event.ReceivedAt).Format(time.RFC3339Nano)}
@@ -1151,8 +1126,8 @@ func candidateLiveCorrectionsFromModel(values []model.CandidateLiveCorrection) [
 	for index, value := range values {
 		item := candidateLiveCorrectionResponse{RevisionID: value.RevisionID.String(), RevisionNumber: value.RevisionNumber,
 			EffectiveAt: model.TimeUTC(value.EffectiveAt).Format(time.RFC3339Nano), Summary: value.Summary,
-			ChangedAreas:            append([]model.ExamCorrectionChangedArea(nil), value.ChangedAreas...),
-			AcknowledgementRequired: value.AcknowledgementRequired, AcknowledgementState: value.AcknowledgementState}
+			ChangedAreas:         append([]model.ExamCorrectionChangedArea(nil), value.ChangedAreas...),
+			AffectedCapabilities: append([]model.CandidateCapability{}, value.AffectedCapabilities...), AcknowledgementRequired: value.AcknowledgementRequired, AcknowledgementState: value.AcknowledgementState}
 		if value.AcknowledgedAt.Valid {
 			at := model.TimeUTC(value.AcknowledgedAt.Time).Format(time.RFC3339Nano)
 			item.AcknowledgedAt = &at
@@ -1166,12 +1141,13 @@ func candidateBrowserPolicyFromStore(value *application.CandidateBrowserPolicy) 
 	if value == nil {
 		return nil
 	}
-	response := &candidateBrowserPolicyResponse{SchemaVersion: value.Policy.SchemaVersion, Enabled: true,
+	response := &candidateBrowserPolicyResponse{Enabled: value.Policy.Enabled,
+		PolicyRevisionNumber: value.PolicyRevisionNumber, BrowserActivityDisclosure: value.BrowserActivityDisclosure,
 		StartRuleID: value.Policy.StartRuleID, PolicyRevisionID: value.PolicyRevisionID.String(), PolicyDigest: value.PolicyDigest,
 		Rules: make([]candidateBrowserPolicyRuleResponse, len(value.Policy.Rules))}
 	for index, rule := range value.Policy.Rules {
 		response.Rules[index] = candidateBrowserPolicyRuleResponse{RuleID: rule.RuleID, Origin: rule.Origin, PathPrefix: rule.PathPrefix,
-			HostMatch: string(rule.HostMatch), AllowRedirects: rule.AllowRedirects, BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome)}
+			HostMatch: string(rule.HostMatch), AllowRedirects: rule.AllowRedirects, BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome), InstitutionHTTPException: rule.InstitutionHTTPException}
 	}
 	return response
 }
@@ -1184,12 +1160,15 @@ func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCap
 	}
 	return candidateRuntimeCapabilitiesResponse{SchemaVersion: value.SchemaVersion,
 		ServerTime: value.ServerTime.Format(time.RFC3339Nano), InteractionState: string(value.InteractionState),
-		AttemptConfiguration: candidateAttemptConfigurationResponse{SchemaVersion: value.AttemptConfiguration.SchemaVersion,
-			ManifestFingerprint: value.AttemptConfiguration.ManifestFingerprint,
-			Preferences:         value.AttemptConfiguration.Preferences, Digest: value.AttemptConfiguration.Digest},
-		FocusLossCollectionEnabled: value.FocusLossCollectionEnabled,
-		WorkspaceMutationAllowed:   value.WorkspaceMutationAllowed, SubmissionAllowed: value.SubmissionAllowed,
-		Terminal: candidateTerminalCapabilityResponse{State: string(value.Terminal.State)}, Browser: browser,
+		AttemptConfiguration: candidateAttemptConfigurationResponse{Revision: value.AttemptConfiguration.Revision,
+			Presentation: value.AttemptConfiguration.Presentation, ApprovedCommands: append([]string{}, value.AttemptConfiguration.ApprovedCommands...),
+			ApprovedKeybindings: append([]string{}, value.AttemptConfiguration.ApprovedKeybindings...), Digest: value.AttemptConfiguration.Digest},
+		FocusLossCollectionEnabled:    value.FocusLossCollectionEnabled,
+		PendingCorrectionCapabilities: append([]model.CandidateCapability{}, value.PendingCorrectionCapabilities...),
+		WorkspaceMutationAllowed:      value.WorkspaceMutationAllowed, SubmissionAllowed: value.SubmissionAllowed,
+		Terminal: candidateTerminalCapabilityResponse{State: string(value.Terminal.State),
+			EnvironmentEpoch: value.Terminal.EnvironmentEpoch, AppliedWorkspaceCursor: value.Terminal.AppliedWorkspaceCursor,
+			ProjectionState: string(value.Terminal.ProjectionState)}, Browser: browser,
 		ExamRevision: candidateExamRevisionResponse{AdmissionRevisionID: value.ExamRevision.AdmissionRevisionID.String(),
 			CurrentRevisionID: value.ExamRevision.CurrentRevisionID.String(), AcknowledgementRequired: value.ExamRevision.AcknowledgementRequired},
 		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}
@@ -1316,10 +1295,7 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
 	}
-	browserActivity, err := body.BrowserActivity.model()
-	if err != nil {
-		return operationResult{}, invalidRequestError("browser_activity", err)
-	}
+
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
 		ParticipationID: body.ParticipationID, Generation: body.Generation})
 	if err != nil {
@@ -1328,11 +1304,11 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	receipt, err := module.application.SubmitExamAttempt(request.context, request.invocation(),
 		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedCurrentRevisionID: revisionID,
 			ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor, FinalFocusLossSequence: body.FinalFocusLossSequence,
-			BrowserActivity: browserActivity, IdempotencyKey: request.idempotencyKey})
+			IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := examSubmissionReceiptResponse{SubmissionID: receipt.SubmissionID.String(),
+	response := examSubmissionReceiptResponse{BrowserActivity: receipt.BrowserActivity, SubmissionID: receipt.SubmissionID.String(),
 		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
 		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
 		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
@@ -1349,7 +1325,7 @@ func (module examAttemptHTTPModule) getSubmission(request operationRequest) (ope
 		return operationResult{}, err
 	}
 	submission := view.Submission
-	response := examSubmissionManagerResponse{SubmissionID: submission.ID.String(), ExamID: view.Authorization.ExamID.String(),
+	response := examSubmissionManagerResponse{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID.String(), ExamID: view.Authorization.ExamID.String(),
 		ExamSittingID: view.Authorization.SittingID.String(), ExamAttemptID: submission.AttemptID.String(),
 		ExamRevisionID: submission.ExamRevisionID.String(), WorkspaceID: submission.WorkspaceID.String(),
 		ManifestSchemaVersion: submission.ManifestSchemaVersion,

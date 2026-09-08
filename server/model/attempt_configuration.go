@@ -13,111 +13,280 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"slices"
 )
 
 const (
-	AttemptConfigurationSchemaVersion = 1
-	AttemptConfigurationMaxBytes      = 16 << 10
-	AttemptConfigurationManifestLimit = 8
-	AttemptCommandBindingLimit        = 32
+	AttemptConfigurationMaxBytes = 16 << 10
+	AttemptApprovedIDLimit       = 128
 )
 
-// The compatibility manifest is server-owned immutable agreement data. The
-// approved command catalog is intentionally empty until coordinated Desktop
-// packaging introduces exact command/keybinding pairs.
-const attemptConfigurationManifestJSON = `{"format_version":1,"attempt_configuration_schema_version":1,"preferences":{"theme_mode":["follow_system","light","dark"],"high_contrast_mode":["auto","on","off"],"ui_zoom_percent":[80,200],"editor_font_size_px":[12,32],"editor_line_height_percent":[120,200],"reduced_motion_mode":["auto","on","off"],"screen_reader_mode":["auto","on","off"],"announcement_detail":["standard","verbose"],"cursor_style":["line","block","underline"],"cursor_blinking":["blink","solid"],"candidate_command_bindings":{"maximum":32,"catalog":[]}}}`
+var errAttemptConfiguration = errors.New("attempt configuration is invalid")
 
-type AttemptThemeMode string
-type AttemptTriStateMode string
-type AttemptAnnouncementDetail string
-type AttemptCursorStyle string
-type AttemptCursorBlinking string
-
-const (
-	AttemptThemeFollowSystem AttemptThemeMode = "follow_system"
-	AttemptThemeLight        AttemptThemeMode = "light"
-	AttemptThemeDark         AttemptThemeMode = "dark"
-
-	AttemptModeAuto AttemptTriStateMode = "auto"
-	AttemptModeOn   AttemptTriStateMode = "on"
-	AttemptModeOff  AttemptTriStateMode = "off"
-
-	AttemptAnnouncementStandard AttemptAnnouncementDetail = "standard"
-	AttemptAnnouncementVerbose  AttemptAnnouncementDetail = "verbose"
-
-	AttemptCursorLine      AttemptCursorStyle = "line"
-	AttemptCursorBlock     AttemptCursorStyle = "block"
-	AttemptCursorUnderline AttemptCursorStyle = "underline"
-
-	AttemptCursorBlink AttemptCursorBlinking = "blink"
-	AttemptCursorSolid AttemptCursorBlinking = "solid"
-)
-
-type AttemptCommandBinding struct {
-	CommandID    string `json:"command_id"`
-	KeybindingID string `json:"keybinding_id"`
+// AttemptConfigurationPresentation is the closed, reproducible presentation
+// subset. Pixel line height is independent of font size. Stronger accessibility
+// constraints affect a runtime projection, never this frozen source.
+type AttemptConfigurationPresentation struct {
+	ColorTheme         string `json:"color_theme"`
+	PreferHighContrast bool   `json:"prefer_high_contrast"`
+	ZoomPercent        int    `json:"zoom_percent"`
+	EditorFontSizePX   int    `json:"editor_font_size_px"`
+	EditorLineHeightPX int    `json:"editor_line_height_px"`
+	ReducedMotion      bool   `json:"reduced_motion"`
+	ScreenReaderMode   string `json:"screen_reader_mode"`
+	AnnouncementMode   string `json:"announcement_mode"`
+	CursorStyle        string `json:"cursor_style"`
+	CursorBlinking     string `json:"cursor_blinking"`
 }
 
-type AttemptConfigurationPreferences struct {
-	ThemeMode                AttemptThemeMode          `json:"theme_mode"`
-	HighContrastMode         AttemptTriStateMode       `json:"high_contrast_mode"`
-	UIZoomPercent            int                       `json:"ui_zoom_percent"`
-	EditorFontSizePX         int                       `json:"editor_font_size_px"`
-	EditorLineHeightPercent  int                       `json:"editor_line_height_percent"`
-	ReducedMotionMode        AttemptTriStateMode       `json:"reduced_motion_mode"`
-	ScreenReaderMode         AttemptTriStateMode       `json:"screen_reader_mode"`
-	AnnouncementDetail       AttemptAnnouncementDetail `json:"announcement_detail"`
-	CursorStyle              AttemptCursorStyle        `json:"cursor_style"`
-	CursorBlinking           AttemptCursorBlinking     `json:"cursor_blinking"`
-	CandidateCommandBindings []AttemptCommandBinding   `json:"candidate_command_bindings"`
-}
-
-// AttemptConfiguration is the immutable Attempt-owned value plus hidden
-// first-admission provenance. Digest identifies only its runtime-visible
-// semantics and therefore excludes both provenance revisions.
-type AttemptConfiguration struct {
-	SchemaVersion                    int                             `json:"schema_version"`
-	ManifestFingerprint              string                          `json:"manifest_fingerprint"`
-	SourceUserSettingsRevision       UserSettingsRevision            `json:"source_user_settings_revision"`
-	SourceDesktopRegistryFingerprint string                          `json:"source_desktop_registry_fingerprint"`
-	Preferences                      AttemptConfigurationPreferences `json:"preferences"`
-	Digest                           string                          `json:"-"`
-}
-
-type attemptConfigurationSemantics struct {
-	SchemaVersion       int                             `json:"schema_version"`
-	ManifestFingerprint string                          `json:"manifest_fingerprint"`
-	Preferences         AttemptConfigurationPreferences `json:"preferences"`
-}
-
-func (configuration *AttemptConfiguration) UnmarshalJSON(document []byte) error {
-	if configuration == nil || len(document) == 0 || len(document) > AttemptConfigurationMaxBytes ||
-		rejectDuplicateJSONFields(document) != nil {
-		return errors.New("attempt configuration document is invalid")
+func (p AttemptConfigurationPresentation) Validate() error {
+	if !slices.Contains([]string{"light", "dark", "hcLight", "hcDark"}, p.ColorTheme) ||
+		p.ZoomPercent < 80 || p.ZoomPercent > 200 || p.EditorFontSizePX < 12 || p.EditorFontSizePX > 24 ||
+		p.EditorLineHeightPX < 16 || p.EditorLineHeightPX > 40 ||
+		!slices.Contains([]string{"auto", "on", "off"}, p.ScreenReaderMode) ||
+		!slices.Contains([]string{"auto", "verbose", "minimal"}, p.AnnouncementMode) ||
+		!slices.Contains([]string{"line", "block", "underline"}, p.CursorStyle) ||
+		!slices.Contains([]string{"blink", "smooth", "phase", "expand", "solid"}, p.CursorBlinking) {
+		return errAttemptConfiguration
 	}
-	type wire AttemptConfiguration
-	var decoded wire
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
-		return errors.New("attempt configuration document is invalid")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("attempt configuration document contains trailing data")
-	}
-	value, err := NewAttemptConfiguration(decoded.SchemaVersion, decoded.ManifestFingerprint,
-		decoded.SourceUserSettingsRevision, decoded.SourceDesktopRegistryFingerprint, decoded.Preferences)
-	if err != nil {
-		return err
-	}
-	*configuration = value
 	return nil
 }
 
-func CurrentAttemptConfigurationManifestFingerprint() string {
-	return SHA256Fingerprint([]byte(attemptConfigurationManifestJSON))
+// AttemptConfigurationCandidate includes the exact first-admission provenance.
+// Neither catalog identifiers nor a fingerprint supplied by a client confer trust.
+type AttemptConfigurationCandidate struct {
+	ManifestFingerprint  string                           `json:"manifest_fingerprint"`
+	RegistryFingerprint  string                           `json:"registry_fingerprint"`
+	DesktopBuild         string                           `json:"desktop_build"`
+	DesktopTarget        string                           `json:"desktop_target"`
+	UserSettingsRevision UserSettingsRevision             `json:"user_settings_revision"`
+	Presentation         AttemptConfigurationPresentation `json:"presentation"`
+	ApprovedCommands     []string                         `json:"approved_commands"`
+	ApprovedKeybindings  []string                         `json:"approved_keybindings"`
+}
+
+// AttemptConfiguration is frozen once by the owning admission transaction.
+// Its digest covers the complete candidate, excluding only the server revision
+// and digest. Re-entry preserves this original provenance.
+type AttemptConfiguration struct {
+	AttemptConfigurationCandidate
+	Revision string `json:"attempt_configuration_revision"`
+	Digest   string `json:"digest"`
+}
+
+// IsValidAgreementID recognizes bounded ASCII catalog and agreement identifiers.
+func IsValidAgreementID(value string) bool {
+	if len(value) == 0 || len(value) > 128 {
+		return false
+	}
+	for i := range len(value) {
+		c := value[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		if i == 0 || c != '.' && c != '_' && c != ':' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func ValidateAttemptApprovedIDs(ids []string) error {
+	if ids == nil || len(ids) > AttemptApprovedIDLimit {
+		return errAttemptConfiguration
+	}
+	previous := ""
+	for _, id := range ids {
+		if !IsValidAgreementID(id) || id <= previous {
+			return errAttemptConfiguration
+		}
+		previous = id
+	}
+	return nil
+}
+
+func (c AttemptConfigurationCandidate) Validate() error {
+	if !IsValidSHA256Fingerprint(c.ManifestFingerprint) || !IsValidRegistryFingerprint(c.RegistryFingerprint) ||
+		!IsValidAgreementID(c.DesktopBuild) || !IsValidAgreementID(c.DesktopTarget) || !c.UserSettingsRevision.IsValid() ||
+		c.Presentation.Validate() != nil || ValidateAttemptApprovedIDs(c.ApprovedCommands) != nil ||
+		ValidateAttemptApprovedIDs(c.ApprovedKeybindings) != nil {
+		return errAttemptConfiguration
+	}
+	// The complete frozen object must fit too; Freeze enforces that extra bound.
+	document, err := encodeCanonicalExamDocument(c)
+	if err != nil || len(document) > AttemptConfigurationMaxBytes {
+		return errAttemptConfiguration
+	}
+	return nil
+}
+
+// ValidateForBuild is for a new freeze only. Existing configurations instead
+// compare reproducibility with the current manifest, retaining original build metadata.
+func (c AttemptConfigurationCandidate) ValidateForBuild(build DesktopBuildTuple) error {
+	if c.Validate() != nil || build.Validate() != nil || c.DesktopBuild != build.DesktopBuildID ||
+		c.DesktopTarget != build.TargetTuple() || c.RegistryFingerprint != build.DesktopSettingsRegistryFingerprint ||
+		c.ManifestFingerprint != build.AttemptConfigurationManifestFingerprint ||
+		build.ConfigurationManifest.ValidateSelection(c.ApprovedCommands, c.ApprovedKeybindings) != nil {
+		return errAttemptConfiguration
+	}
+	return nil
+}
+
+func (c AttemptConfigurationCandidate) CanonicalAdmission() ([]byte, error) {
+	if c.Validate() != nil {
+		return nil, errAttemptConfiguration
+	}
+	return encodeCanonicalExamDocument(c)
+}
+
+func (c AttemptConfigurationCandidate) Clone() AttemptConfigurationCandidate {
+	c.ApprovedCommands = slices.Clone(c.ApprovedCommands)
+	c.ApprovedKeybindings = slices.Clone(c.ApprovedKeybindings)
+	return c
+}
+
+func (c AttemptConfigurationCandidate) Freeze(revision string) (AttemptConfiguration, error) {
+	if !IsValidAgreementID(revision) {
+		return AttemptConfiguration{}, errAttemptConfiguration
+	}
+	canonical, err := c.CanonicalAdmission()
+	if err != nil {
+		return AttemptConfiguration{}, err
+	}
+	frozen := AttemptConfiguration{AttemptConfigurationCandidate: c.Clone(), Revision: revision, Digest: SHA256Fingerprint(canonical)}
+	if err := frozen.Validate(); err != nil {
+		return AttemptConfiguration{}, err
+	}
+	return frozen, nil
+}
+
+func (c AttemptConfiguration) Validate() error {
+	canonical, err := c.AttemptConfigurationCandidate.CanonicalAdmission()
+	if err != nil || !IsValidAgreementID(c.Revision) || c.Digest != SHA256Fingerprint(canonical) {
+		return errAttemptConfiguration
+	}
+	document, err := encodeCanonicalExamDocument(c)
+	if err != nil || len(document) > AttemptConfigurationMaxBytes {
+		return errAttemptConfiguration
+	}
+	return nil
+}
+
+// CanonicalAdmission returns the one persisted frozen representation.
+func (c AttemptConfiguration) CanonicalAdmission() ([]byte, error) {
+	if c.Validate() != nil {
+		return nil, errAttemptConfiguration
+	}
+	return encodeCanonicalExamDocument(c)
+}
+
+func (c AttemptConfiguration) Clone() AttemptConfiguration {
+	c.AttemptConfigurationCandidate = c.AttemptConfigurationCandidate.Clone()
+	return c
+}
+
+// Explicit marshaling avoids promoting the candidate's decoding methods onto
+// the frozen envelope and losing its server-owned fields.
+func (c AttemptConfiguration) MarshalJSON() ([]byte, error) {
+	type candidate AttemptConfigurationCandidate
+	return json.Marshal(struct {
+		candidate
+		Revision string `json:"attempt_configuration_revision"`
+		Digest   string `json:"digest"`
+	}{candidate(c.AttemptConfigurationCandidate), c.Revision, c.Digest})
+}
+
+func (c *AttemptConfigurationCandidate) UnmarshalJSON(document []byte) error {
+	if c == nil || validateConfigurationShape(document, 8) != nil {
+		return errAttemptConfiguration
+	}
+	type wire AttemptConfigurationCandidate
+	var decoded wire
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&decoded) != nil {
+		return errAttemptConfiguration
+	}
+	value := AttemptConfigurationCandidate(decoded)
+	if value.Validate() != nil {
+		return errAttemptConfiguration
+	}
+	*c = value
+	return nil
+}
+
+func (c *AttemptConfiguration) UnmarshalJSON(document []byte) error {
+	if c == nil || validateConfigurationShape(document, 10) != nil {
+		return errAttemptConfiguration
+	}
+	type candidate AttemptConfigurationCandidate
+	var decoded struct {
+		candidate
+		Revision string `json:"attempt_configuration_revision"`
+		Digest   string `json:"digest"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&decoded) != nil {
+		return errAttemptConfiguration
+	}
+	value := AttemptConfiguration{AttemptConfigurationCandidate: AttemptConfigurationCandidate(decoded.candidate), Revision: decoded.Revision, Digest: decoded.Digest}
+	if value.Validate() != nil {
+		return errAttemptConfiguration
+	}
+	*c = value
+	return nil
+}
+
+func validateConfigurationShape(document []byte, fields int) error {
+	if len(document) == 0 || len(document) > AttemptConfigurationMaxBytes || validateExamDocumentJSON(document) != nil {
+		return errAttemptConfiguration
+	}
+	var root map[string]json.RawMessage
+	if json.Unmarshal(document, &root) != nil || len(root) != fields {
+		return errAttemptConfiguration
+	}
+	keys := []string{"manifest_fingerprint", "registry_fingerprint", "desktop_build", "desktop_target", "user_settings_revision", "presentation", "approved_commands", "approved_keybindings"}
+	if fields == 10 {
+		keys = append(keys, "attempt_configuration_revision", "digest")
+	}
+	for _, key := range keys {
+		if _, ok := root[key]; !ok {
+			return errAttemptConfiguration
+		}
+	}
+	for _, value := range root {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return errAttemptConfiguration
+		}
+	}
+	var presentation map[string]json.RawMessage
+	if json.Unmarshal(root["presentation"], &presentation) != nil || len(presentation) != 10 {
+		return errAttemptConfiguration
+	}
+	for _, key := range []string{"color_theme", "prefer_high_contrast", "zoom_percent", "editor_font_size_px", "editor_line_height_px", "reduced_motion", "screen_reader_mode", "announcement_mode", "cursor_style", "cursor_blinking"} {
+		if _, ok := presentation[key]; !ok {
+			return errAttemptConfiguration
+		}
+	}
+	for _, value := range presentation {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return errAttemptConfiguration
+		}
+	}
+	return nil
+}
+
+func DecodeAttemptConfiguration(document []byte, digest string) (AttemptConfiguration, error) {
+	var c AttemptConfiguration
+	if json.Unmarshal(document, &c) != nil || c.Digest != digest {
+		return AttemptConfiguration{}, errAttemptConfiguration
+	}
+	canonical, err := c.CanonicalAdmission()
+	if err != nil || !bytes.Equal(canonical, document) {
+		return AttemptConfiguration{}, errAttemptConfiguration
+	}
+	return c, nil
 }
 
 func SHA256Fingerprint(data []byte) string {
@@ -128,143 +297,4 @@ func SHA256Fingerprint(data []byte) string {
 func IsValidSHA256Fingerprint(value string) bool {
 	return len(value) == len("sha256:")+sha256.Size*2 && value[:len("sha256:")] == "sha256:" &&
 		validSHA256Fingerprint.MatchString(value[len("sha256:"):])
-}
-
-func (preferences AttemptConfigurationPreferences) Validate() error {
-	if preferences.ThemeMode != AttemptThemeFollowSystem && preferences.ThemeMode != AttemptThemeLight && preferences.ThemeMode != AttemptThemeDark {
-		return errors.New("attempt configuration theme mode is invalid")
-	}
-	validMode := func(value AttemptTriStateMode) bool {
-		return value == AttemptModeAuto || value == AttemptModeOn || value == AttemptModeOff
-	}
-	if !validMode(preferences.HighContrastMode) || !validMode(preferences.ReducedMotionMode) || !validMode(preferences.ScreenReaderMode) ||
-		preferences.UIZoomPercent < 80 || preferences.UIZoomPercent > 200 || preferences.EditorFontSizePX < 12 || preferences.EditorFontSizePX > 32 ||
-		preferences.EditorLineHeightPercent < 120 || preferences.EditorLineHeightPercent > 200 ||
-		(preferences.AnnouncementDetail != AttemptAnnouncementStandard && preferences.AnnouncementDetail != AttemptAnnouncementVerbose) ||
-		(preferences.CursorStyle != AttemptCursorLine && preferences.CursorStyle != AttemptCursorBlock && preferences.CursorStyle != AttemptCursorUnderline) ||
-		(preferences.CursorBlinking != AttemptCursorBlink && preferences.CursorBlinking != AttemptCursorSolid) ||
-		preferences.CandidateCommandBindings == nil || len(preferences.CandidateCommandBindings) > AttemptCommandBindingLimit {
-		return errors.New("attempt configuration preferences are invalid")
-	}
-	if !slices.IsSortedFunc(preferences.CandidateCommandBindings, compareAttemptCommandBinding) {
-		return errors.New("attempt configuration command bindings are not canonical")
-	}
-	for index, binding := range preferences.CandidateCommandBindings {
-		// No command/keybinding pairs are admitted by the current manifest.
-		if binding.CommandID == "" || binding.KeybindingID == "" || index > 0 &&
-			compareAttemptCommandBinding(preferences.CandidateCommandBindings[index-1], binding) == 0 {
-			return errors.New("attempt configuration command bindings are invalid")
-		}
-		return errors.New("attempt configuration command binding is not approved by the current manifest")
-	}
-	return nil
-}
-
-func compareAttemptCommandBinding(left, right AttemptCommandBinding) int {
-	if left.CommandID < right.CommandID {
-		return -1
-	}
-	if left.CommandID > right.CommandID {
-		return 1
-	}
-	if left.KeybindingID < right.KeybindingID {
-		return -1
-	}
-	if left.KeybindingID > right.KeybindingID {
-		return 1
-	}
-	return 0
-}
-
-func NewAttemptConfiguration(schemaVersion int, manifestFingerprint string, settingsRevision UserSettingsRevision,
-	desktopRegistryFingerprint string, preferences AttemptConfigurationPreferences,
-) (AttemptConfiguration, error) {
-	value := AttemptConfiguration{SchemaVersion: schemaVersion, ManifestFingerprint: manifestFingerprint,
-		SourceUserSettingsRevision: settingsRevision, SourceDesktopRegistryFingerprint: desktopRegistryFingerprint,
-		Preferences: preferences}
-	if err := value.prepareAndValidate(); err != nil {
-		return AttemptConfiguration{}, err
-	}
-	return value, nil
-}
-
-func (configuration *AttemptConfiguration) prepareAndValidate() error {
-	if configuration == nil || configuration.SchemaVersion != AttemptConfigurationSchemaVersion ||
-		configuration.ManifestFingerprint != CurrentAttemptConfigurationManifestFingerprint() ||
-		!configuration.SourceUserSettingsRevision.IsValid() || !IsValidSHA256Fingerprint(configuration.SourceDesktopRegistryFingerprint) ||
-		configuration.Preferences.Validate() != nil {
-		return errors.New("attempt configuration is invalid")
-	}
-	canonical, err := configuration.CanonicalSemantics()
-	if err != nil {
-		return err
-	}
-	configuration.Digest = SHA256Fingerprint(canonical)
-	admission, err := configuration.CanonicalAdmission()
-	if err != nil || len(admission) > AttemptConfigurationMaxBytes {
-		return errors.New("attempt configuration exceeds its canonical bound")
-	}
-	return nil
-}
-
-func (configuration AttemptConfiguration) Validate() error {
-	candidate := configuration
-	if err := candidate.prepareAndValidate(); err != nil || candidate.Digest != configuration.Digest {
-		return errors.New("attempt configuration is invalid")
-	}
-	return nil
-}
-
-func (configuration AttemptConfiguration) CanonicalSemantics() ([]byte, error) {
-	if configuration.Preferences.Validate() != nil {
-		return nil, errors.New("attempt configuration preferences are invalid")
-	}
-	return json.Marshal(attemptConfigurationSemantics{SchemaVersion: configuration.SchemaVersion,
-		ManifestFingerprint: configuration.ManifestFingerprint, Preferences: configuration.Preferences})
-}
-
-func (configuration AttemptConfiguration) CanonicalAdmission() ([]byte, error) {
-	type admission struct {
-		SchemaVersion                    int                             `json:"schema_version"`
-		ManifestFingerprint              string                          `json:"manifest_fingerprint"`
-		SourceUserSettingsRevision       UserSettingsRevision            `json:"source_user_settings_revision"`
-		SourceDesktopRegistryFingerprint string                          `json:"source_desktop_registry_fingerprint"`
-		Preferences                      AttemptConfigurationPreferences `json:"preferences"`
-	}
-	return json.Marshal(admission{configuration.SchemaVersion, configuration.ManifestFingerprint,
-		configuration.SourceUserSettingsRevision, configuration.SourceDesktopRegistryFingerprint, configuration.Preferences})
-}
-
-// DecodeAttemptConfiguration accepts only the canonical persisted admission
-// document and verifies the separately persisted semantic digest. Keeping the
-// digest outside the document prevents admission provenance from becoming
-// part of the runtime configuration identity.
-func DecodeAttemptConfiguration(document []byte, digest string) (AttemptConfiguration, error) {
-	var value AttemptConfiguration
-	if len(document) == 0 || len(document) > AttemptConfigurationMaxBytes || !IsValidSHA256Fingerprint(digest) ||
-		rejectDuplicateJSONFields(document) != nil {
-		return value, errors.New("attempt configuration document is invalid")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil {
-		return AttemptConfiguration{}, errors.New("attempt configuration document is invalid")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return AttemptConfiguration{}, errors.New("attempt configuration document contains trailing data")
-	}
-	value.Digest = digest
-	if err := value.Validate(); err != nil {
-		return AttemptConfiguration{}, err
-	}
-	canonical, err := value.CanonicalAdmission()
-	if err != nil || !bytes.Equal(document, canonical) {
-		return AttemptConfiguration{}, errors.New("attempt configuration document is not canonical")
-	}
-	return value, nil
-}
-
-func (configuration AttemptConfiguration) Clone() AttemptConfiguration {
-	configuration.Preferences.CandidateCommandBindings = slices.Clone(configuration.Preferences.CandidateCommandBindings)
-	return configuration
 }

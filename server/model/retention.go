@@ -21,12 +21,14 @@ const (
 type RetentionCategory string
 
 const (
-	RetentionCategoryWork      RetentionCategory = "work"
-	RetentionCategoryIntegrity RetentionCategory = "integrity"
+	RetentionCategoryWork                RetentionCategory = "work"
+	RetentionCategoryIntegrity           RetentionCategory = "integrity"
+	RetentionCategoryBrowserActivity     RetentionCategory = "browser_activity"
+	RetentionCategorySecurityOperational RetentionCategory = "security_operational"
 )
 
 func (c RetentionCategory) IsValid() bool {
-	return c == RetentionCategoryWork || c == RetentionCategoryIntegrity
+	return c == RetentionCategoryWork || c == RetentionCategoryIntegrity || c == RetentionCategoryBrowserActivity || c == RetentionCategorySecurityOperational
 }
 
 type RetentionControlState string
@@ -80,16 +82,18 @@ func (c *RetentionControl) Permits(policy *RetentionPolicy) bool {
 // list of deletion commands. Every scheduled and final transition rechecks the
 // live policy, completion, holds, and source protections independently.
 type RetentionPreview struct {
-	ID              RetentionPreviewID
-	InstitutionID   InstitutionID
-	PolicyRevision  int64
-	CreatedByUserID UserID
-	CreatedAt       time.Time
-	ExpiresAt       time.Time
-	Work            RetentionPreviewCounts
-	Integrity       RetentionPreviewCounts
-	Audit           RetentionExpiryCounts
-	Receipts        RetentionExpiryCounts
+	ID                  RetentionPreviewID
+	InstitutionID       InstitutionID
+	PolicyRevision      int64
+	CreatedByUserID     UserID
+	CreatedAt           time.Time
+	ExpiresAt           time.Time
+	Work                RetentionPreviewCounts
+	Integrity           RetentionPreviewCounts
+	BrowserActivity     RetentionPreviewCounts
+	SecurityOperational RetentionPreviewCounts
+	Audit               RetentionExpiryCounts
+	Receipts            RetentionExpiryCounts
 }
 
 type RetentionPreviewCounts struct {
@@ -110,7 +114,7 @@ func (p *RetentionPreview) Validate() error {
 		p.ExpiresAt.Sub(p.CreatedAt) > RetentionPreviewLifetime {
 		return errors.New("model: invalid retention preview")
 	}
-	for _, c := range []RetentionPreviewCounts{p.Work, p.Integrity} {
+	for _, c := range []RetentionPreviewCounts{p.Work, p.Integrity, p.BrowserActivity, p.SecurityOperational} {
 		if c.Total < 0 || c.Eligible < 0 || c.AwaitingDeadline < 0 || c.Incomplete < 0 ||
 			c.Held < 0 || c.Unconfigured < 0 || c.SupportingWork < 0 || c.ExportProtected < 0 || c.Retired < 0 ||
 			c.Total != c.Eligible+c.AwaitingDeadline+c.Incomplete+c.Held+c.Unconfigured+c.SupportingWork+c.ExportProtected+c.Retired {
@@ -175,9 +179,16 @@ func (r RetentionRecord) Eligibility(policy *RetentionPolicy, at time.Time) (Ret
 	if !r.CompletionCurrent {
 		return RetentionEligibility{Blocker: RetentionBlockerIncomplete}, nil
 	}
-	days := policy.IntegrityRetentionDays
-	if r.Category == RetentionCategoryWork {
+	var days int
+	switch r.Category {
+	case RetentionCategoryWork:
 		days = policy.SubmissionRetentionDays
+	case RetentionCategoryIntegrity:
+		days = policy.IntegrityRetentionDays
+	case RetentionCategoryBrowserActivity:
+		days = policy.BrowserActivityRetentionDays
+	case RetentionCategorySecurityOperational:
+		days = policy.SecurityOperationalRetentionDays
 	}
 	var deadline OptionalTime
 	if days > 0 {

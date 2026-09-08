@@ -41,7 +41,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		deps.Store.CommandOutcome(), examExecutionProfileCatalog{execution: execution},
-		effects, effects, time.Now, model.NewExamID,
+		effects, effects, time.Now, model.NewExamID, deps.PublicURL,
 	)
 	if err != nil {
 		return examinationConstruction{}, err
@@ -58,7 +58,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		effects, effects, time.Now, model.NewExamRevisionID,
+		effects, effects, time.Now, model.NewExamRevisionID, deps.PublicURL,
 	)
 	if err != nil {
 		return examinationConstruction{}, err
@@ -139,7 +139,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects, execution: execution},
 		deps.FileContent, time.Now, model.NewExamCorrectionResourceStageID, model.NewExamResourceID,
 		model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID,
-		model.NewExamRevisionID,
+		model.NewExamRevisionID, deps.PublicURL,
 	)
 	if err != nil {
 		return examinationConstruction{}, err

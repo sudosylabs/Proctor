@@ -100,16 +100,20 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 			return nil, err
 		}
 		at = model.TimeUTC(at)
+		expiredCancelled, err := settleRetiringDeliveries(ctx, tx, input.SubmissionID, at)
+		if err != nil {
+			return nil, err
+		}
 		// Re-read after the same Exam/Sitting fences used by holds, completion,
 		// late evidence, and export source selection.
 		if err = tx.Get(ctx, &facts, retentionFactsQuery+` AND sub.id=?`, policy.InstitutionID.String(), input.SubmissionID.String()); err != nil {
 			return nil, err
 		}
-		result := &store.RetentionReconciliationResult{}
+		result := &store.RetentionReconciliationResult{Cancelled: expiredCancelled}
 		records := facts.records()
 		// Integrity retires first. Work may never disappear while its retained
 		// integrity still depends on it, even when both grace periods have ended.
-		for _, index := range []int{1, 0} {
+		for _, index := range []int{1, 0, 2, 3} {
 			record := records[index]
 			eligibility, err := record.Eligibility(policy, at)
 			if err != nil {
@@ -142,6 +146,15 @@ func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *stor
 				continue
 			}
 			if retirement.State != model.RetentionRetirementGrace || at.Before(retirement.RetireAfter) {
+				continue
+			}
+			// Await the finite expiry pass when accepted records still await
+			// interpretation; deleting them could erase a future evidence copy.
+			var pendingInterpretation bool
+			if err := tx.Get(ctx, &pendingInterpretation, `SELECT EXISTS(SELECT 1 FROM browser_activity_events WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND interpretation_state=0) OR EXISTS(SELECT 1 FROM exam_native_delivery_batches b JOIN exam_attempt_security_owners o USING(participation_id) WHERE o.exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?) AND NOT b.processed)`, input.SubmissionID.String(), input.SubmissionID.String()); err != nil {
+				return nil, err
+			}
+			if pendingInterpretation {
 				continue
 			}
 			if record.Category == model.RetentionCategoryWork && record.HasIntegrity {
@@ -208,10 +221,18 @@ func commitRetention(ctx context.Context, tx *sqlxTxWrapper, retirement *model.R
 	if err != nil {
 		return err
 	}
-	if retirement.Category == model.RetentionCategoryIntegrity {
+	switch retirement.Category {
+	case model.RetentionCategoryIntegrity:
 		return retireSubmissionIntegrity(ctx, tx, retirement.Scope.SubmissionID, at)
+	case model.RetentionCategoryWork:
+		return retireSubmissionWork(ctx, tx, retirement, at)
+	case model.RetentionCategoryBrowserActivity:
+		return retireSubmissionBrowserActivity(ctx, tx, retirement.Scope.SubmissionID, at)
+	case model.RetentionCategorySecurityOperational:
+		return retireSubmissionSecurityOperational(ctx, tx, retirement.Scope.SubmissionID, at)
+	default:
+		return model.ErrDeliveryInvalid
 	}
-	return retireSubmissionWork(ctx, tx, retirement, at)
 }
 
 func retireSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, id model.SubmissionID, at time.Time) error {
@@ -221,6 +242,10 @@ func retireSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, id model.
 	// Export creation retains only an Export ID; its independently expiring
 	// archive and exact retry survive source retirement without copying content.
 	queries := []string{
+		`DELETE FROM native_condition_evidence WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
+		`DELETE FROM exam_native_occurrences WHERE participation_id IN (SELECT participation_id FROM exam_attempt_security_owners WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?))`,
+		`DELETE FROM exam_native_delivery_records WHERE kind='occurrence' AND participation_id IN (SELECT participation_id FROM exam_attempt_security_owners WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?))`,
+		`DELETE FROM submission_review_finalizations WHERE submission_review_id IN (SELECT id FROM submission_reviews WHERE submission_id=?)`,
 		`DELETE FROM submission_review_inventory_evidence WHERE submission_review_id IN (SELECT id FROM submission_reviews WHERE submission_id=?)`,
 		`DELETE FROM submission_review_inventory_flags WHERE submission_review_id IN (SELECT id FROM submission_reviews WHERE submission_id=?)`,
 		`DELETE FROM submission_review_inventory_discrepancies WHERE submission_id=?`,
@@ -231,8 +256,9 @@ func retireSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, id model.
 		`DELETE FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM exam_attempt_suspensions WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM integrity_evidence WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
+		`DELETE FROM browser_integrity_groups WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
+		`DELETE FROM browser_integrity_overflow WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM integrity_flags WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
-		`DELETE FROM browser_activity_events WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM exam_attempt_manager_end_actions WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`,
 		`DELETE FROM command_outcomes WHERE operation <> '` + store.ExamExportCreateOperation + `' AND original_audit_event_id IN (SELECT id FROM audit_events WHERE resource_type='submission' AND resource_id=?)`,
 	}
@@ -245,17 +271,12 @@ func retireSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, id model.
 	// foreign key. The explicit state keeps manager projections from inventing
 	// a settled result or reproducing the former unresolved count.
 	_, err := tx.Exec(ctx, `UPDATE exam_submissions SET integrity_retired_at=?,integrity_state='retired',
-		final_focus_loss_sequence=NULL,unresolved_integrity_count=NULL,browser_activity_state=NULL,
-		browser_activity_source_session_id=NULL,browser_activity_final_sequence=NULL,browser_activity_gap_reason=NULL
+		final_focus_loss_sequence=NULL,unresolved_integrity_count=NULL
 		WHERE id=? AND integrity_retired_at IS NULL`, at, id.String())
 	if err != nil {
 		return err
 	}
-	// A source's high-water marks, reset reason and predecessor chain are also
-	// integrity data. Delete the whole Attempt chain in one statement so its
-	// internal predecessor references disappear with their owners.
-	_, err = tx.Exec(ctx, `DELETE FROM browser_activity_sources WHERE exam_attempt_id=(SELECT exam_attempt_id FROM exam_submissions WHERE id=?)`, id.String())
-	return err
+	return nil
 }
 
 func retireSubmissionWork(ctx context.Context, tx *sqlxTxWrapper, retirement *model.RetentionRetirement, at time.Time) error {
@@ -284,7 +305,7 @@ func retireSubmissionWork(ctx context.Context, tx *sqlxTxWrapper, retirement *mo
 	}
 	// Empty integrity has no retained payload to dispose of, but work removal
 	// still closes the late-ingestion path permanently.
-	_, err = tx.Exec(ctx, `UPDATE exam_submissions SET work_retired_at=?,integrity_retired_at=COALESCE(integrity_retired_at,?),workspace_cursor=NULL,manifest_digest=NULL,manifest_entry_count=NULL,manifest_total_file_bytes=NULL,integrity_state='retired',final_focus_loss_sequence=NULL,unresolved_integrity_count=NULL,browser_activity_state=NULL,browser_activity_source_session_id=NULL,browser_activity_final_sequence=NULL,browser_activity_gap_reason=NULL WHERE id=? AND work_retired_at IS NULL`, at, at, id)
+	_, err = tx.Exec(ctx, `UPDATE exam_submissions SET work_retired_at=?,integrity_retired_at=COALESCE(integrity_retired_at,?),workspace_cursor=NULL,manifest_digest=NULL,manifest_entry_count=NULL,manifest_total_file_bytes=NULL,integrity_state='retired',final_focus_loss_sequence=NULL,unresolved_integrity_count=NULL WHERE id=? AND work_retired_at IS NULL`, at, at, id)
 	return err
 }
 

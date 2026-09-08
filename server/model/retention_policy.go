@@ -39,12 +39,14 @@ type RetentionPolicy struct {
 // expiry (or no configured grace period), never immediate deletion. Days are
 // durations of 24 hours; no calendar or timezone-dependent calculation is used.
 type RetentionPolicySettings struct {
-	SubmissionRetentionDays int
-	IntegrityRetentionDays  int
-	AuditRetentionDays      int
-	ExportRetentionDays     int
-	DeletionGraceDays       int
-	CandidateNotices        bool
+	SubmissionRetentionDays          int
+	IntegrityRetentionDays           int
+	BrowserActivityRetentionDays     int
+	SecurityOperationalRetentionDays int
+	AuditRetentionDays               int
+	ExportRetentionDays              int
+	DeletionGraceDays                int
+	CandidateNotices                 bool
 }
 
 // NewInitialRetentionPolicy preserves all records without selecting retention
@@ -55,7 +57,7 @@ func NewInitialRetentionPolicy(institutionID InstitutionID, at time.Time) *Reten
 }
 
 func (s RetentionPolicySettings) Validate() error {
-	for _, days := range []int{s.SubmissionRetentionDays, s.IntegrityRetentionDays,
+	for _, days := range []int{s.SubmissionRetentionDays, s.IntegrityRetentionDays, s.BrowserActivityRetentionDays, s.SecurityOperationalRetentionDays,
 		s.AuditRetentionDays, s.DeletionGraceDays} {
 		if days < 0 || days > RetentionPolicyMaxDays {
 			return errRetentionPolicyInvalid
@@ -116,13 +118,15 @@ func (p *RetentionPolicy) Auditable() map[string]any {
 	}
 	return map[string]any{
 		"institution_id": p.InstitutionID.String(), "revision": p.Revision,
-		"submission_retention_days":  p.SubmissionRetentionDays,
-		"integrity_retention_days":   p.IntegrityRetentionDays,
-		"audit_retention_days":       p.AuditRetentionDays,
-		"export_retention_days":      p.ExportRetentionDays,
-		"deletion_grace_days":        p.DeletionGraceDays,
-		"candidate_notices":          p.CandidateNotices,
-		"automatic_deletion_enabled": p.AutomaticDeletionEnabled,
+		"submission_retention_days":           p.SubmissionRetentionDays,
+		"integrity_retention_days":            p.IntegrityRetentionDays,
+		"browser_activity_retention_days":     p.BrowserActivityRetentionDays,
+		"security_operational_retention_days": p.SecurityOperationalRetentionDays,
+		"audit_retention_days":                p.AuditRetentionDays,
+		"export_retention_days":               p.ExportRetentionDays,
+		"deletion_grace_days":                 p.DeletionGraceDays,
+		"candidate_notices":                   p.CandidateNotices,
+		"automatic_deletion_enabled":          p.AutomaticDeletionEnabled,
 	}
 }
 

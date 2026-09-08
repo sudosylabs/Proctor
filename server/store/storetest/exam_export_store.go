@@ -34,7 +34,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	f, _, flagged, sealed, _ := newIntegrityReviewFixture(t, ctx, ss, "export")
 	scope := model.RetentionHoldScope{ExamID: f.examID, SittingID: f.sitting.ID, SubmissionID: sealed.Receipt.SubmissionID}
 	principal := saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
-	permissions := []string{string(model.ActionExamRecordsExport), string(model.ActionExamRecordsExportOverride), string(model.ActionSubmissionView), string(model.ActionSubmissionViewOverride), string(model.ActionExamSittingView), string(model.ActionExamSittingViewOverride), string(model.ActionExamAttemptBrowserActivityView), string(model.ActionExamAttemptBrowserActivityViewOverride)}
+	permissions := []string{string(model.ActionExamRecordsExport), string(model.ActionExamRecordsExportOverride), string(model.ActionSubmissionView), string(model.ActionSubmissionViewOverride), string(model.ActionExamSittingView), string(model.ActionExamSittingViewOverride), string(model.ActionExamAttemptBrowserActivityView)}
 	role, err := ss.Role().Save(ctx, &model.Role{Name: "export-manager-" + model.NewId(), DisplayName: "Export manager", Permissions: permissions})
 	requireNoError(t, err)
 	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: f.manager.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
@@ -249,10 +249,78 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	requireNoError(t, err)
 	withoutPermission(model.ActionExamAttemptBrowserActivityView, func() {
 		integrityAccess := integrityInput.ExamExportAccess
-		if _, err := peer.Get(ctx, &integrityAccess); !store.IsConflict(err) {
-			t.Fatalf("integrity export skipped Browser Activity authority: %v", err)
+		if _, err := peer.Get(ctx, &integrityAccess); err != nil {
+			t.Fatalf("generic integrity export demanded private history authority: %v", err)
 		}
 	})
+	historyInput := makeInput(model.RetentionCategoryBrowserActivity)
+	_, err = exports.Create(ctx, historyInput, examCommand(f.manager.ID, store.ExamExportCreateOperation, "export-history", "export-history"))
+	requireNoError(t, err)
+	withoutPermission(model.ActionExamAttemptBrowserActivityView, func() {
+		historyAccess := historyInput.ExamExportAccess
+		if _, err := peer.Get(ctx, &historyAccess); !store.IsConflict(err) {
+			t.Fatalf("history export skipped dedicated authority: %v", err)
+		}
+	})
+
+	// Holding every export/read action does not turn a different User into an
+	// exact Exam Manager, including through the explicit general export override.
+	nonmanager := saveUser(t, ctx, ss)
+	nonmanagerPrincipal := saveRecordsPrincipal(t, ctx, ss, nonmanager.ID, false)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: nonmanager.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: f.unitID.String(), StartsAt: model.NowUTC().Add(-time.Minute)})
+	requireNoError(t, err)
+	_, err = ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{UserID: nonmanager.ID, AcademicUnitID: f.unitID, StartsAt: model.NowUTC().Add(-time.Minute)})
+	requireNoError(t, err)
+	for _, categories := range [][]model.RetentionCategory{{model.RetentionCategoryBrowserActivity}} {
+		denied := makeInput(categories...)
+		denied.ExamRecordsMutation = recordsMutation(t, ctx, ss, f.unitID, scope, nonmanagerPrincipal, model.ActionExamRecordsExportOverride)
+		if _, err := exports.Create(ctx, denied, examCommand(nonmanager.ID, store.ExamExportCreateOperation, model.NewId(), "browser-denied")); !store.IsConflict(err) {
+			t.Fatalf("nonmanager override created Browser Activity archive: %v", err)
+		}
+		if count := probe.SourceProtectionCount(t, ctx, denied.ExportID); count != 0 {
+			t.Fatal("denial left export protections")
+		}
+	}
+	// A real exact Manager with valid scoped actions can use the general export
+	// override without inventing an extra unit-membership history condition.
+	exam, err := ss.ExamAuthoring().Resolve(ctx, f.examID)
+	requireNoError(t, err)
+	at := model.NowUTC()
+	grant := newExamManagerMutation(t, ctx, ss, f.examID, f.manager.ID, nonmanager.ID, exam.Revision, at, false)
+	grant.Notices = examManagerMailNotices(t, at, examManagerMailRecipient{nonmanager.ID, model.MailTemplateExamManagerAdded})
+	added, err := ss.ExamAuthoring().AddManager(ctx, grant, examCommand(f.manager.ID, "exam.manager.add.v1", "export-manager-add", "export-manager-add"))
+	requireNoError(t, err)
+	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, nonmanager.ID.String(), model.NowUTC())
+	requireNoError(t, err)
+	for _, membership := range memberships {
+		if membership.AcademicUnitID == f.unitID {
+			_, err := ss.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, model.GetMillis())
+			requireNoError(t, err)
+		}
+	}
+	managedInput := makeInput(model.RetentionCategoryBrowserActivity)
+	managedInput.ExamRecordsMutation = recordsMutation(t, ctx, ss, f.unitID, scope, nonmanagerPrincipal, model.ActionExamRecordsExportOverride)
+	managedCommand := examCommand(nonmanager.ID, store.ExamExportCreateOperation, "export-new-manager", "export-new-manager")
+	_, err = exports.Create(ctx, managedInput, managedCommand)
+	requireNoError(t, err)
+	managedAccess := managedInput.ExamExportAccess
+	_, err = peer.Get(ctx, &managedAccess)
+	requireNoError(t, err)
+	// Remove that exact relationship through its real command. Every role and
+	// Session remains current; peer reads and retained retries must now deny.
+	at = model.NowUTC()
+	removal := newExamManagerMutation(t, ctx, ss, f.examID, f.manager.ID, nonmanager.ID, added.Exam.Revision, at, false)
+	removal.Notices = examManagerMailNotices(t, at, examManagerMailRecipient{nonmanager.ID, model.MailTemplateExamManagerRemoved})
+	_, err = ss.ExamAuthoring().RemoveManager(ctx, removal, examCommand(f.manager.ID, "exam.manager.remove.v1", "export-manager-remove", "export-manager-remove"))
+	requireNoError(t, err)
+	if _, err := peer.Get(ctx, &managedAccess); !store.IsConflict(err) {
+		t.Fatalf("peer override read ignored removed Manager: %v", err)
+	}
+	managedInput.ExamRecordsMutation = recordsMutation(t, ctx, ss, f.unitID, scope, nonmanagerPrincipal, model.ActionExamRecordsExportOverride)
+	if _, err := exports.Create(ctx, managedInput, managedCommand); !store.IsConflict(err) {
+		t.Fatalf("replay override ignored removed Manager: %v", err)
+	}
 	token2, err := model.NewJobClaimToken()
 	requireNoError(t, err)
 	claim2, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeExamExportBuild}, NodeID: "export-peer", ClaimToken: token2, LeaseDuration: time.Minute})
@@ -265,11 +333,14 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	requireNoError(t, err)
 	document.Submissions = nil
 	requireNoError(t, json.Unmarshal(snapshot.Records, &document))
-	if document.Submissions[0]["integrity"] == nil || document.Submissions[0]["work"] != nil || len(snapshot.Files) != 0 {
+	if document.Submissions[0]["browser_activity"] != nil || document.Submissions[0]["integrity"] == nil || document.Submissions[0]["work"] != nil || len(snapshot.Files) != 0 {
 		t.Fatal("integrity-only export included work")
 	}
 	var integrityRecords map[string][]json.RawMessage
 	requireNoError(t, json.Unmarshal(document.Submissions[0]["integrity"], &integrityRecords))
+	if integrityRecords["browser_activity"] != nil {
+		t.Fatal("generic integrity export leaked ordinary browsing history")
+	}
 	if len(integrityRecords["review_inventory_flags"]) != 1 || len(integrityRecords["review_inventory_evidence"]) != 1 {
 		t.Fatal("portable archive omitted the frozen Review inventory")
 	}

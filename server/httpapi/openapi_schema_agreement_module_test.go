@@ -10,9 +10,11 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 )
 
 func evaluateOpenAPISchemaAgreement(
@@ -44,8 +46,7 @@ func evaluateOpenAPISchemaAgreement(
 		violations = appendAgreementViolation(violations, target, "required fields", fmt.Sprintf("got %v, want %v", gotRequired, wantRequired))
 	}
 
-	for index := 0; index < dto.NumField(); index++ {
-		field := dto.Field(index)
+	for _, field := range serializedJSONFields(dto) {
 		name := jsonFieldName(field)
 		if name == "" {
 			continue
@@ -102,6 +103,18 @@ func evaluateOpenAPIShapeAgreement(
 	if forceNonNullable {
 		nullable = false
 	}
+	if goType == reflect.TypeOf(model.BrowserActivityEvent{}) {
+		return evaluateBrowserEventCodecAgreement(violations, document, target, shape, requestSchema)
+	}
+	if goType == reflect.TypeOf(model.NativeRecord{}) {
+		return evaluateNativeRecordCodecAgreement(violations, document, target, shape, requestSchema)
+	}
+	if goType == reflect.TypeOf(model.NativeFamilyPolicy{}) {
+		return evaluateNativeFamilyCodecAgreement(violations, document, target, shape, requestSchema)
+	}
+	if goType == reflect.TypeOf(model.SecurityPolicyScope{}) {
+		return evaluateSecurityScopeCodecAgreement(violations, document, target, shape, requestSchema)
+	}
 	unionNullable := false
 	if len(shape.OneOf) > 0 {
 		if len(shape.OneOf) != 2 {
@@ -149,6 +162,16 @@ func evaluateOpenAPIShapeAgreement(
 		}
 	}
 
+	if goType == reflect.TypeOf(time.Time{}) {
+		wantTimeTypes := []string{"string"}
+		if nullable {
+			wantTimeTypes = append(wantTimeTypes, "null")
+		}
+		if !openAPITypesEqual(shape.Type, wantTimeTypes) || shape.Format != "date-time" {
+			return appendAgreementViolation(violations, target, "time codec", "must be a date-time string")
+		}
+		return violations
+	}
 	wantType := map[reflect.Kind]string{
 		reflect.Bool: "boolean", reflect.Int: "integer", reflect.Int8: "integer",
 		reflect.Int16: "integer", reflect.Int32: "integer", reflect.Int64: "integer",
@@ -201,8 +224,7 @@ func evaluateOpenAPIShapeAgreement(
 	if !reflect.DeepEqual(gotRequired, wantRequired) {
 		violations = appendAgreementViolation(violations, target, "required fields", fmt.Sprintf("got %v, Go JSON tags require %v", gotRequired, wantRequired))
 	}
-	for index := 0; index < goType.NumField(); index++ {
-		field := goType.Field(index)
+	for _, field := range serializedJSONFields(goType) {
 		name := jsonFieldName(field)
 		if name == "" {
 			continue
@@ -258,8 +280,8 @@ func sortedStrings(values []string) []string {
 
 func jsonFieldNames(dto reflect.Type) []string {
 	fields := make([]string, 0, dto.NumField())
-	for index := 0; index < dto.NumField(); index++ {
-		name := jsonFieldName(dto.Field(index))
+	for _, field := range serializedJSONFields(dto) {
+		name := jsonFieldName(field)
 		if name != "" {
 			fields = append(fields, name)
 		}
@@ -270,8 +292,8 @@ func jsonFieldNames(dto reflect.Type) []string {
 
 func requiredJSONFieldNames(dto reflect.Type) []string {
 	fields := make([]string, 0, dto.NumField())
-	for index := 0; index < dto.NumField(); index++ {
-		tag := dto.Field(index).Tag.Get("json")
+	for _, field := range serializedJSONFields(dto) {
+		tag := field.Tag.Get("json")
 		parts := strings.Split(tag, ",")
 		if parts[0] == "" || parts[0] == "-" {
 			continue
@@ -328,4 +350,171 @@ func openAPITypesEqual(value any, want []string) bool {
 	want = append([]string(nil), want...)
 	sort.Strings(want)
 	return reflect.DeepEqual(got, want)
+}
+
+// The native family is a custom codec with private typed state. Verify every
+// branch against its actual serialized fields instead of reflecting that state.
+func evaluateNativeFamilyCodecAgreement(violations []openAPIAgreementViolation, document openAPIDocument, target string, shape openAPISchemaShape, requestSchema bool) []openAPIAgreementViolation {
+	families := model.DefaultNativeSecurityPolicy().Families
+	if len(shape.OneOf) != len(families) {
+		return appendAgreementViolation(violations, target, "oneOf", "must describe all ten native family codec branches")
+	}
+	for index, family := range families {
+		raw, err := json.Marshal(family)
+		if err != nil {
+			panic(err)
+		}
+		var members map[string]any
+		if err := json.Unmarshal(raw, &members); err != nil {
+			panic(err)
+		}
+		names := make([]string, 0, len(members))
+		for name := range members {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		fields := make([]reflect.StructField, 0, len(names))
+		for i, name := range names {
+			typ := reflect.TypeOf(members[name])
+			if _, ok := members[name].([]any); ok {
+				typ = reflect.TypeOf([]string{})
+			}
+			fields = append(fields, reflect.StructField{Name: fmt.Sprintf("Field%d", i), Type: typ, Tag: reflect.StructTag(fmt.Sprintf(`json:"%s"`, name))})
+		}
+		branch := shape.OneOf[index]
+		var id struct {
+			Const string `json:"const"`
+		}
+		_ = json.Unmarshal(branch.Properties["id"], &id)
+		if id.Const != family.ID() {
+			violations = appendAgreementViolation(violations, target, "family id", fmt.Sprintf("branch %d must identify %s", index, family.ID()))
+		}
+		if string(branch.AdditionalProperties) != "false" {
+			violations = appendAgreementViolation(violations, target, "family shape", "must reject extra fields")
+		}
+		violations = evaluateOpenAPIShapeAgreement(violations, document, target+"."+family.ID(), branch, reflect.StructOf(fields), requestSchema, false, false, false, nil, nil)
+	}
+	return violations
+}
+
+func serializedJSONFields(dto reflect.Type) []reflect.StructField {
+	var fields []reflect.StructField
+	for i := 0; i < dto.NumField(); i++ {
+		field := dto.Field(i)
+		embeddedType := field.Type
+		if embeddedType.Kind() == reflect.Pointer {
+			embeddedType = embeddedType.Elem()
+		}
+		if field.Anonymous && field.Tag.Get("json") == "" && embeddedType.Kind() == reflect.Struct {
+			fields = append(fields, serializedJSONFields(embeddedType)...)
+		} else {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+func evaluateSecurityScopeCodecAgreement(violations []openAPIAgreementViolation, document openAPIDocument, target string, shape openAPISchemaShape, requestSchema bool) []openAPIAgreementViolation {
+	scopes := []model.SecurityPolicyScope{{Kind: "admission", AdmissionScopeID: "admission"}, {Kind: "attempt", AttemptID: model.NewExamAttemptID()}}
+	if len(shape.OneOf) != len(scopes) {
+		return appendAgreementViolation(violations, target, "scope union", "must contain exact admission and attempt variants")
+	}
+	for i, scope := range scopes {
+		raw, _ := json.Marshal(scope)
+		var members map[string]string
+		if err := json.Unmarshal(raw, &members); err != nil {
+			panic(err)
+		}
+		names := make([]string, 0, len(members))
+		for name := range members {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		fields := make([]reflect.StructField, 0, len(names))
+		for j, name := range names {
+			fields = append(fields, reflect.StructField{Name: fmt.Sprintf("Field%d", j), Type: reflect.TypeOf(""), Tag: reflect.StructTag(fmt.Sprintf(`json:"%s"`, name))})
+		}
+		branch := shape.OneOf[i]
+		var kind struct {
+			Const string `json:"const"`
+		}
+		_ = json.Unmarshal(branch.Properties["kind"], &kind)
+		if kind.Const != scope.Kind || string(branch.AdditionalProperties) != "false" {
+			violations = appendAgreementViolation(violations, target, "scope variant", "must be closed and identify the exact kind")
+		}
+		violations = evaluateOpenAPIShapeAgreement(violations, document, target+"."+scope.Kind, branch, reflect.StructOf(fields), requestSchema, false, false, false, nil, nil)
+	}
+	return violations
+}
+
+func evaluateNativeRecordCodecAgreement(violations []openAPIAgreementViolation, document openAPIDocument, target string, shape openAPISchemaShape, requestSchema bool) []openAPIAgreementViolation {
+	if shape.Ref != "" {
+		component, ok := document.Components.Schemas[strings.TrimPrefix(shape.Ref, "#/components/schemas/")]
+		if !ok {
+			return appendAgreementViolation(violations, target, "reference", "missing native record schema")
+		}
+		raw, err := json.Marshal(component)
+		if err != nil {
+			panic(err)
+		}
+		if err := json.Unmarshal(raw, &shape); err != nil {
+			panic(err)
+		}
+	}
+	variants := []reflect.Type{reflect.TypeOf(model.NativeOccurrence{}), reflect.TypeOf(model.NativeCoverageTransition{}), reflect.TypeOf(model.NativeSourceReset{}), reflect.TypeOf(model.NativeSourceGap{})}
+	if len(shape.OneOf) != len(variants) {
+		return appendAgreementViolation(violations, target, "oneOf", "must describe the four closed native record variants")
+	}
+	for i, variant := range variants {
+		violations = evaluateOpenAPIShapeAgreement(violations, document, target+"."+variant.Name(), shape.OneOf[i], variant, requestSchema, false, false, false, nil, nil)
+	}
+	return violations
+}
+
+// The Browser event codec is a closed discriminated union, despite its compact
+// in-memory representation. These independent wire shapes cover its five cases.
+type browserLifecycleAgreement struct {
+	Sequence         int64     `json:"sequence"`
+	Kind             string    `json:"kind"`
+	PolicyRevisionID string    `json:"policy_revision_id"`
+	ClientOccurredAt time.Time `json:"client_occurred_at"`
+}
+type browserNavigationAgreement struct {
+	browserLifecycleAgreement
+	Location      model.BrowserLocation `json:"location"`
+	MatchedRuleID string                `json:"matched_rule_id"`
+}
+type browserRedirectAgreement struct {
+	browserNavigationAgreement
+	RedirectFromSequence int64 `json:"redirect_from_sequence"`
+}
+type browserBlockedAgreement struct {
+	browserLifecycleAgreement
+	Location             model.BrowserLocation `json:"location"`
+	MatchedRuleID        string                `json:"matched_rule_id,omitempty"`
+	BlockReason          string                `json:"block_reason"`
+	RedirectFromSequence int64                 `json:"redirect_from_sequence,omitempty"`
+}
+
+func evaluateBrowserEventCodecAgreement(violations []openAPIAgreementViolation, document openAPIDocument, target string, shape openAPISchemaShape, request bool) []openAPIAgreementViolation {
+	if shape.Ref != "" {
+		component, ok := document.Components.Schemas[strings.TrimPrefix(shape.Ref, "#/components/schemas/")]
+		if !ok {
+			return appendAgreementViolation(violations, target, "reference", "missing Browser record schema")
+		}
+		raw, err := json.Marshal(component)
+		if err != nil {
+			panic(err)
+		}
+		if err := json.Unmarshal(raw, &shape); err != nil {
+			panic(err)
+		}
+	}
+	variants := []reflect.Type{reflect.TypeOf(browserLifecycleAgreement{}), reflect.TypeOf(browserLifecycleAgreement{}), reflect.TypeOf(browserNavigationAgreement{}), reflect.TypeOf(browserRedirectAgreement{}), reflect.TypeOf(browserBlockedAgreement{})}
+	if len(shape.OneOf) != len(variants) {
+		return appendAgreementViolation(violations, target, "oneOf", "must describe five closed Browser record variants")
+	}
+	for i, variant := range variants {
+		violations = evaluateOpenAPIShapeAgreement(violations, document, fmt.Sprintf("%s.variant%d", target, i), shape.OneOf[i], variant, request, false, false, false, nil, nil)
+	}
+	return violations
 }

@@ -121,6 +121,7 @@ type ExamApplication interface {
 	CreateExam(context.Context, application.Invocation, application.CreateExamCommand) (application.ExamView, error)
 	GetExam(context.Context, application.Invocation, application.GetExamQuery) (application.ExamView, error)
 	EditExamDraftText(context.Context, application.Invocation, application.EditExamDraftTextCommand) (application.ExamView, error)
+	ConfigureExamDraftNativePolicy(context.Context, application.Invocation, application.ConfigureExamDraftNativePolicyCommand) (application.ExamView, error)
 	ConfigureExamDraftFocusLoss(context.Context, application.Invocation, application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error)
 	ConfigureExamDraftExecutionProfile(context.Context, application.Invocation, application.ConfigureExamDraftExecutionProfileCommand) (application.ExamView, error)
 	ConfigureExamDraftBrowserPolicy(context.Context, application.Invocation, application.ConfigureExamDraftBrowserPolicyCommand) (application.ExamView, error)

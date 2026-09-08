@@ -270,6 +270,19 @@ type ExamDraftFocusLossUpdate struct {
 	AuditAt          int64
 }
 
+// ExamDraftNativePolicyUpdate atomically replaces the exact native union under
+// current Manager and Draft revision fences, preserving Focus/Connection Loss.
+type ExamDraftNativePolicyUpdate struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	NativePolicy     model.NativeSecurityPolicy
+	UpdatedAt        int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // ExamDraftExecutionProfileUpdate replaces the complete authored terminal
 // choice. Installation resources and host addresses never enter this value.
 type ExamDraftExecutionProfileUpdate struct {
@@ -286,14 +299,16 @@ type ExamDraftExecutionProfileUpdate struct {
 // ExamDraftBrowserPolicyUpdate replaces the complete canonical Browser Policy
 // value. Individual rules are never independently mutable Store entities.
 type ExamDraftBrowserPolicyUpdate struct {
-	ExamID           model.ExamID
-	ActorUserID      model.UserID
-	ManagerOverride  bool
-	ExpectedRevision int64
-	Policy           model.BrowserPolicy
-	UpdatedAt        int64
-	AuditEventID     string
-	AuditAt          int64
+	// InstitutionOrigin is installation configuration supplied by the application, never request data.
+	InstitutionOrigin string
+	ExamID            model.ExamID
+	ActorUserID       model.UserID
+	ManagerOverride   bool
+	ExpectedRevision  int64
+	Policy            model.BrowserPolicy
+	UpdatedAt         int64
+	AuditEventID      string
+	AuditAt           int64
 }
 
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
@@ -308,6 +323,7 @@ type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	UpdateDraftNativePolicy(context.Context, *ExamDraftNativePolicyUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftExecutionProfile(context.Context, *ExamDraftExecutionProfileUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftBrowserPolicy(context.Context, *ExamDraftBrowserPolicyUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	// List returns at most Limit summaries in descending (UpdatedAt, ExamID)

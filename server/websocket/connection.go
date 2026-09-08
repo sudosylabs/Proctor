@@ -44,6 +44,7 @@ type connectionRuntime struct {
 	transportCloseOnce sync.Once
 	attemptClose       sync.Once
 	attempt            *examAttemptBinding
+	terminalID         string
 	terminal           app.CandidateExamTerminal
 	terminalReaders    sync.WaitGroup
 

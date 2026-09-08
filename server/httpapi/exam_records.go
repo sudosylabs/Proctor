@@ -53,11 +53,12 @@ type completeExamRecordsRequest struct {
 	AcknowledgedEvidenceRevision Optional[int64] `json:"acknowledged_evidence_revision"`
 }
 type waiveSubmissionReviewRequest struct {
-	ExpectedRevision         Optional[int64] `json:"expected_revision"`
-	ExpectedReviewRevision   Optional[int64] `json:"expected_review_revision"`
-	ExpectedDiscrepancyCount Optional[int64] `json:"expected_discrepancy_count"`
-	ReasonCode               string          `json:"reason_code"`
-	PrivateReason            string          `json:"private_reason"`
+	ExpectedDeliveryInventoryRevision Optional[int64] `json:"expected_delivery_inventory_revision,omitempty"`
+	ExpectedRevision                  Optional[int64] `json:"expected_revision"`
+	ExpectedReviewRevision            Optional[int64] `json:"expected_review_revision"`
+	ExpectedDiscrepancyCount          Optional[int64] `json:"expected_discrepancy_count"`
+	ReasonCode                        string          `json:"reason_code"`
+	PrivateReason                     string          `json:"private_reason"`
 }
 type createRetentionHoldRequest struct {
 	SittingID     Optional[string] `json:"exam_sitting_id"`
@@ -127,14 +128,16 @@ type examRecordsSnapshotResponse struct {
 	PendingReviews  int64                         `json:"pending_reviews"`
 }
 type submissionReviewWaiverResponse struct {
-	SubmissionID     string `json:"submission_id"`
-	Revision         int64  `json:"revision"`
-	ReviewRevision   int64  `json:"review_revision"`
-	DiscrepancyCount int64  `json:"discrepancy_count"`
-	ActorUserID      string `json:"actor_user_id"`
-	RecordedAt       string `json:"recorded_at"`
-	ReasonCode       string `json:"reason_code"`
-	PrivateReason    string `json:"private_reason"`
+	DeliveryInventoryRevision int64  `json:"delivery_inventory_revision"`
+	InventoryInvalidated      bool   `json:"inventory_invalidated"`
+	SubmissionID              string `json:"submission_id"`
+	Revision                  int64  `json:"revision"`
+	ReviewRevision            int64  `json:"review_revision"`
+	DiscrepancyCount          int64  `json:"discrepancy_count"`
+	ActorUserID               string `json:"actor_user_id"`
+	RecordedAt                string `json:"recorded_at"`
+	ReasonCode                string `json:"reason_code"`
+	PrivateReason             string `json:"private_reason"`
 }
 type submissionReviewWaiverEnvelope struct {
 	Waiver *submissionReviewWaiverResponse `json:"waiver"`
@@ -237,8 +240,15 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
 		return operationResult{}, invalidRequestError("reason", err)
 	}
+	var deliveryRevision int64
+	if body.ExpectedDeliveryInventoryRevision.IsSet() {
+		deliveryRevision, err = requiredRecordsInteger("expected_delivery_inventory_revision", body.ExpectedDeliveryInventoryRevision, 0)
+		if err != nil {
+			return operationResult{}, err
+		}
+	}
 	value, err := m.application.WaiveSubmissionReview(request.context, request.invocation(), application.WaiveSubmissionReviewCommand{Scope: scope, ExpectedRevision: revision,
-		ExpectedReviewRevision: reviewRevision, ExpectedDiscrepancyCount: discrepancies, ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
+		ExpectedDeliveryInventoryRevision: deliveryRevision, ExpectedReviewRevision: reviewRevision, ExpectedDiscrepancyCount: discrepancies, ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -430,7 +440,7 @@ func recordsWaiverResponse(value *model.SubmissionReviewWaiver) *submissionRevie
 	if value == nil {
 		return nil
 	}
-	return &submissionReviewWaiverResponse{SubmissionID: value.SubmissionID.String(), Revision: value.Revision, ReviewRevision: value.ReviewRevision,
+	return &submissionReviewWaiverResponse{DeliveryInventoryRevision: value.DeliveryInventoryRevision, InventoryInvalidated: value.InventoryInvalidated, SubmissionID: value.SubmissionID.String(), Revision: value.Revision, ReviewRevision: value.ReviewRevision,
 		DiscrepancyCount: value.DiscrepancyCount, ActorUserID: value.ActorUserID.String(), RecordedAt: model.TimeUTC(value.RecordedAt).Format(time.RFC3339Nano), ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason}
 }
 func recordsHoldResponse(value model.RetentionHold) retentionHoldResponse {

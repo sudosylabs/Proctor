@@ -180,7 +180,10 @@ one recipient never blocks the other children of a fan-out.
 Logical occurrence identity derives from the originating transition, role,
 and recipient rather than message content. Examples include a recovery token
 identity, a security audit transition, a Sitting revision and notification
-role, or a Submission identity and seal kind. PostgreSQL uniqueness prevents
+role, or a Submission identity and seal kind. Released-result occurrence identity
+binds the Review ID and approved Review revision. A later re-finalization after
+accepted delivery invalidation can create its own availability notice, while
+exact release retries preserve the original occurrence and delivery. PostgreSQL uniqueness prevents
 duplicate children after process loss. Operator retry reuses the same delivery
 and Message-ID; it does not clone or edit a frozen recipient.
 

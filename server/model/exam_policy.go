@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 )
 
 const (
@@ -47,11 +49,13 @@ type ExamPolicySet struct {
 	SchemaVersion  int
 	ConnectionLoss ConnectionLossPolicy
 	FocusLoss      FocusLossPolicy
+	Native         NativeSecurityPolicy
 }
 
 func DefaultExamPolicySet() ExamPolicySet {
 	return ExamPolicySet{
 		SchemaVersion:  ExamPolicySchemaVersion,
+		Native:         DefaultNativeSecurityPolicy(),
 		ConnectionLoss: ConnectionLossPolicy{Outcome: IntegrityOutcomeFlagAndSuspend},
 		FocusLoss: FocusLossPolicy{
 			Enabled: true, MinimumDuration: 2 * time.Second, IncidentCount: 3,
@@ -61,6 +65,12 @@ func DefaultExamPolicySet() ExamPolicySet {
 }
 
 func (p ExamPolicySet) Validate() error {
+	if p.Native.Validate() != nil {
+		return errNativePolicy
+	}
+	if p.FocusLoss.MinimumDuration%time.Millisecond != 0 || p.FocusLoss.Window%time.Millisecond != 0 {
+		return errors.New("model: focus loss durations require whole milliseconds")
+	}
 	if p.SchemaVersion != ExamPolicySchemaVersion {
 		return fmt.Errorf("model: unsupported exam policy schema version %d", p.SchemaVersion)
 	}
@@ -85,7 +95,7 @@ func (p ExamPolicySet) Validate() error {
 }
 
 type examPolicyWire struct {
-	SchemaVersion  int                      `json:"schema_version"`
+	Native         NativeSecurityPolicy     `json:"native"`
 	ConnectionLoss examConnectionPolicyWire `json:"connection_loss"`
 	FocusLoss      examFocusPolicyWire      `json:"focus_loss"`
 }
@@ -106,8 +116,8 @@ func EncodeExamPolicySet(policy ExamPolicySet) ([]byte, error) {
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(examPolicyWire{
-		SchemaVersion:  policy.SchemaVersion,
+	data, err := encodeCanonicalExamDocument(examPolicyWire{
+		Native:         policy.Native.Clone(),
 		ConnectionLoss: examConnectionPolicyWire{Outcome: policy.ConnectionLoss.Outcome},
 		FocusLoss: examFocusPolicyWire{
 			Enabled:                     policy.FocusLoss.Enabled,
@@ -130,13 +140,13 @@ func DecodeExamPolicySet(data []byte) (ExamPolicySet, error) {
 	if len(data) == 0 || len(data) > ExamPolicySetMaxBytes {
 		return ExamPolicySet{}, errors.New("model: exam policy document size is invalid")
 	}
-	if err := rejectDuplicateJSONFields(data); err != nil {
+	if err := validateExamDocumentJSON(data); err != nil {
 		return ExamPolicySet{}, err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var wire struct {
-		SchemaVersion  *int `json:"schema_version"`
+		Native         *NativeSecurityPolicy `json:"native"`
 		ConnectionLoss *struct {
 			Outcome *IntegrityThresholdOutcome `json:"outcome"`
 		} `json:"connection_loss"`
@@ -154,7 +164,7 @@ func DecodeExamPolicySet(data []byte) (ExamPolicySet, error) {
 	if err := requireJSONEOF(decoder); err != nil {
 		return ExamPolicySet{}, err
 	}
-	if wire.SchemaVersion == nil || wire.ConnectionLoss == nil || wire.ConnectionLoss.Outcome == nil ||
+	if wire.Native == nil || wire.ConnectionLoss == nil || wire.ConnectionLoss.Outcome == nil ||
 		wire.FocusLoss == nil || wire.FocusLoss.Enabled == nil || wire.FocusLoss.MinimumDurationMilliseconds == nil ||
 		wire.FocusLoss.IncidentCount == nil || wire.FocusLoss.WindowMilliseconds == nil || wire.FocusLoss.Outcome == nil {
 		return ExamPolicySet{}, errors.New("model: exam policy document is incomplete")
@@ -164,7 +174,8 @@ func DecodeExamPolicySet(data []byte) (ExamPolicySet, error) {
 		return ExamPolicySet{}, errors.New("model: exam policy duration is out of bounds")
 	}
 	policy := ExamPolicySet{
-		SchemaVersion:  *wire.SchemaVersion,
+		SchemaVersion:  ExamPolicySchemaVersion,
+		Native:         wire.Native.Clone(),
 		ConnectionLoss: ConnectionLossPolicy{Outcome: *wire.ConnectionLoss.Outcome},
 		FocusLoss: FocusLossPolicy{
 			Enabled:         *wire.FocusLoss.Enabled,
@@ -191,51 +202,31 @@ func requireJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func rejectDuplicateJSONFields(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	var walk func() error
-	walk = func() error {
-		token, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		delimiter, ok := token.(json.Delim)
-		if !ok {
-			return nil
-		}
-		switch delimiter {
-		case '{':
-			seen := map[string]struct{}{}
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return err
-				}
-				key, ok := keyToken.(string)
-				if !ok {
-					return errors.New("model: invalid exam policy object key")
-				}
-				if _, exists := seen[key]; exists {
-					return fmt.Errorf("model: duplicate exam policy field %q", key)
-				}
-				seen[key] = struct{}{}
-				if err := walk(); err != nil {
-					return err
-				}
-			}
-			_, err = decoder.Token()
-			return err
-		case '[':
-			for decoder.More() {
-				if err := walk(); err != nil {
-					return err
-				}
-			}
-			_, err = decoder.Token()
-			return err
-		default:
-			return errors.New("model: invalid exam policy JSON")
-		}
+// validateExamDocumentJSON preserves strict wire validation before typed decoding.
+func validateExamDocumentJSON(data []byte) error {
+	_, err := canonicaljson.Canonicalize(data, len(data))
+	return err
+}
+
+// encodeCanonicalExamDocument receives already validated, schema-owned values.
+// Its callers select digest fields and enforce the canonical document size.
+func encodeCanonicalExamDocument(value any) ([]byte, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
 	}
-	return walk()
+	return canonicaljson.Canonicalize(encoded, len(encoded))
+}
+
+// Clone isolates the authored family collection; family values are immutable.
+func (p ExamPolicySet) Clone() ExamPolicySet { p.Native = p.Native.Clone(); return p }
+
+// Equal compares complete validated semantics, including native selections.
+func (p ExamPolicySet) Equal(other ExamPolicySet) bool {
+	left, err := EncodeExamPolicySet(p)
+	if err != nil {
+		return false
+	}
+	right, err := EncodeExamPolicySet(other)
+	return err == nil && bytes.Equal(left, right)
 }

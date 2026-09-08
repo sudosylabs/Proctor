@@ -113,7 +113,7 @@ func (directory *Directory) Ensure(ctx context.Context, hostID string, spec appe
 	if err != nil {
 		return nil, err
 	}
-	return environment, nil
+	return environment.adapted, nil
 }
 
 func (directory *Directory) Existing(ctx context.Context, hostID string, spec appexecution.Spec) (appexecution.Environment, error) {
@@ -130,7 +130,7 @@ func (directory *Directory) Existing(ctx context.Context, hostID string, spec ap
 	if host.closed || environment == nil || environment.spec != spec {
 		return nil, appexecution.ErrUnavailable
 	}
-	return environment, nil
+	return environment.adapted, nil
 }
 
 func (directory *Directory) Revoke(ctx context.Context, hostID, grantID string) error {
@@ -211,6 +211,7 @@ func (host *hostClient) ensure(ctx context.Context, spec appexecution.Spec) (*en
 			return err
 		}
 		result = &environment{host: host, client: client, spec: spec, native: native}
+		result.adapted = adaptEnvironment(result, client.Capabilities())
 		host.environments[spec.ID] = result
 		return nil
 	})
@@ -281,10 +282,11 @@ func (host *hostClient) resetLocked() error {
 }
 
 type environment struct {
-	host   *hostClient
-	client *remote.Client
-	spec   appexecution.Spec
-	native execenv.Env
+	host    *hostClient
+	client  *remote.Client
+	spec    appexecution.Spec
+	native  execenv.Env
+	adapted appexecution.Environment
 }
 
 func (environment *environment) withEnvironment(ctx context.Context, operation func(execenv.Env) error) error {
@@ -327,10 +329,9 @@ func (environment *environment) ReplaceTree(ctx context.Context, tree appexecuti
 }
 
 func (environment *environment) Apply(context.Context, []appexecution.Mutation) error {
-	// execenv v0.2 resets its whole watcher baseline after Apply, which can
-	// silently absorb an unrelated guest write. Its directory Move also does
-	// not preserve descendant versions. Refuse before I/O: the application
-	// retires this grant and reconstructs acknowledged state on the next open.
+	// Unfenced mutations cannot prove a consecutive durable journal outcome.
+	// Supported environments use ApplyProjection with the current fence and
+	// immutable content. Refuse this legacy path before any host I/O.
 	return appexecution.ErrConflict
 }
 
@@ -466,6 +467,8 @@ func translate(err error) error {
 		return fmt.Errorf("%w: %v", appexecution.ErrConflict, err)
 	case errors.Is(err, execenv.ErrInvalid), errors.Is(err, execenv.ErrTooLarge), errors.Is(err, execenv.ErrUnknownImage), errors.Is(err, execenv.ErrNetwork):
 		return fmt.Errorf("%w: %v", appexecution.ErrInvalid, err)
+	case errors.Is(err, execenv.ErrFrozen):
+		return appexecution.ErrProjectionPending
 	case errors.Is(err, execenv.ErrRevoked):
 		return fmt.Errorf("%w: %v", appexecution.ErrRevoked, err)
 	case errors.Is(err, execenv.ErrNotFound):

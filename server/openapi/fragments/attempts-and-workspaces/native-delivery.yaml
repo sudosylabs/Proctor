@@ -1,0 +1,1424 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/NativeStreamID'
+    get:
+      operationId: nativeDeliveryStatus
+      summary: Read native delivery settlement
+      description: >-
+        Requires the owning User and a currently valid Session for the registered key bound at
+        admission. Live sources also require exact Connection continuity. After server-owned
+        closure, historical delivery never revives interaction or extends the upload deadline. Exact
+        replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance
+        settlement without fabricating content. Source status is bounded at 16 KiB.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeSecurityStreamStatusOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/receipts/{batch_sequence}:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/NativeStreamID'
+      - $ref: '#/components/parameters/NativeBatchSequence'
+    get:
+      operationId: nativeDeliveryReceipt
+      summary: Recover an exact native batch receipt
+      description: >-
+        Requires the owning User and a currently valid Session for the registered key bound at
+        admission. Live sources also require exact Connection continuity. After server-owned
+        closure, historical delivery never revives interaction or extends the upload deadline. Exact
+        replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance
+        settlement without fabricating content. Source status is bounded at 16 KiB.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeBatchReceiptOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/gaps:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/NativeStreamID'
+    post:
+      operationId: declareNativeDeliveryGaps
+      summary: Declare permanently unavailable native batches
+      description: >-
+        Requires the owning User and a currently valid Session for the registered key bound at
+        admission. Live sources also require exact Connection continuity. After server-owned
+        closure, historical delivery never revives interaction or extends the upload deadline. Exact
+        replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance
+        settlement without fabricating content. At most 8 KiB, 1..32 disjoint nonadjacent ranges
+        within the current 1024-position receive window. Declaration revision and exact canonical
+        metadata charge commit atomically.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/DeclareDeliveryGaps'
+      responses:
+        '200':
+          $ref: '#/components/responses/DeliveryGapReceiptOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/seal:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/NativeStreamID'
+    post:
+      operationId: sealNativeDelivery
+      summary: Declare the final boundary of a closed native stream
+      description: >-
+        Requires the owning User and a currently valid Session for the registered key bound at
+        admission. Live sources also require exact Connection continuity. After server-owned
+        closure, historical delivery never revives interaction or extends the upload deadline. Exact
+        replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance
+        settlement without fabricating content. At most 2 KiB. Only after closure. The final tail is
+        bounded by known-at-close plus 1024 and remaining lifetime positions.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/FinalDeliveryDeclaration'
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeSecurityStreamStatusOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-streams/{stream_id}/summary:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/NativeStreamID'
+    post:
+      operationId: updateNativeDeliverySummary
+      summary: Report cumulative unretained native records
+      description: >-
+        Requires the owning User and a currently valid Session for the registered key bound at
+        admission. Live sources also require exact Connection continuity. After server-owned
+        closure, historical delivery never revives interaction or extends the upload deadline. Exact
+        replay rechecks ownership. Receipts attest only stored batches; terminal omissions advance
+        settlement without fabricating content. At most 2 KiB. Changed summaries at most once per
+        five seconds except the one final summary; incomplete counts never become complete.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/UnretainedDeliverySummary'
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeSecurityStreamStatusOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/security-batches:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: appendNativeDelivery
+      summary: Append minimized native security evidence
+      description: >-
+        Atomically accepts one closed batch under its original verified release, matrix, policy,
+        source instances, and Participation generation. Live delivery requires exact Connection
+        continuity; closed streams use current owning registered-key authentication until the fixed
+        upload deadline. Exact retries preserve the submitted prior acknowledgement and recover the
+        original receipt. Out-of-order records wait behind recoverable holes; terminal gaps preserve
+        unresolved openers. Native conditions do not automatically create Flags, warnings or
+        suspension. Lifetime quotas include pending bytes, envelopes, receipts and bounded metadata.
+        Repair has reserved headroom. Native append is limited across Sessions and transports to two
+        requests per second with burst eight; replay consumes allowance. A 429 response supplies
+        Retry-After.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - exam.delivery.batch_conflict
+        - exam.delivery.replay_window_exceeded
+        - exam.delivery.pending_capacity
+        - exam.delivery.append_rate_limited
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/NativeSecurityBatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/NativeSecurityAcknowledgementOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      x-codeSamples:
+        - lang: Shell
+          label: Append the original protected batch
+          source: |-
+            curl --request POST "$PROCTOR_URL/api/v1/exam-attempts/$ATTEMPT_ID/security-batches" \
+              --header "Authorization: DPoP $ACCESS_TOKEN" \
+              --header "DPoP: $DPOP_PROOF" \
+              --header "Idempotency-Key: $IDEMPOTENCY_KEY" \
+              --header "Content-Type: application/json" \
+              --data-binary @native-batch.json
+components:
+  schemas:
+    SequenceRange:
+      type: object
+      additionalProperties: false
+      required:
+        - first
+        - last
+      properties:
+        first:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        last:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+    DeclareDeliveryGaps:
+      type: object
+      additionalProperties: false
+      required:
+        - declaration_id
+        - expected_declaration_revision
+        - allocated_through_sequence
+        - ranges
+        - reason
+      properties:
+        declaration_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        expected_declaration_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        allocated_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SequenceRange'
+          maxItems: 32
+          minItems: 1
+        reason:
+          type: string
+          enum:
+            - spool_corrupt
+            - spool_lost
+            - local_capacity_exhausted
+    DeliveryGapReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - declaration_id
+        - request_digest
+        - declaration_revision
+        - settled_through_sequence
+      properties:
+        declaration_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        request_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        declaration_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        settled_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+    FinalDeliveryDeclaration:
+      type: object
+      additionalProperties: false
+      required:
+        - declaration_id
+        - expected_declaration_revision
+        - final_sequence
+      properties:
+        declaration_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        expected_declaration_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        final_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+    DeliveryClosure:
+      type: object
+      additionalProperties: false
+      required:
+        - closed_at
+        - close_reason
+        - known_at_close
+        - final_sequence
+        - final_declaration_id
+        - final_boundary_origin
+        - unknown_tail
+        - upload_expires_at
+      properties:
+        closed_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        close_reason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - submission
+            - suspension
+            - manager_end
+            - sitting_closed
+            - participation_ended
+            - security_session_lost
+            - policy_correction
+            - runtime_reset
+            - browser_disabled
+            - null
+        known_at_close:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        final_sequence:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        final_declaration_id:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        final_boundary_origin:
+          type:
+            - string
+            - 'null'
+          enum:
+            - client_declared
+            - server_known
+            - null
+        unknown_tail:
+          type: boolean
+        upload_expires_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    UnretainedDeliverySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - summary_sequence
+        - unretained_record_count
+        - count_complete
+        - first_unretained_at
+        - last_unretained_at
+      properties:
+        summary_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        unretained_record_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        count_complete:
+          type: boolean
+        first_unretained_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        last_unretained_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+    NativeBatchReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - stream_id
+        - batch_sequence
+        - request_digest
+        - received_at
+      properties:
+        stream_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        batch_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        request_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        received_at:
+          type: string
+          format: date-time
+    NativeSecurityStreamStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - highest_contiguous_batch_sequence
+        - settled_through_batch_sequence
+        - highest_seen_batch_sequence
+        - missing_batch_ranges
+        - missing_ranges_truncated
+        - server_time
+        - stream_id
+        - allocated_through_sequence
+        - terminal_missing_through_sequence
+        - closure
+        - declaration_revision
+        - detail_mode
+        - budget_scope
+        - summary_only_reason
+        - summary
+      properties:
+        highest_contiguous_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        settled_through_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        highest_seen_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        missing_batch_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SequenceRange'
+          maxItems: 32
+        missing_ranges_truncated:
+          type: boolean
+        server_time:
+          type: string
+          format: date-time
+        stream_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        allocated_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        terminal_missing_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        closure:
+          $ref: '#/components/schemas/DeliveryClosure'
+        declaration_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        detail_mode:
+          type: string
+          enum:
+            - collecting
+            - summary_only
+        budget_scope:
+          type:
+            - string
+            - 'null'
+          enum:
+            - participation
+            - attempt
+            - null
+        summary_only_reason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - records
+            - bytes
+            - positions
+            - metadata
+            - local_loss_inventory_exhausted
+            - null
+        summary:
+          type:
+            - object
+            - 'null'
+          additionalProperties: false
+          required:
+            - summary_sequence
+            - unretained_record_count
+            - count_complete
+            - first_unretained_at
+            - last_unretained_at
+          properties:
+            summary_sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            unretained_record_count:
+              type: integer
+              format: int64
+              minimum: 0
+              maximum: 9007199254740991
+            count_complete:
+              type: boolean
+            first_unretained_at:
+              type:
+                - string
+                - 'null'
+              format: date-time
+            last_unretained_at:
+              type:
+                - string
+                - 'null'
+              format: date-time
+    NativeSourceRange:
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - source_instance_id
+        - first_sequence
+        - last_sequence
+      properties:
+        source_id:
+          type: string
+          enum:
+            - display-topology
+            - candidate-window
+            - capture-session
+            - process-application
+            - interactive-session
+            - clipboard
+            - print-spooler
+            - removable-storage
+            - virtualization
+            - network-configuration
+            - media-device
+        source_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        first_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        last_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+    NativeOccurrence:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - occurrence_id
+        - condition_id
+        - detector_id
+        - detector_version
+        - capability_id
+        - mode
+        - status
+        - first_observed_at
+        - last_confirmed_at
+        - repeat_count
+        - certainty
+        - gap_count
+        - source_ranges
+      properties:
+        kind:
+          type: string
+          enum:
+            - occurrence
+        occurrence_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        condition_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        detector_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        detector_version:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        capability_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        mode:
+          type: string
+          enum:
+            - observe
+            - enforce
+        status:
+          type: string
+          enum:
+            - opened
+            - repeated
+            - recovered
+        first_observed_at:
+          type: string
+          format: date-time
+        last_confirmed_at:
+          type: string
+          format: date-time
+        repeat_count:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        certainty:
+          type: string
+          enum:
+            - complete
+            - partial
+            - unknown
+        gap_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        source_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/NativeSourceRange'
+          minItems: 1
+          maxItems: 11
+    NativeCoverageTransition:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - source
+        - occurred_at
+        - reason
+      properties:
+        kind:
+          type: string
+          enum:
+            - coverage_transition
+        source:
+          $ref: '#/components/schemas/NativeSourceCoverage'
+        occurred_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          enum:
+            - initial
+            - health_changed
+            - permission_changed
+            - reconciled
+            - stopped
+    NativeSourceReset:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - reset_id
+        - source_id
+        - previous_source_instance_id
+        - previous_final_sequence
+        - new_source_instance_id
+        - reason
+        - occurred_at
+      properties:
+        kind:
+          type: string
+          enum:
+            - source_reset
+        reset_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        source_id:
+          type: string
+          enum:
+            - display-topology
+            - candidate-window
+            - capture-session
+            - process-application
+            - interactive-session
+            - clipboard
+            - print-spooler
+            - removable-storage
+            - virtualization
+            - network-configuration
+            - media-device
+        previous_source_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        previous_final_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        new_source_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        reason:
+          type: string
+          enum:
+            - restart
+            - resume
+            - permission_changed
+        occurred_at:
+          type: string
+          format: date-time
+    NativeSourceGap:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - source_id
+        - source_instance_id
+        - first_missing_sequence
+        - last_missing_sequence
+        - reason
+        - occurred_at
+      properties:
+        kind:
+          type: string
+          enum:
+            - source_gap
+        source_id:
+          type: string
+          enum:
+            - display-topology
+            - candidate-window
+            - capture-session
+            - process-application
+            - interactive-session
+            - clipboard
+            - print-spooler
+            - removable-storage
+            - virtualization
+            - network-configuration
+            - media-device
+        source_instance_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        first_missing_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        last_missing_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        reason:
+          type: string
+          enum:
+            - overflow
+            - source_loss
+            - corruption
+        occurred_at:
+          type: string
+          format: date-time
+    NativeRecord:
+      oneOf:
+        - $ref: '#/components/schemas/NativeOccurrence'
+        - $ref: '#/components/schemas/NativeCoverageTransition'
+        - $ref: '#/components/schemas/NativeSourceReset'
+        - $ref: '#/components/schemas/NativeSourceGap'
+      discriminator:
+        propertyName: kind
+        mapping:
+          occurrence: '#/components/schemas/NativeOccurrence'
+          coverage_transition: '#/components/schemas/NativeCoverageTransition'
+          source_reset: '#/components/schemas/NativeSourceReset'
+          source_gap: '#/components/schemas/NativeSourceGap'
+    NativeSecurityBatch:
+      type: object
+      additionalProperties: false
+      required:
+        - stream_id
+        - batch_sequence
+        - prior_acknowledgement
+        - participation_id
+        - generation
+        - security_session_id
+        - policy_digest
+        - application_release_id
+        - matrix_id
+        - records
+      properties:
+        stream_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        batch_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        prior_acknowledgement:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        security_session_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        application_release_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        matrix_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/NativeRecord'
+          minItems: 1
+          maxItems: 64
+    NativeSecurityAcknowledgement:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt
+        - highest_contiguous_batch_sequence
+        - settled_through_batch_sequence
+        - highest_seen_batch_sequence
+        - missing_batch_ranges
+        - missing_ranges_truncated
+        - server_time
+      properties:
+        receipt:
+          $ref: '#/components/schemas/NativeBatchReceipt'
+        highest_contiguous_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        settled_through_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        highest_seen_batch_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        missing_batch_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SequenceRange'
+          maxItems: 32
+        missing_ranges_truncated:
+          type: boolean
+        server_time:
+          type: string
+          format: date-time
+  parameters:
+    NativeStreamID:
+      name: stream_id
+      in: path
+      required: true
+      description: Server-created native delivery stream identifier.
+      schema:
+        $ref: '#/components/schemas/ID'
+    NativeBatchSequence:
+      name: batch_sequence
+      in: path
+      required: true
+      description: Exact retained batch sequence.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 20000
+    NativeDeliveryCredential:
+      name: X-Proctor-Attempt-Credential
+      in: header
+      required: false
+      description: >-
+        Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active
+        Participation. Never log, persist, cache, or place this value in a URL. Required together
+        while the source is live. May be omitted after server-owned closure; omission never
+        establishes historical authority.
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: ^[A-Za-z0-9_-]{43}$
+    NativeDeliveryConnectionID:
+      name: X-Proctor-Attempt-Connection-ID
+      in: header
+      required: false
+      description: >-
+        The durable open Attempt Connection bound to the current authenticated Session. Required
+        together while the source is live. May be omitted after server-owned closure; omission never
+        establishes historical authority.
+      schema:
+        $ref: '#/components/schemas/ID'
+  requestBodies:
+    DeclareDeliveryGaps:
+      description: >-
+        Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are
+        rejected.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeclareDeliveryGaps'
+          example:
+            declaration_id: loss-0001
+            expected_declaration_revision: 0
+            allocated_through_sequence: 4
+            ranges:
+              - first: 2
+                last: 3
+            reason: spool_lost
+    FinalDeliveryDeclaration:
+      description: >-
+        Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are
+        rejected.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FinalDeliveryDeclaration'
+          example:
+            declaration_id: final-0001
+            expected_declaration_revision: 1
+            final_sequence: 4
+    UnretainedDeliverySummary:
+      description: >-
+        Closed bounded native delivery control; unknown, missing, duplicate, and invalid members are
+        rejected.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnretainedDeliverySummary'
+          example:
+            summary_sequence: 1
+            unretained_record_count: 2
+            count_complete: true
+            first_unretained_at: '2026-09-08T01:00:00Z'
+            last_unretained_at: '2026-09-08T01:00:01Z'
+    NativeSecurityBatch:
+      required: true
+      description: >-
+        Exact original native batch, 1..64 closed records and at most 256 KiB. Retries preserve
+        prior_acknowledgement and all canonical content.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NativeSecurityBatch'
+  responses:
+    NativeSecurityStreamStatusOK:
+      description: Authoritative native delivery result. This projection never grants interaction.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NativeSecurityStreamStatus'
+    NativeBatchReceiptOK:
+      description: Authoritative native delivery result. This projection never grants interaction.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NativeBatchReceipt'
+    DeliveryGapReceiptOK:
+      description: Authoritative native delivery result. This projection never grants interaction.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeliveryGapReceipt'
+    NativeDeliveryExpired:
+      description: The immutable source upload deadline has expired.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/idempotency-conflict
+            title: Request conflict
+            status: 409
+            detail: The idempotency key was already used with different input.
+            code: idempotency.conflict
+            request_id: req_docs_conflict
+    NativeSecurityAcknowledgementOK:
+      description: >-
+        Exact retained batch receipt with current actual and settled progression. Pending records
+        are not interpreted until earlier positions are received or terminal.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NativeSecurityAcknowledgement'

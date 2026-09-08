@@ -77,11 +77,12 @@ type EffectFailures interface {
 }
 
 type ResultReleaseMailPreparation struct {
-	CandidateUserID model.UserID
-	ExamID          model.ExamID
-	SittingID       model.ExamSittingID
-	ReviewID        model.SubmissionReviewID
-	ReleasedAt      time.Time
+	ExpectedReviewRevision int64
+	CandidateUserID        model.UserID
+	ExamID                 model.ExamID
+	SittingID              model.ExamSittingID
+	ReviewID               model.SubmissionReviewID
+	ReleasedAt             time.Time
 }
 
 type PreparedResultReleaseMail struct {
@@ -349,7 +350,7 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 		if !releasePreparation.Replayed {
 			prepared, prepareErr := service.deps.Mail.PrepareResultRelease(ctx, ResultReleaseMailPreparation{
 				CandidateUserID: authorization.CandidateUserID, ExamID: authorization.ExamID,
-				SittingID: authorization.SittingID, ReviewID: reviewID, ReleasedAt: at,
+				SittingID: authorization.SittingID, ReviewID: reviewID, ExpectedReviewRevision: expectedRevision, ReleasedAt: at,
 			})
 			if prepareErr != nil || prepared == nil || prepared.Notice == nil || prepared.ExpectedRecipientRevision < 1 {
 				if prepareErr == nil {
@@ -428,6 +429,15 @@ func (service *Service) ListFlags(ctx context.Context, call Call, query ListFlag
 		return nil, unavailable(errors.New("inconsistent Flag page"))
 	}
 	clone := &store.ExamIntegrityFlagPage{Items: append([]store.ExamIntegrityFlagSummary(nil), page.Items...), HasMore: page.HasMore}
+	for i := range clone.Items {
+		if clone.Items[i].Browser != nil {
+			if clone.Items[i].Browser.Validate() != nil {
+				return nil, unavailable(errors.New("invalid Browser evidence group"))
+			}
+			v := clone.Items[i].Browser.Clone()
+			clone.Items[i].Browser = &v
+		}
+	}
 	return clone, nil
 }
 
@@ -453,6 +463,15 @@ func (service *Service) ListEvidence(ctx context.Context, call Call, query ListE
 		return nil, unavailable(errors.New("inconsistent Evidence page"))
 	}
 	clone := &store.ExamIntegrityEvidencePage{Items: append([]model.IntegrityEvidence(nil), page.Items...), HasMore: page.HasMore}
+	for i := range clone.Items {
+		if clone.Items[i].Browser != nil {
+			if clone.Items[i].Browser.Validate() != nil {
+				return nil, unavailable(errors.New("invalid Browser evidence copy"))
+			}
+			v := clone.Items[i].Browser.Clone()
+			clone.Items[i].Browser = &v
+		}
+	}
 	return clone, nil
 }
 
@@ -557,8 +576,11 @@ func validAuthorization(value *store.ExamIntegrityReviewAuthorization, submissio
 }
 
 func validSnapshot(snapshot *store.ExamSubmissionReviewSnapshot, submissionID model.SubmissionID) bool {
-	if snapshot == nil || !validAuthorization(&snapshot.Authorization, submissionID) || snapshot.Submission == nil ||
+	if snapshot == nil || snapshot.NativeConditions.Validate() != nil || snapshot.DeliveryInventoryRevision < 0 || !validAuthorization(&snapshot.Authorization, submissionID) || snapshot.Submission == nil ||
 		snapshot.Submission.Validate() != nil || snapshot.Submission.ID != submissionID || len(snapshot.Decisions) > model.SubmissionReviewMaximumFlags {
+		return false
+	}
+	if snapshot.BrowserEvidenceOverflow != nil && snapshot.BrowserEvidenceOverflow.Validate() != nil {
 		return false
 	}
 	if snapshot.Review == nil {
@@ -577,6 +599,10 @@ func validSnapshot(snapshot *store.ExamSubmissionReviewSnapshot, submissionID mo
 
 func cloneSnapshot(snapshot *store.ExamSubmissionReviewSnapshot) *store.ExamSubmissionReviewSnapshot {
 	clone := *snapshot
+	if snapshot.BrowserEvidenceOverflow != nil {
+		v := *snapshot.BrowserEvidenceOverflow
+		clone.BrowserEvidenceOverflow = &v
+	}
 	submission := *snapshot.Submission
 	clone.Submission = &submission
 	if snapshot.Review != nil {

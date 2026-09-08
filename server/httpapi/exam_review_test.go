@@ -224,7 +224,7 @@ func newExamIntegrityReviewHTTPFake(t *testing.T) *examIntegrityReviewHTTPFake {
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: submissionID, AttemptID: attemptID,
 		ExamRevisionID: model.NewExamRevisionID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at})
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func (fake *examIntegrityReviewHTTPFake) AuthenticateBearer(context.Context, str
 func (fake *examIntegrityReviewHTTPFake) GetExamIntegrityReview(context.Context, application.Invocation,
 	model.SubmissionID,
 ) (*application.ExamSubmissionReviewSnapshot, error) {
-	return &store.ExamSubmissionReviewSnapshot{Authorization: fake.authorization, Submission: fake.submission,
+	return &store.ExamSubmissionReviewSnapshot{NativeConditions: model.NewNativeConditionInventory(), Authorization: fake.authorization, Submission: fake.submission,
 		Review: fake.review, Decisions: []model.IntegrityReviewDecision{*fake.decisionValue}}, nil
 }
 
@@ -346,4 +346,8 @@ func (fake *examIntegrityReviewHTTPFake) GetStudentExamResult(context.Context, a
 ) (*application.StudentExamResult, error) {
 	return &model.StudentResult{ReviewID: fake.review.ID, SubmissionID: fake.submission.ID, AttemptID: fake.attemptID,
 		CandidateUserID: fake.principal.UserID, StudentRemarksMarkdown: "Approved **remarks**", ReleasedAt: fake.review.UpdatedAt}, nil
+}
+
+func (fake *examIntegrityReviewHTTPFake) ListNativeConditions(context.Context, application.Invocation, application.NativeConditionListQuery) (*application.NativeConditionPage, error) {
+	return &application.NativeConditionPage{Items: []model.NativeConditionEvidence{}}, nil
 }

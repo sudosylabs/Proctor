@@ -62,10 +62,12 @@ func (s *SQLRetentionStore) GetControl(ctx context.Context) (*model.RetentionCon
 }
 
 type retentionPreviewCounts struct {
-	Work      model.RetentionPreviewCounts `json:"work"`
-	Integrity model.RetentionPreviewCounts `json:"integrity"`
-	Audit     model.RetentionExpiryCounts  `json:"audit"`
-	Receipts  model.RetentionExpiryCounts  `json:"receipts"`
+	Work                model.RetentionPreviewCounts `json:"work"`
+	Integrity           model.RetentionPreviewCounts `json:"integrity"`
+	BrowserActivity     model.RetentionPreviewCounts `json:"browser_activity"`
+	SecurityOperational model.RetentionPreviewCounts `json:"security_operational"`
+	Audit               model.RetentionExpiryCounts  `json:"audit"`
+	Receipts            model.RetentionExpiryCounts  `json:"receipts"`
 }
 
 func (s *SQLRetentionStore) GetPreview(ctx context.Context, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
@@ -96,7 +98,7 @@ func getRetentionPreview(ctx context.Context, executor sqlxExecutor, id model.Re
 	}
 	p := &model.RetentionPreview{ID: model.RetentionPreviewID(row.ID), InstitutionID: model.InstitutionID(row.InstitutionID),
 		PolicyRevision: row.PolicyRevision, CreatedByUserID: model.UserID(row.ActorID), CreatedAt: model.TimeUTC(row.CreatedAt),
-		ExpiresAt: model.TimeUTC(row.ExpiresAt), Work: counts.Work, Integrity: counts.Integrity, Audit: counts.Audit, Receipts: counts.Receipts}
+		ExpiresAt: model.TimeUTC(row.ExpiresAt), Work: counts.Work, Integrity: counts.Integrity, BrowserActivity: counts.BrowserActivity, SecurityOperational: counts.SecurityOperational, Audit: counts.Audit, Receipts: counts.Receipts}
 	if err = p.Validate(); err != nil {
 		return nil, invalidPersistedState("retention_preview", "value", err)
 	}
@@ -204,7 +206,7 @@ func (s *SQLRetentionStore) CreatePreview(ctx context.Context, input *store.Rete
 				return nil, err
 			}
 			p := &model.RetentionPreview{ID: input.PreviewID, InstitutionID: policy.InstitutionID, PolicyRevision: policy.Revision,
-				CreatedByUserID: input.Principal.UserID, CreatedAt: at, ExpiresAt: at.Add(model.RetentionPreviewLifetime), Work: counts.Work, Integrity: counts.Integrity, Audit: counts.Audit, Receipts: counts.Receipts}
+				CreatedByUserID: input.Principal.UserID, CreatedAt: at, ExpiresAt: at.Add(model.RetentionPreviewLifetime), Work: counts.Work, Integrity: counts.Integrity, BrowserActivity: counts.BrowserActivity, SecurityOperational: counts.SecurityOperational, Audit: counts.Audit, Receipts: counts.Receipts}
 			encoded, err := json.Marshal(counts)
 			if err != nil {
 				return nil, err
@@ -286,7 +288,7 @@ func (s *SQLRetentionStore) ChangeControl(ctx context.Context, input *store.Rete
 					preview.CreatedAt.After(at) || !preview.ExpiresAt.After(at) {
 					return nil, store.NewErrConflict("retention_control", "preview_stale", nil)
 				}
-				if policy.DeletionGraceDays <= 0 || (policy.SubmissionRetentionDays == 0 && policy.IntegrityRetentionDays == 0 && policy.AuditRetentionDays == 0) {
+				if policy.DeletionGraceDays <= 0 || (policy.SubmissionRetentionDays == 0 && policy.IntegrityRetentionDays == 0 && policy.BrowserActivityRetentionDays == 0 && policy.SecurityOperationalRetentionDays == 0 && policy.AuditRetentionDays == 0) {
 					return nil, store.NewErrConflict("retention_control", "policy_unconfigured", nil)
 				}
 				current.ApprovedPolicyRevision, current.ApprovedPreviewID = policy.Revision, input.PreviewID
@@ -374,6 +376,10 @@ type retentionFactsRow struct {
 	IntegrityProtection sql.NullTime `db:"integrity_protection"`
 	WorkRetiredAt       sql.NullTime `db:"work_retired_at"`
 	IntegrityRetiredAt  sql.NullTime `db:"integrity_retired_at"`
+	BrowserProtection   sql.NullTime `db:"browser_protection"`
+	SecurityProtection  sql.NullTime `db:"security_protection"`
+	BrowserRetiredAt    sql.NullTime `db:"browser_retired_at"`
+	SecurityRetiredAt   sql.NullTime `db:"security_retired_at"`
 	SharedObjects       int64        `db:"shared_objects"`
 }
 
@@ -382,8 +388,7 @@ type retentionFactsRow struct {
 const retentionFactsQuery = `SELECT sub.id AS submission_id,a.exam_id,a.exam_sitting_id AS sitting_id,
 	COALESCE(c.revision,0) AS completion_revision,c.completed_at,
 	(c.completed_at IS NOT NULL AND c.stale_at IS NULL AND c.completed_evidence_revision=c.evidence_revision AND sit.state='closed') AS completion_current,
-	(sub.integrity_retired_at IS NULL AND (sub.browser_activity_source_session_id IS NOT NULL OR
-	 EXISTS(SELECT 1 FROM integrity_flags WHERE exam_attempt_id=a.id) OR EXISTS(SELECT 1 FROM integrity_discrepancies WHERE submission_id=sub.id) OR
+	(sub.integrity_retired_at IS NULL AND (EXISTS(SELECT 1 FROM integrity_flags WHERE exam_attempt_id=a.id) OR EXISTS(SELECT 1 FROM integrity_discrepancies WHERE submission_id=sub.id) OR
 	 EXISTS(SELECT 1 FROM submission_reviews WHERE submission_id=sub.id) OR EXISTS(SELECT 1 FROM submission_review_waivers WHERE submission_id=sub.id) OR
 	 EXISTS(SELECT 1 FROM exam_attempt_suspensions WHERE exam_attempt_id=a.id) OR EXISTS(SELECT 1 FROM exam_attempt_manager_end_actions WHERE exam_attempt_id=a.id))) AS has_integrity,
 	EXISTS(SELECT 1 FROM retention_holds h WHERE h.exam_id=a.exam_id AND h.released_at IS NULL AND
@@ -391,19 +396,26 @@ const retentionFactsQuery = `SELECT sub.id AS submission_id,a.exam_id,a.exam_sit
 	(SELECT max(expires_at) FROM retention_source_protections WHERE submission_id=sub.id AND category='work') AS work_protection,
 	(SELECT max(expires_at) FROM retention_source_protections WHERE submission_id=sub.id AND category='integrity') AS integrity_protection,
 	sub.work_retired_at,sub.integrity_retired_at,
+ (SELECT browser_retired_at FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=a.id) AS browser_retired_at,
+ (SELECT security_retired_at FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=a.id) AS security_retired_at,
+ (SELECT max(expires_at) FROM retention_source_protections WHERE submission_id=sub.id AND category='browser_activity') AS browser_protection,
+ (SELECT max(expires_at) FROM retention_source_protections WHERE submission_id=sub.id AND category='security_operational') AS security_protection,
 	(SELECT count(*) FROM exam_submission_manifest_entries WHERE submission_id=sub.id AND storage_origin='starter') AS shared_objects
 	FROM exam_submissions sub JOIN exam_attempts a ON a.id=sub.exam_attempt_id
 	JOIN exam_sittings sit ON sit.id=a.exam_sitting_id JOIN exams e ON e.id=a.exam_id JOIN academic_units u ON u.id=e.academic_unit_id
 	LEFT JOIN exam_sitting_records_completions c ON c.exam_sitting_id=sit.id WHERE sub.sealed=true AND u.institution_id=?`
 
-func (r retentionFactsRow) records() [2]model.RetentionRecord {
+func (r retentionFactsRow) records() [4]model.RetentionRecord {
 	base := model.RetentionRecord{Scope: model.RetentionHoldScope{ExamID: model.ExamID(r.ExamID), SittingID: model.ExamSittingID(r.SittingID), SubmissionID: model.SubmissionID(r.SubmissionID)},
 		CompletionRevision: r.CompletionRevision, CompletedAt: optionalTime(r.CompletedAt), CompletionCurrent: r.CompletionCurrent,
 		HasIntegrity: r.HasIntegrity, Held: r.Held}
 	work, integrity := base, base
 	work.Category, work.ExportProtectedUntil, work.RetiredAt, work.SharedPublishedObjects = model.RetentionCategoryWork, optionalTime(r.WorkProtection), optionalTime(r.WorkRetiredAt), r.SharedObjects
 	integrity.Category, integrity.ExportProtectedUntil, integrity.RetiredAt = model.RetentionCategoryIntegrity, optionalTime(r.IntegrityProtection), optionalTime(r.IntegrityRetiredAt)
-	return [2]model.RetentionRecord{work, integrity}
+	browser, security := base, base
+	browser.Category, browser.ExportProtectedUntil, browser.RetiredAt = model.RetentionCategoryBrowserActivity, optionalTime(r.BrowserProtection), optionalTime(r.BrowserRetiredAt)
+	security.Category, security.ExportProtectedUntil, security.RetiredAt = model.RetentionCategorySecurityOperational, optionalTime(r.SecurityProtection), optionalTime(r.SecurityRetiredAt)
+	return [4]model.RetentionRecord{work, integrity, browser, security}
 }
 
 func countRetentionRecords(ctx context.Context, tx *sqlxTxWrapper, policy *model.RetentionPolicy, at time.Time) (retentionPreviewCounts, error) {
@@ -426,8 +438,13 @@ func countRetentionRecords(ctx context.Context, tx *sqlxTxWrapper, policy *model
 				return counts, invalidPersistedState("retention_preview", "record", err)
 			}
 			counter := &counts.Work
-			if record.Category == model.RetentionCategoryIntegrity {
+			switch record.Category {
+			case model.RetentionCategoryIntegrity:
 				counter = &counts.Integrity
+			case model.RetentionCategoryBrowserActivity:
+				counter = &counts.BrowserActivity
+			case model.RetentionCategorySecurityOperational:
+				counter = &counts.SecurityOperational
 			}
 			counter.Total++
 			switch eligibility.Blocker {
@@ -484,11 +501,11 @@ func (s *SQLRetentionStore) ListRecords(ctx context.Context, options store.Reten
 		if err != nil {
 			return nil, err
 		}
-		page := &store.RetentionRecordPage{PolicyRevision: policy.Revision, AsOf: model.TimeUTC(at), Items: make([]store.RetentionRecordItem, 0, len(rows)*2), HasMore: len(rows) > options.Limit}
+		page := &store.RetentionRecordPage{PolicyRevision: policy.Revision, AsOf: model.TimeUTC(at), Items: make([]store.RetentionRecordItem, 0, len(rows)*4), HasMore: len(rows) > options.Limit}
 		if page.HasMore {
 			rows = rows[:options.Limit]
 		}
-		retirements := make(map[string]*model.RetentionRetirement, len(rows)*2)
+		retirements := make(map[string]*model.RetentionRetirement, len(rows)*4)
 		if len(rows) > 0 {
 			placeholders, args := make([]string, len(rows)), make([]any, len(rows))
 			for i, row := range rows {

@@ -43,13 +43,15 @@ Use <Link to="/api/reference/replace-retention-policy">Replace Retention Policy<
 with a strong, recently authenticated system-administrator Session and a fresh
 `Idempotency-Key`. Cookie transport also requires CSRF proof.
 
-Send all five periods. `candidate_notices` is optional and defaults to false:
+Send all seven periods. `candidate_notices` is optional and defaults to false:
 
 ```json
 {
   "expected_revision": 1,
   "submission_retention_days": 0,
   "integrity_retention_days": 0,
+  "browser_activity_retention_days": 0,
+  "security_operational_retention_days": 0,
   "audit_retention_days": 0,
   "export_retention_days": 1,
   "deletion_grace_days": 7,
@@ -60,10 +62,10 @@ Send all five periods. `candidate_notices` is optional and defaults to false:
 This example preserves examination and audit records indefinitely while
 configuring 24-hour exports and seven-day grace. Those two operational settings
 are recommendations, not chosen examination retention periods. The institution
-must select its own work, integrity, and audit periods before approving cleanup.
+must select its own work, integrity, Browser Activity, security operational, and audit periods before approving cleanup.
 
 Zero means no configured expiry or grace, never immediate deletion. Positive
-periods are durations in 24-hour days. Work, integrity, audit and grace settings
+periods are durations in 24-hour days. Work, integrity, Browser Activity, security operational, audit and grace settings
 accept up to 36,500 days. Export retention accepts zero when unconfigured or a
 finite period of **1 through 7 days**. Configure a positive export period before
 creating an export. No operation silently shortens a configured period.
@@ -78,13 +80,13 @@ current policy before submitting a new revision and key.
 
 Use <Link to="/api/reference/create-retention-preview">Create Retention Preview</Link>
 with the current policy revision and an idempotency key. A preview lasts one
-hour. It contains counts for work, integrity, audit, and retirement receipts;
+hour. It contains counts for work, integrity, Browser Activity, security operational, audit, and retirement receipts;
 it contains no answers, evidence text, or private reasons.
 
 <Link to="/api/reference/list-retention-records">List Retention Records</Link>
-provides bounded examination eligibility pages. Each Submission contributes a
-work record and an integrity record. A page limit counts Submissions, so it can
-return twice that many category records. Follow its opaque cursor unchanged.
+provides bounded examination eligibility pages. Each Submission contributes four category records: work, integrity, Browser
+Activity and security operational. A page limit counts Submissions, so it can
+return up to four times that many category records. Follow its opaque cursor unchanged.
 
 Review the blockers before approving:
 
@@ -140,8 +142,10 @@ proposed every ten minutes, with durable retries after failures.
 
 The retirement transaction is the irreversible boundary. It removes private
 category records, expires the corresponding retry copies, prevents ordinary
-reads and late ingestion, and leaves permanent retirement markers. Work and
-integrity retire separately; a work-only read after integrity retirement
+reads and late ingestion, and leaves permanent retirement markers. All four examination categories retire independently. Browser and native
+operational retirement preserve separate Review evidence copies; integrity
+retirement removes those copies and prevents new integrity intake. A work-only
+read after integrity retirement
 reports `integrity_state: "retired"` and `integrity_retired_at`, with the old
 counters absent. Shared published Exam
 materials are preserved.

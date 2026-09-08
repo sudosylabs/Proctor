@@ -163,7 +163,7 @@ func TestHubShutdownWaitsForAttemptTerminalReader(t *testing.T) {
 	}
 	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), sittingID: model.NewExamSittingID(), classID: model.NewClassID(), connectionID: model.NewAttemptConnectionID(), participationID: model.NewAttemptParticipationID(), generation: 1}
 	runtime.handleRequest(context.Background(), requestWithData(t, 1, examAttemptTerminalOpenAction,
-		examAttemptTerminalOpenRequest{Generation: 1, ContinuityCredential: model.NewCredentialToken(), Cols: 80, Rows: 24}))
+		examAttemptTerminalOpenRequest{ExpectedWorkspaceCursor: new(int64), Generation: 1, ContinuityCredential: model.NewCredentialToken(), Cols: 80, Rows: 24}))
 	finished := make(chan struct{})
 	go func() { runtime.run(context.Background()); hub.unregister(runtime); close(finished) }()
 	t.Cleanup(func() {

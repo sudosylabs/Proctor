@@ -17,7 +17,9 @@ paths:
       tags:
         - Submissions
       description: >-
-        An authorized current Exam Manager atomically seals the last acknowledged Workspace state and ends one active, ready, or suspended Attempt. The private reason is retained for audit and is never returned to the candidate. At or after the Sitting deadline, scheduled closure owns terminal provenance.
+        An authorized current Exam Manager atomically seals the last acknowledged Workspace state and ends one
+        active, ready, or suspended Attempt. The private reason is retained for audit and is never returned to
+        the candidate. At or after the Sitting deadline, scheduled closure owns terminal provenance.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -57,21 +59,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/EndExamAttemptByManager'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamSubmissionReceiptOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}:
     parameters:
@@ -85,7 +87,8 @@ paths:
       tags:
         - Submissions
       description: >-
-        Authorizes the canonical Submission first, rechecks the current Exam Manager relationship and scope, then conceals any nested ownership mismatch.
+        Authorizes the canonical Submission first, rechecks the current Exam Manager relationship and scope,
+        then conceals any nested ownership mismatch.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -109,19 +112,19 @@ paths:
         - dpopAuth: []
         - sessionCookie: []
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamSubmissionManagerOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/manifest:
     parameters:
@@ -174,22 +177,22 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamSubmissionManifestOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
-  ? /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content
-  : parameters:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content:
+    parameters:
       - $ref: '#/components/parameters/ExamID'
       - $ref: '#/components/parameters/ExamSittingID'
       - $ref: '#/components/parameters/ExamAttemptID'
@@ -201,7 +204,8 @@ paths:
       tags:
         - Submissions
       description: >-
-        Streams the exact retained starter- or Attempt-origin bytes through the application. It is not a public URL or export and exposes no storage selector.
+        Streams the exact retained starter- or Attempt-origin bytes through the application. It is not a
+        public URL or export and exposes no storage selector.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -232,26 +236,28 @@ paths:
             type: string
           description: Strong ETag from an earlier authorized response; a match returns 304 without content.
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamSubmissionFileContent'
-        "304":
+        '304':
           $ref: '#/components/responses/ExamSubmissionFileNotModified'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     EndExamAttemptByManager:
-      description: Exact Attempt revision and private bounded manager reason for sealing one unfinished Attempt before scheduled closure owns it.
+      description: >-
+        Exact Attempt revision and private bounded manager reason for sealing one unfinished Attempt before
+        scheduled closure owns it.
       required: true
       content:
         application/json:
@@ -330,7 +336,9 @@ components:
     EndExamAttemptByManagerRequest:
       type: object
       additionalProperties: false
-      required: [expected_attempt_revision, reason]
+      required:
+        - expected_attempt_revision
+        - reason
       properties:
         expected_attempt_revision:
           type: integer
@@ -342,7 +350,9 @@ components:
           maxLength: 1000
           description: Trimmed private manager reason; never exposed to the candidate.
     ExamSubmissionManagerResponse:
-      description: Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible.
+      description: >-
+        Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an
+        explicit retirement time and omits the former signal counters; retained work remains accessible.
       type: object
       additionalProperties: false
       required:
@@ -359,6 +369,7 @@ components:
         - manifest_total_file_bytes
         - integrity_state
         - submitted_at
+        - browser_activity
       properties:
         submission_id:
           $ref: '#/components/schemas/ID'
@@ -398,26 +409,36 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Final focus-loss signal sequence acknowledged at submission. Present only while integrity is retained, including when zero.
+          description: >-
+            Final focus-loss signal sequence acknowledged at submission. Present only while integrity is
+            retained, including when zero.
         integrity_state:
           type: string
           enum:
             - settled
             - gapped
             - retired
-          description: Whether integrity is complete, contains a known gap, or has been permanently retired under Institution policy.
+          description: >-
+            Whether integrity is complete, contains a known gap, or has been permanently retired under
+            Institution policy.
         integrity_retired_at:
           type: string
           format: date-time
-          description: Present only when integrity_state is retired. Retirement does not represent a settled integrity result.
+          description: >-
+            Present only when integrity_state is retired. Retirement does not represent a settled integrity
+            result.
         unresolved_integrity_count:
           type: integer
           format: int64
           minimum: 0
-          description: Count of integrity items still unresolved for review. Present only while integrity is retained, including when zero.
+          description: >-
+            Count of integrity items still unresolved for review. Present only while integrity is retained,
+            including when zero.
         submitted_at:
           type: string
           format: date-time
+        browser_activity:
+          $ref: '#/components/schemas/BrowserSubmissionSettlement'
     ExamSubmissionManifestItemResponse:
       description: One immutable file or directory entry in a sealed Submission manifest.
       type: object
@@ -498,4 +519,5 @@ components:
         next_cursor:
           type: string
           description: >-
-            Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL.
+            Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage
+            selector enters the URL.

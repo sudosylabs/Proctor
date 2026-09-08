@@ -8,6 +8,23 @@
 -- Rolls back the pre-release schema baseline. Development databases should
 -- normally be dropped and recreated rather than rolled back.
 
+DROP TABLE IF EXISTS native_condition_evidence;
+DROP TABLE IF EXISTS submission_review_finalizations;
+DROP TABLE IF EXISTS browser_integrity_overflow;
+DROP TABLE IF EXISTS browser_integrity_groups;
+DROP TABLE IF EXISTS browser_delivery_retired_sources;
+DROP TABLE IF EXISTS browser_delivery_declarations;
+DROP TABLE IF EXISTS exam_native_occurrences;
+DROP TABLE IF EXISTS exam_native_delivery_records;
+DROP TABLE IF EXISTS exam_native_delivery_batches;
+DROP TABLE IF EXISTS exam_native_delivery_declarations;
+DROP TABLE IF EXISTS exam_native_source_resets;
+DROP TABLE IF EXISTS exam_attempt_security_owners;
+DROP TABLE IF EXISTS exam_attempt_delivery_budgets;
+DROP TABLE IF EXISTS exam_security_preflights;
+DROP FUNCTION IF EXISTS guard_native_condition_evidence();
+DROP FUNCTION IF EXISTS guard_delivery_retirement_marker();
+
 DROP FUNCTION IF EXISTS retention_allows_integrity_delete(varchar);
 DROP TABLE IF EXISTS user_mfa_recovery;
 DROP TABLE IF EXISTS retention_purge_objects;
@@ -101,6 +118,10 @@ DROP TABLE IF EXISTS exam_attempt_connections;
 DROP FUNCTION IF EXISTS guard_attempt_connection_mutation();
 DROP TABLE IF EXISTS exam_attempt_participations;
 DROP FUNCTION IF EXISTS guard_attempt_participation_mutation();
+DROP TABLE IF EXISTS execution_observed_nodes;
+DROP TABLE IF EXISTS execution_observation_outcomes;
+DROP FUNCTION IF EXISTS discard_released_execution_projection() CASCADE;
+DROP TABLE IF EXISTS execution_projection_effects;
 DROP TABLE IF EXISTS execution_grants;
 DROP TABLE IF EXISTS exam_attempt_workspace_journal;
 DROP TABLE IF EXISTS exam_attempt_workspace_entries;

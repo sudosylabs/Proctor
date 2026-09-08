@@ -18,11 +18,15 @@ import (
 const resultReleaseDeliveryLifetime = 72 * time.Hour
 
 func validateResultReleaseMail(prepared *store.PreparedMail, recipient *model.User,
-	reviewID model.SubmissionReviewID, at time.Time,
+	reviewID model.SubmissionReviewID, revision int64, at time.Time,
 ) (string, error) {
+	occurrence, identityErr := model.ResultReleaseOccurrenceID(reviewID, revision)
+	if identityErr != nil {
+		return "", identityErr
+	}
 	if prepared == nil || prepared.Occurrence == nil || prepared.Delivery == nil || prepared.Job == nil ||
 		recipient == nil || recipient.Validate() != nil || !reviewID.IsValid() || at.IsZero() ||
-		prepared.Occurrence.ID != model.MailOccurrenceID(reviewID.String()) ||
+		prepared.Occurrence.ID != occurrence ||
 		prepared.Occurrence.Kind != model.MailOccurrenceResultRelease ||
 		prepared.Occurrence.TemplateKey != model.MailTemplateExamResultReleased ||
 		prepared.Occurrence.ActorUserID != recipient.ID || prepared.Delivery.TargetUserID != recipient.ID ||

@@ -302,7 +302,7 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	if err = insertTerminalIntegrityDiscrepancies(ctx, tx, submission, automaticIntegrityDiscrepancyTarget(target),
 		terminalIntegrityDiscrepancies{FocusUnresolved: focusUnresolved,
-			FocusReason: focusReason, BrowserUnresolved: browserUnresolved, BrowserActivity: browserActivity,
+			FocusReason: focusReason, BrowserUnresolved: browserUnresolved,
 			MissingCorrections: missingCorrections}); err != nil {
 		return nil, err
 	}
@@ -381,52 +381,8 @@ func listAutomaticPendingCorrectionAcknowledgements(ctx context.Context, tx *sql
 	return result, nil
 }
 
-func settleAutomaticBrowserActivity(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID,
-	databaseNow time.Time,
-) (int64, model.BrowserActivitySubmission, error) {
-	var sources []browserActivitySubmissionSourceRow
-	if err := tx.Select(ctx, &sources, `SELECT source.id::text,source.participation_id,source.generation,source.state,
-		source.highest_contiguous,source.highest_seen,source.ended_at,
-		(SELECT count(*) FROM browser_activity_events event WHERE event.source_session_id=source.id
-			AND event.sequence>source.highest_contiguous AND event.sequence<=source.highest_seen) AS received_beyond_contiguous
-		FROM browser_activity_sources source WHERE source.exam_attempt_id=? ORDER BY source.started_at,source.id FOR UPDATE OF source`, attemptID.String()); err != nil {
-		return 0, model.BrowserActivitySubmission{}, fmt.Errorf("lock automatic Exam Submission Browser Activity: %w", err)
-	}
-	if len(sources) == 0 {
-		return 0, model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}, nil
-	}
-	latest := len(sources) - 1
-	if sources[latest].State == "current" {
-		result, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET state='gapped',ended_at=?
-			WHERE id=?::uuid AND exam_attempt_id=? AND state='current'`, databaseNow, sources[latest].ID, attemptID.String())
-		if err != nil {
-			return 0, model.BrowserActivitySubmission{}, fmt.Errorf("finalize automatic Exam Submission Browser Activity source: %w", err)
-		}
-		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected != 1 {
-			return 0, model.BrowserActivitySubmission{}, store.NewErrConflict("browser_activity", "browser_activity_source_fence", rowsErr)
-		}
-		sources[latest].State = "gapped"
-	}
-	if sources[latest].State != "gapped" {
-		return 0, model.BrowserActivitySubmission{}, invalidPersistedState("browser_activity", "source_state",
-			errors.New("automatic Submission Browser Activity source is unexpectedly closed"))
-	}
-	var finalSequence *int64
-	if sources[latest].HighestSeen > 0 {
-		value := sources[latest].HighestSeen
-		finalSequence = &value
-	}
-	declaration := model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionGapped,
-		SourceSessionID: model.BrowserSourceSessionID(sources[latest].ID), FinalSequence: finalSequence,
-		GapReason: model.BrowserActivityGapSourceNotFinalized}
-	if err := declaration.Validate(); err != nil {
-		return 0, model.BrowserActivitySubmission{}, invalidPersistedState("browser_activity", "submission", err)
-	}
-	unresolved, err := browserActivitySourceUnresolved(sources)
-	if err != nil {
-		return 0, model.BrowserActivitySubmission{}, err
-	}
-	return unresolved, declaration, nil
+func settleAutomaticBrowserActivity(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, databaseNow time.Time) (int64, model.BrowserSubmissionSettlement, error) {
+	return settleSubmissionBrowserSources(ctx, tx, attemptID, model.DeliveryClosedSitting, databaseNow)
 }
 
 type automaticExamSubmissionIntegrity struct{ LatestAcceptedSequence, TotalUnresolved int64 }
@@ -490,14 +446,11 @@ func insertAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper, submi
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_submissions
 		(id,exam_attempt_id,exam_revision_id,workspace_id,participation_id,generation,connection_id,manifest_schema_version,
 		workspace_cursor,manifest_digest,manifest_entry_count,manifest_total_file_bytes,final_focus_loss_sequence,
-		browser_activity_state,browser_activity_source_session_id,browser_activity_final_sequence,browser_activity_gap_reason,
 		integrity_state,unresolved_integrity_count,provenance,submitted_at,sealed)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`, submission.ID.String(), submission.AttemptID.String(),
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,false)`, submission.ID.String(), submission.AttemptID.String(),
 		submission.ExamRevisionID.String(), submission.WorkspaceID.String(), target.ParticipationID.String(), target.Generation, target.ConnectionID.String(),
 		submission.ManifestSchemaVersion, submission.WorkspaceCursor, submission.ManifestDigest, submission.ManifestEntryCount,
-		submission.ManifestTotalFileBytes, submission.FinalFocusLossSequence, string(submission.BrowserActivity.State),
-		nullableString(string(submission.BrowserActivity.SourceSessionID)), nullableInt64Pointer(submission.BrowserActivity.FinalSequence),
-		nullableString(string(submission.BrowserActivity.GapReason)), string(submission.IntegrityState),
+		submission.ManifestTotalFileBytes, submission.FinalFocusLossSequence, string(submission.IntegrityState),
 		submission.UnresolvedIntegrityCount, string(submission.Provenance), submission.SubmittedAt); err != nil {
 		return fmt.Errorf("insert automatic Exam Submission: %w", translateError("exam_submission", submission.ID.String(), err))
 	}
@@ -543,6 +496,11 @@ func persistAutomaticSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper
 			return store.NewErrConflict("attempt_participation", "attempt_participation_expired", rowsErr)
 		}
 	}
+	if beforeParticipation == model.AttemptParticipationActive {
+		if err := closeNativeDelivery(ctx, tx, participation.ID, model.DeliveryClosedSitting, participation.EndedAt.Time); err != nil {
+			return err
+		}
+	}
 	if beforeConnection == model.AttemptConnectionOpen {
 		result, err = tx.Exec(ctx, `UPDATE exam_attempt_connections SET state=?,closed_at=?,close_reason=?
 			WHERE id=? AND exam_attempt_id=? AND participation_id=? AND state='open'`, string(connection.State),
@@ -558,7 +516,7 @@ func persistAutomaticSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper
 }
 
 func automaticExamSubmissionOutcome(submission *model.ExamSubmission, target store.ExamSubmissionAutomaticSealTarget) examSubmissionSealOutcomeV1 {
-	return examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{SubmissionID: submission.ID,
+	return examSubmissionSealOutcomeV1{Receipt: store.ExamSubmissionReceipt{BrowserActivity: submission.BrowserActivity, SubmissionID: submission.ID,
 		AttemptID: submission.AttemptID, ExamRevisionID: submission.ExamRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: submission.WorkspaceCursor,
 		ManifestDigest: submission.ManifestDigest, SubmittedAt: submission.SubmittedAt}, ExamID: target.ExamID.String(),
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),

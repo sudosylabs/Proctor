@@ -10,7 +10,9 @@ package model
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +20,15 @@ import (
 
 func TestCanonicalExamRevisionPolicyIgnoresAuthoredJSONFieldOrder(t *testing.T) {
 	t.Parallel()
-	ordered := []byte(`{"schema_version":1,"connection_loss":{"outcome":"flag_and_suspend"},"focus_loss":{"enabled":true,"minimum_duration_milliseconds":2000,"incident_count":3,"window_milliseconds":300000,"outcome":"flag_and_warn"}}`)
-	reordered := []byte(` { "focus_loss": {"outcome":"flag_and_warn","window_milliseconds":300000,"incident_count":3,"minimum_duration_milliseconds":2000,"enabled":true}, "connection_loss":{"outcome":"flag_and_suspend"}, "schema_version":1 } `)
+	ordered, err := os.ReadFile("testdata/default_exam_policy.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(ordered, &fields); err != nil {
+		t.Fatal(err)
+	}
+	reordered := []byte(fmt.Sprintf(` { "native": %s, "focus_loss": {"outcome":"flag_and_warn","window_milliseconds":300000,"incident_count":3,"minimum_duration_milliseconds":2000,"enabled":true}, "connection_loss":{"outcome":"flag_and_suspend"} } `, fields["native"]))
 
 	first, err := CanonicalizeExamRevisionPolicy(ordered)
 	if err != nil {
@@ -146,7 +155,7 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	replacement.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixed")))
 	corrected, err := NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 4,
 		InstructionsMarkdown: "Fixed **instructions**", Resources: []ExamRevisionResource{replacement},
-		CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
+		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +187,7 @@ func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T)
 		t.Fatal(err)
 	}
 	if _, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
-		CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
+		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
 		t.Fatal("non-increasing Revision number was accepted")
 	}
 }

@@ -67,7 +67,7 @@ const auditExpiryFacts = `SELECT a.id,a.created_at AS scan_at, (` + terminalClea
 
 const receiptExpiryFacts = `SELECT r.id,r.scheduled_at AS scan_at,false AS cleanup_audit,COALESCE(r.retired_at,r.cancelled_at,r.scheduled_at) AS event_at,
  r.exam_id,r.exam_sitting_id AS sitting_id,r.submission_id,
- (r.state='grace' OR (r.state='retired' AND CASE WHEN r.category='work' THEN sub.work_retired_at IS NULL ELSE sub.integrity_retired_at IS NULL END)) AS unfinished,
+ (r.state='grace' OR (r.state='retired' AND CASE r.category WHEN 'work' THEN sub.work_retired_at IS NULL WHEN 'integrity' THEN sub.integrity_retired_at IS NULL WHEN 'browser_activity' THEN (SELECT browser_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) ELSE (SELECT security_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) END)) AS unfinished,
  false AS referenced,
  EXISTS(SELECT 1 FROM retention_holds h WHERE h.exam_id=r.exam_id AND h.released_at IS NULL AND
   (h.exam_sitting_id IS NULL OR h.exam_sitting_id=r.exam_sitting_id) AND (h.submission_id IS NULL OR h.submission_id=r.submission_id)) AS held,

@@ -43,7 +43,7 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 	if fixture.persistence.creation.Exam.ID != fixture.persistence.creation.Draft.ExamID || fixture.persistence.creation.Manager.UserID != fixture.userID {
 		t.Fatalf("atomic aggregate = %#v", fixture.persistence.creation)
 	}
-	if fixture.persistence.creation.Draft.Policy != model.DefaultExamPolicySet() {
+	if !fixture.persistence.creation.Draft.Policy.Equal(model.DefaultExamPolicySet()) {
 		t.Fatalf("policy = %#v", fixture.persistence.creation.Draft.Policy)
 	}
 	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationCreate, "test-key",
@@ -597,7 +597,7 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	effects := &effectsFake{order: &order}
 	service, err := NewAuthoring(persistence, memberships, users, mail, authorizer, auditor, outcomes, profiles, effects, effects, func() time.Time {
 		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
-	}, func() model.ExamID { return examID })
+	}, func() model.ExamID { return examID }, "https://institution.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,6 +736,7 @@ type authoringStoreFake struct {
 	creation               *store.ExamAuthoringCreation
 	textUpdate             *store.ExamDraftTextUpdate
 	focusLossUpdate        *store.ExamDraftFocusLossUpdate
+	nativePolicyUpdate     *store.ExamDraftNativePolicyUpdate
 	executionProfileUpdate *store.ExamDraftExecutionProfileUpdate
 	archive                *store.ExamArchive
 	listOptions            store.ExamListOptions
@@ -983,3 +984,32 @@ func (f *effectsFake) DraftUpdated(_ context.Context, _ model.ExamID, revision i
 	return f.err
 }
 func (f *effectsFake) Report(context.Context, string, error) {}
+
+func (f *authoringStoreFake) UpdateDraftNativePolicy(_ context.Context, input *store.ExamDraftNativePolicyUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	*f.order = append(*f.order, "store.update_native_policy")
+	f.nativePolicyUpdate, f.idempotency = input, command
+	if f.err != nil {
+		return nil, f.err
+	}
+	snapshot, err := f.Get(context.Background(), input.ExamID, input.ActorUserID)
+	*f.order = (*f.order)[:len(*f.order)-1]
+	if err != nil {
+		return nil, err
+	}
+	if f.replayed {
+		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	if _, err := snapshot.Draft.ApplyNativePolicy(input.NativePolicy, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
+}

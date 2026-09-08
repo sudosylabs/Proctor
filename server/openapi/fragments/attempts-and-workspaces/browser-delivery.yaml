@@ -1,0 +1,1045 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: browserSourceList
+      summary: List owned Participation Browser sources
+      description: >-
+        Return at most 49 source statuses in successful start order, bounded at 1 MiB, for one owned
+        Participation. Current registered-key ownership is required; any live source also requires current
+        Connection continuity. This is source recovery, not Browser Activity history access.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - name: participation_id
+          in: query
+          required: true
+          description: Owned Participation whose bounded source inventory is requested.
+          schema:
+            $ref: '#/components/schemas/ID'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserSourceListOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    get:
+      operationId: browserSourceStatus
+      summary: Recover an owned Browser source
+      description: >-
+        Read the current immutable Browser source identity, source counters and delivery closure after an
+        ambiguous start or reset response. Requires the owning User and current registered key Session. A live
+        source also requires exact current Connection continuity; closed-source ownership grants no live
+        interaction. The response is at most 16 KiB.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserSourceStatusOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/gaps:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    post:
+      operationId: declareBrowserDeliveryGaps
+      summary: Declare permanent missing Browser positions
+      description: >-
+        Current registered-key ownership is always rechecked. A live source additionally requires the exact
+        current Connection headers. Declarations are canonical and idempotent; gaps never create event
+        receipts. Closed-source writes must precede the immutable upload deadline.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/DeclareDeliveryGaps'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserDeliveryGapResultOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/seal:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    post:
+      operationId: sealBrowserDelivery
+      summary: Declare a closed Browser source final boundary
+      description: >-
+        Current registered-key ownership is always rechecked. A live source additionally requires the exact
+        current Connection headers. Declarations are canonical and idempotent; gaps never create event
+        receipts. Closed-source writes must precede the immutable upload deadline.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/FinalDeliveryDeclaration'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserSourceStatusOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/summary:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    post:
+      operationId: updateBrowserDeliverySummary
+      summary: Update cumulative unretained Browser delivery counts
+      description: >-
+        Current registered-key ownership is always rechecked. A live source additionally requires the exact
+        current Connection headers. Declarations are canonical and idempotent; gaps never create event
+        receipts. Closed-source writes must precede the immutable upload deadline.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/UnretainedDeliverySummary'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserDeliverySummaryResultOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/events:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    post:
+      operationId: appendHistoricalBrowserDelivery
+      summary: Upload retained events for a closed Browser source
+      description: >-
+        Requires current registered-key ownership of an already closed source and its immutable policy
+        revision/digest. Old candidate Connection headers are rejected. Original per-event receipts survive
+        repacking; receipt progress remains distinct from settled gaps. The upload deadline and final declared
+        boundary are immutable.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - exam.delivery.batch_conflict
+        - exam.delivery.replay_window_exceeded
+        - exam.delivery.pending_capacity
+        - exam.delivery.append_rate_limited
+        - exam.attempt.browser_activity_conflict
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/BrowserActivityBatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserActivityAcknowledgementOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      x-codeSamples:
+        - lang: Shell
+          label: Append the original protected batch
+          source: |-
+            curl --request POST "$PROCTOR_URL/api/v1/exam-attempts/$ATTEMPT_ID/security-batches" \
+              --header "Authorization: DPoP $ACCESS_TOKEN" \
+              --header "DPoP: $DPOP_PROOF" \
+              --header "Idempotency-Key: $IDEMPOTENCY_KEY" \
+              --header "Content-Type: application/json" \
+              --data-binary @native-batch.json
+  /api/v1/exam-attempts/{exam_attempt_id}/browser-activity/sources/{source_session_id}/receipts:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/BrowserSourceSessionID'
+    get:
+      operationId: browserDeliveryReceipts
+      summary: Read bounded per-event Browser receipts
+      description: >-
+        Return up to 64 retained receipts in ascending sequence order, omitting missing positions.
+        next_sequence is the first retained sequence on the next page or null. Response is bounded at 16 KiB;
+        current registered-key ownership and live Connection rules apply.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.not_found
+        - exam.attempt.registered_desktop_required
+        - exam.attempt.continuity_invalid
+        - exam.attempt.connection_closed
+        - exam.attempt.connection_lost
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.unavailable
+        - exam.delivery.upload_expired
+        - exam.delivery.declaration_conflict
+        - exam.delivery.sequence_limit
+        - exam.delivery.missing_interval_limit
+        - exam.delivery.detail_budget_exhausted
+        - exam.delivery.metadata_capacity
+        - exam.delivery.control_rate_limited
+        - exam.delivery.summary_rate_limited
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/NativeDeliveryCredential'
+        - $ref: '#/components/parameters/NativeDeliveryConnectionID'
+        - name: first_sequence
+          in: query
+          required: true
+          description: First sequence to examine, inclusive.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 50000
+        - name: limit
+          in: query
+          required: true
+          description: Maximum number of retained receipts.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 64
+      responses:
+        '200':
+          $ref: '#/components/responses/BrowserReceiptPageOK'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/NativeDeliveryExpired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    BrowserSourceSessionID:
+      name: source_session_id
+      in: path
+      required: true
+      description: Canonical UUIDv4 source identity assigned by the privileged Desktop.
+      schema:
+        type: string
+        format: uuid
+        pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+  schemas:
+    BrowserSourceStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - missing_ranges_truncated
+        - server_time
+        - allocated_through_sequence
+        - terminal_missing_through_sequence
+        - closure
+        - declaration_revision
+        - detail_mode
+        - budget_scope
+        - summary_only_reason
+        - summary
+        - highest_contiguous_sequence
+        - settled_through_sequence
+        - highest_seen_sequence
+        - missing_ranges
+        - source_session_id
+        - attempt_id
+        - participation_id
+        - generation
+        - policy_revision_id
+        - policy_digest
+        - predecessor_source_session_id
+        - start_transition
+        - runtime_reset_reason
+        - started_at
+        - remaining_correction_starts
+        - remaining_runtime_reset_starts
+      properties:
+        missing_ranges_truncated:
+          type: boolean
+        server_time:
+          type: string
+          format: date-time
+        allocated_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        terminal_missing_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        closure:
+          $ref: '#/components/schemas/DeliveryClosure'
+        declaration_revision:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        detail_mode:
+          type: string
+          enum:
+            - collecting
+            - summary_only
+        budget_scope:
+          type:
+            - string
+            - 'null'
+          enum:
+            - participation
+            - attempt
+            - null
+        summary_only_reason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - records
+            - bytes
+            - positions
+            - metadata
+            - local_loss_inventory_exhausted
+            - null
+        summary:
+          type:
+            - object
+            - 'null'
+          additionalProperties: false
+          required:
+            - summary_sequence
+            - unretained_record_count
+            - count_complete
+            - first_unretained_at
+            - last_unretained_at
+          properties:
+            summary_sequence:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 9007199254740991
+            unretained_record_count:
+              type: integer
+              format: int64
+              minimum: 0
+              maximum: 9007199254740991
+            count_complete:
+              type: boolean
+            first_unretained_at:
+              type:
+                - string
+                - 'null'
+              format: date-time
+            last_unretained_at:
+              type:
+                - string
+                - 'null'
+              format: date-time
+        highest_contiguous_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        settled_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        highest_seen_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        missing_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SequenceRange'
+          maxItems: 32
+        source_session_id:
+          type: string
+          format: uuid
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        attempt_id:
+          $ref: '#/components/schemas/ID'
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        predecessor_source_session_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        start_transition:
+          type: string
+          enum:
+            - initial
+            - policy_correction
+            - runtime_reset
+        runtime_reset_reason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - coordinator_restarted
+            - spool_unavailable
+            - source_corrupt
+            - null
+        started_at:
+          type: string
+          format: date-time
+        remaining_correction_starts:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 32
+        remaining_runtime_reset_starts:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 16
+      description: >-
+        At most 16 KiB. Immutable source policy and start provenance, server-owned first closure and finite
+        historical delivery window. Counters are remaining successful starts across this Participation;
+        retries and retirement never replenish them. Source status conveys no navigation authority.
+    BrowserSourceList:
+      type: object
+      additionalProperties: false
+      required:
+        - sources
+      properties:
+        sources:
+          type: array
+          maxItems: 49
+          items:
+            $ref: '#/components/schemas/BrowserSourceStatus'
+    BrowserEventReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - sequence
+        - event_digest
+        - received_at
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 50000
+        event_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        received_at:
+          type: string
+          format: date-time
+          pattern: Z$
+    BrowserActivityAcknowledgement:
+      type: object
+      additionalProperties: false
+      required:
+        - highest_contiguous_sequence
+        - settled_through_sequence
+        - highest_seen_sequence
+        - allocated_through_sequence
+        - terminal_missing_through_sequence
+        - missing_ranges
+        - missing_ranges_truncated
+        - source_session_id
+        - receipts
+        - server_time
+      properties:
+        highest_contiguous_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        settled_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        highest_seen_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        allocated_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        terminal_missing_through_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        missing_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SequenceRange'
+          maxItems: 32
+        missing_ranges_truncated:
+          type: boolean
+        source_session_id:
+          type: string
+          format: uuid
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        receipts:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BrowserEventReceipt'
+        server_time:
+          type: string
+          format: date-time
+          pattern: Z$
+    BrowserReceiptPage:
+      type: object
+      additionalProperties: false
+      required:
+        - receipts
+        - next_sequence
+      properties:
+        receipts:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BrowserEventReceipt'
+        next_sequence:
+          type:
+            - integer
+            - 'null'
+          format: int64
+          minimum: 1
+          maximum: 50000
+    BrowserDeliveryGapResult:
+      type: object
+      additionalProperties: false
+      required:
+        - receipt
+        - status
+      properties:
+        receipt:
+          $ref: '#/components/schemas/DeliveryGapReceipt'
+        status:
+          $ref: '#/components/schemas/BrowserSourceStatus'
+    BrowserDeliverySummaryResult:
+      type: object
+      additionalProperties: false
+      required:
+        - summary
+        - status
+      properties:
+        summary:
+          $ref: '#/components/schemas/UnretainedDeliverySummary'
+        status:
+          $ref: '#/components/schemas/BrowserSourceStatus'
+    BrowserActivityBatch:
+      type: object
+      additionalProperties: false
+      required:
+        - source_session_id
+        - participation_id
+        - generation
+        - policy_revision_id
+        - policy_digest
+        - events
+      properties:
+        source_session_id:
+          type: string
+          format: uuid
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        events:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BrowserDeliveryRecord'
+      description: >-
+        At most 256 KiB. Events have strictly increasing unique sequences and the frozen source policy
+        revision. Every event digest covers only its canonical record, independent of packing and transport.
+  responses:
+    BrowserSourceStatusOK:
+      description: Current owned source status.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+          description: Always no-store.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserSourceStatus'
+    BrowserSourceListOK:
+      description: Bounded ordered source inventory.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+          description: Always no-store.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserSourceList'
+    BrowserActivityAcknowledgementOK:
+      description: Bounded authoritative Browser delivery result. No navigation or history-view authority is granted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserActivityAcknowledgement'
+    BrowserReceiptPageOK:
+      description: Bounded authoritative Browser delivery result. No navigation or history-view authority is granted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserReceiptPage'
+    BrowserDeliveryGapResultOK:
+      description: Bounded authoritative Browser delivery result. No navigation or history-view authority is granted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserDeliveryGapResult'
+    BrowserDeliverySummaryResultOK:
+      description: Bounded authoritative Browser delivery result. No navigation or history-view authority is granted.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserDeliverySummaryResult'
+  requestBodies:
+    BrowserActivityBatch:
+      required: true
+      description: >-
+        Closed historical Browser Activity append using the same event codec as realtime. The source must
+        already be closed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserActivityBatch'

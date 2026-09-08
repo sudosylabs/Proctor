@@ -139,6 +139,7 @@ type accessStore interface {
 
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
+	Deny(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error
 }
 
 type Auditor interface {
@@ -330,28 +331,42 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 	return err
 }
 
-// AuthorizeBrowserActivityView applies the dedicated manager permission while
-// retaining the exact current Manager and Academic Unit membership checks of
-// other Sitting reads.
-func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call Call, sittingID model.ExamSittingID) (model.AcademicUnitID, bool, error) {
+// AuthorizeBrowserActivityView requires exact current Exam Manager membership
+// plus the dedicated permission on every read, including later pages.
+// Browser history has no administrator or general examination override.
+func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call Call, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
 	if !sittingID.IsValid() || call.Principal().Validate() != nil {
-		return "", false, invalid("exam_sitting_id")
+		return "", invalid("exam_sitting_id")
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
-		return "", false, mapStoreError(err)
+		return "", mapStoreError(err)
 	}
 	value, err := requireSnapshot(snapshot)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-	decision, err := service.authorize(ctx, call, value.Sitting.ExamID,
-		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.now()),
-		model.ActionExamAttemptBrowserActivityView, model.ActionExamAttemptBrowserActivityViewOverride)
+	if value.Sitting.ID != sittingID {
+		return "", unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+	}
+	access, err := service.access.Access(ctx, value.Sitting.ExamID, call.Principal().UserID)
 	if err != nil {
-		return "", false, err
+		return "", mapStoreError(err)
 	}
-	return decision.unitID, decision.override, nil
+	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != value.Sitting.ExamID {
+		return "", unavailable(errors.New("Exam access projection is incomplete"))
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
+	if !access.ActorIsManager {
+		if err := service.authorizer.Deny(ctx, call, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
+			return "", err
+		}
+		return "", &Fault{Code: "exam.sitting.not_found"}
+	}
+	if err := service.authorizer.Authorize(ctx, call, model.ActionExamAttemptBrowserActivityView, resource); err != nil {
+		return "", err
+	}
+	return access.Exam.AcademicUnitID, nil
 }
 
 // AuthorizeSubmissionView applies the current Exam Manager relationship and

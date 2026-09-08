@@ -33,7 +33,6 @@ type terminalIntegrityDiscrepancies struct {
 	FocusUnresolved    int64
 	FocusReason        model.IntegrityDiscrepancyFocusLossGapReason
 	BrowserUnresolved  int64
-	BrowserActivity    model.BrowserActivitySubmission
 	MissingCorrections []model.ExamRevisionID
 }
 
@@ -84,26 +83,7 @@ func insertTerminalIntegrityDiscrepancies(ctx context.Context, tx *sqlxTxWrapper
 			return err
 		}
 	}
-	if value.BrowserUnresolved > 0 {
-		reason := string(value.BrowserActivity.GapReason)
-		if reason == "" {
-			reason = string(model.IntegrityDiscrepancyBrowserActivityPriorSourceGap)
-		}
-		discrepancy, createErr := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
-			ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submission.ID, AttemptID: target.AttemptID,
-			ParticipationID: target.ParticipationID, Generation: target.Generation,
-			Kind: model.IntegrityDiscrepancyBrowserActivityGap, SchemaVersion: 1,
-			BrowserSourceSessionID: value.BrowserActivity.SourceSessionID,
-			FinalSequence:          value.BrowserActivity.FinalSequence, GapReason: reason,
-			UnresolvedCount: value.BrowserUnresolved, ReceivedAt: submission.SubmittedAt,
-		})
-		if createErr != nil {
-			return invalidPersistedState("integrity_discrepancy", "browser_activity_gap", createErr)
-		}
-		if err = insertTerminalIntegrityDiscrepancy(ctx, tx, discrepancy, target); err != nil {
-			return err
-		}
-	}
+
 	for _, revisionID := range value.MissingCorrections {
 		discrepancy, createErr := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{
 			ID: model.NewIntegrityDiscrepancyID(), SubmissionID: submission.ID, AttemptID: target.AttemptID,

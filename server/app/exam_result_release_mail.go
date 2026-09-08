@@ -52,8 +52,12 @@ func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx 
 		revision.Title == "" {
 		return nil, errors.New("result release Exam revision projection is inconsistent")
 	}
+	occurrence, err := model.ResultReleaseOccurrenceID(request.ReviewID, request.ExpectedReviewRevision)
+	if err != nil {
+		return nil, err
+	}
 	prepared, err := adapter.preparer.PrepareResultReleaseMail(appmail.ResultReleasePreparation{
-		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.ReviewID.String()),
+		Recipient: recipient, OccurrenceID: occurrence,
 		Details:    appmail.ResultReleaseDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
 		ReleasedAt: request.ReleasedAt,
 	})

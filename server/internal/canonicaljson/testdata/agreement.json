@@ -1,0 +1,171 @@
+[
+  {
+    "name": "nested key and array order",
+    "input_base64": "eyAieiI6IFszLHsieiI6dHJ1ZSwiYSI6bnVsbH0sMV0sICJhIjogeyJiIjoyLCJhIjoxfSB9",
+    "canonical_base64": "eyJhIjp7ImEiOjEsImIiOjJ9LCJ6IjpbMyx7ImEiOm51bGwsInoiOnRydWV9LDFdfQ==",
+    "sha256": "sha256:4ee91dbb78136e17e67934b68f10dff0929214ee6edc5d9398a73d41fa649dc0"
+  },
+  {
+    "name": "scalar UTF-8 and HTML",
+    "input_base64": "eyJ0ZXh0Ijoiw6nmvKLlrZfwn5iAPD4m4oCo4oCpIn0=",
+    "canonical_base64": "eyJ0ZXh0Ijoiw6nmvKLlrZfwn5iAPD4m4oCo4oCpIn0=",
+    "sha256": "sha256:b2f0cf790b165c6cd28fd745b6a8236c52a80cb8eabcc70d4b6ebe95ee3efee2"
+  },
+  {
+    "name": "escaped scalar equivalents",
+    "input_base64": "eyJ0ZXh0IjoiXHUwMGU5XHU2ZjIyXHU1YjU3XHVkODNkXHVkZTAwXHUwMDNjXHUwMDNlXHUwMDI2XHUyMDI4XHUyMDI5In0=",
+    "canonical_base64": "eyJ0ZXh0Ijoiw6nmvKLlrZfwn5iAPD4m4oCo4oCpIn0=",
+    "sha256": "sha256:b2f0cf790b165c6cd28fd745b6a8236c52a80cb8eabcc70d4b6ebe95ee3efee2"
+  },
+  {
+    "name": "string control escapes",
+    "input_base64": "eyJ0ZXh0IjoiXHUwMDAwXHUwMDAxXGJcZlxuXHJcdFx1MDAxZlwiXFxcLyJ9",
+    "canonical_base64": "eyJ0ZXh0IjoiXHUwMDAwXHUwMDAxXGJcZlxuXHJcdFx1MDAxZlwiXFwvIn0=",
+    "sha256": "sha256:facb26ebcd009a454d1aee73a7f38c03228b56f023e7a1e240477cd0419a91ac"
+  },
+  {
+    "name": "literal escaped surrogate text",
+    "input_base64": "eyJ0ZXh0IjoiXFx1ZDgwMCJ9",
+    "canonical_base64": "eyJ0ZXh0IjoiXFx1ZDgwMCJ9",
+    "sha256": "sha256:0835b1f7488e1cff3885efef2af9464e41185034ebbc6d393426d90cdde3c9a1"
+  },
+  {
+    "name": "no Unicode normalization",
+    "input_base64": "eyJ0ZXh0IjoiZcyBIn0=",
+    "canonical_base64": "eyJ0ZXh0IjoiZcyBIn0=",
+    "sha256": "sha256:9b53287cd41955684903378d2b1b4a3ddea9d80d67dcd026319a7c5a9a8a8b42"
+  },
+  {
+    "name": "integer boundaries and zero",
+    "input_base64": "WzkwMDcxOTkyNTQ3NDA5OTEsLTkwMDcxOTkyNTQ3NDA5OTEsLTAsMF0=",
+    "canonical_base64": "WzkwMDcxOTkyNTQ3NDA5OTEsLTkwMDcxOTkyNTQ3NDA5OTEsMCwwXQ==",
+    "sha256": "sha256:97edbafdc4dbf44abf581a8ba5733746931aef2a5aacbbb240962fa9056ee3fa"
+  },
+  {
+    "name": "ASCII numeric property ordering",
+    "input_base64": "eyIyIjoyLCIxMCI6MTAsImEiOjB9",
+    "canonical_base64": "eyIxMCI6MTAsIjIiOjIsImEiOjB9",
+    "sha256": "sha256:93e0f8ed222ac14ea46403cd5fc55a13bdf289e82a65aedb77e8f19bdc110d3c"
+  },
+  {
+    "name": "empty containers and null",
+    "input_base64": "W3t9LFtdLG51bGwsZmFsc2UsdHJ1ZV0=",
+    "canonical_base64": "W3t9LFtdLG51bGwsZmFsc2UsdHJ1ZV0=",
+    "sha256": "sha256:01e5a148ff171ab0728ba9d3d24fe9aa68aaec35a6d7406d35027cd5ddd53d76"
+  },
+  {
+    "name": "duplicate member",
+    "input_base64": "eyJhIjoxLCJhIjoyfQ==",
+    "reject": true
+  },
+  {
+    "name": "escaped duplicate member",
+    "input_base64": "eyJhIjoxLCJcdTAwNjEiOjJ9",
+    "reject": true
+  },
+  {
+    "name": "nested duplicate",
+    "input_base64": "eyJvayI6W3siYSI6MSwiYSI6Mn1dfQ==",
+    "reject": true
+  },
+  {
+    "name": "non ASCII property",
+    "input_base64": "eyLDqSI6MX0=",
+    "reject": true
+  },
+  {
+    "name": "lone high surrogate",
+    "input_base64": "eyJ0ZXh0IjoiXHVkODAwIn0=",
+    "reject": true
+  },
+  {
+    "name": "lone low surrogate",
+    "input_base64": "eyJ0ZXh0IjoiXHVkZmZmIn0=",
+    "reject": true
+  },
+  {
+    "name": "high surrogate before ordinary scalar",
+    "input_base64": "eyJ0ZXh0IjoiXHVkODAwXHUwMDQxIn0=",
+    "reject": true
+  },
+  {
+    "name": "high surrogate before escaped slash",
+    "input_base64": "eyJ0ZXh0IjoiXHVkODAwXFx1ZGMwMCJ9",
+    "reject": true
+  },
+  {
+    "name": "fraction integer spelling",
+    "input_base64": "eyJhIjoxLjB9",
+    "reject": true
+  },
+  {
+    "name": "exponent integer spelling",
+    "input_base64": "eyJhIjoxZTB9",
+    "reject": true
+  },
+  {
+    "name": "fraction negative zero",
+    "input_base64": "LTAuMA==",
+    "reject": true
+  },
+  {
+    "name": "unsafe positive integer",
+    "input_base64": "OTAwNzE5OTI1NDc0MDk5Mg==",
+    "reject": true
+  },
+  {
+    "name": "unsafe negative integer",
+    "input_base64": "LTkwMDcxOTkyNTQ3NDA5OTI=",
+    "reject": true
+  },
+  {
+    "name": "integer overflow",
+    "input_base64": "OTIyMzM3MjAzNjg1NDc3NTgwOA==",
+    "reject": true
+  },
+  {
+    "name": "leading zero",
+    "input_base64": "MDE=",
+    "reject": true
+  },
+  {
+    "name": "trailing document",
+    "input_base64": "e317fQ==",
+    "reject": true
+  },
+  {
+    "name": "trailing comma",
+    "input_base64": "eyJhIjoxLH0=",
+    "reject": true
+  },
+  {
+    "name": "invalid escape",
+    "input_base64": "eyJhIjoiXHgyMCJ9",
+    "reject": true
+  },
+  {
+    "name": "truncated unicode escape",
+    "input_base64": "eyJhIjoiXHUwMSJ9",
+    "reject": true
+  },
+  {
+    "name": "empty document",
+    "input_base64": "",
+    "reject": true
+  },
+  {
+    "name": "excessive nesting",
+    "input_base64": "W1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1swXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV0=",
+    "reject": true
+  },
+  {
+    "name": "invalid UTF-8",
+    "input_base64": "eyJhIjoi/yJ9",
+    "reject": true
+  },
+  {
+    "name": "encoded surrogate UTF-8",
+    "input_base64": "eyJhIjoi7aCAIn0=",
+    "reject": true
+  }
+]

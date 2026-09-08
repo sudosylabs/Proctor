@@ -31,6 +31,11 @@ type editExamDraftTextRequest struct {
 	InstructionsMarkdown  Optional[string] `json:"instructions_markdown"`
 }
 
+type configureExamDraftNativePolicyRequest struct {
+	ExpectedDraftRevision int64                      `json:"expected_draft_revision"`
+	Native                model.NativeSecurityPolicy `json:"native"`
+}
+
 type configureExamDraftFocusLossRequest struct {
 	ExpectedDraftRevision       int64  `json:"expected_draft_revision"`
 	Enabled                     bool   `json:"enabled"`
@@ -53,10 +58,9 @@ type configureExamDraftBrowserPolicyRequest struct {
 }
 
 type browserPolicyDocument struct {
-	SchemaVersion int                         `json:"schema_version"`
-	Enabled       bool                        `json:"enabled"`
-	StartRuleID   string                      `json:"start_rule_id,omitempty"`
-	Rules         []browserPolicyRuleDocument `json:"rules,omitempty"`
+	Enabled     bool                        `json:"enabled"`
+	StartRuleID string                      `json:"start_rule_id,omitempty"`
+	Rules       []browserPolicyRuleDocument `json:"rules,omitempty"`
 }
 
 type browserPolicyRuleDocument struct {
@@ -66,6 +70,7 @@ type browserPolicyRuleDocument struct {
 	HostMatch                string `json:"host_match"`
 	AllowRedirects           bool   `json:"allow_redirects"`
 	BlockedNavigationOutcome string `json:"blocked_navigation_outcome"`
+	InstitutionHTTPException bool   `json:"institution_http_exception"`
 }
 
 func (document *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
@@ -86,16 +91,15 @@ func (document *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
 	if err := json.Unmarshal(encoded, &members); err != nil {
 		return err
 	}
-	if members["schema_version"] == nil || members["enabled"] == nil ||
-		bytes.Equal(bytes.TrimSpace(members["schema_version"]), []byte("null")) ||
-		bytes.Equal(bytes.TrimSpace(members["enabled"]), []byte("null")) {
-		return errors.New("browser policy schema_version and enabled are required")
+	if members["enabled"] == nil || bytes.Equal(bytes.TrimSpace(members["enabled"]), []byte("null")) {
+		return errors.New("browser policy enabled is required")
 	}
+
 	if decoded.Enabled {
-		if len(members) != 4 || members["start_rule_id"] == nil || members["rules"] == nil || decoded.Rules == nil {
+		if len(members) != 3 || members["start_rule_id"] == nil || members["rules"] == nil || decoded.Rules == nil {
 			return errors.New("enabled browser policy requires exactly start_rule_id and rules")
 		}
-	} else if len(members) != 2 {
+	} else if len(members) != 1 {
 		return errors.New("disabled browser policy contains enabled fields")
 	}
 	*document = browserPolicyDocument(decoded)
@@ -117,12 +121,12 @@ func (document *browserPolicyRuleDocument) UnmarshalJSON(encoded []byte) error {
 	if err := json.Unmarshal(encoded, &members); err != nil {
 		return err
 	}
-	for _, name := range []string{"rule_id", "origin", "path_prefix", "host_match", "allow_redirects", "blocked_navigation_outcome"} {
+	for _, name := range []string{"rule_id", "origin", "path_prefix", "host_match", "allow_redirects", "blocked_navigation_outcome", "institution_http_exception"} {
 		if members[name] == nil || bytes.Equal(bytes.TrimSpace(members[name]), []byte("null")) {
 			return errors.New("browser policy rule fields are required")
 		}
 	}
-	if len(members) != 6 {
+	if len(members) != 7 {
 		return errors.New("browser policy rule contains an unknown field")
 	}
 	*document = browserPolicyRuleDocument(decoded)
@@ -134,22 +138,17 @@ func (document browserPolicyDocument) model() (model.BrowserPolicy, error) {
 	for index, rule := range document.Rules {
 		rules[index] = model.BrowserPolicyRule{RuleID: rule.RuleID, Origin: rule.Origin, PathPrefix: rule.PathPrefix,
 			HostMatch: model.BrowserPolicyHostMatch(rule.HostMatch), AllowRedirects: rule.AllowRedirects,
-			BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationOutcome(rule.BlockedNavigationOutcome)}
+			BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationOutcome(rule.BlockedNavigationOutcome), InstitutionHTTPException: rule.InstitutionHTTPException}
 	}
 	if !document.Enabled {
-		if document.SchemaVersion != model.BrowserPolicySchemaVersion {
-			return model.BrowserPolicy{}, errors.New("invalid disabled browser policy")
-		}
 		return model.DisabledBrowserPolicy(), nil
 	}
-	if document.SchemaVersion != model.BrowserPolicySchemaVersion {
-		return model.BrowserPolicy{}, errors.New("invalid enabled browser policy")
-	}
+
 	return model.NewBrowserPolicy(true, document.StartRuleID, rules)
 }
 
 func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDocument {
-	document := browserPolicyDocument{SchemaVersion: policy.SchemaVersion, Enabled: policy.Enabled}
+	document := browserPolicyDocument{Enabled: policy.Enabled}
 	if !policy.Enabled {
 		return document
 	}
@@ -158,7 +157,7 @@ func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDoc
 	for index, rule := range policy.Rules {
 		document.Rules[index] = browserPolicyRuleDocument{RuleID: rule.RuleID, Origin: rule.Origin,
 			PathPrefix: rule.PathPrefix, HostMatch: string(rule.HostMatch), AllowRedirects: rule.AllowRedirects,
-			BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome)}
+			BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome), InstitutionHTTPException: rule.InstitutionHTTPException}
 	}
 	return document
 }
@@ -371,7 +370,7 @@ type executionImageListResponse struct {
 }
 
 type examPolicyResponse struct {
-	SchemaVersion  int                          `json:"schema_version"`
+	Native         model.NativeSecurityPolicy   `json:"native"`
 	ConnectionLoss examConnectionPolicyResponse `json:"connection_loss"`
 	FocusLoss      examFocusPolicyResponse      `json:"focus_loss"`
 }
@@ -395,6 +394,7 @@ func examResource(exams ExamApplication) resource {
 	collection := apiPath(literal("exams"))
 	member := apiPath(literal("exams"), canonicalID("exam_id"))
 	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
+	nativePolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("native"))
 	focusLossPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("focus-loss"))
 	executionProfile := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("execution-profile"))
 	browserPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("browser-policy"))
@@ -421,6 +421,11 @@ func examResource(exams ExamApplication) resource {
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.configureDraftFocusLoss),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, nativePolicy, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
+			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.configureDraftNativePolicy),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, executionProfile, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
@@ -639,6 +644,34 @@ func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest
 	}
 	view, err := m.exams.ConfigureExamDraftBrowserPolicy(request.context, request.invocation(), application.ConfigureExamDraftBrowserPolicyCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Policy: policy, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
+}
+
+func (m examResourceModule) configureDraftNativePolicy(request operationRequest) (operationResult, error) {
+	raw, err := request.params.RequireExamId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	examID, err := model.ParseExamID(raw)
+	if err != nil {
+		return operationResult{}, invalidRequestError("exam_id", err)
+	}
+	var body configureExamDraftNativePolicyRequest
+	if err = request.decodeJSON(&body, "configureExamDraftNativePolicy"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedDraftRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+	}
+	if err := body.Native.Validate(); err != nil {
+		return operationResult{}, invalidRequestError("native", err)
+	}
+	view, err := m.exams.ConfigureExamDraftNativePolicy(request.context, request.invocation(), application.ConfigureExamDraftNativePolicyCommand{
+		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, NativePolicy: body.Native, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -1009,7 +1042,7 @@ func examResponseFromView(view application.ExamView) examResponse {
 			ExamID: view.Draft.ExamID.String(), Title: view.Draft.Title,
 			InstructionsMarkdown: view.Draft.InstructionsMarkdown,
 			Policy: examPolicyResponse{
-				SchemaVersion:  policy.SchemaVersion,
+				Native:         policy.Native.Clone(),
 				ConnectionLoss: examConnectionPolicyResponse{Outcome: string(policy.ConnectionLoss.Outcome)},
 				FocusLoss: examFocusPolicyResponse{Enabled: policy.FocusLoss.Enabled,
 					MinimumDurationMilliseconds: policy.FocusLoss.MinimumDuration.Milliseconds(), IncidentCount: policy.FocusLoss.IncidentCount,
@@ -1024,4 +1057,32 @@ func examResponseFromView(view application.ExamView) examResponse {
 		},
 		OwnerUserID: view.OwnerUserID.String(), ManagerCount: view.ManagerCount,
 	}
+}
+
+func (r *configureExamDraftNativePolicyRequest) UnmarshalJSON(data []byte) error {
+	if err := rejectDuplicateJSONObjectMembers(data, "native policy request"); err != nil {
+		return err
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return err
+	}
+	if len(members) != 2 {
+		return errors.New("native policy request requires exactly expected_draft_revision and native")
+	}
+	for _, name := range []string{"expected_draft_revision", "native"} {
+		value, exists := members[name]
+		if !exists || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return errors.New("native policy request member is missing or null")
+		}
+	}
+	type wire configureExamDraftNativePolicyRequest
+	var decoded wire
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	*r = configureExamDraftNativePolicyRequest(decoded)
+	return nil
 }

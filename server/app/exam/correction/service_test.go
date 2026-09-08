@@ -161,7 +161,7 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.applyReplayed = true
-	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	wantIdempotency, prepareErr := prepareApplyIdempotency(f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID,
 		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID,
 		Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{},
-		CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true,
+		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
@@ -195,7 +195,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.effects.err = errors.New("realtime unavailable")
-	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func newCorrectionFixture(t *testing.T) *correctionFixture {
 	f.effects = &correctionEffectFake{f: f}
 	f.content = &correctionContentFake{f: f}
 	f.revisions = &correctionRevisionsFake{}
-	service, err := New(f.persistence, f.revisions, f.access, f.memberships, f.authorizer, f.auditor, f.effects, f.effects, f.content, func() time.Time { return f.at }, model.NewExamCorrectionResourceStageID, model.NewExamResourceID, model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID, model.NewExamRevisionID)
+	service, err := New(f.persistence, f.revisions, f.access, f.memberships, f.authorizer, f.auditor, f.effects, f.effects, f.content, func() time.Time { return f.at }, model.NewExamCorrectionResourceStageID, model.NewExamResourceID, model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID, model.NewExamRevisionID, "https://institution.example")
 	if err != nil {
 		t.Fatal(err)
 	}

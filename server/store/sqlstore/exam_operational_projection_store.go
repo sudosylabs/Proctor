@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -354,6 +355,8 @@ type sittingCandidateStatusHeaderRow struct {
 }
 
 type sittingCandidateStatusRow struct {
+	NativeConditionRecords   int64          `db:"native_condition_records"`
+	NativeCoverage           []byte         `db:"native_coverage"`
 	CandidateUserID          string         `db:"candidate_user_id"`
 	Username                 string         `db:"username"`
 	DisplayName              string         `db:"display_name"`
@@ -439,12 +442,16 @@ func (s *sqlExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
 			+ COALESCE((SELECT COUNT(*) FROM integrity_discrepancies discrepancy WHERE discrepancy.exam_attempt_id=a.id
 				AND NOT EXISTS (SELECT 1 FROM submission_review_inventory_discrepancies inventory
 					JOIN finalized_review review ON review.id=inventory.submission_review_id
-					WHERE inventory.integrity_discrepancy_id=discrepancy.id)),0) AS integrity_attention_count
+					WHERE inventory.integrity_discrepancy_id=discrepancy.id)),0) AS integrity_attention_count,
+   CASE WHEN submission.integrity_retired_at IS NULL THEN COALESCE(delivery_budget.native_condition_records,0) ELSE 0 END AS native_condition_records,
+   CASE WHEN participation.state='active' AND participation.lease_expires_at>statement_timestamp() AND delivery_budget.security_retired_at IS NULL THEN native_owner.latest_report_canonical ELSE NULL END AS native_coverage
 		FROM population JOIN users candidate ON candidate.id=population.candidate_user_id
 		LEFT JOIN exam_attempts a ON a.exam_sitting_id=? AND a.candidate_user_id=candidate.id
 		LEFT JOIN exam_submissions submission ON submission.exam_attempt_id=a.id AND submission.sealed=true
 		LEFT JOIN LATERAL (SELECT p.id,p.state,p.updated_at,p.lease_expires_at FROM exam_attempt_participations p
 			WHERE p.exam_attempt_id=a.id ORDER BY p.generation DESC LIMIT 1) participation ON TRUE
+		LEFT JOIN exam_attempt_security_owners native_owner ON native_owner.participation_id=participation.id
+  LEFT JOIN exam_attempt_delivery_budgets delivery_budget ON delivery_budget.exam_attempt_id=a.id
 		LEFT JOIN exam_attempt_suspensions suspension ON suspension.exam_attempt_id=a.id AND suspension.state='active'
 		WHERE candidate.id>? AND candidate.id<>? ORDER BY candidate.id LIMIT ?`
 		openedAt := any(nil)
@@ -514,6 +521,22 @@ func (row sittingCandidateStatusRow) item(serverTime time.Time, sittingState mod
 	if err != nil || !attemptState.IsUnresolved() && attemptState != model.ExamAttemptSubmitted || !row.AttemptRevision.Valid ||
 		row.AttemptRevision.Int64 < 1 || !row.AttemptCreatedAt.Valid || !row.AttemptUpdatedAt.Valid {
 		return store.SittingCandidateStatusItem{}, invalidPersistedState("sitting_candidate_status", "attempt", errors.New("invalid Attempt fields"))
+	}
+	item.NativeSecurity = &model.NativeSecuritySummary{RetainedConditionRecords: row.NativeConditionRecords, Sources: []model.NativeSourceHealthSummary{}}
+	if len(row.NativeCoverage) > 2 {
+		var coverage struct {
+			Sources []model.NativeSourceCoverage `json:"sources"`
+		}
+		if json.Unmarshal(row.NativeCoverage, &coverage) != nil {
+			return item, model.ErrNativeDeliveryInvalid
+		}
+		item.NativeSecurity.LiveCoverageAvailable = true
+		for _, source := range coverage.Sources {
+			item.NativeSecurity.Sources = append(item.NativeSecurity.Sources, model.NativeSourceHealthSummary{SourceID: source.SourceID, Health: source.Health, Permission: source.Permission, Complete: source.Complete})
+		}
+	}
+	if item.NativeSecurity.Validate() != nil {
+		return item, model.ErrNativeDeliveryInvalid
 	}
 	item.Attempt = &store.SittingCandidateStatusAttempt{ID: attemptID, State: attemptState, Revision: row.AttemptRevision.Int64,
 		CreatedAt: model.TimeUTC(row.AttemptCreatedAt.Time), UpdatedAt: model.TimeUTC(row.AttemptUpdatedAt.Time)}

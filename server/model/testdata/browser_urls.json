@@ -1,0 +1,694 @@
+{
+  "cases": [
+    {
+      "name": "literal unreserved",
+      "kind": "navigation",
+      "input": "https://example.com/~user",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/~user"
+      }
+    },
+    {
+      "name": "encoded unreserved",
+      "kind": "navigation",
+      "input": "https://example.com/%7euser",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/%7euser"
+      }
+    },
+    {
+      "name": "percent case",
+      "kind": "navigation",
+      "input": "https://example.com/%7Euser",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/%7Euser"
+      }
+    },
+    {
+      "name": "repeated slash",
+      "kind": "navigation",
+      "input": "https://example.com/a//b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a//b"
+      }
+    },
+    {
+      "name": "leading repeated slash",
+      "kind": "navigation",
+      "input": "https://example.com//a///b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "//a///b"
+      }
+    },
+    {
+      "name": "trailing slash",
+      "kind": "navigation",
+      "input": "https://example.com/docs/",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/docs/"
+      }
+    },
+    {
+      "name": "double trailing slash",
+      "kind": "navigation",
+      "input": "https://example.com/docs//",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/docs//"
+      }
+    },
+    {
+      "name": "ordinary dot",
+      "kind": "navigation",
+      "input": "https://example.com/a/../b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/b"
+      }
+    },
+    {
+      "name": "encoded parent",
+      "kind": "navigation",
+      "input": "https://example.com/a/%2e%2E/b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/b"
+      }
+    },
+    {
+      "name": "mixed parent",
+      "kind": "navigation",
+      "input": "https://example.com/a/.%2e/b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/b"
+      }
+    },
+    {
+      "name": "encoded dot",
+      "kind": "navigation",
+      "input": "https://example.com/a/%2e/b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a/b"
+      }
+    },
+    {
+      "name": "dot preserves empty segment",
+      "kind": "navigation",
+      "input": "https://example.com/a//../b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a/b"
+      }
+    },
+    {
+      "name": "trailing dot",
+      "kind": "navigation",
+      "input": "https://example.com/a/.",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a/"
+      }
+    },
+    {
+      "name": "root parent",
+      "kind": "navigation",
+      "input": "https://example.com/../b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/b"
+      }
+    },
+    {
+      "name": "double encoded dot",
+      "kind": "navigation",
+      "input": "https://example.com/a/%252e%252e/b",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a/%252e%252e/b"
+      }
+    },
+    {
+      "name": "literal scalar path",
+      "kind": "navigation",
+      "input": "https://example.com/\u00e9\u6f22\ud83d\ude00",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/%C3%A9%E6%BC%A2%F0%9F%98%80"
+      }
+    },
+    {
+      "name": "serialized punctuation",
+      "kind": "navigation",
+      "input": "https://example.com/a b\"c<d>e`f{g}h^i|j",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a%20b%22c%3Cd%3Ee%60f%7Bg%7Dh^i|j"
+      }
+    },
+    {
+      "name": "query and fragment omitted",
+      "kind": "navigation",
+      "input": "https://example.com/docs?q=private#private",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/docs"
+      }
+    },
+    {
+      "name": "encoded query separator preserved",
+      "kind": "navigation",
+      "input": "https://example.com/a%3fb%23c",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/a%3fb%23c"
+      }
+    },
+    {
+      "name": "IPv4 127.1",
+      "kind": "navigation",
+      "input": "https://127.1",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "127.0.0.1",
+        "path": "/"
+      }
+    },
+    {
+      "name": "IPv4 2130706433",
+      "kind": "navigation",
+      "input": "https://2130706433",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "127.0.0.1",
+        "path": "/"
+      }
+    },
+    {
+      "name": "IPv4 0177.0.0.1",
+      "kind": "navigation",
+      "input": "https://0177.0.0.1",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "127.0.0.1",
+        "path": "/"
+      }
+    },
+    {
+      "name": "IPv4 0x7f.0x0.0x0.0x1",
+      "kind": "navigation",
+      "input": "https://0x7f.0x0.0x0.0x1",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "127.0.0.1",
+        "path": "/"
+      }
+    },
+    {
+      "name": "zero hex IPv4",
+      "kind": "navigation",
+      "input": "https://0x",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "0.0.0.0",
+        "path": "/"
+      }
+    },
+    {
+      "name": "uppercase origin default port",
+      "kind": "navigation",
+      "input": "HTTPS://EXAMPLE.com:443/",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/"
+      }
+    },
+    {
+      "name": "explicit nondefault port",
+      "kind": "navigation",
+      "input": "https://example.com:8443",
+      "valid": true,
+      "location": {
+        "scheme": "https",
+        "host": "example.com",
+        "path": "/",
+        "port": "8443"
+      }
+    },
+    {
+      "name": "reject network 1",
+      "kind": "navigation",
+      "input": "https://example.com/a/%2f/b",
+      "valid": false
+    },
+    {
+      "name": "reject network 2",
+      "kind": "navigation",
+      "input": "https://example.com/a/%5C/b",
+      "valid": false
+    },
+    {
+      "name": "reject network 3",
+      "kind": "navigation",
+      "input": "https://example.com/%zz",
+      "valid": false
+    },
+    {
+      "name": "reject network 4",
+      "kind": "navigation",
+      "input": "https://example.com/%2",
+      "valid": false
+    },
+    {
+      "name": "reject network 5",
+      "kind": "navigation",
+      "input": "https://b\u00fccher.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 6",
+      "kind": "navigation",
+      "input": "https://xn--bcher-kva.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 7",
+      "kind": "navigation",
+      "input": "https://[::1]",
+      "valid": false
+    },
+    {
+      "name": "reject network 8",
+      "kind": "navigation",
+      "input": "https://[::ffff:127.0.0.1]",
+      "valid": false
+    },
+    {
+      "name": "reject network 9",
+      "kind": "navigation",
+      "input": "https://example.com.",
+      "valid": false
+    },
+    {
+      "name": "reject network 10",
+      "kind": "navigation",
+      "input": "https://127.1.",
+      "valid": false
+    },
+    {
+      "name": "reject network 11",
+      "kind": "navigation",
+      "input": "https://a..example",
+      "valid": false
+    },
+    {
+      "name": "reject network 12",
+      "kind": "navigation",
+      "input": "https://-a.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 13",
+      "kind": "navigation",
+      "input": "https://a-.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 14",
+      "kind": "navigation",
+      "input": "https://a_b.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 15",
+      "kind": "navigation",
+      "input": "https://example.com:0443",
+      "valid": false
+    },
+    {
+      "name": "reject network 16",
+      "kind": "navigation",
+      "input": "https://example.com:0",
+      "valid": false
+    },
+    {
+      "name": "reject network 17",
+      "kind": "navigation",
+      "input": "https://example.com:65536",
+      "valid": false
+    },
+    {
+      "name": "reject network 18",
+      "kind": "navigation",
+      "input": "https://example.com:",
+      "valid": false
+    },
+    {
+      "name": "reject network 19",
+      "kind": "navigation",
+      "input": "https://user:secret@example.com",
+      "valid": false
+    },
+    {
+      "name": "reject network 20",
+      "kind": "navigation",
+      "input": "https://example.com/a\\b",
+      "valid": false
+    },
+    {
+      "name": "reject network 21",
+      "kind": "navigation",
+      "input": "https://example.com/a\nb",
+      "valid": false
+    },
+    {
+      "name": "reject network 22",
+      "kind": "navigation",
+      "input": "https://example.com/\u007f",
+      "valid": false
+    },
+    {
+      "name": "reject network 23",
+      "kind": "navigation",
+      "input": "https://09.0.0.1",
+      "valid": false
+    },
+    {
+      "name": "reject network 24",
+      "kind": "navigation",
+      "input": "https://example.123",
+      "valid": false
+    },
+    {
+      "name": "reject network 25",
+      "kind": "navigation",
+      "input": "https://example.0x",
+      "valid": false
+    },
+    {
+      "name": "reject network 26",
+      "kind": "navigation",
+      "input": "https://256.1",
+      "valid": false
+    },
+    {
+      "name": "reject network 27",
+      "kind": "navigation",
+      "input": "https://1.2.3.4.5",
+      "valid": false
+    },
+    {
+      "name": "reject network 28",
+      "kind": "navigation",
+      "input": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+      "valid": false
+    },
+    {
+      "name": "reject network 29",
+      "kind": "navigation",
+      "input": "https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "name": "reject network 30",
+      "kind": "navigation",
+      "input": "file:///private/data",
+      "valid": false
+    },
+    {
+      "name": "reject network 31",
+      "kind": "navigation",
+      "input": "/relative",
+      "valid": false
+    },
+    {
+      "name": "default port",
+      "kind": "origin",
+      "input": "https://EXAMPLE.com:443/",
+      "valid": true,
+      "canonical": "https://example.com"
+    },
+    {
+      "name": "numeric origin",
+      "kind": "origin",
+      "input": "https://127.1",
+      "valid": true,
+      "canonical": "https://127.0.0.1"
+    },
+    {
+      "name": "nondefault origin",
+      "kind": "origin",
+      "input": "https://example.com:8443/",
+      "valid": true,
+      "canonical": "https://example.com:8443"
+    },
+    {
+      "name": "empty query",
+      "kind": "origin",
+      "input": "https://example.com?",
+      "valid": false
+    },
+    {
+      "name": "empty fragment",
+      "kind": "origin",
+      "input": "https://example.com#",
+      "valid": false
+    },
+    {
+      "name": "nonroot origin path",
+      "kind": "origin",
+      "input": "https://example.com/docs",
+      "valid": false
+    },
+    {
+      "name": "encoded root",
+      "kind": "origin",
+      "input": "https://example.com/%2e",
+      "valid": false
+    },
+    {
+      "name": "root",
+      "kind": "prefix",
+      "input": "/",
+      "valid": true,
+      "canonical": "/"
+    },
+    {
+      "name": "prefix trailing slash",
+      "kind": "prefix",
+      "input": "/docs/",
+      "valid": true,
+      "canonical": "/docs"
+    },
+    {
+      "name": "internal repeated slash prefix",
+      "kind": "prefix",
+      "input": "/a//b",
+      "valid": true,
+      "canonical": "/a//b"
+    },
+    {
+      "name": "encoded prefix",
+      "kind": "prefix",
+      "input": "/%7euser",
+      "valid": true,
+      "canonical": "/%7euser"
+    },
+    {
+      "name": "uppercase percent prefix",
+      "kind": "prefix",
+      "input": "/%7Euser",
+      "valid": true,
+      "canonical": "/%7Euser"
+    },
+    {
+      "name": "reject prefix 1",
+      "kind": "prefix",
+      "input": "/a/../b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 2",
+      "kind": "prefix",
+      "input": "/a/./b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 3",
+      "kind": "prefix",
+      "input": "/a/%2e/b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 4",
+      "kind": "prefix",
+      "input": "/a/.%2E/b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 5",
+      "kind": "prefix",
+      "input": "/a/%2E./b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 6",
+      "kind": "prefix",
+      "input": "/a/%2e%2e/b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 7",
+      "kind": "prefix",
+      "input": "/a/%2f/b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 8",
+      "kind": "prefix",
+      "input": "/a/%5C/b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 9",
+      "kind": "prefix",
+      "input": "/%zz",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 10",
+      "kind": "prefix",
+      "input": "//docs",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 11",
+      "kind": "prefix",
+      "input": "/a//",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 12",
+      "kind": "prefix",
+      "input": "/\u00e9",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 13",
+      "kind": "prefix",
+      "input": "/a b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 14",
+      "kind": "prefix",
+      "input": "/a\"b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 15",
+      "kind": "prefix",
+      "input": "/a{b",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 16",
+      "kind": "prefix",
+      "input": "/a?query",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 17",
+      "kind": "prefix",
+      "input": "/a#fragment",
+      "valid": false
+    },
+    {
+      "name": "reject prefix 18",
+      "kind": "prefix",
+      "input": "relative",
+      "valid": false
+    },
+    {
+      "name": "Unicode host must not lowercase into ASCII",
+      "kind": "navigation",
+      "input": "https://\u212a.example",
+      "valid": false
+    },
+    {
+      "name": "http exception navigation removes default port",
+      "kind": "navigation",
+      "input": "http://INSTITUTION.example:80/exam?q=private#private",
+      "valid": true,
+      "location": {
+        "scheme": "http",
+        "host": "institution.example",
+        "path": "/exam"
+      }
+    },
+    {
+      "name": "http exception retains explicit port",
+      "kind": "navigation",
+      "input": "http://institution.example:8080/exam",
+      "valid": true,
+      "location": {
+        "scheme": "http",
+        "host": "institution.example",
+        "port": "8080",
+        "path": "/exam"
+      }
+    }
+  ]
+}

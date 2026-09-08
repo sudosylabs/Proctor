@@ -28,8 +28,8 @@ const (
 	SubmissionReviewPrivateNotesMaximumBytes   = 12000
 	SubmissionReviewStudentRemarksMaximumRunes = 8192
 	SubmissionReviewStudentRemarksMaximumBytes = 32768
-	SubmissionReviewMaximumFlags               = 200
-	SubmissionReviewMaximumEvidence            = 20000
+	SubmissionReviewMaximumFlags               = 456
+	SubmissionReviewMaximumEvidence            = 30000
 	SubmissionReviewMaximumDiscrepancies       = 200
 )
 
@@ -166,6 +166,7 @@ func (outcome IntegrityReviewOutcome) IsValid() bool {
 // IntegrityReviewDecision is the sole current revision-fenced disposition of
 // one Flag within a draft Submission Review. PrivateRationale is manager-only.
 type IntegrityReviewDecision struct {
+	InventoryStale   bool
 	ID               IntegrityReviewDecisionID
 	ReviewID         SubmissionReviewID
 	FlagID           IntegrityFlagID
@@ -204,6 +205,7 @@ func (decision *IntegrityReviewDecision) Revise(expectedRevision int64, outcome 
 		return errors.New("model: Integrity Review decision revision conflict")
 	}
 	candidate := *decision
+	candidate.InventoryStale = false
 	candidate.Outcome = outcome
 	candidate.Revision++
 	candidate.ActorUserID = actorID
@@ -480,4 +482,23 @@ func writeReviewInventoryCount(writer reviewInventoryWriter, count int) {
 	var encoded [4]byte
 	binary.BigEndian.PutUint32(encoded[:], uint32(count))
 	_, _ = writer.Write(encoded[:])
+}
+
+// IntegrityReviewDeliveryDigest binds the immutable identity inventory to the
+// current delivery revision, including count-only overflow and settlement.
+func IntegrityReviewDeliveryDigest(base string, browser BrowserSubmissionSettlement, deliveryRevision int64) (string, error) {
+	if !validLowerSHA256(base) || browser.Validate() != nil || !securitySafeInt(deliveryRevision) {
+		return "", ErrDeliveryInvalid
+	}
+	h := sha256.New()
+	h.Write([]byte("proctor.integrity-review.delivery.v1\x00"))
+	h.Write([]byte(base))
+	h.Write([]byte(browser.State))
+	h.Write([]byte{0})
+	for _, v := range []int64{browser.InventoryRevision, browser.SourceCount, browser.PendingSourceCount, browser.IncompleteSourceCount, deliveryRevision} {
+		var raw [8]byte
+		binary.BigEndian.PutUint64(raw[:], uint64(v))
+		h.Write(raw[:])
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

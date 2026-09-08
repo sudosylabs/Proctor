@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -39,6 +40,7 @@ func (call Call) Principal() model.Principal {
 func (call Call) RequestMetadata() model.RequestMetadata { return call.metadata }
 
 type Fault struct {
+	Recovery   *model.DeliveryRecovery
 	Code       string
 	SafeFields map[string]any
 	Cause      error
@@ -57,6 +59,14 @@ func (fault *Fault) Error() string {
 	return fault.Code
 }
 
+// DeliveryRecovery exposes only validated, freshly authorized progress.
+func (fault *Fault) DeliveryRecovery() *model.DeliveryRecovery {
+	if fault == nil {
+		return nil
+	}
+	return fault.Recovery
+}
+
 func (fault *Fault) Unwrap() error {
 	if fault == nil {
 		return nil
@@ -68,7 +78,7 @@ type ManagerAuthorizer interface {
 	AuthorizeSittingView(context.Context, Call, model.ExamSittingID) error
 	AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error)
 	AuthorizeSubmissionView(context.Context, Call, model.SubmissionID) error
-	AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, bool, error)
+	AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, error)
 }
 
 type Auditor interface {
@@ -88,6 +98,7 @@ type SystemAuditor interface {
 }
 
 type Effects interface {
+	SecurityCoverageChanged(context.Context, model.ExamAttemptID) error
 	ConnectionOpened(context.Context, ConnectionResult) error
 	ConnectionClosed(context.Context, ConnectionClosedResult) error
 	ParticipationRenewed(context.Context, ParticipationRenewal) error
@@ -146,7 +157,15 @@ type DesktopBuildResolution struct {
 	CompatibilityPolicyRevision int64
 }
 
+type NativeDeliveryBuildIdentity struct {
+	ReleaseID    string
+	MatrixID     string
+	MatrixDigest string
+	TargetTuple  string
+}
+
 type DesktopBuildResolver interface {
+	ResolveNativeDeliveryBuild(context.Context, NativeDeliveryBuildIdentity) (model.DesktopBuildTuple, error)
 	ResolveAttemptDesktopBuild(context.Context, model.Principal) (DesktopBuildResolution, error)
 }
 
@@ -179,7 +198,11 @@ type Dependencies struct {
 	NewSubmission       func() model.SubmissionID
 }
 
-type Service struct{ deps Dependencies }
+type Service struct {
+	deps             Dependencies
+	liveControls     controlAdmission
+	deliveryControls controlAdmission
+}
 
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Workspace == nil || deps.Submissions == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
@@ -344,6 +367,16 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, call C
 	}
 	page := SittingCandidateStatusesPage{SittingCandidateStatusPage: *stored, HasMore: len(stored.Items) > query.Limit}
 	page.Items = append([]store.SittingCandidateStatusItem(nil), stored.Items[:min(len(stored.Items), query.Limit)]...)
+	for i := range page.Items {
+		if page.Items[i].NativeSecurity != nil {
+			if page.Items[i].NativeSecurity.Validate() != nil {
+				return SittingCandidateStatusesPage{}, unavailable(model.ErrNativeDeliveryInvalid)
+			}
+			value := page.Items[i].NativeSecurity.Clone()
+			page.Items[i].NativeSecurity = &value
+		}
+	}
+
 	return page, nil
 }
 
@@ -417,14 +450,16 @@ func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 }
 
 type ConnectCommand struct {
-	SittingID                       model.ExamSittingID
-	ContinuityCredential            string
-	SupportedConfigurationManifests []string
-	InitialConfiguration            *model.AttemptConfiguration
-	IdempotencyKey                  string
+	Security                         model.ConnectSecurity
+	SittingID                        model.ExamSittingID
+	ContinuityCredential             string
+	ConfigurationManifestFingerprint string
+	InitialConfiguration             *model.AttemptConfigurationCandidate
+	IdempotencyKey                   string
 }
 
 type ConnectionResult struct {
+	Security                  model.AdmittedSecurity
 	Attempt                   model.ExamAttempt
 	Workspace                 model.ExamAttemptWorkspace
 	Participation             store.ExamAttemptParticipationView
@@ -442,6 +477,7 @@ type ConnectionResult struct {
 }
 
 type RenewParticipationCommand struct {
+	SecurityCoverage     model.SecurityCoverageRenewal
 	AttemptID            model.ExamAttemptID
 	ParticipationID      model.AttemptParticipationID
 	ConnectionID         model.AttemptConnectionID
@@ -454,6 +490,7 @@ type RenewParticipationCommand struct {
 // application renewal. It contains authoritative database time but no raw or
 // hashed credential material.
 type ParticipationRenewal struct {
+	SecurityCoverage model.SecurityCoverageResult
 	AttemptID        model.ExamAttemptID
 	ExamID           model.ExamID
 	SittingID        model.ExamSittingID
@@ -706,6 +743,11 @@ func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store
 // WebSocket transport ping. Store owns the database clock, exclusive expiry
 // boundary, duplicate outcome, and permanent generation fence.
 func (service *Service) RenewParticipation(ctx context.Context, call Call, command RenewParticipationCommand) (ParticipationRenewal, error) {
+	release, admissionErr := service.enterControl(ctx, call, true)
+	if admissionErr != nil {
+		return ParticipationRenewal{}, admissionErr
+	}
+	defer release()
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ParticipationRenewal{}, &Fault{Code: "authentication.invalid_token"}
@@ -714,14 +756,20 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 		return ParticipationRenewal{}, &Fault{Code: "exam.attempt.registered_desktop_required"}
 	}
 	if !command.AttemptID.IsValid() || !command.ParticipationID.IsValid() || !command.ConnectionID.IsValid() ||
-		command.Generation < 1 || command.Sequence < 1 || !model.IsValidCredentialToken(command.ContinuityCredential) {
+		command.Generation < 1 || command.Sequence < 1 || command.SecurityCoverage.Validate() != nil || !model.IsValidCredentialToken(command.ContinuityCredential) {
 		return ParticipationRenewal{}, invalid("renewal")
 	}
+	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
+	if err != nil || build.Build.Validate() != nil || build.CompatibilityPolicyRevision < 1 {
+		return ParticipationRenewal{}, &Fault{Code: "exam.attempt.desktop_incompatible", Cause: err}
+	}
 	stored, err := service.deps.Persistence.RenewParticipation(ctx, &store.ExamAttemptParticipationRenewal{
+		SecurityCoverage: command.SecurityCoverage, DesktopBuild: build.Build,
 		AttemptID: command.AttemptID, ParticipationID: command.ParticipationID, ConnectionID: command.ConnectionID,
 		CandidateUserID: principal.UserID, SessionID: principal.SessionID, Generation: command.Generation,
 		DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint,
-		Sequence: command.Sequence, ContinuityCredentialHash: model.HashToken(command.ContinuityCredential),
+		DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision,
+		Sequence:                           command.Sequence, ContinuityCredentialHash: model.HashToken(command.ContinuityCredential),
 	})
 	if err != nil {
 		var conflict *store.ErrConflict
@@ -743,18 +791,21 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 		}
 		return ParticipationRenewal{}, mapStore(err)
 	}
-	if stored == nil || stored.AttemptID != command.AttemptID || stored.ParticipationID != command.ParticipationID ||
+	if stored == nil || stored.SecurityCoverage.Validate() != nil || stored.AttemptID != command.AttemptID || stored.ParticipationID != command.ParticipationID ||
 		!stored.ExamID.IsValid() || !stored.SittingID.IsValid() || stored.CandidateUserID != principal.UserID ||
 		stored.Generation != command.Generation || stored.AcceptedSequence != command.Sequence || stored.DatabaseTime.IsZero() ||
-		stored.LeaseExpiresAt.IsZero() || !stored.LeaseExpiresAt.Equal(stored.DatabaseTime.Add(model.AttemptParticipationInitialLease)) {
+		stored.LeaseExpiresAt.IsZero() || !stored.LeaseExpiresAt.After(stored.DatabaseTime) || stored.LeaseExpiresAt.After(stored.DatabaseTime.Add(model.AttemptParticipationInitialLease)) {
 		return ParticipationRenewal{}, unavailable(errors.New("inconsistent Participation renewal outcome"))
 	}
-	result := ParticipationRenewal{
+	result := ParticipationRenewal{SecurityCoverage: stored.SecurityCoverage,
 		AttemptID: stored.AttemptID, ExamID: stored.ExamID, SittingID: stored.SittingID,
 		CandidateUserID: stored.CandidateUserID, ParticipationID: stored.ParticipationID, Generation: stored.Generation,
 		AcceptedSequence: stored.AcceptedSequence, DatabaseTime: model.TimeUTC(stored.DatabaseTime),
 		LeaseExpiresAt: model.TimeUTC(stored.LeaseExpiresAt), Duplicate: stored.Duplicate,
 	}
+	// A response-loss retry must still repair a missed containment/recovery
+	// effect. Lease renewal replay and control ordering are independent.
+	service.securityCoverageChanged(ctx, result.AttemptID)
 	if !result.Duplicate {
 		if effectErr := service.deps.Effects.ParticipationRenewed(ctx, result); effectErr != nil {
 			service.deps.EffectFailures.Report(ctx, "exam_attempt_participation_renewed", effectErr)
@@ -764,6 +815,9 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 }
 
 func (service *Service) Connect(ctx context.Context, call Call, command ConnectCommand) (ConnectionResult, error) {
+	if command.Security.Validate() != nil {
+		return ConnectionResult{}, invalid("security")
+	}
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ConnectionResult{}, &Fault{Code: "authentication.invalid_token"}
@@ -811,11 +865,12 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 		return ConnectionResult{}, err
 	}
 	stored, err := service.deps.Persistence.Connect(ctx, &store.ExamAttemptConnect{
+		Security:  command.Security,
 		SittingID: command.SittingID, CandidateUserID: principal.UserID, SessionID: principal.SessionID,
 		DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint,
 		AttemptID: attemptID, WorkspaceID: workspaceID, ParticipationID: participationID, ConnectionID: connectionID,
 		ContinuityCredentialHash:           credentialHash,
-		SupportedConfigurationManifests:    append([]string(nil), command.SupportedConfigurationManifests...),
+		ConfigurationManifestFingerprint:   command.ConfigurationManifestFingerprint,
 		InitialConfiguration:               cloneAttemptConfigurationPointer(command.InitialConfiguration),
 		DesktopBuild:                       build.Build,
 		DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision,
@@ -837,22 +892,19 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 }
 
 func validateConnectConfiguration(command ConnectCommand, build model.DesktopBuildTuple) error {
-	manifests := command.SupportedConfigurationManifests
-	if len(manifests) != 1 || manifests[0] != model.CurrentAttemptConfigurationManifestFingerprint() ||
-		manifests[0] != build.AttemptConfigurationManifestFingerprint {
+	if !model.IsValidSHA256Fingerprint(command.ConfigurationManifestFingerprint) ||
+		command.ConfigurationManifestFingerprint != build.AttemptConfigurationManifestFingerprint {
 		return &Fault{Code: "exam.attempt.configuration_unsupported"}
 	}
-	if command.InitialConfiguration != nil {
-		configuration := command.InitialConfiguration
-		if configuration.Validate() != nil || configuration.ManifestFingerprint != manifests[0] ||
-			configuration.SourceDesktopRegistryFingerprint != build.DesktopSettingsRegistryFingerprint {
-			return invalid("initial_configuration")
-		}
+	if command.InitialConfiguration != nil && (command.InitialConfiguration.Validate() != nil ||
+		command.InitialConfiguration.ManifestFingerprint != build.AttemptConfigurationManifestFingerprint ||
+		build.ConfigurationManifest.ValidateSelection(command.InitialConfiguration.ApprovedCommands, command.InitialConfiguration.ApprovedKeybindings) != nil) {
+		return invalid("initial_configuration")
 	}
 	return nil
 }
 
-func cloneAttemptConfigurationPointer(value *model.AttemptConfiguration) *model.AttemptConfiguration {
+func cloneAttemptConfigurationPointer(value *model.AttemptConfigurationCandidate) *model.AttemptConfigurationCandidate {
 	if value == nil {
 		return nil
 	}
@@ -1105,11 +1157,11 @@ func projectConnection(stored *store.ExamAttemptConnectResult, classID model.Cla
 		stored.Connection.State != model.AttemptConnectionOpen {
 		return ConnectionResult{}, &Fault{Code: "exam.attempt.connection_closed"}
 	}
-	if stored.Configuration.Validate() != nil || stored.RuntimeCapabilities.Validate() != nil || !validCandidateBrowserPolicy(stored.RuntimeCapabilities, stored.BrowserPolicy) ||
+	if stored.Security.Validate() != nil || stored.Security.ParticipationID != stored.Participation.ID || stored.Security.Policy.Scope.AttemptID != stored.Attempt.ID || stored.Security.Generation != stored.Participation.Generation || stored.Configuration.Validate() != nil || stored.RuntimeCapabilities.Validate() != nil || !validCandidateBrowserPolicy(stored.RuntimeCapabilities, stored.BrowserPolicy) ||
 		!validCandidateLiveCorrections(stored.RuntimeCapabilities, stored.LiveCorrections) {
 		return ConnectionResult{}, unavailable(errors.New("inconsistent Exam Attempt configuration outcome"))
 	}
-	return ConnectionResult{Attempt: *stored.Attempt, Workspace: *stored.Workspace, Participation: *stored.Participation,
+	return ConnectionResult{Security: stored.Security, Attempt: *stored.Attempt, Workspace: *stored.Workspace, Participation: *stored.Participation,
 		Connection: *stored.Connection, ClassID: classID, FirstAdmission: stored.FirstAdmission,
 		Configuration: stored.Configuration.Clone(), RuntimeCapabilities: stored.RuntimeCapabilities,
 		BrowserPolicy: cloneCandidateBrowserPolicy(stored.BrowserPolicy), LiveCorrections: model.CloneCandidateLiveCorrections(stored.LiveCorrections),
@@ -1118,31 +1170,33 @@ func projectConnection(stored *store.ExamAttemptConnectResult, classID model.Cla
 }
 
 func validCandidateBrowserPolicy(capabilities store.CandidateRuntimeCapabilities, policy *store.CandidateBrowserPolicy) bool {
-	if capabilities.Browser.State == store.CandidateBrowserDisabled {
+	if slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityBrowser) {
 		return policy == nil
 	}
-	if policy == nil || !policy.PolicyRevisionID.IsValid() || policy.PolicyRevisionID != capabilities.Browser.PolicyRevisionID ||
-		policy.PolicyDigest != capabilities.Browser.PolicyDigest || !policy.Policy.Enabled || policy.Policy.Validate() != nil {
+	if policy == nil || !policy.PolicyRevisionID.IsValid() || policy.PolicyRevisionID != capabilities.ExamRevision.CurrentRevisionID || policy.PolicyRevisionNumber < 1 || policy.Policy.Validate() != nil || policy.BrowserActivityDisclosure.Validate() != nil || policy.BrowserActivityDisclosure.MayCreateIntegrityEvidence != policy.Policy.MayCreateIntegrityEvidence() {
+		return false
+	}
+	if policy.Policy.Enabled != (capabilities.Browser.State != store.CandidateBrowserDisabled) {
+		return false
+	}
+	if policy.Policy.Enabled && (policy.PolicyRevisionID != capabilities.Browser.PolicyRevisionID || policy.PolicyDigest != capabilities.Browser.PolicyDigest) {
 		return false
 	}
 	digest, err := model.BrowserPolicyDigest(policy.Policy)
-	return err == nil && policy.PolicyDigest == "sha256:"+digest
+	return err == nil && policy.PolicyDigest == digest
 }
 
 func validCandidateLiveCorrections(capabilities store.CandidateRuntimeCapabilities, corrections []model.CandidateLiveCorrection) bool {
-	pending := false
 	var previous int64
 	for _, correction := range corrections {
 		if correction.Validate() != nil || correction.RevisionNumber <= previous ||
 			correction.RevisionID == capabilities.ExamRevision.AdmissionRevisionID {
 			return false
 		}
-		if correction.AcknowledgementState == model.CorrectionAcknowledgementPending {
-			pending = true
-		}
 		previous = correction.RevisionNumber
 	}
-	return pending == capabilities.ExamRevision.AcknowledgementRequired
+	pending := model.PendingCorrectionCapabilities(corrections)
+	return slices.Equal(pending, capabilities.PendingCorrectionCapabilities) && (len(pending) != 0) == capabilities.ExamRevision.AcknowledgementRequired
 }
 
 func cloneCandidateBrowserPolicy(value *store.CandidateBrowserPolicy) *store.CandidateBrowserPolicy {
@@ -1198,6 +1252,19 @@ func invalidCause(field string, cause error) error {
 func unavailable(cause error) error { return &Fault{Code: "exam.attempt.unavailable", Cause: cause} }
 
 func mapStore(err error) error {
+	var browserDelivery *store.ErrConflict
+	if errors.As(err, &browserDelivery) && browserDelivery.Resource == "browser_delivery" {
+		return &Fault{Code: "exam.delivery." + browserDelivery.Constraint, Cause: err}
+	}
+
+	var capacity *model.DeliveryMetadataCapacity
+	if errors.As(err, &capacity) {
+		return &Fault{Code: "exam.delivery.metadata_capacity", Cause: err, SafeFields: map[string]any{"control_metadata_bytes": capacity.ControlMetadataBytes, "control_metadata_limit_bytes": capacity.ControlMetadataLimitBytes, "required_reservation_bytes": capacity.RequiredReservationBytes, "remaining_reservable_bytes": capacity.RemainingReservableBytes}}
+	}
+	var securityConflict *store.ErrConflict
+	if errors.As(err, &securityConflict) && securityConflict.Resource == "security_preflight" {
+		return &Fault{Code: "exam.security." + securityConflict.Constraint, Cause: err}
+	}
 	var idempotencyConflict *store.ErrIdempotencyConflict
 	var idempotencyInProgress *store.ErrIdempotencyInProgress
 	var invalidInput *store.ErrInvalidInput
@@ -1221,6 +1288,8 @@ func mapStore(err error) error {
 
 func mapConflict(constraint string) string {
 	switch constraint {
+	case "control_conflict":
+		return "exam.security.control_conflict"
 	case "exam_attempt_membership":
 		return "exam.attempt.not_found"
 	case "exam_sitting_state", "exam_sitting_deadline_reached":
@@ -1239,7 +1308,8 @@ func mapConflict(constraint string) string {
 		return "exam.attempt.correction_conflict"
 	case "exam_correction_acknowledgement_required":
 		return "exam.attempt.correction_conflict"
-	case "browser_activity_not_applicable", "browser_activity_source", "browser_activity_source_fence",
+	case "browser_source_fence", "browser_activity_sequence", "browser_activity_policy_semantics",
+		"browser_activity_not_applicable", "browser_activity_source", "browser_activity_source_fence",
 		"browser_activity_incomplete", "browser_activity_not_closed", "browser_activity_final_sequence",
 		"browser_activity_accounting":
 		return "exam.attempt.browser_activity_conflict"

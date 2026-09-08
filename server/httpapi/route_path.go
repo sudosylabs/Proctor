@@ -23,6 +23,8 @@ type parameterKind uint8
 const (
 	parameterCanonicalID parameterKind = iota + 1
 	parameterProviderID
+	parameterPositiveSequence
+	parameterCanonicalUUID
 )
 
 type pathPart interface {
@@ -50,6 +52,14 @@ func canonicalID(name string) pathPart {
 	return pathParameter{name: name, kind: parameterCanonicalID}
 }
 
+func canonicalUUID(name string) pathPart {
+	return pathParameter{name: name, kind: parameterCanonicalUUID}
+}
+
+func positiveSequence(name string) pathPart {
+	return pathParameter{name: name, kind: parameterPositiveSequence}
+}
+
 func providerID(name string) pathPart {
 	return pathParameter{name: name, kind: parameterProviderID}
 }
@@ -63,6 +73,12 @@ func (part pathParameter) compile() (string, string, error) {
 	case parameterCanonicalID:
 		pattern = canonicalIDRoutePattern()
 		normalized = "canonical_id"
+	case parameterCanonicalUUID:
+		pattern = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+		normalized = "canonical_uuid"
+	case parameterPositiveSequence:
+		pattern = "[1-9][0-9]{0,15}"
+		normalized = "positive_sequence"
 	case parameterProviderID:
 		pattern = providerIDRoutePattern()
 		normalized = "provider_id"

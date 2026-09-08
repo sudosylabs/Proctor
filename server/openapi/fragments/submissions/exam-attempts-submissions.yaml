@@ -14,7 +14,10 @@ paths:
       operationId: acknowledgeExamAttemptCorrection
       summary: Acknowledge one required live correction for an active Attempt
       description: >-
-        Records the candidate's acknowledgement of the oldest pending required correction after rechecking the current Revision, active Participation generation, registered-key Session, continuity credential, and open Attempt Connection. Exact replay returns the retained acknowledgement without repeating mutation effects.
+        Records the candidate's acknowledgement of the oldest pending required correction after rechecking the
+        current Revision, active Participation generation, registered-key Session, continuity credential, and
+        open Attempt Connection. Exact replay returns the retained acknowledgement without repeating mutation
+        effects.
       tags:
         - Submissions
       x-proctor-auth: session_required
@@ -54,21 +57,21 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/AcknowledgeExamCorrection'
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamCorrectionAcknowledged'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exam-attempts/{exam_attempt_id}/submissions:
     parameters:
@@ -79,7 +82,10 @@ paths:
       tags:
         - Submissions
       description: >-
-        Atomically seals one active Exam Attempt by pinning its acknowledged Workspace manifest and terminal integrity position. The Session-bound continuity selectors and current Class membership are rechecked in the transaction. An exact Idempotency-Key replay returns the retained 201 receipt without duplicate realtime or unbind effects.
+        Atomically seals one active Exam Attempt by pinning its acknowledged Workspace manifest and terminal
+        integrity position. The Session-bound continuity selectors and current Class membership are rechecked
+        in the transaction. An exact Idempotency-Key replay returns the retained 201 receipt without duplicate
+        realtime or unbind effects.
       x-codeSamples:
         - lang: Shell
           source: |-
@@ -135,26 +141,28 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/SubmitExamAttempt'
       responses:
-        "201":
+        '201':
           $ref: '#/components/responses/ExamSubmissionReceiptCreated'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "409":
+        '409':
           $ref: '#/components/responses/Conflict'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     AcknowledgeExamCorrection:
-      description: Exact active Participation fence and current Revision observed while acknowledging the path-selected oldest required correction.
+      description: >-
+        Exact active Participation fence and current Revision observed while acknowledging the path-selected
+        oldest required correction.
       required: true
       content:
         application/json:
@@ -176,10 +184,9 @@ components:
             expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza5
             expected_workspace_cursor: 18
             final_focus_loss_sequence: 3
-            browser_activity:
-              state: not_applicable
       description: >-
-        The active Participation generation and final acknowledged client positions required to atomically seal the Attempt Workspace as a Submission.
+        The active Participation generation and final acknowledged client positions required to atomically
+        seal the Attempt Workspace as a Submission.
   responses:
     ExamCorrectionAcknowledged:
       description: Retained acknowledgement for the exact required correction
@@ -209,7 +216,6 @@ components:
         - expected_current_revision_id
         - expected_workspace_cursor
         - final_focus_loss_sequence
-        - browser_activity
       properties:
         participation_id:
           $ref: '#/components/schemas/ID'
@@ -232,75 +238,17 @@ components:
           format: int64
           minimum: 0
           description: The final focus-loss sequence observed by the client; zero is valid.
-        browser_activity:
-          $ref: '#/components/schemas/BrowserActivitySubmission'
-    BrowserActivitySubmission:
-      type: object
-      additionalProperties: false
-      required: [state]
-      properties:
-        state:
-          type: string
-          enum: [not_applicable, complete, gapped]
-        source_session_id:
-          type: string
-          format: uuid
-        final_sequence:
-          type: integer
-          format: int64
-          minimum: 1
-        reason:
-          type: string
-          enum: [spool_overflow, spool_corrupt, spool_key_unavailable, delivery_incomplete]
-      oneOf:
-        - $ref: '#/components/schemas/BrowserActivitySubmissionNotApplicable'
-        - $ref: '#/components/schemas/BrowserActivitySubmissionComplete'
-        - $ref: '#/components/schemas/BrowserActivitySubmissionGapped'
-    BrowserActivitySubmissionNotApplicable:
-      type: object
-      additionalProperties: false
-      required: [state]
-      properties:
-        state:
-          type: string
-          const: not_applicable
-    BrowserActivitySubmissionComplete:
-      type: object
-      additionalProperties: false
-      required: [state, source_session_id, final_sequence]
-      properties:
-        state:
-          type: string
-          const: complete
-        source_session_id:
-          type: string
-          format: uuid
-        final_sequence:
-          type: integer
-          format: int64
-          minimum: 1
-    BrowserActivitySubmissionGapped:
-      type: object
-      additionalProperties: false
-      required: [state, source_session_id, reason]
-      properties:
-        state:
-          type: string
-          const: gapped
-        source_session_id:
-          type: string
-          format: uuid
-        final_sequence:
-          type: integer
-          format: int64
-          minimum: 1
-        reason:
-          type: string
-          enum: [spool_overflow, spool_corrupt, spool_key_unavailable, delivery_incomplete]
+      description: >-
+        Submit the acknowledged Workspace and current Exam Revision with the existing Focus Loss final
+        sequence. Browser settlement is calculated by the server across all Attempt sources; browser activity
+        fields are not accepted.
     AcknowledgeExamCorrectionRequest:
       type: object
       additionalProperties: false
-      required: [participation_id, generation, expected_current_revision_id]
+      required:
+        - participation_id
+        - generation
+        - expected_current_revision_id
       properties:
         participation_id:
           $ref: '#/components/schemas/ID'
@@ -313,8 +261,17 @@ components:
     AcknowledgeExamCorrectionResponse:
       type: object
       additionalProperties: false
-      required: [revision_id, acknowledgement_state, acknowledged_at]
+      required:
+        - revision_id
+        - current_revision_id
+        - runtime_capabilities
+        - acknowledgement_state
+        - acknowledged_at
       properties:
+        current_revision_id:
+          $ref: '#/components/schemas/ID'
+        runtime_capabilities:
+          $ref: '#/components/schemas/CandidateRuntimeCapabilities'
         revision_id:
           $ref: '#/components/schemas/ID'
         acknowledgement_state:
@@ -335,6 +292,7 @@ components:
         - workspace_cursor
         - manifest_digest
         - submitted_at
+        - browser_activity
       properties:
         submission_id:
           $ref: '#/components/schemas/ID'
@@ -357,3 +315,47 @@ components:
           type: string
           format: date-time
           description: RFC 3339 time at which the Submission committed.
+        browser_activity:
+          $ref: '#/components/schemas/BrowserSubmissionSettlement'
+    BrowserSubmissionSettlement:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - inventory_revision
+        - source_count
+        - pending_source_count
+        - incomplete_source_count
+      properties:
+        state:
+          type: string
+          enum:
+            - not_applicable
+            - settled
+            - pending
+            - incomplete
+        inventory_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 9007199254740991
+        source_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        pending_source_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        incomplete_source_count:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+      description: >-
+        Server-owned inventory across every source and Participation in the Attempt. Pending takes precedence
+        while any source remains settleable. Pending and incomplete counts describe independent facts. Every
+        source must be complete for settled; not_applicable requires no source history. Eligible late delivery
+        updates this inventory without changing submitted content.

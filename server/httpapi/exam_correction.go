@@ -55,6 +55,7 @@ type applyExamSittingCorrectionRequest struct {
 	ExpectedCurrentRevisionID string                                 `json:"expected_current_revision_id"`
 	InstructionsMarkdown      Optional[string]                       `json:"instructions_markdown"`
 	BrowserPolicy             Optional[browserPolicyDocument]        `json:"browser_policy"`
+	AffectedCapabilities      []model.CandidateCapability            `json:"affected_capabilities"`
 	CandidateSummary          string                                 `json:"candidate_summary"`
 	AcknowledgementRequired   bool                                   `json:"acknowledgement_required"`
 	Reason                    string                                 `json:"reason"`
@@ -69,14 +70,15 @@ type examSittingCorrectionResourceRequest struct {
 }
 
 type examSittingCorrectionResponse struct {
-	ExamID             string `json:"exam_id"`
-	ExamSittingID      string `json:"exam_sitting_id"`
-	PreviousRevisionID string `json:"previous_revision_id"`
-	RevisionID         string `json:"revision_id"`
-	RevisionNumber     int64  `json:"revision_number"`
-	SittingRevision    int64  `json:"sitting_revision"`
-	SittingState       string `json:"sitting_state"`
-	EffectiveAt        string `json:"effective_at"`
+	AffectedCapabilities []model.CandidateCapability `json:"affected_capabilities"`
+	ExamID               string                      `json:"exam_id"`
+	ExamSittingID        string                      `json:"exam_sitting_id"`
+	PreviousRevisionID   string                      `json:"previous_revision_id"`
+	RevisionID           string                      `json:"revision_id"`
+	RevisionNumber       int64                       `json:"revision_number"`
+	SittingRevision      int64                       `json:"sitting_revision"`
+	SittingState         string                      `json:"sitting_state"`
+	EffectiveAt          string                      `json:"effective_at"`
 }
 
 func (body *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) error {
@@ -93,10 +95,13 @@ func (body *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) err
 	if !exists || bytes.Equal(bytes.TrimSpace(resources), []byte("null")) {
 		return errors.New("resources is required and must be an array")
 	}
+	if len(decoded.AffectedCapabilities) == 0 || model.ValidateCandidateCapabilities(decoded.AffectedCapabilities) != nil {
+		return errors.New("affected_capabilities must be a nonempty sorted selection")
+	}
 	if _, exists = members["candidate_summary"]; !exists {
 		return errors.New("candidate_summary is required")
 	}
-	if _, exists = members["acknowledgement_required"]; !exists {
+	if value, exists := members["acknowledgement_required"]; !exists || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 		return errors.New("acknowledgement_required is required")
 	}
 	if decoded.InstructionsMarkdown.IsNull() {
@@ -288,14 +293,15 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 	result, err := module.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedSittingRevision: body.ExpectedSittingRevision,
 		ExpectedCurrentRevisionID: currentRevisionID, Instructions: instructions, BrowserPolicy: browserPolicy, Resources: manifest,
-		CandidateSummary: body.CandidateSummary, AcknowledgementRequired: body.AcknowledgementRequired,
+		CandidateSummary: body.CandidateSummary, AcknowledgementRequired: body.AcknowledgementRequired, AffectedCapabilities: body.AffectedCapabilities,
 		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
 		return operationResult{}, err
 	}
 	response := examSittingCorrectionResponse{
-		ExamID: result.ExamID.String(), ExamSittingID: result.SittingID.String(),
+		AffectedCapabilities: append([]model.CandidateCapability{}, result.AffectedCapabilities...),
+		ExamID:               result.ExamID.String(), ExamSittingID: result.SittingID.String(),
 		PreviousRevisionID: result.PreviousRevisionID.String(), RevisionID: result.RevisionID.String(),
 		RevisionNumber: result.RevisionNumber, SittingRevision: result.SittingRevision,
 		SittingState: string(result.SittingState), EffectiveAt: model.TimeUTC(result.EffectiveAt).Format(time.RFC3339Nano),

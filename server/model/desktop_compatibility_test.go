@@ -13,6 +13,32 @@ import (
 	"time"
 )
 
+func TestRegistryFingerprintIsDistinctFromSHA256(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{name: "registered format", value: "fnv1a64:35ec2f0722dc930e", valid: true},
+		{name: "zero value", value: "fnv1a64:0000000000000000", valid: true},
+		{name: "missing prefix", value: "35ec2f0722dc930e"},
+		{name: "cryptographic identity", value: "sha256:" + strings.Repeat("a", 64)},
+		{name: "wrong width", value: "fnv1a64:" + strings.Repeat("a", 64)},
+		{name: "uppercase hex", value: "fnv1a64:35EC2F0722DC930E"},
+		{name: "non hex", value: "fnv1a64:35ec2f0722dc930g"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := IsValidRegistryFingerprint(test.value); got != test.valid {
+				t.Fatalf("registry valid = %v; want %v", got, test.valid)
+			}
+			if test.valid && IsValidSHA256Fingerprint(test.value) {
+				t.Fatal("registry selector was accepted as a cryptographic fingerprint")
+			}
+		})
+	}
+}
+
 func TestInitialDesktopCompatibilityPolicyIsValid(t *testing.T) {
 	t.Parallel()
 
@@ -123,8 +149,9 @@ func TestDesktopBuildTupleValidatesSignedCatalogIdentity(t *testing.T) {
 		Architecture:                            DesktopArchitectureARM64,
 		RealtimeProtocol:                        1,
 		AttemptConfigurationManifestFingerprint: CurrentAttemptConfigurationManifestFingerprint(),
-		DesktopSettingsRegistryFingerprint:      "sha256:" + strings.Repeat("b", 64),
-		CapabilityMatrixIdentity:                "matrix-1.2.3",
+		DesktopSettingsRegistryFingerprint:      "fnv1a64:" + strings.Repeat("b", 16),
+		DesktopTarget:                           "darwin-arm64", ConfigurationManifest: EmptyAttemptConfigurationManifest(),
+		CapabilityMatrixIdentity: "matrix-1.2.3",
 	}
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)

@@ -27,7 +27,6 @@ type SubmitExamAttemptCommand struct {
 	ExpectedCurrentRevisionID model.ExamRevisionID
 	ExpectedWorkspaceCursor   int64
 	FinalFocusLossSequence    int64
-	BrowserActivity           model.BrowserActivitySubmission
 	IdempotencyKey            string
 }
 
@@ -38,7 +37,7 @@ func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 	result, err := a.examAttempts.Submit(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examattempt.SubmitCommand{Access: command.Access, ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID,
 			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, FinalFocusLossSequence: command.FinalFocusLossSequence,
-			BrowserActivity: command.BrowserActivity.Clone(), IdempotencyKey: command.IdempotencyKey})
+			IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamSubmissionReceipt{}, examAttemptError(err, true)
 	}

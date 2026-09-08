@@ -38,6 +38,7 @@ type ExamIntegrityReviewAuthorization struct {
 // ExamIntegrityFlagSummary is the bounded manager projection of one Flag. It
 // contains no evidence details or private candidate-authored material.
 type ExamIntegrityFlagSummary struct {
+	Browser                *model.BrowserIntegrityGroup
 	Flag                   model.IntegrityFlag
 	EvidenceCount          int
 	OverflowCount          int64
@@ -83,10 +84,13 @@ type ExamIntegrityDiscrepancyPage struct {
 // behind current review authorization; candidate result reads use a separate
 // projection.
 type ExamSubmissionReviewSnapshot struct {
-	Authorization ExamIntegrityReviewAuthorization
-	Submission    *model.ExamSubmission
-	Review        *model.SubmissionReview
-	Decisions     []model.IntegrityReviewDecision
+	NativeConditions          model.NativeConditionInventory
+	DeliveryInventoryRevision int64
+	BrowserEvidenceOverflow   *model.BrowserIntegrityOverflow
+	Authorization             ExamIntegrityReviewAuthorization
+	Submission                *model.ExamSubmission
+	Review                    *model.SubmissionReview
+	Decisions                 []model.IntegrityReviewDecision
 }
 
 type ExamIntegrityReviewDecisionMutation struct {
@@ -184,6 +188,7 @@ type ExamIntegrityReviewMutationResult struct {
 // require or insert no notice. GetReleasedStudentResult exposes only the
 // candidate-owned released projection and conceals all pre-release state.
 type ExamIntegrityReviewStore interface {
+	ListNativeConditions(context.Context, NativeConditionListOptions) (*NativeConditionPage, error)
 	Resolve(context.Context, model.SubmissionID) (*ExamIntegrityReviewAuthorization, error)
 	Get(context.Context, model.SubmissionID) (*ExamSubmissionReviewSnapshot, error)
 	ListFlags(context.Context, ExamIntegrityFlagListOptions) (*ExamIntegrityFlagPage, error)
@@ -195,4 +200,15 @@ type ExamIntegrityReviewStore interface {
 	PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID, int64) (*ExamIntegrityReviewReleasePreparation, error)
 	Release(context.Context, *ExamIntegrityReviewRelease, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	GetReleasedStudentResult(context.Context, model.ExamAttemptID, model.UserID) (*model.StudentResult, error)
+}
+
+// Native condition records are reviewable without a Flag or a guilt decision.
+type NativeConditionListOptions struct {
+	SubmissionID model.SubmissionID
+	AfterID      model.IntegrityEvidenceID
+	Limit        int
+}
+type NativeConditionPage struct {
+	Items   []model.NativeConditionEvidence
+	HasMore bool
 }

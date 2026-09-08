@@ -4,7 +4,7 @@
 
 ~~~text
 identityprovider ← {model, config}
-model ← store ← app/job
+internal/canonicaljson ← model ← store ← app/job
 {model, store} ← app/idempotency ← {app, app/exam}
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
@@ -28,6 +28,7 @@ packages/vfs ← filecontent
 app ← filecontent
 {app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor/commands ← cmd/proctor
 execenv ← executionhost ← server
+{model, internal/canonicaljson} ← desktoprelease ← server
 internal/autocert ← server
 ~~~
 
@@ -40,9 +41,11 @@ inside `app/` are application-owned modules, not transports.
 | Package | Allowed production dependencies | Forbidden examples |
 | --- | --- | --- |
 | `identityprovider` | Standard library | Domain models, deployment configuration, application, persistence, transports |
-| `model` | Standard library, `identityprovider`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `model` | Standard library, `identityprovider`, `internal/canonicaljson`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `internal/canonicaljson` | Standard-library bounded JSON validation and encoding | Domain models, schema ownership, application, persistence, transports, infrastructure |
 | `config` | Standard library, `identityprovider`, and narrowly scoped IDNA hostname validation | Domain models, application, persistence, transports |
 | `store` | `model` | `sqlstore`, HTTP, application services |
+| `store/sqlstore` | `model`, `store`, `config`, `migrations`, `internal/canonicaljson`, SQL libraries | Application services, transports, runtime composition |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, concrete Jobs, transports, concrete adapters |
 | `app/idempotency` | `model`, `store`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
@@ -62,7 +65,8 @@ inside `app/` are application-owned modules, not transports.
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
 | `websocket` | `app`, `app/realtime`, `model`, `localization`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
-| `executionhost` | `app/execution` ports, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
+| `executionhost` | `app/execution` ports, their `model`/`store` value contracts, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
+| `desktoprelease` | `model`, `internal/canonicaljson`, standard-library signature and artifact validation | persistence, transports, application eligibility, process/filesystem selection |
 | `internal/autocert` | Standard library, `x/crypto/acme`, and `x/net/idna` | Product policy, application, persistence, transports, unrelated third-party libraries |
 | `internal/openapidoc` | Caller-supplied filesystems, OpenAPI/YAML parsing and validation, standard-library encoding | Process filesystem selection, runtime policy, application, persistence, transports |
 | `server` | Construction dependencies | Business rules |

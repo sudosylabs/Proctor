@@ -20,7 +20,7 @@ import (
 // RecordsAuthorizer also owns the durable decision for prohibited self-waivers.
 type RecordsAuthorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
-	DenySelf(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error
+	Deny(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error
 }
 
 type CompleteRecordsCommand struct {
@@ -31,13 +31,14 @@ type CompleteRecordsCommand struct {
 }
 
 type WaiveReviewCommand struct {
-	Scope                    model.RetentionHoldScope
-	ExpectedRevision         int64
-	ExpectedReviewRevision   int64
-	ExpectedDiscrepancyCount int64
-	ReasonCode               string
-	PrivateReason            string
-	IdempotencyKey           string
+	ExpectedDeliveryInventoryRevision int64
+	Scope                             model.RetentionHoldScope
+	ExpectedRevision                  int64
+	ExpectedReviewRevision            int64
+	ExpectedDiscrepancyCount          int64
+	ReasonCode                        string
+	PrivateReason                     string
+	IdempotencyKey                    string
 }
 
 type CreateRetentionHoldCommand struct {
@@ -97,7 +98,7 @@ func (r *Records) authorize(ctx context.Context, call Call, scope model.Retentio
 		return nil, "", unavailable(errors.New("Exam records scope projection is incomplete"))
 	}
 	if excludeSelf && principal.UserID == resolved.CandidateUserID {
-		return nil, "", r.authorizer.DenySelf(ctx, call, ordinary, scope.Resource(), resolved.AcademicUnitID)
+		return nil, "", r.authorizer.Deny(ctx, call, ordinary, scope.Resource(), resolved.AcademicUnitID)
 	}
 	action := ordinary
 	if override != "" {
@@ -221,7 +222,7 @@ func (r *Records) CompleteRecords(ctx context.Context, call Call, command Comple
 
 func (r *Records) WaiveReview(ctx context.Context, call Call, command WaiveReviewCommand) (*model.SubmissionReviewWaiver, error) {
 	if !command.Scope.SubmissionID.IsValid() || command.ExpectedRevision < 0 || command.ExpectedReviewRevision < 0 ||
-		command.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
+		command.ExpectedDeliveryInventoryRevision < 0 || command.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, invalid("review_waiver")
 	}
 	key := command.IdempotencyKey
@@ -240,7 +241,7 @@ func (r *Records) WaiveReview(ctx context.Context, call Call, command WaiveRevie
 	}
 	result, err := r.persistence.WaiveReview(ctx, &store.ExamRecordsReviewWaiver{ExamRecordsMutation: mutation,
 		ExpectedRevision: command.ExpectedRevision, ExpectedReviewRevision: command.ExpectedReviewRevision,
-		ExpectedDiscrepancyCount: command.ExpectedDiscrepancyCount, ReasonCode: command.ReasonCode, PrivateReason: command.PrivateReason}, idempotency)
+		ExpectedDeliveryInventoryRevision: command.ExpectedDeliveryInventoryRevision, ExpectedDiscrepancyCount: command.ExpectedDiscrepancyCount, ReasonCode: command.ReasonCode, PrivateReason: command.PrivateReason}, idempotency)
 	if err != nil {
 		return nil, r.fail(ctx, mutation, err)
 	}

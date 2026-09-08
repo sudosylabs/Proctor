@@ -68,7 +68,7 @@ type examSittingUseCases interface {
 	Schedule(context.Context, examsitting.Call, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
 	Get(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
 	AuthorizeView(context.Context, examsitting.Call, model.ExamSittingID) error
-	AuthorizeBrowserActivityView(context.Context, examsitting.Call, model.ExamSittingID) (model.AcademicUnitID, bool, error)
+	AuthorizeBrowserActivityView(context.Context, examsitting.Call, model.ExamSittingID) (model.AcademicUnitID, error)
 	AuthorizeSubmissionView(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) error
 	AuthorizeSubmissionReview(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
 	AuthorizeSubmissionRelease(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
@@ -220,6 +220,14 @@ type examSittingAuthorizationAdapter struct{ authorization *accessControlService
 
 func (adapter examSittingAuthorizationAdapter) Authorize(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource) error {
 	return adapter.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+}
+
+func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
+	if err := adapter.authorization.audit.RecordAuthorizationDecision(ctx, call.Principal(), action, resource,
+		model.RoleScopeAcademicUnit, unitID.String(), call.RequestMetadata(), false); err != nil {
+		return err
+	}
+	return &examsitting.Fault{Code: "exam.sitting.not_found"}
 }
 
 type examSittingAuditAdapter struct{ audit mutationAuditAdapter }

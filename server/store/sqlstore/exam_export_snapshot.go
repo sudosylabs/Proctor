@@ -66,11 +66,12 @@ func captureExamExportSnapshot(ctx context.Context, tx *sqlxTxWrapper, e *model.
 		var retired struct {
 			Work      bool `db:"work"`
 			Integrity bool `db:"integrity"`
+			Browser   bool `db:"browser"`
 		}
-		if err := tx.Get(ctx, &retired, `SELECT work_retired_at IS NOT NULL AS work,integrity_retired_at IS NOT NULL AS integrity FROM exam_submissions WHERE id=?`, a.SubmissionID.String()); err != nil {
+		if err := tx.Get(ctx, &retired, `SELECT work_retired_at IS NOT NULL AS work,integrity_retired_at IS NOT NULL AS integrity, COALESCE((SELECT browser_retired_at IS NOT NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=exam_submissions.exam_attempt_id),false) AS browser FROM exam_submissions WHERE id=?`, a.SubmissionID.String()); err != nil {
 			return nil, err
 		}
-		if slices.Contains(e.Categories, model.RetentionCategoryWork) && retired.Work || slices.Contains(e.Categories, model.RetentionCategoryIntegrity) && retired.Integrity {
+		if slices.Contains(e.Categories, model.RetentionCategoryWork) && retired.Work || slices.Contains(e.Categories, model.RetentionCategoryIntegrity) && retired.Integrity || slices.Contains(e.Categories, model.RetentionCategoryBrowserActivity) && retired.Browser {
 			return nil, store.NewErrConflict("exam_export", "source_retired", nil)
 		}
 		header, err := budget.collect(ctx, tx, `SELECT id AS submission_id,exam_attempt_id,exam_revision_id,provenance,submitted_at FROM exam_submissions WHERE id=?`, a.SubmissionID.String())
@@ -116,19 +117,22 @@ func captureExamExportSnapshot(ctx context.Context, tx *sqlxTxWrapper, e *model.
 				name, query string
 				id          string
 			}{
-				{"submission", `SELECT final_focus_loss_sequence,browser_activity_state,browser_activity_source_session_id,browser_activity_final_sequence,browser_activity_gap_reason,integrity_state,unresolved_integrity_count FROM exam_submissions WHERE id=?`, a.SubmissionID.String()},
+				{"submission", `SELECT final_focus_loss_sequence,integrity_state,unresolved_integrity_count FROM exam_submissions WHERE id=?`, a.SubmissionID.String()},
 				{"flags", `SELECT id,generation,policy_kind,state,created_at FROM integrity_flags WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
-				{"evidence", `SELECT id,integrity_flag_id,participation_id,generation,policy_kind,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,observed_at,recorded_at FROM integrity_evidence WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
+				{"native_conditions", `SELECT id,convert_from(canonical,'UTF8')::jsonb AS condition FROM native_condition_evidence WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
+				{"evidence", `SELECT id,integrity_flag_id,participation_id,generation,policy_kind,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,observed_at,recorded_at,CASE WHEN browser_detail_canonical IS NULL THEN NULL ELSE convert_from(browser_detail_canonical,'UTF8')::jsonb END AS browser FROM integrity_evidence WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
 				{"discrepancies", `SELECT id,generation,kind,schema_version,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,browser_activity_source_session_id,final_sequence,gap_reason,unresolved_count,received_at FROM integrity_discrepancies WHERE submission_id=? ORDER BY id`, a.SubmissionID.String()},
+				{"review_finalizations", `SELECT finalization_revision,convert_from(snapshot_canonical,'UTF8')::jsonb AS snapshot FROM submission_review_finalizations WHERE exam_attempt_id=? ORDER BY submission_review_id,finalization_revision`, a.AttemptID.String()},
 				{"reviews", `SELECT id,state,release_state,revision,created_by_user_id,manager_notes,student_remarks_markdown,flag_count,evidence_count,discrepancy_count,evidence_inventory_digest,created_at,updated_at,finalized_at,finalized_by_user_id,released_at,released_by_user_id FROM submission_reviews WHERE submission_id=? ORDER BY id`, a.SubmissionID.String()},
-				{"decisions", `SELECT id,submission_review_id,integrity_flag_id,outcome,revision,actor_user_id,private_rationale,decided_at FROM integrity_review_decisions WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
-				{"review_inventory_flags", `SELECT submission_review_id,integrity_flag_id,decision_id,decision_revision FROM submission_review_inventory_flags WHERE exam_attempt_id=? ORDER BY submission_review_id,integrity_flag_id`, a.AttemptID.String()},
-				{"review_inventory_evidence", `SELECT submission_review_id,integrity_flag_id,integrity_evidence_id FROM submission_review_inventory_evidence WHERE exam_attempt_id=? ORDER BY submission_review_id,integrity_evidence_id`, a.AttemptID.String()},
-				{"review_inventory_discrepancies", `SELECT submission_review_id,integrity_discrepancy_id FROM submission_review_inventory_discrepancies WHERE submission_id=? ORDER BY submission_review_id,integrity_discrepancy_id`, a.SubmissionID.String()},
-				{"review_waivers", `SELECT revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason FROM submission_review_waivers WHERE submission_id=?`, a.SubmissionID.String()},
-				{"browser_activity", `SELECT source_session_id,sequence,participation_id,generation,policy_revision_id,kind,client_occurred_at,location_scheme,location_host,location_port,location_path,matched_rule_id,block_reason,received_at FROM browser_activity_events WHERE exam_attempt_id=? ORDER BY source_session_id,sequence`, a.AttemptID.String()},
+				{"decisions", `SELECT id,submission_review_id,integrity_flag_id,outcome,revision,actor_user_id,private_rationale,decided_at,inventory_stale FROM integrity_review_decisions WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
+				{"review_inventory_flags", `SELECT submission_review_id,finalization_revision,integrity_flag_id,decision_id,decision_revision FROM submission_review_inventory_flags WHERE exam_attempt_id=? ORDER BY submission_review_id,integrity_flag_id`, a.AttemptID.String()},
+				{"review_inventory_evidence", `SELECT submission_review_id,finalization_revision,integrity_flag_id,integrity_evidence_id FROM submission_review_inventory_evidence WHERE exam_attempt_id=? ORDER BY submission_review_id,integrity_evidence_id`, a.AttemptID.String()},
+				{"review_inventory_discrepancies", `SELECT submission_review_id,finalization_revision,integrity_discrepancy_id FROM submission_review_inventory_discrepancies WHERE submission_id=? ORDER BY submission_review_id,integrity_discrepancy_id`, a.SubmissionID.String()},
+				{"review_waivers", `SELECT revision,review_revision,discrepancy_count,actor_user_id,recorded_at,reason_code,private_reason,inventory_invalidated,delivery_inventory_revision FROM submission_review_waivers WHERE submission_id=?`, a.SubmissionID.String()},
 				{"suspensions", `SELECT id,integrity_flag_id,generation,state,source,candidate_reason,started_at,ended_at,reallowed_by_user_id,private_reason FROM exam_attempt_suspensions WHERE exam_attempt_id=? ORDER BY id`, a.AttemptID.String()},
 				{"manager_end_actions", `SELECT actor_user_id,private_reason,ended_at FROM exam_attempt_manager_end_actions WHERE submission_id=?`, a.SubmissionID.String()},
+				{"browser_groups", `SELECT integrity_flag_id,participation_id,policy_revision_id,rule_id,retained_details,overflow_count,overflow_first_received_at,overflow_last_received_at FROM browser_integrity_groups WHERE exam_attempt_id=? ORDER BY integrity_flag_id`, a.AttemptID.String()},
+				{"browser_evidence_overflow", `SELECT validated_event_count,first_received_at,last_received_at,reason FROM browser_integrity_overflow WHERE exam_attempt_id=?`, a.AttemptID.String()},
 				{"focus_loss_accounting", `SELECT generation,accepted_sequence,unresolved_missing_count,retained_evidence_count,overflow_count,overflow_first_received_at,overflow_last_received_at,overflow_maximum_duration_milliseconds FROM exam_attempt_focus_loss_evaluations WHERE exam_attempt_id=? ORDER BY generation`, a.AttemptID.String()},
 			}
 			for _, q := range queries {
@@ -139,6 +143,23 @@ func captureExamExportSnapshot(ctx context.Context, tx *sqlxTxWrapper, e *model.
 				integrity[q.name] = values
 			}
 			record["integrity"] = integrity
+		}
+
+		if slices.Contains(e.Categories, model.RetentionCategoryBrowserActivity) {
+			history := map[string]any{}
+			for _, q := range []struct{ name, sql string }{
+				{"events", `SELECT source_session_id,sequence,participation_id,generation,policy_revision_id,kind,client_occurred_at,location_scheme,location_host,location_port,location_path,matched_rule_id,block_reason,redirect_from_sequence,received_at FROM browser_activity_events WHERE exam_attempt_id=? ORDER BY source_session_id,sequence`},
+				{"sources", `SELECT id,participation_id,generation,policy_revision_id,policy_digest,start_ordinal,start_transition,predecessor_id,reset_reason,state,highest_contiguous,highest_seen,allocated_through_sequence,terminal_missing_through_sequence,settled_through_sequence,started_at,ended_at,convert_from(closure_canonical,'UTF8')::jsonb AS closure,convert_from(summary_canonical,'UTF8')::jsonb AS summary FROM browser_activity_sources WHERE exam_attempt_id=? ORDER BY participation_id,start_ordinal`},
+				{"declarations", `SELECT source_session_id,declaration_id,kind,convert_from(canonical,'UTF8')::jsonb AS declaration FROM browser_delivery_declarations WHERE source_session_id IN (SELECT id FROM browser_activity_sources WHERE exam_attempt_id=?) ORDER BY source_session_id,declaration_id`},
+				{"settlement", `SELECT browser_state AS state,browser_inventory_revision AS inventory_revision,browser_source_count AS source_count,browser_pending_count AS pending_source_count,browser_incomplete_count AS incomplete_source_count FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`},
+			} {
+				values, err := budget.collect(ctx, tx, q.sql, a.AttemptID.String())
+				if err != nil {
+					return nil, err
+				}
+				history[q.name] = values
+			}
+			record["browser_activity"] = history
 		}
 		document.Submissions = append(document.Submissions, record)
 	}

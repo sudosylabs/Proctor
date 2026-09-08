@@ -165,6 +165,11 @@ type Response struct {
 
 // Error is the versioned WebSocket protocol error body.
 type Error struct {
+	Delivery                     *model.DeliveryRecovery               `json:"delivery,omitempty"`
+	RetryAfterSeconds            int                                   `json:"retry_after_seconds,omitempty"`
+	BrowserSourceStatus          *model.BrowserSourceStatus            `json:"browser_source_status,omitempty"`
+	CandidateRuntimeCapabilities *candidateRuntimeCapabilitiesResponse `json:"candidate_runtime_capabilities,omitempty"`
+	*model.DeliveryMetadataCapacity
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }

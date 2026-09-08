@@ -168,7 +168,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	}
 	page, err := ss.Retention().ListRecords(ctx, store.RetentionRecordListOptions{Limit: 1})
 	requireNoError(t, err)
-	if len(page.Items) != 2 || page.Items[0].Record.SharedPublishedObjects != 1 || page.Items[0].Retirement == nil {
+	if len(page.Items) != 4 || page.Items[0].Record.SharedPublishedObjects != 1 || page.Items[0].Retirement == nil {
 		t.Fatalf("grace projection=%#v", page)
 	}
 	firstRetirement := page.Items[0].Retirement.ID
@@ -270,6 +270,12 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	page, err = ss.Retention().ListRecords(ctx, store.RetentionRecordListOptions{Limit: 1})
 	requireNoError(t, err)
 	for _, item := range page.Items {
+		if item.Record.Category == model.RetentionCategoryBrowserActivity || item.Record.Category == model.RetentionCategorySecurityOperational {
+			if item.Eligibility.Blocker != model.RetentionBlockerUnconfigured || item.Retirement != nil {
+				t.Fatalf("indefinite independent category retired: %#v", item)
+			}
+			continue
+		}
 		if item.Eligibility.Blocker != model.RetentionBlockerRetired || item.Retirement.State != model.RetentionRetirementCommitted {
 			t.Fatalf("retired projection=%#v", item)
 		}
@@ -330,7 +336,7 @@ func newRetentionFixture(t *testing.T, ctx context.Context, ss store.Store) (exa
 	requireNoError(t, err)
 	created, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "private-answer.txt", ObjectID: object.ID, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "retention-file", "retention-file"))
 	requireNoError(t, err)
-	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: focus.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.sitting.ExamRevisionID, ExpectedWorkspaceCursor: created.Change.Cursor, BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}}
+	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: focus.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.sitting.ExamRevisionID, ExpectedWorkspaceCursor: created.Change.Cursor}
 	target, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
 	requireNoError(t, err)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.MillisFromTime(target.SealAt)}

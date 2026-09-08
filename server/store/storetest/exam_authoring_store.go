@@ -22,6 +22,8 @@ import (
 func TestExamAuthoringStore(t *testing.T, ss store.Store) {
 	t.Run("CreateGetAndReplay", func(t *testing.T) { testExamAuthoringCreateGetAndReplay(t, ss) })
 	t.Run("UpdateDraftTextAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftTextAndConflict(t, ss) })
+	t.Run("BrowserPolicyInstitutionPin", func(t *testing.T) { testBrowserPolicyInstitutionPin(t, ss) })
+	t.Run("UpdateDraftNativePolicyAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftNativePolicyAndConflict(t, ss) })
 	t.Run("UpdateDraftFocusLossAndConflict", func(t *testing.T) { testExamAuthoringUpdateDraftFocusLossAndConflict(t, ss) })
 	t.Run("ListCatalogAndArchive", func(t *testing.T) { testExamCatalogListAndArchive(t, ss) })
 	t.Run("ManageManagersAndOwnership", func(t *testing.T) { testExamManagersAndOwnership(t, ss) })
@@ -94,7 +96,7 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	if !managerAccess.ActorIsManager || outsiderAccess.ActorIsManager || managerAccess.Exam.ID != first.Value.Exam.ID || outsiderAccess.Exam.ID != first.Value.Exam.ID {
 		t.Fatalf("manager/outsider access = %#v / %#v", managerAccess, outsiderAccess)
 	}
-	if managerView.Draft.Policy != model.DefaultExamPolicySet() {
+	if !managerView.Draft.Policy.Equal(model.DefaultExamPolicySet()) {
 		t.Fatalf("persisted policy = %#v", managerView.Draft.Policy)
 	}
 	if managerView.Capacity != model.DefaultExamCapacityPolicy() || outsiderView.Capacity != managerView.Capacity {
@@ -143,7 +145,7 @@ func testExamAuthoringUpdateDraftTextAndConflict(t *testing.T, ss store.Store) {
 	if updated.Replayed || updated.Value.Draft.Title != "Distributed Systems" || updated.Value.Draft.InstructionsMarkdown != "" || updated.Value.Draft.Revision != 2 {
 		t.Fatalf("updated Draft = %#v", updated)
 	}
-	if updated.Value.Exam.Revision != created.Value.Exam.Revision || updated.Value.Draft.Policy != created.Value.Draft.Policy {
+	if updated.Value.Exam.Revision != created.Value.Exam.Revision || !updated.Value.Draft.Policy.Equal(created.Value.Draft.Policy) {
 		t.Fatalf("text update changed unrelated state: %#v", updated.Value)
 	}
 
@@ -274,5 +276,102 @@ func newExamAuthoringCreation(t *testing.T, ctx context.Context, ss store.Store,
 	return &store.ExamAuthoringCreation{
 		Exam: exam, Draft: draft, Manager: manager,
 		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+	}
+}
+
+func testExamAuthoringUpdateDraftNativePolicyAndConflict(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-native-policy-unit")
+	creator := saveUser(t, ctx, ss)
+	createdAt := model.NowUTC()
+	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, createdAt)
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "native-create", "native-create-command"))
+	requireNoError(t, err)
+
+	native := model.DefaultNativeSecurityPolicy()
+	requireNoError(t, json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &native.Families[1]))
+	updatedAt := createdAt.Add(time.Minute)
+	update := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, native, updatedAt)
+	command := examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-key", "native-command")
+	updated, err := ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, update, command)
+	requireNoError(t, err)
+	if updated.Replayed || updated.Value.Draft.Policy.Native.Families[1].Mode() != model.NativeModeObserve || updated.Value.Draft.Revision != 2 {
+		t.Fatalf("updated Draft = %#v", updated)
+	}
+	if updated.Value.Draft.Policy.ConnectionLoss != created.Value.Draft.Policy.ConnectionLoss || updated.Value.Draft.Title != created.Value.Draft.Title || updated.Value.Exam.Revision != created.Value.Exam.Revision {
+		t.Fatalf("Focus Loss update changed unrelated state: %#v", updated.Value)
+	}
+
+	replay := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, native, updatedAt.Add(time.Second))
+	replayed, err := ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, replay, command)
+	requireNoError(t, err)
+	if !replayed.Replayed || replayed.Value.Draft.Revision != 2 || replayed.Value.Draft.Policy.Native.Families[1].Mode() != model.NativeModeObserve {
+		t.Fatalf("replayed update = %#v", replayed)
+	}
+
+	staleFocus := model.DefaultNativeSecurityPolicy()
+	stale := newExamDraftNativePolicyUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, staleFocus, updatedAt.Add(2*time.Second))
+	_, err = ss.ExamAuthoring().UpdateDraftNativePolicy(ctx, stale, examCommand(creator.ID, "exam.draft.native_policy.configure.v1", "native-stale", "native-stale-command"))
+	var conflict *store.ErrConflict
+	if !errors.As(err, &conflict) || conflict.Constraint != "exam_draft_revision" {
+		t.Fatalf("stale update error = %v, want exam_draft_revision conflict", err)
+	}
+}
+
+func newExamDraftNativePolicyUpdate(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, expectedRevision int64, native model.NativeSecurityPolicy, at time.Time) *store.ExamDraftNativePolicyUpdate {
+	t.Helper()
+	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
+	requireNoError(t, err)
+	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: actorID, Action: string(model.ActionExamManage), Resource: model.Resource{Type: model.ResourceExam, ID: examID.String()},
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
+	})
+	requireNoError(t, err)
+	return &store.ExamDraftNativePolicyUpdate{
+		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, NativePolicy: native,
+		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+	}
+}
+
+func testBrowserPolicyInstitutionPin(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "browser-pin")
+	creator := saveUser(t, ctx, ss)
+	at := model.NowUTC()
+	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, at)
+	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creator.ID, "exam.create.v1", "pin-create", "pin-create"))
+	requireNoError(t, err)
+	policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "http://institution.example:8080", PathPrefix: "/exam", HostMatch: model.BrowserPolicyHostExact, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationIntegrityEvidence, InstitutionHTTPException: true}})
+	requireNoError(t, err)
+	base := newExamDraftTextUpdate(t, ctx, ss, created.Value.Exam.ID, creator.ID, 1, nil, nil, at.Add(time.Second))
+	input := &store.ExamDraftBrowserPolicyUpdate{ExamID: base.ExamID, ActorUserID: creator.ID, ExpectedRevision: 1, Policy: policy, InstitutionOrigin: "https://unrelated.example:8080", UpdatedAt: base.UpdatedAt, AuditEventID: base.AuditEventID, AuditAt: base.AuditAt}
+	command := examCommand(creator.ID, "exam.draft.browser_policy.configure.v1", "pin-update", "pin-update")
+	_, err = ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, input, command)
+	var invalid *store.ErrInvalidInput
+	if !errors.As(err, &invalid) {
+		t.Fatalf("unrelated pin accepted: %v", err)
+	}
+	unchanged, err := ss.ExamAuthoring().Get(ctx, input.ExamID, creator.ID)
+	requireNoError(t, err)
+	if unchanged.Draft.Revision != 1 || unchanged.Draft.BrowserPolicy.Enabled {
+		t.Fatal("refused exception changed draft")
+	}
+	input.InstitutionOrigin = "https://institution.example:8080"
+	updated, err := ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, input, command)
+	requireNoError(t, err)
+	if updated.Value.Draft.Revision != 2 || !updated.Value.Draft.BrowserPolicy.MayCreateIntegrityEvidence() {
+		t.Fatalf("saved policy = %#v", updated)
+	}
+	reloaded, err := ss.ExamAuthoring().Get(ctx, input.ExamID, creator.ID)
+	requireNoError(t, err)
+	if err := reloaded.Draft.BrowserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := model.BrowserPolicyDigest(reloaded.Draft.BrowserPolicy)
+	requireNoError(t, err)
+	if !model.IsValidSHA256Fingerprint(digest) {
+		t.Fatalf("invalid persisted digest %q", digest)
 	}
 }

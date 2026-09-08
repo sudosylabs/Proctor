@@ -44,8 +44,9 @@ Session, Registration, Connection, credentials, and private Review state.
 
 ## Preserve Source and Sequence Semantics
 
-Each Participation may own at most 16 source sessions. An explicit reset names
-its predecessor and one closed reason; prior sources remain immutable. Batches
+Each Participation allows one initial source, up to 32 policy-correction starts,
+and up to 16 runtime resets: at most 49 source identities in total. A reset names
+its predecessor and one closed reason; prior source boundaries remain immutable. Batches
 contain 1–64 events and at most 256 KiB. Persistence accepts exact replay,
 rejects changed duplicates and a reorder distance above 4,096, and returns the
 highest contiguous and seen sequences with at most 32 missing ranges.
@@ -54,18 +55,33 @@ A gap is evidence of uncertainty. Never synthesize a navigation event to close
 it. Delivery may continue while the Sitting is paused or a correction awaits
 acknowledgement because convergence does not grant candidate interaction.
 
+## Keep Review Evidence Independent
+
+Only a validated blocked navigation attributed to a frozen rule that selects
+integrity evidence can create a Browser Flag. A group is scoped to Participation,
+policy Revision and rule. It retains at most 100 detail copies; the Attempt has
+limits of 256 groups, 10,000 copies and 8 MiB of copied evidence. Further validated
+events update bounded overflow counts. Receipt replay never creates another copy.
+
+Ordinary history requires both the exact Exam Manager relationship and
+`exam.attempt.browser_activity.view`; scoped overrides cannot grant it. Review
+uses independently retained minimized copies under Review authorization. Deleting
+ordinary Browser history does not delete those copies.
+
 ## Seal Only Acknowledged Workspace State
 
 Voluntary submission first denies new edits, settles Workspace mutation,
 reconciles Focus Loss and Browser Activity terminal accounting, then calls one
 named atomic Store operation. The request fences current Revision, Workspace
-Cursor, final Focus Loss sequence, Browser Activity state, Participation,
+Cursor, final Focus Loss sequence, Participation,
 generation, credential, bound Session, and open Connection.
 
-Browser Activity terminal state is exactly one of `not_applicable`, `complete`,
-or truthful `gapped`. A gap does not prevent sealing; it creates explicit
-discrepancy provenance. `not_applicable` is valid only when collection was not
-part of the frozen Attempt Configuration.
+Browser settlement is derived by the server across every source owned by the
+Attempt. Clients never submit a Browser settlement claim. No recorded source means
+`not_applicable`; otherwise the response exposes source counts and truthful gaps.
+A gap does not prevent sealing. Closing a source fixes its known allocation
+boundary and historical-upload deadline. Receipts acknowledge actual records;
+loss declarations settle uncertainty without manufacturing receipts.
 
 <GovernedFigure asset="submission-provenance-boundary" />
 
@@ -79,7 +95,10 @@ provenance, not in whether acknowledged state is authoritative.
 
 There is no reopen, resubmit, or post-seal Workspace mutation. Late Focus Loss
 with an exact retained causal selector enters a bounded discrepancy stream; it
-does not mutate the frozen evidence inventory or Submission. A no-show has no
+does not change sealed work. New qualifying Browser or native condition evidence
+accepted within its historical window invalidates current Review approval and
+Sitting Records Completion. Historical finalization snapshots remain immutable;
+managers must acknowledge the changed inventory before releasing again. A no-show has no
 Attempt and no Submission.
 
 After an uncertain voluntary response, exact replay uses the same semantic body

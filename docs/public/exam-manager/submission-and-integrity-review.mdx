@@ -45,14 +45,18 @@ the immutable manifest is authority.
 
 <GovernedFigure asset="integrity-review-release-boundary" />
 
-A native observation becomes a security signal, detector finding, bounded
-evidence, and possibly a Flag before any Review outcome exists. Each layer
-adds context; no earlier layer independently proves intent or guilt.
+Native condition records preserve selected detector transitions and their
+provenance. They do not automatically create a Flag, warning or suspension.
+Unresolved transitions remain visible when an opener was lost. Operational source
+health is separate from the retained conditions available for Review.
 
 Review these sources together:
 
-- **Flags** group one detected policy kind and Participation generation.
+- **Flags** group qualifying policy evidence. Browser Flags also distinguish
+  Participation, frozen policy Revision and rule.
 - **Evidence** retains bounded qualifying episodes and summarized overflow.
+- **Native conditions** retain validated transitions without requiring a Flag
+  decision; Review finalization acknowledges their current inventory.
 - **Discrepancies** retain gaps, missing correction acknowledgement, incomplete
   Browser Activity, late Focus Loss, and other explicit uncertainty.
 - **Submission integrity state** is `settled` only when collection completed
@@ -78,3 +82,9 @@ also separate from optional approved student-facing Markdown remarks.
 Concurrent manager changes advance the Review revision. If the revision is
 stale, reread the Review and reconcile the other manager's work rather than
 guessing the next number or overwriting it.
+
+New qualifying Browser evidence or native conditions can arrive during a closed
+source's bounded upload window. They withdraw approval of the current Review and
+make Records Completion stale. Previously finalized snapshots remain available;
+inspect the new inventory, refresh affected Browser Flag decisions, finalize, and
+explicitly release again. An exact delivery replay does not reopen a Review.

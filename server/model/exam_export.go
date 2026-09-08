@@ -57,7 +57,7 @@ type ExamExport struct {
 }
 
 func ValidExamExportCategories(categories []RetentionCategory) bool {
-	return len(categories) == 1 && (categories[0] == RetentionCategoryWork || categories[0] == RetentionCategoryIntegrity) ||
+	return len(categories) == 1 && (categories[0] == RetentionCategoryWork || categories[0] == RetentionCategoryIntegrity || categories[0] == RetentionCategoryBrowserActivity) ||
 		len(categories) == 2 && categories[0] == RetentionCategoryWork && categories[1] == RetentionCategoryIntegrity
 }
 

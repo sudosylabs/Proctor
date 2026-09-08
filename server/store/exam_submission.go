@@ -37,7 +37,6 @@ type ExamSubmissionSealAccess struct {
 	ExpectedCurrentRevisionID model.ExamRevisionID
 	ExpectedWorkspaceCursor   int64
 	FinalFocusLossSequence    int64
-	BrowserActivity           model.BrowserActivitySubmission
 }
 
 // ExamSubmissionSealTarget is the bounded preflight projection used to begin
@@ -67,10 +66,12 @@ type ExamSubmissionSeal struct {
 	ExpectedRecipientRevision int64
 }
 
-// ExamSubmissionReceipt is the complete candidate-safe immutable response. It
+// ExamSubmissionReceipt combines immutable content identity with current, bounded
+// Browser delivery settlement. It
 // intentionally omits the manifest, paths, content selectors, source signals,
 // integrity gaps, credential, Session, and private review state.
 type ExamSubmissionReceipt struct {
+	BrowserActivity model.BrowserSubmissionSettlement
 	SubmissionID    model.SubmissionID
 	AttemptID       model.ExamAttemptID
 	ExamRevisionID  model.ExamRevisionID

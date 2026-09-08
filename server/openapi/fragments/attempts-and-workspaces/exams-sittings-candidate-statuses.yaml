@@ -16,7 +16,10 @@ paths:
       tags:
         - Attempts and workspaces
       description: >-
-        Returns one bounded row per authoritative Sitting candidate after current exam.sitting.view authorization. Presence is derived from the authoritative Participation lease at server_time. The projection excludes Sessions, credentials, connections, evidence, private reasons, and Review decisions.
+        Returns one bounded row per authoritative Sitting candidate after current exam.sitting.view
+        authorization. Presence is derived from the authoritative Participation lease at server_time. The
+        projection excludes Sessions, credentials, connections, evidence, private reasons, and Review
+        decisions.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -56,19 +59,19 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           $ref: '#/components/responses/ExamSittingCandidateStatusesOK'
-        "400":
+        '400':
           $ref: '#/components/responses/BadRequest'
-        "401":
+        '401':
           $ref: '#/components/responses/Unauthorized'
-        "403":
+        '403':
           $ref: '#/components/responses/Forbidden'
-        "404":
+        '404':
           $ref: '#/components/responses/NotFound'
-        "500":
+        '500':
           $ref: '#/components/responses/InternalError'
-        "503":
+        '503':
           $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
@@ -84,11 +87,21 @@ components:
   schemas:
     SittingCandidatePresenceState:
       type: string
-      enum: [not_started, ready, connected, reconnecting, lease_expired, suspended, submitted]
+      enum:
+        - not_started
+        - ready
+        - connected
+        - reconnecting
+        - lease_expired
+        - suspended
+        - submitted
     SittingCandidateIdentityResponse:
       type: object
       additionalProperties: false
-      required: [user_id, username, display_name]
+      required:
+        - user_id
+        - username
+        - display_name
       properties:
         user_id:
           $ref: '#/components/schemas/ID'
@@ -100,7 +113,10 @@ components:
     SittingCandidateSubmissionResponse:
       type: object
       additionalProperties: false
-      required: [id, submitted_at, provenance]
+      required:
+        - id
+        - submitted_at
+        - provenance
       properties:
         id:
           $ref: '#/components/schemas/ID'
@@ -112,13 +128,23 @@ components:
     SittingCandidateAttemptResponse:
       type: object
       additionalProperties: false
-      required: [id, state, revision, created_at, updated_at, submission]
+      required:
+        - id
+        - state
+        - revision
+        - created_at
+        - updated_at
+        - submission
       properties:
         id:
           $ref: '#/components/schemas/ID'
         state:
           type: string
-          enum: [ready, active, suspended, submitted]
+          enum:
+            - ready
+            - active
+            - suspended
+            - submitted
         revision:
           type: integer
           format: int64
@@ -132,34 +158,42 @@ components:
         submission:
           oneOf:
             - $ref: '#/components/schemas/SittingCandidateSubmissionResponse'
-            - type: "null"
+            - type: 'null'
     SittingCandidatePresenceResponse:
       type: object
       additionalProperties: false
-      required: [state, last_lease_renewed_at, lease_expires_at]
+      required:
+        - state
+        - last_lease_renewed_at
+        - lease_expires_at
       properties:
         state:
           $ref: '#/components/schemas/SittingCandidatePresenceState'
         last_lease_renewed_at:
           type:
             - string
-            - "null"
+            - 'null'
           format: date-time
         lease_expires_at:
           type:
             - string
-            - "null"
+            - 'null'
           format: date-time
     SittingCandidateSuspensionResponse:
       type: object
       additionalProperties: false
-      required: [id, candidate_reason, reallow_available]
+      required:
+        - id
+        - candidate_reason
+        - reallow_available
       properties:
         id:
           $ref: '#/components/schemas/ID'
         candidate_reason:
           type: string
-          enum: [secure_connectivity_lost, focus_policy_review_required]
+          enum:
+            - secure_connectivity_lost
+            - focus_policy_review_required
         reallow_available:
           type: boolean
     SittingCandidateStatusItemResponse:
@@ -180,21 +214,29 @@ components:
         attempt:
           oneOf:
             - $ref: '#/components/schemas/SittingCandidateAttemptResponse'
-            - type: "null"
+            - type: 'null'
         presence:
           $ref: '#/components/schemas/SittingCandidatePresenceResponse'
         suspension:
           oneOf:
             - $ref: '#/components/schemas/SittingCandidateSuspensionResponse'
-            - type: "null"
+            - type: 'null'
         integrity_attention_count:
           type: integer
           format: int64
           minimum: 0
+        native_security:
+          $ref: '#/components/schemas/NativeSecuritySummary'
     ExamSittingCandidateStatusesResponse:
       type: object
       additionalProperties: false
-      required: [server_time, exam_id, exam_sitting_id, sitting_state, sitting_revision, items]
+      required:
+        - server_time
+        - exam_id
+        - exam_sitting_id
+        - sitting_state
+        - sitting_revision
+        - items
       properties:
         server_time:
           type: string
@@ -215,3 +257,54 @@ components:
             $ref: '#/components/schemas/SittingCandidateStatusItemResponse'
         next_cursor:
           type: string
+    NativeSecuritySummary:
+      type: object
+      additionalProperties: false
+      description: >-
+        Content-free native condition count and currently live source health. Contains no detector, occurrence
+        or source-instance identities and makes no misconduct finding.
+      required:
+        - retained_condition_records
+        - live_coverage_available
+        - sources
+      properties:
+        retained_condition_records:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 200000
+        live_coverage_available:
+          type: boolean
+        sources:
+          type: array
+          maxItems: 11
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - source_id
+              - health
+              - permission
+              - complete
+            properties:
+              source_id:
+                type: string
+              health:
+                type: string
+                enum:
+                  - starting
+                  - healthy
+                  - degraded
+                  - failed
+                  - recovering
+                  - stopped
+              permission:
+                type: string
+                enum:
+                  - denied
+                  - granted
+                  - not_determined
+                  - restricted
+                  - unavailable
+              complete:
+                type: boolean

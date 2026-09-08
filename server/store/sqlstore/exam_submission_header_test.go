@@ -22,7 +22,7 @@ func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := examSubmissionHeaderRow{ID: model.NewSubmissionID().String(), AttemptID: model.NewExamAttemptID().String(),
+	base := examSubmissionHeaderRow{BrowserState: "not_applicable", BrowserInventoryRevision: 1, ID: model.NewSubmissionID().String(), AttemptID: model.NewExamAttemptID().String(),
 		ExamRevisionID: model.NewExamRevisionID().String(), WorkspaceID: model.NewExamAttemptWorkspaceID().String(),
 		ManifestSchemaVersion: model.ExamSubmissionManifestSchemaVersion,
 		WorkspaceCursor:       sql.NullInt64{Int64: 5, Valid: true}, ManifestDigest: sql.NullString{String: manifest.SHA256, Valid: true},
@@ -34,12 +34,12 @@ func TestExamSubmissionHeaderRetirementNullability(t *testing.T) {
 		t.Fatalf("read retained work after integrity retirement: %#v %v", value, err)
 	}
 	for name, corrupt := range map[string]func(*examSubmissionHeaderRow){
-		"retired focus zero still persisted":    func(row *examSubmissionHeaderRow) { row.FinalFocusLossSequence.Valid = true },
-		"retired count zero still persisted":    func(row *examSubmissionHeaderRow) { row.UnresolvedIntegrityCount.Valid = true },
-		"retired source still persisted":        func(row *examSubmissionHeaderRow) { row.BrowserSourceSessionID.Valid = true },
-		"retired browser state still persisted": func(row *examSubmissionHeaderRow) { row.BrowserActivityState.Valid = true },
-		"retained manifest missing":             func(row *examSubmissionHeaderRow) { row.ManifestDigest = sql.NullString{} },
-		"retirement lacks marker":               func(row *examSubmissionHeaderRow) { row.IntegrityRetiredAt = sql.NullTime{} },
+		"retired focus zero still persisted":   func(row *examSubmissionHeaderRow) { row.FinalFocusLossSequence.Valid = true },
+		"retired count zero still persisted":   func(row *examSubmissionHeaderRow) { row.UnresolvedIntegrityCount.Valid = true },
+		"inconsistent retained browser counts": func(row *examSubmissionHeaderRow) { row.BrowserSourceCount = 1 },
+		"invalid retained browser revision":    func(row *examSubmissionHeaderRow) { row.BrowserInventoryRevision = 0 },
+		"retained manifest missing":            func(row *examSubmissionHeaderRow) { row.ManifestDigest = sql.NullString{} },
+		"retirement lacks marker":              func(row *examSubmissionHeaderRow) { row.IntegrityRetiredAt = sql.NullTime{} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			row := base

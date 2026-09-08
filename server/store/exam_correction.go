@@ -102,6 +102,8 @@ type ExamCorrectionResourceManifestItem struct {
 }
 
 type ExamCorrectionApplication struct {
+	// InstitutionOrigin is installation configuration supplied by the application, never request data.
+	InstitutionOrigin       string
 	RevisionID              model.ExamRevisionID
 	ExamID                  model.ExamID
 	SittingID               model.ExamSittingID
@@ -114,6 +116,7 @@ type ExamCorrectionApplication struct {
 	Resources               []ExamCorrectionResourceManifestItem
 	CandidateSummary        string
 	AcknowledgementRequired bool
+	AffectedCapabilities    []model.CandidateCapability
 	PrivateReason           string
 	AppliedAt               time.Time
 	AuditEventID            string
@@ -136,7 +139,9 @@ type ExamCorrectionResult struct {
 // visibility mutation: it resolves replay first, locks and revalidates the
 // Exam/Sitting/base/stages, creates one sealed immutable Revision, consumes
 // referenced stages, retargets only that Sitting, appends private provenance,
-// completes safe audit, and stores a bounded outcome.
+// completes safe audit, and stores a bounded outcome. The immutable affected
+// selection must cover the actual semantic change. Its required acknowledgement
+// gates only selected capabilities; no-op content cannot allocate a notice.
 type ExamCorrectionStore interface {
 	ReserveResourceStage(context.Context, *ExamCorrectionResourceStageReservation, *CommandIdempotency) (*ExamCorrectionResourceStage, error)
 	MarkResourceStageReady(context.Context, *ExamCorrectionResourceStageReadyInput) (*ExamCorrectionResourceStage, error)

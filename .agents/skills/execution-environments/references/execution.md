@@ -80,14 +80,15 @@ the server. The application programs a small `Host` / `Env` interface:
 - `Ensure` creates or reattaches a grant. The grant id is allocated and
   stored by the server; it is not an Attempt id. The same id with a
   different image or network is a conflict.
-- `ReplaceTree` pushes a full snapshot. Unchanged path-and-version pairs
-  skip bodies.
-- `Apply` pushes incremental IDE-originated mutations.
-- `Watch` and `Open` harvest guest-originated create, replace, move, and
-  delete events. Ingest is first-class.
+- `InitializeProjection` installs a fresh snapshot; `ApplyProjection` advances
+  the consecutive durable journal through immutable, bounded content transfers.
+- `Observe` and `OpenObservationContent` retain semantic guest effects and their
+  original bytes. Confirmation binds an accepted outcome before acknowledgement
+  releases retained content.
 - `Attach` yields exactly one PTY. A second attach is busy until that PTY
   closes.
-- `Freeze` and `Thaw` stop and resume I/O without destroying the grant.
+- `Control` requests ordered freeze, resume or revoke and confirms the actual
+  effect under the current fence; freeze/resume preserves the same guest and PTY.
 - `Revoke` destroys the grant. It is idempotent.
 
 Adapters implement an internal transport that factors control, PTY, and tree
@@ -133,17 +134,23 @@ first authorized Attempt Terminal open and only when the frozen profile
 enables one. Pause freezes the environment without destroying it, and Resume
 thaws that same environment. Submit and sitting close revoke after the durable
 Attempt state commits. Confirmed connection loss revokes after a short grace.
-Reopening a terminal always builds a fresh grant from acknowledged Workspace
-state before attaching a PTY. A ready grant is durably released and revoked
-before replacement, even when the same host is selected. Resetting a ready
-guest's tree could erase unobserved writes from background processes.
+Reopening on a retained, fenced journal environment reconciles its existing
+grant and projection before attaching. It never resets a live guest's tree.
+A missing or invalid epoch requires exact-grant retirement and a fresh projection
+from acknowledged Workspace state; legacy grants are also retired before reopening.
+
+Required corrections selecting `terminal` fence placement/input through their
+current Attempt-owned acknowledgement state and use the existing protective
+grant release. Browser-only corrections do not release unrelated grants.
+This correction path currently rebuilds after release; it is not evidence of
+reversible guest freeze or continuation of the same running process.
 
 Terminal open resolves the protected Attempt presentation before beginning the
 critical audit, then ensures placement, starts Workspace observation, attaches
-the PTY, and completes the audit. Every failure during that open transaction,
-after placement and before ownership is returned, closes acquired observation
-or terminal resources and retries release of the exact grant until its durable
-fence succeeds, even when the request context has already ended. After return,
+the PTY, and completes the audit. Projection catch-up and current interaction denial
+close any acquired observation or terminal resources while retaining a healthy
+fenced grant for recovery. Other failures after placement release the exact grant;
+release retries until its durable fence succeeds, even after request cancellation. After return,
 observation loss or an unacknowledgeable event closes the caller-owned terminal and
 releases that exact grant, forcing the next authorized open to build a fresh
 projection from durable Workspace state. A normal caller close does not revoke
@@ -151,33 +158,122 @@ the placement; the Attempt lifecycle remains the authority for when that grant
 may otherwise exist. This bridge does not create an independent terminal
 lifecycle.
 
+## Fenced control
+
+The consumer-owned controlled-environment extension binds an opaque host epoch
+once to a reserved Execution Grant. PostgreSQL owns an independent monotonic
+control revision, requested state and acknowledged revision. Preparation commits
+before host I/O. Identical retries keep the same intent; a replacement epoch
+requires a new grant. An acknowledgement must match the exact grant, epoch,
+revision and requested state, and the original current-authority digest. The
+private digest binds lifecycle, native control ordering, Participation, credential,
+correction and deadline gates. It is never transmitted to the host.
+
+Native coverage and host acknowledgement are separate gates. Healthy native
+coverage may permit recovery, but execution input waits for confirmed running
+state under the current authority. A healthy/fault/healthy sequence cannot reuse
+an earlier running acknowledgement. A failed or lost host response remains
+unconfirmed. Reconciliation retries the durable intent; an untrustworthy receipt,
+lost occupancy or lost lifecycle lease uses exact-grant retirement. Successful
+freeze/recovery preserves the same supported host occupancy.
+
+Committed native control updates and lease-renewal retries trigger bounded
+reconciliation. Their durable command outcome survives transient effect failure;
+periodic reconciliation repairs a missed callback. Security projections distinguish
+freeze_pending/frozen and thaw_pending/ready from actual acknowledgements.
+Browser-only corrections do not enter the terminal gate.
+
+The execenv v0.3.0 adapter selects this extension only when the authenticated
+host advertises ordered control, journal projection and semantic observations,
+and the native environment supplies a valid opaque epoch. Unsupported hosts retain
+protective refusals. Protocol and persistence tests do not certify Linux/KVM
+containment; production use requires certification of the installed artifacts.
+
 ## Projection
 
 The Attempt Workspace remains the durable authority. The Execution
 Environment projects acknowledged state. Losing a client, node, or environment
 cannot discard an acknowledged change. Each grant records its applied Workspace
 cursor and any pending projection cursor. Projection preparation commits before
-host I/O; completion advances the applied cursor only while the grant revision
-and authoritative Workspace cursor still match. A missed callback, out-of-order
-change, or uncertain host effect retires the grant. Reconciliation compares these
-durable cursors independently of Sitting lifecycle progress.
+host I/O. The fenced projection port retains one exact bounded request per grant,
+including its mutation identity, original fence, journal prefix, host sequence,
+and immutable upload receipts. Completion requires the matching host receipt;
+later unrelated Workspace commits do not invalidate an acknowledged prefix.
+Completed effects discard private request bodies and retain bounded minimal
+receipts for exact retries. A released grant discards unfinished private requests.
+Reconciliation compares durable Workspace progress independently of control.
+
+The private journal reader preserves the original object reference and expected
+file version at each position; it never reads a newer live file as an earlier
+save. Pages contain at most 128 consecutive changes and 256 KiB of metadata.
+A missing journal position or missing pinned body returns no partial batch.
+Obsolete objects needed by a bound ready grant's unapplied retained journal
+prefix remain protected from cleanup. Grant release or confirmed advancement
+removes that extra protection; ordinary durable references still apply.
+
+Application adapters exposing ProjectionEnvironment use exact pending-request
+recovery and consecutive journal projection, including when reusing an existing
+epoch. Frozen control performs no projection I/O. Unknown transport outcomes
+retain the pending request for retry; an invalid receipt, lost epoch or unusable
+content handle requires exact-grant retirement. Host cursor conflicts require
+observation reconciliation before further projection. This consumer-owned path
+does not by itself activate the currently pinned legacy adapter.
+
+A definitive host validation refusal has its own durable outcome: retain the
+request digest as rejected, clear its pending marker, and leave the applied
+cursor unchanged. A later request uses a new mutation identity after observation
+reconciliation. A timeout cannot be recorded as a refusal, and neither successful
+nor refused identities can be reused with changed bytes.
+
+The semantic observation path preserves the original fence, host sequence,
+projected cursor, stable node identity, expected version and captured-content
+receipt. Its resolver revalidates current candidate access/control and checks the
+retained Workspace journal for competing path/topology edits. A subsequent edit
+of the same guest node may extend that exact node's previous accepted outcome;
+it cannot adopt the newest competing Workspace version as its baseline. Unknown
+identity, a journal/sequence gap, or an unsupported boundary change fails closed.
+
+The existing five Workspace operations atomically commit the authoritative
+change, accepted observation outcome, host-node/Entry binding and processed host
+sequence. Directory moves preserve descendant bindings; recursive deletion
+removes the subtree and tombstones those bindings. Captured content is checked
+against staged immutable bytes. Semantic harvesting requires its original proof;
+a bound grant cannot fall back to unfenced legacy harvesting. Outcomes and
+bindings are bounded to 65,536 accepted host sequences per grant, after which a
+fresh authorized grant is required; release drops these private records.
+
+Events wholly within `.git`, `node_modules`, `target` or `__pycache__` advance a
+durable ignored outcome and the host watermark without changing the Workspace.
+Cross-boundary moves are refused before partial mutation. `.proctor` remains
+reserved. Never claim a Workspace commit or send a projection confirmation for
+an ignored event. An unsolicited claimed projection echo is rejected by the
+current host path, whose projector emits no such observation; exact accepted guest
+echoes are instead bound by its explicit confirmation protocol.
+
+The application retains the lifecycle lease through semantic acceptance and host
+confirmation, reads only captured event content, confirms the exact durable
+Workspace outcome, and only then acknowledges release of retained host bytes.
+The legacy post-commit execution callback is skipped for these semantic results
+so it cannot project a guest mutation before confirmation. The concrete semantic
+adapter and terminal readiness path use the released execenv dependency in the
+normal server build, subject to authenticated host capability checks.
 
 The IDE and the Attempt Terminal are dual writers. Authoritative create,
 replace, move, and delete still commit through the existing workspace
 protocol. Initial projection reserves the grant before capturing the Workspace
 snapshot. Incremental projection reads only the changed file body; it never
-reloads all Workspace file bodies for each save. The generic host port supports
-applying an acknowledged change to the guest, subject to the adapter limitation
-below.
-Guest writes under the workspace mount become workspace mutations only after
-the server harvests them through `Watch` and `Open` and they pass the same
-acknowledgement rules, quotas, path contract, and reserved `.proctor` root.
+reloads all Workspace file bodies for each save. Fenced projection and semantic
+observations preserve the same guest and PTY across acknowledged saves. Legacy
+host ports retain their protective refusal and cannot establish the journal-ready
+terminal contract. Both paths enforce the same acknowledgement rules, quotas,
+path contract, and reserved `.proctor` root.
 
 Every Workspace mutation carries a closed origin: `candidate` or
 `execution_host`. Both origins commit through the same Attempt service and
-publish the same safe realtime result. Only candidate-originated changes are
-applied to the host; execution-host changes are already present there and must
-not echo through `Apply`. Execution-host mutations also carry the exact source
+publish the same safe realtime result. The legacy path applies only candidate-originated changes to the host;
+execution-host changes are already present there and must not echo through its
+unfenced `Apply`. Fenced journal projection includes every consecutive position;
+its host observation confirmation protocol must suppress only exact accepted echoes. Execution-host mutations also carry the exact source
 grant ID. The Store locks and verifies that this grant is still ready for the
 Attempt before committing; delayed effects may acknowledge only that same grant.
 Watch, Attach, and Open use the grant returned by terminal initialization, and
@@ -191,14 +287,12 @@ they do not remain held for a stream's lifetime. Losing the connection or a
 node-local handle fails closed and requires retirement and a fresh projection,
 including when a different application node must apply a lifecycle effect.
 
-The pinned execenv v0.2.0 adapter cannot safely apply incremental changes: Apply
-resets the watch baseline and may absorb unrelated concurrent guest writes
-without emitting events. Its directory move also lacks complete descendant
-version updates. The production adapter therefore refuses Apply before host I/O.
-An acknowledged candidate Workspace change retires the affected grant and closes
-its terminal; reopening rebuilds from durable state. Seamless live IDE changes
-require an upstream observation barrier and correct subtree projection. Full
-ReplaceTree is used only while initializing a reserved, fresh grant.
+The adapter refuses unfenced `Apply` before host I/O. The normal journal adapter
+uses `ApplyProjection` with the exact current fence, consecutive cursor range,
+immutable content and durable request identity. Observation barriers retain
+unrelated guest writes, directory operations preserve descendant identities, and
+only confirmed matching guest outcomes suppress projection echoes. Full snapshots
+initialize a reserved, fresh grant; they never replace a live journal projection.
 
 Observation loss closes the terminal and releases its exact execution grant.
 The host API cannot atomically reset the projection and install a replacement
@@ -216,25 +310,16 @@ the reader and caller-facing close remain fenced. This ordering keeps the
 connection's terminal slot occupied until a reopen is guaranteed to select a
 successor grant rather than exposing the still-current placement.
 
-A default ignore set excludes dependency and build trees such as
-`node_modules`, `target`, `__pycache__`, and `.git`. Ignored, over-quota, or
-invalid writes stay on the ephemeral guest disk and never enter the
-Submission. A move wholly within ignored trees remains ignored. A file move
-across the boundary is acknowledged as an authoritative delete when its
-destination is ignored, or an authoritative create when its source is ignored.
-Directory moves across the boundary fail the terminal because the host event
-cannot enumerate an ignored subtree and the durable Store rejects deleting a
-non-empty directory; partially projecting such a move is forbidden. The
-isolated execenv v0.2 watcher also expands a directory rename into unordered
-per-path deletes followed by creates, with no atomic batch boundary. The bridge
-therefore rejects a directory create, a directory or descendant delete, and a
-create whose parent tree is not already authoritative before committing any
-member. An adapter that supplies one atomic `Move` event can still acknowledge
-that directory move. Until the reusable host contract exposes batch topology,
-students create and remove directory trees through the authoritative Workspace
-protocol rather than the terminal shell. A kind-changing event that presents an
-authoritative directory as a host file is likewise rejected before mutation;
-delete-then-create is not an atomic repair.
+The fixed ignore set excludes dependency and build trees such as `node_modules`,
+`target`, `__pycache__`, and `.git`. Semantic events wholly within those trees
+record a durable ignored outcome without entering the Submission. Moves across
+an ignored boundary fail before any authority mutation. Over-quota or invalid
+non-ignored events fail closed rather than implying durable acceptance. Semantic
+directory create, move with descendants, and explicit recursive delete use the
+same atomic Workspace commands as candidate operations. A kind-changing event
+cannot replace an authoritative directory with a host file through an unordered
+delete/create inference. Legacy watchers retain their stricter topology refusals
+and never serve as a fallback for a bound semantic grant.
 Non-ignored writes that cannot be acknowledged must surface an error in the
 terminal. Paths outside the workspace mount, including `/tmp`, are ephemeral.
 
@@ -246,6 +331,20 @@ The reverse path is the same. Pause, lease expiry, kick,
 and manager-cannot-see-live-work apply because the Attempt Connection
 already owns those gates.
 
+Terminal open requires the latest server-persisted `expected_workspace_cursor`.
+Future cursors are invalid; temporary lag returns `execution.projection_pending`
+without retiring a healthy grant. Successful attachment returns a real
+`environment_epoch`, acknowledged `applied_workspace_cursor`, and `projection_state`.
+Candidate capability projections include these fields before creation too: the
+epoch is null, cursor is zero, and state is unavailable until there is an actual
+projection. Readiness never replaces the operation's current authorization checks.
+
+Every PTY receives an opaque `terminal_id`. Input, resize, close, output, and
+closed frames carry it. Stale frames, delayed output, and close callbacks must
+match both the original handle and identity before touching the connection's
+current terminal. PTY output and closure are not replayed, and transport loss
+does not manufacture a process exit code.
+
 PTY octets, tree bodies, grant tokens, and workspace paths never enter
 ordinary logs or unsafe audit fields. Initial integrity evidence continues
 to exclude terminal output and source code.
@@ -253,7 +352,7 @@ to exclude terminal output and source code.
 ## Resources
 
 CPU, memory, disk, and process caps are installation-defined defaults and
-maxima. The Execution Profile does not request hardware. execenv v0.2 reports
+maxima. The Execution Profile does not request hardware. execenv reports
 remaining slots; each host enforces its configured memory and other resource
 caps and returns typed capacity refusal from `Ensure`. The server tries only
 hosts advertising a free slot and re-places on a typed capacity refusal. The
@@ -263,7 +362,7 @@ exposes it.
 
 ## Implemented boundary
 
-The server integration is implemented against execenv v0.2.0: typed multi-host
+The server integration pins execenv v0.3.0: typed multi-host
 deployment configuration and secret redaction, TLS 1.3/mTLS or loopback-only
 development dialing, connection recovery, fail-closed readiness, deterministic
 capability/capacity placement, durable assignment and cleanup history,
@@ -316,3 +415,25 @@ without a supported-host profile would promise an iroh-style empty-VPS
 install that KVM cannot keep. The independent execenv contract is the extractable
 seam `dependencies.md` requires; isolation stays in that repository
 because it has no callers inside this monorepo.
+
+
+### Released journal adapter integration
+
+Normal and independent server builds select the concrete ordered-control,
+projection and semantic-observation adapter from execenv v0.3.0. All three
+capabilities must be authenticated; interface assertions alone never prove host
+support. Use matching v0.3.0 host binaries and guest images: the remote protocol
+requires revision 2 and the guest helper requires revision 3. The isolated adapter
+advertises journal support only with `require_journal` enabled and refuses guests
+without the required native workload handshake. Enable this option only after the
+installed artifacts pass Linux/KVM certification. Memory-host protocol and
+PostgreSQL integration tests do not certify production isolation.
+
+The adapter preserves original fences, node identities, versions and immutable
+content. It replays from the host's retained acknowledgement when durable server
+progress is ahead, confirming the exact stored outcome before ACK. Startup may
+drain at most 128 pending observations before retrying projection and attaching.
+Observation acquisition does not require projection catch-up; current control and
+candidate authority still gate every accepted outcome. Confirmed frozen hosts wait
+without destroying the observation handle. An unrelated Workspace save does not
+retire a healthy PTY; each write still checks current durable execution authority.

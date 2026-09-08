@@ -68,17 +68,18 @@ func prepareApplyIdempotency(call Call, command ApplyCommand) (*store.CommandIde
 		resources[index].StageID = item.StageID.String()
 	}
 	return prepareIdempotency(call, idempotencyOperationApplyCorrection, command.IdempotencyKey, struct {
-		ExamID                    string `json:"exam_id"`
-		SittingID                 string `json:"exam_sitting_id"`
-		ExpectedSittingRevision   int64  `json:"expected_sitting_revision"`
-		ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
-		InstructionsPresent       bool   `json:"instructions_present"`
-		InstructionsMarkdown      string `json:"instructions_markdown"`
-		BrowserPolicyPresent      bool   `json:"browser_policy_present"`
-		BrowserPolicy             string `json:"browser_policy"`
-		Resources                 any    `json:"resources"`
-		CandidateSummary          string `json:"candidate_summary"`
-		AcknowledgementRequired   bool   `json:"acknowledgement_required"`
-		PrivateReason             string `json:"private_reason"`
-	}{command.ExamID.String(), command.SittingID.String(), command.ExpectedSittingRevision, command.ExpectedCurrentRevisionID.String(), command.Instructions.Present, command.Instructions.Markdown, command.BrowserPolicy.Present, browserPolicy, resources, command.CandidateSummary, command.AcknowledgementRequired, command.PrivateReason})
+		ExamID                    string                      `json:"exam_id"`
+		SittingID                 string                      `json:"exam_sitting_id"`
+		ExpectedSittingRevision   int64                       `json:"expected_sitting_revision"`
+		ExpectedCurrentRevisionID string                      `json:"expected_current_revision_id"`
+		InstructionsPresent       bool                        `json:"instructions_present"`
+		InstructionsMarkdown      string                      `json:"instructions_markdown"`
+		BrowserPolicyPresent      bool                        `json:"browser_policy_present"`
+		BrowserPolicy             string                      `json:"browser_policy"`
+		Resources                 any                         `json:"resources"`
+		CandidateSummary          string                      `json:"candidate_summary"`
+		AcknowledgementRequired   bool                        `json:"acknowledgement_required"`
+		AffectedCapabilities      []model.CandidateCapability `json:"affected_capabilities"`
+		PrivateReason             string                      `json:"private_reason"`
+	}{command.ExamID.String(), command.SittingID.String(), command.ExpectedSittingRevision, command.ExpectedCurrentRevisionID.String(), command.Instructions.Present, command.Instructions.Markdown, command.BrowserPolicy.Present, browserPolicy, resources, command.CandidateSummary, command.AcknowledgementRequired, command.AffectedCapabilities, command.PrivateReason})
 }

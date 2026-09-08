@@ -355,18 +355,20 @@ func (connection *AttemptConnection) Close(reason AttemptConnectionCloseReason, 
 type IntegrityPolicyKind string
 
 const (
-	IntegrityPolicyConnectionLoss IntegrityPolicyKind = "connection_loss"
-	IntegrityPolicyFocusLoss      IntegrityPolicyKind = "focus_loss"
+	IntegrityPolicyConnectionLoss    IntegrityPolicyKind = "connection_loss"
+	IntegrityPolicyFocusLoss         IntegrityPolicyKind = "focus_loss"
+	IntegrityPolicyBrowserNavigation IntegrityPolicyKind = "browser_navigation"
 )
 
 func (kind IntegrityPolicyKind) isValid() bool {
-	return kind == IntegrityPolicyConnectionLoss || kind == IntegrityPolicyFocusLoss
+	return kind == IntegrityPolicyConnectionLoss || kind == IntegrityPolicyFocusLoss || kind == IntegrityPolicyBrowserNavigation
 }
 
 // IntegrityEvidence is neutral server-owned evidence for one policy flag.
 // Connection Loss evidence intentionally has no accusation, free-form text,
 // client time, credential, Session identity, or transport payload.
 type IntegrityEvidence struct {
+	Browser              *BrowserIntegrityEvidence
 	ID                   IntegrityEvidenceID
 	AttemptID            ExamAttemptID
 	ParticipationID      AttemptParticipationID
@@ -416,13 +418,17 @@ func (evidence *IntegrityEvidence) Validate() error {
 		return fmt.Errorf("model: invalid Integrity Evidence")
 	}
 	switch evidence.Kind {
+	case IntegrityPolicyBrowserNavigation:
+		if !evidence.FlagID.IsValid() || evidence.Browser == nil || evidence.Browser.Validate() != nil || !evidence.SignalID.IsZero() || evidence.Sequence != 0 || evidence.DurationMilliseconds != 0 || evidence.Source != "" || evidence.MissingBefore != 0 {
+			return fmt.Errorf("model: invalid Browser integrity evidence")
+		}
 	case IntegrityPolicyConnectionLoss:
-		if !evidence.FlagID.IsValid() || !evidence.SignalID.IsZero() || evidence.Sequence != 0 ||
+		if evidence.Browser != nil || !evidence.FlagID.IsValid() || !evidence.SignalID.IsZero() || evidence.Sequence != 0 ||
 			evidence.DurationMilliseconds != 0 || evidence.Source != "" || evidence.MissingBefore != 0 {
 			return fmt.Errorf("model: invalid Connection Loss evidence")
 		}
 	case IntegrityPolicyFocusLoss:
-		if !evidence.FlagID.IsValid() || !evidence.SignalID.IsValid() || evidence.Sequence < 1 ||
+		if evidence.Browser != nil || !evidence.FlagID.IsValid() || !evidence.SignalID.IsValid() || evidence.Sequence < 1 ||
 			evidence.DurationMilliseconds < 1 || evidence.DurationMilliseconds > FocusLossMaximumDurationMilliseconds ||
 			!evidence.Source.IsValid() || evidence.MissingBefore < 0 {
 			return fmt.Errorf("model: invalid Focus Loss evidence")

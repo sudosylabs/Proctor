@@ -27,41 +27,42 @@ func newSQLExamRevisionStore(sqlStore *SQLStore) store.ExamRevisionStore {
 }
 
 type examRevisionHeaderRow struct {
-	ID                         string         `db:"id"`
-	ExamID                     string         `db:"exam_id"`
-	Number                     int64          `db:"number"`
-	SnapshotSchemaVersion      int            `db:"snapshot_schema_version"`
-	SourceDraftRevision        int64          `db:"source_draft_revision"`
-	Title                      string         `db:"title"`
-	InstructionsMarkdown       string         `db:"instructions_markdown"`
-	PolicySchemaVersion        int            `db:"policy_schema_version"`
-	PolicyDocument             jsonValue      `db:"policy_document"`
-	PolicyCanonical            []byte         `db:"policy_canonical"`
-	PolicyDigest               string         `db:"policy_digest"`
-	ExecutionProfileDocument   jsonValue      `db:"execution_profile_document"`
-	ExecutionProfileCanonical  []byte         `db:"execution_profile_canonical"`
-	ExecutionProfileDigest     string         `db:"execution_profile_digest"`
-	BrowserPolicyDocument      jsonValue      `db:"browser_policy_document"`
-	BrowserPolicyCanonical     []byte         `db:"browser_policy_canonical"`
-	BrowserPolicyDigest        string         `db:"browser_policy_digest"`
-	CandidateCorrectionSummary sql.NullString `db:"candidate_correction_summary"`
-	CandidateCorrectionAreas   pq.StringArray `db:"candidate_correction_changed_areas"`
-	CandidateCorrectionAck     sql.NullBool   `db:"candidate_correction_acknowledgement_required"`
-	ResourceMaximumCount       int            `db:"exam_resource_max_count"`
-	ResourceMaximumBytes       int64          `db:"exam_resource_max_bytes"`
-	WorkspaceMaximumEntries    int            `db:"exam_workspace_max_entries"`
-	WorkspaceMaximumFileBytes  int64          `db:"exam_workspace_max_file_bytes"`
-	WorkspaceMaximumTotalBytes int64          `db:"exam_workspace_max_total_bytes"`
-	StarterWorkspaceDigest     string         `db:"starter_workspace_digest"`
-	ContentDigest              string         `db:"content_digest"`
-	ResourceCount              int            `db:"resource_count"`
-	StarterEntryCount          int            `db:"starter_entry_count"`
-	StarterTotalBytes          int64          `db:"starter_total_bytes"`
-	PublishedByUserID          string         `db:"published_by_user_id"`
-	PublishedAt                time.Time      `db:"published_at"`
-	BaseRevisionID             sql.NullString `db:"base_revision_id"`
-	PublicationKind            string         `db:"publication_kind"`
-	Sealed                     bool           `db:"sealed"`
+	ID                              string         `db:"id"`
+	ExamID                          string         `db:"exam_id"`
+	Number                          int64          `db:"number"`
+	SnapshotSchemaVersion           int            `db:"snapshot_schema_version"`
+	SourceDraftRevision             int64          `db:"source_draft_revision"`
+	Title                           string         `db:"title"`
+	InstructionsMarkdown            string         `db:"instructions_markdown"`
+	PolicySchemaVersion             int            `db:"policy_schema_version"`
+	PolicyDocument                  jsonValue      `db:"policy_document"`
+	PolicyCanonical                 []byte         `db:"policy_canonical"`
+	PolicyDigest                    string         `db:"policy_digest"`
+	ExecutionProfileDocument        jsonValue      `db:"execution_profile_document"`
+	ExecutionProfileCanonical       []byte         `db:"execution_profile_canonical"`
+	ExecutionProfileDigest          string         `db:"execution_profile_digest"`
+	BrowserPolicyDocument           jsonValue      `db:"browser_policy_document"`
+	BrowserPolicyCanonical          []byte         `db:"browser_policy_canonical"`
+	BrowserPolicyDigest             string         `db:"browser_policy_digest"`
+	CandidateCorrectionSummary      sql.NullString `db:"candidate_correction_summary"`
+	CandidateCorrectionAreas        pq.StringArray `db:"candidate_correction_changed_areas"`
+	CandidateCorrectionCapabilities pq.StringArray `db:"candidate_correction_affected_capabilities"`
+	CandidateCorrectionAck          sql.NullBool   `db:"candidate_correction_acknowledgement_required"`
+	ResourceMaximumCount            int            `db:"exam_resource_max_count"`
+	ResourceMaximumBytes            int64          `db:"exam_resource_max_bytes"`
+	WorkspaceMaximumEntries         int            `db:"exam_workspace_max_entries"`
+	WorkspaceMaximumFileBytes       int64          `db:"exam_workspace_max_file_bytes"`
+	WorkspaceMaximumTotalBytes      int64          `db:"exam_workspace_max_total_bytes"`
+	StarterWorkspaceDigest          string         `db:"starter_workspace_digest"`
+	ContentDigest                   string         `db:"content_digest"`
+	ResourceCount                   int            `db:"resource_count"`
+	StarterEntryCount               int            `db:"starter_entry_count"`
+	StarterTotalBytes               int64          `db:"starter_total_bytes"`
+	PublishedByUserID               string         `db:"published_by_user_id"`
+	PublishedAt                     time.Time      `db:"published_at"`
+	BaseRevisionID                  sql.NullString `db:"base_revision_id"`
+	PublicationKind                 string         `db:"publication_kind"`
+	Sealed                          bool           `db:"sealed"`
 }
 
 type examRevisionResourceRow struct {
@@ -101,7 +102,7 @@ const examRevisionHeaderSelect = `SELECT id,exam_id,number,snapshot_schema_versi
 	title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
 	execution_profile_document,execution_profile_canonical,execution_profile_digest,
 	browser_policy_document,browser_policy_canonical,browser_policy_digest,
-	candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_acknowledgement_required,
+	candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_affected_capabilities,candidate_correction_acknowledgement_required,
 	exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
 	starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 	published_by_user_id,published_at,base_revision_id,publication_kind,sealed FROM exam_revisions`
@@ -269,6 +270,9 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if err = tx.Get(ctx, &number, `SELECT COALESCE(MAX(number),0)+1 FROM exam_revisions WHERE exam_id=?`, input.ExamID.String()); err != nil {
 		return examRevisionPublicationOutcomeRow{}, err
 	}
+	if err := browserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
+		return examRevisionPublicationOutcomeRow{}, store.NewErrInvalidInput("exam_revision", "browser_policy", nil).Wrap(err)
+	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: input.RevisionID, ExamID: input.ExamID,
 		Number: number, SourceDraftRevision: draft.DraftRevision, Title: draft.Title, InstructionsMarkdown: draft.InstructionsMarkdown,
 		Policy: policy, ExecutionProfile: executionProfile, BrowserPolicy: browserPolicy, Capacity: capacity, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
@@ -348,7 +352,7 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 	if err != nil {
 		return fmt.Errorf("encode Exam Revision Browser Policy: %w", err)
 	}
-	var correctionSummary, correctionAreas, correctionAcknowledgement any
+	var correctionSummary, correctionAreas, correctionCapabilities, correctionAcknowledgement any
 	if revision.CandidateCorrection != nil {
 		correctionSummary = revision.CandidateCorrection.Summary
 		areas := make([]string, len(revision.CandidateCorrection.ChangedAreas))
@@ -356,13 +360,14 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 			areas[index] = string(area)
 		}
 		correctionAreas = pq.Array(areas)
+		correctionCapabilities = pq.Array(revision.CandidateCorrection.AffectedCapabilities)
 		correctionAcknowledgement = revision.CandidateCorrection.AcknowledgementRequired
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,
 		title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
 		execution_profile_document,execution_profile_canonical,execution_profile_digest,
 		browser_policy_document,browser_policy_canonical,browser_policy_digest,
-		candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_acknowledgement_required,
+		candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_affected_capabilities,candidate_correction_acknowledgement_required,
 		exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
 		starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 		published_by_user_id,published_at,base_revision_id,publication_kind)
@@ -371,7 +376,7 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 			?,?,?,?::jsonb,?,?,
 			?::jsonb,?,?,
 			?::jsonb,?,?,
-			?,?,?,
+			?,?,?,?,
 			?,?,?,?,?,
 			?,?,?,?,?,
 			?,?,?,?
@@ -380,7 +385,7 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 		revision.Policy.SchemaVersion, string(revision.Policy.Bytes), revision.Policy.Bytes, revision.PolicyDigest,
 		string(profile), profile, revision.ExecutionProfileDigest,
 		string(browserPolicy), browserPolicy, revision.BrowserPolicyDigest,
-		correctionSummary, correctionAreas, correctionAcknowledgement,
+		correctionSummary, correctionAreas, correctionCapabilities, correctionAcknowledgement,
 		revision.Capacity.ResourceMaximumCount, revision.Capacity.ResourceMaximumBytes, revision.Capacity.WorkspaceMaximumEntries,
 		revision.Capacity.WorkspaceMaximumFileBytes, revision.Capacity.WorkspaceMaximumTotalBytes,
 		revision.StarterWorkspaceDigest, revision.ContentDigest, len(revision.Resources), len(revision.StarterWorkspace), starterBytes,
@@ -560,15 +565,19 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 		return nil, invalidPersistedState("exam_revision", "browser_policy_document", errors.New("canonical Browser Policy mismatch"))
 	}
 	var correctionNotice *model.CandidateCorrectionNotice
-	if header.CandidateCorrectionSummary.Valid || header.CandidateCorrectionAreas != nil || header.CandidateCorrectionAck.Valid {
-		if !header.CandidateCorrectionSummary.Valid || header.CandidateCorrectionAreas == nil || !header.CandidateCorrectionAck.Valid {
+	if header.CandidateCorrectionSummary.Valid || header.CandidateCorrectionAreas != nil || header.CandidateCorrectionCapabilities != nil || header.CandidateCorrectionAck.Valid {
+		if !header.CandidateCorrectionSummary.Valid || header.CandidateCorrectionAreas == nil || header.CandidateCorrectionCapabilities == nil || !header.CandidateCorrectionAck.Valid {
 			return nil, invalidPersistedState("exam_revision", "candidate_correction", errors.New("incomplete Candidate Correction Notice"))
 		}
 		areas := make([]model.ExamCorrectionChangedArea, len(header.CandidateCorrectionAreas))
 		for index, area := range header.CandidateCorrectionAreas {
 			areas[index] = model.ExamCorrectionChangedArea(area)
 		}
-		correctionNotice, err = model.NewCandidateCorrectionNotice(header.CandidateCorrectionSummary.String, areas, header.CandidateCorrectionAck.Bool)
+		capabilities := make([]model.CandidateCapability, len(header.CandidateCorrectionCapabilities))
+		for index, capability := range header.CandidateCorrectionCapabilities {
+			capabilities[index] = model.CandidateCapability(capability)
+		}
+		correctionNotice, err = model.NewCandidateCorrectionNotice(header.CandidateCorrectionSummary.String, areas, capabilities, header.CandidateCorrectionAck.Bool)
 		if err != nil {
 			return nil, invalidPersistedState("exam_revision", "candidate_correction", err)
 		}

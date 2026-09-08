@@ -124,6 +124,8 @@ components:
             expected_revision: 1
             submission_retention_days: 0
             integrity_retention_days: 0
+            browser_activity_retention_days: 0
+            security_operational_retention_days: 0
             audit_retention_days: 0
             export_retention_days: 0
             deletion_grace_days: 0
@@ -141,6 +143,8 @@ components:
             revision: 1
             submission_retention_days: 0
             integrity_retention_days: 0
+            browser_activity_retention_days: 0
+            security_operational_retention_days: 0
             audit_retention_days: 0
             export_retention_days: 0
             deletion_grace_days: 0
@@ -156,6 +160,8 @@ components:
         - expected_revision
         - submission_retention_days
         - integrity_retention_days
+        - browser_activity_retention_days
+        - security_operational_retention_days
         - audit_retention_days
         - export_retention_days
         - deletion_grace_days
@@ -175,6 +181,16 @@ components:
           minimum: 0
           maximum: 36500
           description: Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. Unresolved Reviews block completion.
+        browser_activity_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks.
+        security_operational_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks.
         audit_retention_days:
           type: integer
           minimum: 0
@@ -201,6 +217,8 @@ components:
         - revision
         - submission_retention_days
         - integrity_retention_days
+        - browser_activity_retention_days
+        - security_operational_retention_days
         - audit_retention_days
         - export_retention_days
         - deletion_grace_days
@@ -224,6 +242,16 @@ components:
           minimum: 0
           maximum: 36500
           description: Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite.
+        browser_activity_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks.
+        security_operational_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Zero means no configured automatic expiry; deletion still requires approval, grace, completion and hold checks.
         audit_retention_days:
           type: integer
           minimum: 0

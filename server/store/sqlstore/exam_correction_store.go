@@ -419,11 +419,10 @@ func validateExamCorrectionApplication(input *store.ExamCorrectionApplication, c
 		!validExamSittingPrivateReason(input.PrivateReason) || input.AppliedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_correction", "application", nil)
 	}
-	if input.BrowserPolicy != nil && input.BrowserPolicy.Validate() != nil {
+	if input.BrowserPolicy != nil && input.BrowserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin) != nil {
 		return store.NewErrInvalidInput("exam_correction", "browser_policy", nil)
 	}
-	if _, err := model.NewCandidateCorrectionNotice(input.CandidateSummary,
-		[]model.ExamCorrectionChangedArea{model.ExamCorrectionChangedInstructions}, input.AcknowledgementRequired); err != nil {
+	if err := model.ValidateCandidateCorrectionSelection(input.CandidateSummary, input.AffectedCapabilities); err != nil {
 		return store.NewErrInvalidInput("exam_correction", "candidate_summary", err)
 	}
 	if input.InstructionsMarkdown != nil && (!utf8.ValidString(*input.InstructionsMarkdown) || len(*input.InstructionsMarkdown) > 65536) {
@@ -570,6 +569,9 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if input.BrowserPolicy != nil {
 		browserPolicy = input.BrowserPolicy.Clone()
 	}
+	if err := browserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin); err != nil {
+		return nil, store.NewErrInvalidInput("exam_correction", "browser_policy", nil).Wrap(err)
+	}
 	changedAreas, err := model.CandidateCorrectionChangedAreas(base, instructions, resources, browserPolicy)
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", err)
@@ -583,7 +585,7 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	revision, err := model.NewLiveCorrectionExamRevision(base, model.LiveCorrectionExamRevisionSpecification{ID: input.RevisionID,
 		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: browserPolicy,
-		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired,
+		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired, AffectedCapabilities: input.AffectedCapabilities,
 		PublishedByUserID: input.ActorUserID, PublishedAt: databaseNow})
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", nil).Wrap(err)
@@ -632,6 +634,9 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		return nil, err
 	}
 	if err = requireExamResourceAffected(result, 1, "exam_sitting_revision"); err != nil {
+		return nil, err
+	}
+	if err := closeSittingBrowserSources(ctx, tx, input.SittingID, browserPolicy.Enabled, databaseNow); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO exam_sitting_live_corrections (audit_event_id,exam_id,exam_sitting_id,previous_revision_id,correction_revision_id,actor_user_id,private_reason,effective_at,sitting_revision) VALUES (?,?,?,?,?,?,?,?,?)`,

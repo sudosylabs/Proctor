@@ -20,9 +20,10 @@ import (
 
 type WorkspaceMutationAccess struct {
 	CandidateAccess
-	ParticipationID model.AttemptParticipationID
-	Generation      int64
-	SourceGrantID   model.ExecutionGrantID
+	ParticipationID   model.AttemptParticipationID
+	Generation        int64
+	SourceGrantID     model.ExecutionGrantID
+	SourceObservation *store.ExecutionObservation
 }
 
 type WorkspaceMutationOrigin string
@@ -89,15 +90,16 @@ type DeleteWorkspaceEntryCommand struct {
 }
 
 type WorkspaceMutationResult struct {
-	AttemptID       model.ExamAttemptID
-	SittingID       model.ExamSittingID
-	CandidateUserID model.UserID
-	WorkspaceID     model.ExamAttemptWorkspaceID
-	Entry           *store.CandidateAttemptWorkspaceItem
-	Change          model.AttemptWorkspaceJournalEntry
-	Replayed        bool
-	Origin          WorkspaceMutationOrigin
-	SourceGrantID   model.ExecutionGrantID
+	AttemptID          model.ExamAttemptID
+	SittingID          model.ExamSittingID
+	CandidateUserID    model.UserID
+	WorkspaceID        model.ExamAttemptWorkspaceID
+	Entry              *store.CandidateAttemptWorkspaceItem
+	Change             model.AttemptWorkspaceJournalEntry
+	Replayed           bool
+	Origin             WorkspaceMutationOrigin
+	SourceGrantID      model.ExecutionGrantID
+	SourceHostSequence int64
 }
 
 type WorkspaceJournalQuery struct {
@@ -349,8 +351,8 @@ func workspaceMutationSelector(call Call, access WorkspaceMutationAccess) (store
 		return store.ExamAttemptWorkspaceMutationAccess{}, invalid("workspace_access")
 	}
 	return store.ExamAttemptWorkspaceMutationAccess{AttemptID: read.AttemptID, ParticipationID: access.ParticipationID,
-		SourceGrantID: access.SourceGrantID,
-		Generation:    access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
+		SourceGrantID: access.SourceGrantID, SourceObservation: access.SourceObservation,
+		Generation: access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
 		DesktopRegistrationID: read.DesktopRegistrationID, DPoPKeyThumbprint: read.DPoPKeyThumbprint,
 		ConnectionID: read.ConnectionID, ContinuityCredentialHash: read.ContinuityCredentialHash}, nil
 }
@@ -420,6 +422,9 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, call Call, t
 		return WorkspaceMutationResult{}, err
 	}
 	result.SourceGrantID = mutation.Access.SourceGrantID
+	if mutation.Access.SourceObservation != nil {
+		result.SourceHostSequence = mutation.Access.SourceObservation.HostSequence
+	}
 	if result.Change.Recursive != mutation.Recursive {
 		return WorkspaceMutationResult{}, unavailable(errors.New("inconsistent recursive Workspace mutation result"))
 	}
@@ -497,4 +502,42 @@ func isInvalidAttemptWorkspaceContent(err error) bool {
 func isAttemptUnavailable(err error) bool {
 	var fault *Fault
 	return errors.As(err, &fault) && fault.Code == "exam.attempt.unavailable"
+}
+
+// ResolveExecutionObservation is an internal host-ingestion preflight. The
+// existing five Workspace commands repeat its proof under their commit locks.
+func (service *Service) ResolveExecutionObservation(ctx context.Context, call Call, access WorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
+	selector, err := workspaceMutationSelector(call, access)
+	if err != nil {
+		return nil, err
+	}
+	if selector.SourceObservation == nil || selector.SourceObservation.Validate() != nil || selector.SourceObservation.Fence.GrantID != selector.SourceGrantID {
+		return nil, invalid("execution_observation")
+	}
+	target, err := service.deps.Workspace.ResolveObservation(ctx, selector)
+	if err != nil {
+		return nil, mapStore(err)
+	}
+	if target == nil {
+		return nil, unavailable(errors.New("missing execution observation target"))
+	}
+	return target, nil
+}
+
+func (service *Service) RecordIgnoredExecutionObservation(ctx context.Context, call Call, access WorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
+	selector, err := workspaceMutationSelector(call, access)
+	if err != nil {
+		return nil, err
+	}
+	if selector.SourceObservation == nil {
+		return nil, invalid("execution_observation")
+	}
+	target, err := service.deps.Workspace.RecordIgnoredObservation(ctx, selector)
+	if err != nil {
+		return nil, mapStore(err)
+	}
+	if target == nil || !target.Ignored || !target.Processed {
+		return nil, unavailable(errors.New("missing ignored observation outcome"))
+	}
+	return target, nil
 }

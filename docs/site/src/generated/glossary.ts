@@ -48,7 +48,7 @@ export const glossaryTerms = [
     "id": "record-retirement",
     "term": "Record Retirement",
     "section": "Installation",
-    "definition": "A scheduled irreversible removal of one Submission's work or integrity category after its retention deadline and positive grace period. Once committed, permanent retirement markers prevent restoration through ordinary reads or retries; its minimal receipt follows audit-retention rules.",
+    "definition": "A scheduled irreversible removal of one Submission's work, integrity, ordinary Browser Activity, or native security operational category after its retention deadline and positive grace period. Once committed, permanent retirement markers prevent restoration through ordinary reads or retries; its minimal receipt follows audit-retention rules.",
     "avoid": "Archive, immediate physical erasure, account deletion"
   },
   {
