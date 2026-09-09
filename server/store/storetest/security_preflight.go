@@ -203,11 +203,13 @@ func TestSecurityPreflightStore(t *testing.T, ss store.Store, probes ...Security
 // TestSecureConnectStore exercises real named aggregate transactions. The
 // synthetic release certifies only this test's mandatory baseline adapters.
 type SecureConnectProbe struct {
-	AgeReport    func(string) func()
-	ExpireLease  func(model.AttemptParticipationID)
-	FillMetadata func(model.ExamAttemptID)
-	Totals       func(model.ExamAttemptID) (int64, int64)
-	Consumed     func(string) bool
+	CorruptReport   func(string) func()
+	CorruptPrepared func(string, string) func()
+	AgeReport       func(string) func()
+	ExpireLease     func(model.AttemptParticipationID)
+	FillMetadata    func(model.ExamAttemptID)
+	Totals          func(model.ExamAttemptID) (int64, int64)
+	Consumed        func(string) bool
 }
 
 func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnectProbe) {
@@ -224,6 +226,16 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, "secure-prepare", "secure-prepare"))
 	requireNoError(t, err)
 	report := &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: syntheticPreflightReport(prepared, access.DesktopBuild.NativeAgreement), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	if len(probes) > 0 && probes[0].CorruptPrepared != nil {
+		for _, field := range []string{"challenge", "categories", "sources", "requirements"} {
+			restore := probes[0].CorruptPrepared(prepare.PreflightID, field)
+			_, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "secure-report", "secure-report"))
+			restore()
+			if !errors.Is(err, store.ErrInvalidState) {
+				t.Fatalf("corrupt prepared %s became client refusal: %v", field, err)
+			}
+		}
+	}
 	accepted, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, report, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "secure-report", "secure-report"))
 	requireNoError(t, err)
 	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: prepare.PreflightID, ReportDigest: model.SHA256Fingerprint([]byte("wrong report"))}
@@ -251,6 +263,20 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 	input.Security.ReportDigest = accepted.ReportDigest
 	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
 	command := examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "secure-connect", "secure-connect")
+	if len(probes) > 0 && probes[0].CorruptReport != nil {
+		restore := probes[0].CorruptReport(prepare.PreflightID)
+		_, corruptErr := ss.ExamAttempt().Connect(ctx, input, command)
+		restore()
+		if !errors.Is(corruptErr, store.ErrInvalidState) {
+			t.Errorf("stored report corruption became client refusal: %v", corruptErr)
+		}
+		if probes[0].Consumed(prepare.PreflightID) {
+			t.Fatal("corrupt report consumed preflight")
+		}
+		if _, err := ss.ExamAttempt().Get(ctx, fixture.examID, input.AttemptID); !store.IsNotFound(err) {
+			t.Fatalf("corrupt report allocated Attempt: %v", err)
+		}
+	}
 	connected, err := ss.ExamAttempt().Connect(ctx, input, command)
 	requireNoError(t, err)
 	receipt := connected.Security
@@ -478,6 +504,7 @@ func testProcessedSecurityControl(t *testing.T, ctx context.Context, ss store.St
 		t.Fatalf("greater healthy control failed recovery: %#v", recovered)
 	}
 	reset := model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewId(), SourceID: control.Sources[0].SourceID, PreviousSourceInstanceID: control.Sources[0].SourceInstanceID, PreviousFinalSequence: control.Sources[0].Sequence, NewSourceInstanceID: fault.Sources[0].SourceInstanceID, Reason: "restart", OccurredAt: time.Now().UTC().Truncate(time.Millisecond)}
+	reset = nativeResetWithLongTimestamp(t, reset, 40000)
 	control.ControlSequence = 13
 	control.Sources = fault.Sources
 	control.SourceResets = []model.NativeSourceReset{reset}

@@ -127,7 +127,7 @@ runtime behavior, not a new failure mode.
 configuration under `retention_policy.view`; Personal Access Tokens are
 forbidden. `PUT` requires a strong recent system-administrator Session,
 `retention_policy.manage`, `Idempotency-Key`, and the editor's
-`expected_revision`. All five day-count settings are required non-null
+`expected_revision`. All seven day-count settings are required non-null
 integers. Export retention accepts zero when unconfigured or 1–7 days; the other
 settings accept zero through 36,500. Zero means no configured expiry or grace
 period, never immediate deletion; initial settings are all zero.
@@ -1269,7 +1269,11 @@ The open response assigns an opaque `terminal_id`, required on every subsequent
 input, resize, close, output, and closed frame. Frames and callbacks from a
 replaced PTY cannot affect its successor. Clients send bounded base64
 `exam_attempt.terminal.input`, `exam_attempt.terminal.resize`, and
-`exam_attempt.terminal.close` actions. The server emits bounded base64
+`exam_attempt.terminal.close` actions. An input or resize denied by a temporary
+execution gate returns `exam.attempt.terminal_unavailable` without a closed frame
+or a new terminal identity; the same PTY can resume after current authority allows
+interaction. Actual terminal failures still close the original handle.
+The server emits bounded base64
 `exam_attempt.terminal.output` and a terminal `exam_attempt.terminal.closed`
 event. PTY events are deliberately excluded from replay history and terminal
 bytes, credentials, host identities, and paths are never logged or audited.

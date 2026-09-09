@@ -54,9 +54,11 @@ func (s *sqlExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, inpu
 			if version != 1 {
 				return nil, preflightConflict("preflight_superseded")
 			}
-			if err := decodeCommandOutcome(raw, &value); err != nil {
+			decoded, err := decodePreparedSecurityPreflight(raw, input.Access.DesktopBuild.NativeAgreement)
+			if err != nil {
 				return nil, err
 			}
+			value = decoded
 			return &value, nil
 		},
 		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.SecurityPreflightPrepared, original string) error {
@@ -206,6 +208,17 @@ func (s *sqlExamAttemptStore) prepareSecurityPreflight(ctx context.Context, tx *
 	return prepared, nil
 }
 
+func decodePreparedSecurityPreflight(raw []byte, agreement *model.DesktopNativeAgreement) (store.SecurityPreflightPrepared, error) {
+	var prepared store.SecurityPreflightPrepared
+	if err := json.Unmarshal(raw, &prepared); err != nil {
+		return prepared, invalidPersistedState("security_preflight", "prepared", err)
+	}
+	if prepared.Challenge.Validate() != nil || !prepared.ServerTime.Equal(prepared.Challenge.IssuedAt) || prepared.Resolved.Validate(agreement, prepared.ServerTime) != nil || prepared.BrowserActivityDisclosure.Validate() != nil || (prepared.FrozenAttemptConfiguration != nil && prepared.FrozenAttemptConfiguration.Validate() != nil) {
+		return prepared, invalidPersistedState("security_preflight", "prepared", model.ErrSecurityPreflightInvalid)
+	}
+	return prepared, nil
+}
+
 type securityPreflightRow struct {
 	PreflightID    string         `db:"preflight_id"`
 	CandidateID    string         `db:"candidate_user_id"`
@@ -267,9 +280,12 @@ func (s *sqlExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input
 			if row.RevisionID != guard.RevisionID {
 				return nil, preflightConflict("policy_changed")
 			}
-			var prepared store.SecurityPreflightPrepared
-			if err := json.Unmarshal(row.Prepared, &prepared); err != nil {
-				return nil, invalidPersistedState("security_preflight", "prepared", err)
+			prepared, err := decodePreparedSecurityPreflight(row.Prepared, input.Access.DesktopBuild.NativeAgreement)
+			if err != nil {
+				return nil, err
+			}
+			if prepared.Challenge.PreflightID != row.PreflightID || !prepared.Challenge.ExpiresAt.Equal(row.ExpiresAt) {
+				return nil, invalidPersistedState("security_preflight", "prepared", model.ErrSecurityPreflightInvalid)
 			}
 			result, err := model.EvaluateSecurityPreflight(prepared.Challenge, prepared.Resolved, input.Access.DesktopBuild.NativeAgreement, input.Report, row.DatabaseNow)
 			if err != nil {
@@ -298,6 +314,9 @@ func (s *sqlExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input
 			}
 			if err := decodeCommandOutcome(raw, &value); err != nil {
 				return nil, err
+			}
+			if err := value.Validate(); err != nil {
+				return nil, invalidPersistedState("security_preflight", "result", err)
 			}
 			return &value, nil
 		},

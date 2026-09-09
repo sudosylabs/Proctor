@@ -38,12 +38,12 @@ func retireSubmissionBrowserActivity(ctx context.Context, tx *sqlxTxWrapper, sub
 		return err
 	}
 	if int64(len(rows)) > maximumAttemptBrowserSources {
-		return model.ErrDeliveryInvalid
+		return invalidPersistedState("delivery_retirement", "value", model.ErrDeliveryInvalid)
 	}
 	for _, row := range rows {
 		var closure model.DeliveryClosure
-		if json.Unmarshal(row.Closure, &closure) != nil || closure.ClosedAt == nil {
-			return model.ErrDeliveryInvalid
+		if json.Unmarshal(row.Closure, &closure) != nil || closure.Validate(false) != nil || closure.ClosedAt == nil {
+			return invalidPersistedState("delivery_retirement", "value", model.ErrDeliveryInvalid)
 		}
 		if closure.UploadExpiresAt == nil || closure.UploadExpiresAt.After(at) {
 			expiry := at.UTC().Truncate(time.Millisecond)

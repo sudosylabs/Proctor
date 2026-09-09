@@ -179,7 +179,9 @@ func (c *connectionRuntime) handleExamAttemptTerminalInput(_ context.Context, re
 	for len(data) > 0 {
 		written, writeErr := terminal.Write(data)
 		if writeErr != nil || written < 1 || written > len(data) {
-			c.closeTerminalMatching(terminal, currentID, "unavailable")
+			if !app.IsCandidateExamTerminalInteractionBlocked(writeErr) {
+				c.closeTerminalMatching(terminal, currentID, "unavailable")
+			}
 			c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", websocketErrorTerminalInputFailed)
 			return
 		}
@@ -204,7 +206,9 @@ func (c *connectionRuntime) handleExamAttemptTerminalResize(ctx context.Context,
 		return
 	}
 	if err := terminal.Resize(ctx, app.CandidateExamTerminalWindow{Cols: decoded.Cols, Rows: decoded.Rows}); err != nil {
-		c.closeTerminalMatching(terminal, currentID, "unavailable")
+		if !app.IsCandidateExamTerminalInteractionBlocked(err) {
+			c.closeTerminalMatching(terminal, currentID, "unavailable")
+		}
 		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", websocketErrorTerminalResizeFailed)
 		return
 	}

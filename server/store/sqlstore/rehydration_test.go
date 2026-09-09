@@ -32,6 +32,9 @@ func TestPersistedStateErrorsRemainInternalAndSafe(t *testing.T) {
 	if strings.Contains(err.Error(), "raw-invalid-id") {
 		t.Fatalf("safe error contains raw value: %v", err)
 	}
+	if !errors.Is(err, store.ErrInvalidState) {
+		t.Fatalf("persisted state lost its internal classification: %v", err)
+	}
 	if errors.Unwrap(err) == nil {
 		t.Fatal("persisted-state error discarded its cause")
 	}

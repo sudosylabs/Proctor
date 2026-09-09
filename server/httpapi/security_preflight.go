@@ -56,6 +56,16 @@ func (r *prepareSecurityPreflightRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type securityPolicyRecoveryResponse struct {
+	CurrentSources             []model.NativeSourceCoverage `json:"current_sources"`
+	CurrentCoverage            []model.NativeCoverageClaim  `json:"current_coverage"`
+	SourceResetReceipts        []model.SourceResetReceipt   `json:"source_reset_receipts"`
+	SecurityCoverage           model.SecurityCoverageResult `json:"security_coverage"`
+	ServerTime                 time.Time                    `json:"server_time"`
+	Security                   model.AdmittedSecurity       `json:"security"`
+	FrozenAttemptConfiguration model.AttemptConfiguration   `json:"frozen_attempt_configuration"`
+}
+
 type securityPolicyResponse struct {
 	ServerTime                 time.Time                         `json:"server_time"`
 	Policy                     model.EffectiveExamSecurityPolicy `json:"policy"`
@@ -133,12 +143,19 @@ func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (
 	if err != nil {
 		return operationResult{}, invalidRequestError("attempt_id", err)
 	}
-	result, err := m.application.RecoverExamSecurityPolicy(request.context, request.invocation(), attemptID)
+	recovered, err := m.application.RecoverExamSecurityPolicy(request.context, request.invocation(), attemptID)
 	if err != nil {
 		return operationResult{}, err
 	}
+	if recovered == nil {
+		return operationResult{}, application.NewError("exam.attempt.unavailable")
+	}
+	result := securityPolicyRecoveryResponse{
+		CurrentSources: recovered.CurrentSources, CurrentCoverage: recovered.CurrentCoverage, SourceResetReceipts: recovered.SourceResetReceipts,
+		SecurityCoverage: recovered.SecurityCoverage, ServerTime: recovered.ServerTime, Security: recovered.Security, FrozenAttemptConfiguration: recovered.FrozenAttemptConfiguration,
+	}
 	encoded, err := json.Marshal(result)
-	if result == nil || err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {
+	if err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {
 		return operationResult{}, application.NewError("exam.attempt.unavailable")
 	}
 	return jsonResult(http.StatusOK, result), nil

@@ -85,3 +85,15 @@ func TestExecutionGrantValidationFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestIgnoredExecutionPaths(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		"": false, ".proctor/state": true, "src/.git/index": true, "web/node_modules/pkg": true,
+		"target/debug/app": true, "pkg/__pycache__/x": true, "src/targeted.go": false, "src/main.go": false,
+	} {
+		if got := IsIgnoredExecutionPath(path); got != want {
+			t.Fatalf("IsIgnoredExecutionPath(%q) = %t, want %t", path, got, want)
+		}
+	}
+}

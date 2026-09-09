@@ -9,7 +9,9 @@ package storetest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,7 +52,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	var connected *store.ExamAttemptConnectResult
 	var access store.CandidateAttemptAccess
 	if browserFirst {
-		policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: "/", HostMatch: model.BrowserPolicyHostExact, AllowRedirects: false, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationIntegrityEvidence}})
+		policy, err := model.NewBrowserPolicy(true, strings.Repeat("r", 64), []model.BrowserPolicyRule{{RuleID: strings.Repeat("r", 64), Origin: "https://example.edu", PathPrefix: "/", HostMatch: model.BrowserPolicyHostExact, AllowRedirects: false, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationIntegrityEvidence}})
 		requireNoError(t, err)
 		f = newExamAttemptFixtureWithBrowserPolicy(t, ctx, ss, &policy)
 		admitted, focus := connectFocusLossFixture(t, ctx, ss, f, "browser-retirement")
@@ -74,7 +76,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	appendInput := &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		SourceSessionID: current, Events: []model.BrowserActivityEvent{browserActivityEvent(1, model.BrowserActivityOpened, f.revisionID), browserActivityEvent(2, model.BrowserActivityClosed, f.revisionID)}}
 	if browserFirst {
-		rule, reason, prior := "start", model.BrowserBlockRedirectNotAllowed, int64(1)
+		rule, reason, prior := strings.Repeat("r", 64), model.BrowserBlockRedirectNotAllowed, int64(1)
 		nav := browserActivityEvent(1, model.BrowserActivityTopNavigation, f.revisionID)
 		nav.MatchedRuleID = &rule
 		nav.Location = &model.BrowserLocation{Scheme: "https", Host: "example.edu", Path: "/"}
@@ -83,10 +85,22 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 		blocked.BlockReason = &reason
 		blocked.RedirectFromSequence = &prior
 		blocked.Location = &model.BrowserLocation{Scheme: "https", Host: "outside.example", Path: "/"}
-		appendInput.Events = []model.BrowserActivityEvent{nav, blocked}
+		_, err := appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: current, Events: []model.BrowserActivityEvent{nav}})
+		requireNoError(t, err)
+		sourceStatus, err := ss.ExamAttempt().BrowserSourceStatus(ctx, store.BrowserDeliveryAccess{Access: access, SourceSessionID: current})
+		requireNoError(t, err)
+		blocked = maximumBrowserEvidenceEvent(t, blocked, current, connected.Participation.ID, connected.Participation.Generation, sourceStatus.PolicyDigest)
+		appendInput.Events = []model.BrowserActivityEvent{blocked}
 	}
-	_, err = appendBrowserActivityFixture(t, ctx, ss, appendInput)
+	firstAck, err := appendBrowserActivityFixture(t, ctx, ss, appendInput)
 	requireNoError(t, err)
+	if browserFirst {
+		replay, err := appendBrowserActivityFixture(t, ctx, ss, appendInput)
+		requireNoError(t, err)
+		if len(firstAck.Receipts) != 1 || len(replay.Receipts) != 1 || replay.Receipts[0] != firstAck.Receipts[0] {
+			t.Fatal("maximum Browser event retry changed receipt")
+		}
+	}
 	nativeInput := appendRetirementNativeCondition(t, ctx, ss, f, connected, access)
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
@@ -125,6 +139,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	drafted, err := ss.ExamIntegrityReview().UpdateDraft(ctx, draft, draftKey)
 	requireNoError(t, err)
 	var browserFlag model.IntegrityFlagID
+	var browserDigest string
 	if browserFirst {
 		flags, err := ss.ExamIntegrityReview().ListFlags(ctx, store.ExamIntegrityFlagListOptions{SubmissionID: subID, Limit: 100})
 		requireNoError(t, err)
@@ -132,6 +147,17 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 			t.Fatal("fixture lacks independent Browser evidence")
 		}
 		browserFlag = flags.Items[0].Flag.ID
+		initialEvidence, err := ss.ExamIntegrityReview().ListEvidence(ctx, store.ExamIntegrityEvidenceListOptions{SubmissionID: subID, FlagID: browserFlag, Limit: 100})
+		requireNoError(t, err)
+		if len(initialEvidence.Items) != 1 || initialEvidence.Items[0].Browser == nil {
+			t.Fatal("missing evidence fixture")
+		}
+		browserDigest = initialEvidence.Items[0].Browser.PolicyDigest
+		evidenceRaw, err := json.Marshal(initialEvidence.Items[0].Browser)
+		requireNoError(t, err)
+		if len(evidenceRaw) <= model.BrowserActivityAppendMaximumBytes {
+			t.Fatal("maximum evidence fixture did not exceed request bound")
+		}
 		decided, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: subID, ReviewID: drafted.Review.ID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: browserFlag, ActorUserID: f.manager.ID, ExpectedReviewRevision: drafted.Review.Revision, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retain the minimized Review copy independently", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "retirement-browser-decision", "retirement-browser-decision"))
 		requireNoError(t, err)
 		drafted.Review = decided.Review
@@ -222,7 +248,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 			probe.InspectBrowser(t, ctx, subID)
 			evidence, err := ss.ExamIntegrityReview().ListEvidence(ctx, store.ExamIntegrityEvidenceListOptions{SubmissionID: subID, FlagID: browserFlag, Limit: 100})
 			requireNoError(t, err)
-			if len(evidence.Items) != 1 || evidence.Items[0].Browser == nil || evidence.Items[0].Validate() != nil {
+			if len(evidence.Items) != 1 || evidence.Items[0].Browser == nil || evidence.Items[0].Validate() != nil || evidence.Items[0].Browser.PolicyDigest != browserDigest {
 				t.Fatal("Browser retirement erased the Review copy")
 			}
 		}

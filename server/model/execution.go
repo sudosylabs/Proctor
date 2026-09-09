@@ -181,3 +181,16 @@ func validExecutionImage(value string) bool {
 func (grant *ExecutionGrant) Fence() ExecutionFence {
 	return ExecutionFence{GrantID: grant.ID, EnvironmentEpoch: grant.EnvironmentEpoch, ControlRevision: grant.ControlRevision}
 }
+
+// IsIgnoredExecutionPath reports whether a canonical guest path belongs to a
+// tree excluded from authoritative Attempt Workspace ingestion. The policy is
+// shared by legacy harvesting and semantic observation acceptance.
+func IsIgnoredExecutionPath(path string) bool {
+	for _, segment := range strings.Split(path, "/") {
+		switch segment {
+		case ".proctor", ".git", "node_modules", "target", "__pycache__":
+			return true
+		}
+	}
+	return false
+}

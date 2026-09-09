@@ -90,7 +90,7 @@ func deliveryBudgetSnapshot(ctx context.Context, tx *sqlxTxWrapper, access store
 			item.usage.StopReason = &reason
 		}
 	}
-	if err := value.Validate(); err != nil {
+	if err := validatePersistedModel("delivery_budget", value); err != nil {
 		return nil, err
 	}
 	raw, err := canonicalPreflightValue(value)
@@ -98,7 +98,7 @@ func deliveryBudgetSnapshot(ctx context.Context, tx *sqlxTxWrapper, access store
 		return nil, err
 	}
 	if len(raw) > 8192 {
-		return nil, model.ErrDeliveryInvalid
+		return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }
@@ -159,7 +159,7 @@ func (s *sqlExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 				return nil, err
 			}
 			if len(ids) > 49 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
 			}
 			for _, id := range ids {
 				project := browserSourceStatus
@@ -183,7 +183,7 @@ func (s *sqlExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 			return nil, err
 		}
 		if len(raw) > 1<<20 {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
 		}
 		return value, nil
 	}
@@ -225,7 +225,7 @@ func (s *sqlExamAttemptStore) StopDeliveryDetails(ctx context.Context, input *st
 		}, decode: func(version int, raw []byte) (*model.StopDeliveryDetailsResult, error) {
 			var v model.StopDeliveryDetailsResult
 			if version != 1 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("delivery_budget", "value", model.ErrDeliveryInvalid)
 			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err

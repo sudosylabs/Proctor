@@ -42,7 +42,7 @@ func (s *sqlExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit i
 	for _, r := range rows {
 		v := store.DeliveryExpiryDue{Family: r.Family, SourceID: r.Source, AttemptID: model.ExamAttemptID(r.Attempt), ParticipationID: model.AttemptParticipationID(r.Part), SittingID: model.ExamSittingID(r.Sitting), ClassID: model.ClassID(r.Class)}
 		if !v.Valid() {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("delivery_expiry", "due", model.ErrDeliveryInvalid)
 		}
 		result = append(result, v)
 	}
@@ -121,12 +121,15 @@ func expireDeliveryOwner(ctx context.Context, tx *sqlxTxWrapper, d store.Deliver
 			}
 		} else {
 			var closure model.DeliveryClosure
-			if json.Unmarshal(row.Raw, &closure) != nil {
-				return false, model.ErrDeliveryInvalid
+			if err := json.Unmarshal(row.Raw, &closure); err != nil {
+				return false, invalidPersistedState("delivery_expiry", "closure", err)
+			}
+			if closure.Validate(true) != nil || closure.ClosedAt == nil || closure.UploadExpiresAt == nil || !closure.UploadExpiresAt.Equal(row.Expires.Time) {
+				return false, invalidPersistedState("delivery_expiry", "closure", model.ErrDeliveryInvalid)
 			}
 			closure, err = closure.Expire(true, now)
 			if err != nil {
-				return false, err
+				return false, invalidPersistedState("delivery_expiry", "closure", err)
 			}
 			raw, err := canonicalPreflightValue(closure)
 			if err != nil {

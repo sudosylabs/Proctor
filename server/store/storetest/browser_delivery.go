@@ -241,3 +241,46 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 		t.Fatal("pending backpressure prevented ordinary delivery after repair")
 	}
 }
+
+// TestBrowserRetainedRepairReservation exercises durable byte-limit boundaries.
+// prime sets only fixture counters; the actual admission and repair use the Store.
+func TestBrowserRetainedRepairReservation(t *testing.T, ss store.Store, prime func(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64, int64) error) {
+	for index, scope := range []string{"participation", "attempt"} {
+		t.Run(scope, func(t *testing.T) {
+			ctx := t.Context()
+			f, connected, access := newBrowserActivityFixture(t, ctx, ss, "browser-retained-repair-"+scope)
+			source := browserSourceID(14001 + index)
+			_, err := startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
+			requireNoError(t, err)
+			selector := store.DeliveryBudgetAccess{Access: access, ParticipationID: connected.Participation.ID}
+			budget, err := ss.ExamAttempt().DeliveryBudget(ctx, selector)
+			requireNoError(t, err)
+			var partBytes, attemptBytes int64
+			if scope == "participation" {
+				partBytes = budget.Browser.Participation.ByteLimit - model.DeliveryRepairReservationBytes
+				attemptBytes = partBytes
+			} else {
+				attemptBytes = budget.Browser.Attempt.ByteLimit - model.DeliveryRepairReservationBytes
+			}
+			requireNoError(t, prime(ctx, connected.Attempt.ID, connected.Participation.ID, partBytes, attemptBytes))
+			appendEvent := func(sequence int64) (*model.BrowserActivityAcknowledgement, error) {
+				return appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(sequence, model.BrowserActivityOpened, f.revisionID)}})
+			}
+			_, err = appendEvent(2)
+			var conflict *store.ErrConflict
+			if !errors.As(err, &conflict) || conflict.Constraint != "pending_capacity" {
+				t.Fatalf("first gap consumed retained repair reserve: %v", err)
+			}
+			after, err := ss.ExamAttempt().DeliveryBudget(ctx, selector)
+			requireNoError(t, err)
+			if after.Browser.PendingBytes != 0 || after.Browser.Participation.RetainedBytes != partBytes || after.Browser.Attempt.RetainedBytes != attemptBytes || after.Browser.Participation.SummaryOnly || after.Browser.Attempt.SummaryOnly {
+				t.Fatal("gap refusal charged bytes or permanently stopped details")
+			}
+			repaired, err := appendEvent(1)
+			requireNoError(t, err)
+			if repaired.HighestContiguous != 1 || repaired.SettledThrough != 1 {
+				t.Fatal("in-order repair cannot use reserved retained bytes")
+			}
+		})
+	}
+}

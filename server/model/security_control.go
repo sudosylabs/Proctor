@@ -23,6 +23,8 @@ var (
 )
 
 type NativeSourceReset struct {
+	occurredAtSpelling string
+
 	Kind                     string         `json:"kind"`
 	ResetID                  string         `json:"reset_id"`
 	SourceID                 NativeSourceID `json:"source_id"`
@@ -65,7 +67,7 @@ type SecurityCoverageRenewal struct {
 }
 
 func (c SecurityCoverageRenewal) Validate() error {
-	if c.ControlSequence <= 0 || !securitySafeInt(c.ControlSequence) || !IsValidSHA256Fingerprint(c.PolicyDigest) || !IsValidAgreementID(c.SecuritySessionID) || !IsValidAgreementID(c.StreamID) || !slices.Contains([]string{"checking", "compliant", "degraded", "contained", "failed"}, c.Posture) || validateNativeCoverageSnapshot(c.Sources, c.Coverage) != nil || c.SourceResets == nil || len(c.SourceResets) > len(NativeSources()) || c.DeliveryWatermarks == nil || len(c.DeliveryWatermarks) > 50 {
+	if c.ControlSequence <= 0 || !securitySafeInt(c.ControlSequence) || !IsValidSHA256Fingerprint(c.PolicyDigest) || !IsValidAgreementID(c.SecuritySessionID) || !IsValidAgreementID(c.StreamID) || !slices.Contains([]string{"checking", "compliant", "degraded", "contained", "failed"}, c.Posture) || ValidateNativeCoverageSnapshot(c.Sources, c.Coverage) != nil || c.SourceResets == nil || len(c.SourceResets) > len(NativeSources()) || c.DeliveryWatermarks == nil || len(c.DeliveryWatermarks) > 50 {
 		return ErrSecurityControlInvalid
 	}
 	previous := -1
@@ -382,5 +384,35 @@ func (r SecurityCoverageResult) Validate() error {
 			}
 		}
 	}
+	return nil
+}
+
+func (v NativeSourceReset) MarshalJSON() ([]byte, error) {
+	type wire NativeSourceReset
+	return json.Marshal(struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: (*wire)(&v), OccurredAt: securityJSONInstant{Time: v.OccurredAt, spelling: v.occurredAtSpelling}})
+}
+func (v *NativeSourceReset) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrSecurityControlInvalid
+	}
+	type wire NativeSourceReset
+	var decoded wire
+	value := struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, 256*1024) != nil {
+		return ErrSecurityControlInvalid
+	}
+	candidate := NativeSourceReset(decoded)
+	candidate.OccurredAt = value.OccurredAt.Time
+	candidate.occurredAtSpelling = value.OccurredAt.spelling
+	if candidate.Validate() != nil {
+		return ErrSecurityControlInvalid
+	}
+	*v = candidate
 	return nil
 }

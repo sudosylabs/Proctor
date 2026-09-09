@@ -569,16 +569,17 @@ provenance but never the private reason.
 
 ## Policies, integrity, and review
 
-Exam Policy Set is a concrete typed model persisted as one bounded, versioned,
-strictly decoded JSONB document. Proctor ships reviewed defaults that are
+Exam Policy Set is a concrete typed model persisted as one bounded, strictly
+decoded JSONB document. Proctor ships reviewed defaults that are
 copied into each new Draft; there is no institution-owned default-policy model
 or live inheritance. A server upgrade changes only later Draft defaults, never
 existing Drafts or Revisions. Teachers customize only supported typed Draft
 fields through focused revision-fenced commands, not arbitrary JSON, policy
 kinds, expressions, plugins, or executable code.
 
-The document has one integer `schema_version`, required `connection_loss` and
-`focus_loss` objects, and a 64-KiB encoded limit. Unknown versions, fields,
+The document requires `connection_loss`, `focus_loss`, and `native` objects,
+with a 64-KiB encoded limit. It has no wire `schema_version` member; the model
+keeps its current schema identity internally. Unknown fields,
 duplicates, missing fields, invalid combinations, trailing input, and oversized
 documents fail closed. Publication decodes and validates the complete typed
 value, serializes it canonically, computes its SHA-256 digest, and freezes both
@@ -590,25 +591,15 @@ decimal safe integers. Validate original bytes before typed decoding can erase
 duplicates, malformed Unicode, or fractional/exponent integer spelling.
 The current pre-release schema changes in place with coordinated clients and
 development fixtures, without old-shape readers or compatibility branches.
-An unknown version denies admission rather than selecting current defaults.
+Unsupported policy shapes deny admission rather than selecting current defaults.
 
-The initial persisted shape and shipped defaults are:
-
-~~~json
-{
-  "schema_version": 1,
-  "connection_loss": {
-    "outcome": "flag_and_suspend"
-  },
-  "focus_loss": {
-    "enabled": true,
-    "minimum_duration_milliseconds": 2000,
-    "incident_count": 3,
-    "window_milliseconds": 300000,
-    "outcome": "flag_and_warn"
-  }
-}
-~~~
+Shipped defaults enable Focus Loss with a two-second minimum, three incidents
+within five minutes, and `flag_and_warn`. Connection Loss uses
+`flag_and_suspend`. The required native document pins the reviewed registry and
+`desktop_candidate` baseline, with every optional family explicitly disabled
+and its required disabled fields populated. The complete wire shape is owned by
+[Exam Policy Set in OpenAPI](../../../../server/openapi/fragments/examinations/shared.yaml);
+the model's default-policy round-trip tests verify the shipped document.
 
 Connection Loss is server-observed from one confirmed lease expiry and its
 only valid initial outcome is `FlagAndSuspend`; it has no teacher-editable
@@ -709,6 +700,13 @@ Pending takes precedence while any source can still settle. Permanent gaps,
 unknown tails and unretained summaries preserve incomplete status. No sources is
 `not_applicable`, including when the final policy is disabled. Late accepted
 records advance the separate inventory without changing the sealed manifest.
+Every Browser detail-exhaustion transition settles all sources in its quota
+scope in the same transaction: terminalize missing positions, interpret buffered
+events, release pending bytes, refresh Submission settlement and invalidate changed
+Review inventory. A refused append or declaration cannot defer this to a later read.
+Minimized Browser Integrity Evidence owns both its frozen policy Revision and
+SHA-256 policy digest; Review and export retain that provenance after ordinary
+Browser Activity is retired.
 Each page through the exact Attempt route requires current exact Exam
 Manager membership plus the dedicated Browser Activity
 view permission. Administrator and general export permissions provide no

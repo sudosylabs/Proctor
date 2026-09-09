@@ -58,13 +58,13 @@ type SecurityPreflightReport struct {
 // SecurityPolicyRecovery returns privileged admission provenance only to the
 // active owner's registered Session. It does not grant or renew a lease.
 type SecurityPolicyRecovery struct {
-	CurrentSources             []model.NativeSourceCoverage `json:"current_sources"`
-	CurrentCoverage            []model.NativeCoverageClaim  `json:"current_coverage"`
-	SourceResetReceipts        []model.SourceResetReceipt   `json:"source_reset_receipts"`
-	SecurityCoverage           model.SecurityCoverageResult `json:"security_coverage"`
-	ServerTime                 time.Time                    `json:"server_time"`
-	Security                   model.AdmittedSecurity       `json:"security"`
-	FrozenAttemptConfiguration model.AttemptConfiguration   `json:"frozen_attempt_configuration"`
+	CurrentSources             []model.NativeSourceCoverage
+	CurrentCoverage            []model.NativeCoverageClaim
+	SourceResetReceipts        []model.SourceResetReceipt
+	SecurityCoverage           model.SecurityCoverageResult
+	ServerTime                 time.Time
+	Security                   model.AdmittedSecurity
+	FrozenAttemptConfiguration model.AttemptConfiguration
 }
 
 type ExamAttemptSecurityCoverageUpdate struct {

@@ -12,6 +12,7 @@ package sqlstore
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1749,6 +1750,46 @@ func TestSecureConnectStore(t *testing.T) {
 		}
 	}
 	storetest.TestSecureConnectStore(t, sqlStore, storetest.SecureConnectProbe{
+		CorruptPrepared: func(id, field string) func() {
+			var original []byte
+			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT prepared_canonical FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+			var prepared store.SecurityPreflightPrepared
+			if err := json.Unmarshal(original, &prepared); err != nil {
+				t.Fatal(err)
+			}
+			switch field {
+			case "challenge":
+				prepared.Challenge.Challenge = "invalid"
+			case "categories":
+				prepared.Resolved.Categories = []model.NativeSourceCategory{"unknown"}
+			case "sources":
+				prepared.Resolved.Sources[0] = "unknown"
+			case "requirements":
+				prepared.Resolved.Requirements[0].RequiredClaim = "unknown"
+			default:
+				t.Fatal("unknown prepared field")
+			}
+			raw, err := json.Marshal(prepared)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mustExec(`UPDATE exam_security_preflights SET prepared_canonical=? WHERE preflight_id=?`, raw, id)
+			return func() {
+				mustExec(`UPDATE exam_security_preflights SET prepared_canonical=? WHERE preflight_id=?`, original, id)
+			}
+		},
+		CorruptReport: func(id string) func() {
+			var original []byte
+			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT report_canonical FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+			mustExec(`UPDATE exam_security_preflights SET report_canonical=? WHERE preflight_id=?`, []byte(`{}`), id)
+			return func() {
+				mustExec(`UPDATE exam_security_preflights SET report_canonical=? WHERE preflight_id=?`, original, id)
+			}
+		},
 		AgeReport: func(id string) func() {
 			var original time.Time
 			if err := sqlStore.GetMaster().Get(context.Background(), &original, `SELECT reported_at FROM exam_security_preflights WHERE preflight_id=?`, id); err != nil {
@@ -1845,4 +1886,10 @@ func TestExecutionProjectionEffectsStore(t *testing.T) {
 
 func TestExecutionObservationStore(t *testing.T) {
 	StoreTest(t, storetest.TestExecutionObservationStore)
+}
+
+func TestNativeMaximumRecordStore(t *testing.T) {
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestNativeMaximumRecordStore(t, persistence)
 }

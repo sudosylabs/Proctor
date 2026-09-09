@@ -1147,14 +1147,6 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 
 func TestExamAttemptTerminalIgnoresReservedSegmentsFromEitherEventPath(t *testing.T) {
 	t.Parallel()
-	for path, want := range map[string]bool{
-		"": false, ".proctor/state": true, "src/.git/index": true, "web/node_modules/pkg": true,
-		"target/debug/app": true, "pkg/__pycache__/x": true, "src/targeted.go": false, "src/main.go": false,
-	} {
-		if got := ignoredExecutionPath(path); got != want {
-			t.Fatalf("ignoredExecutionPath(%q) = %t, want %t", path, got, want)
-		}
-	}
 	observation := newTerminalScriptedObservation(
 		terminalObservationStep{event: appexecution.Event{Operation: appexecution.OperationCreate, Path: "src/.git/index"}},
 		terminalObservationStep{event: appexecution.Event{Operation: appexecution.OperationMove, Path: "target/safe", From: "target/cache"}},
@@ -1329,4 +1321,51 @@ func TestTerminalSaveLagKeepsExistingPTYUsable(t *testing.T) {
 
 func (fake *terminalWorkspaceExecutionFake) ValidateTerminalInteraction(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) error {
 	return nil
+}
+
+func TestCandidateExamTerminalPausePreservesPTYForRecovery(t *testing.T) {
+	t.Parallel()
+	presentation, command := validTerminalOpenFixture()
+	attempts := &terminalAttemptPortFake{presentation: presentation}
+	native := newTerminalTrackedPTY()
+	execution := &terminalExecutionPortFake{placement: &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}}, observation: &terminalTrackedObservation{}, terminal: native}
+	service, err := newExamAttemptTerminalService(attempts, execution, &terminalAuditPortFake{order: &execution.order})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := service.Open(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	attempts.mu.Lock()
+	attempts.presentation.RuntimeCapabilities.Terminal.State = store.CandidateTerminalTemporarilyUnavailable
+	attempts.mu.Unlock()
+	if count, err := terminal.Write([]byte("pwd\n")); count != 0 || !IsCandidateExamTerminalInteractionBlocked(err) {
+		t.Fatalf("paused write: count=%d err=%v", count, err)
+	}
+	if err := terminal.Resize(t.Context(), CandidateExamTerminalWindow{Cols: 90, Rows: 30}); !IsCandidateExamTerminalInteractionBlocked(err) {
+		t.Fatalf("paused resize: %v", err)
+	}
+	native.mu.Lock()
+	closed := native.closeCalls
+	native.mu.Unlock()
+	if closed != 0 {
+		t.Fatal("pause closed PTY")
+	}
+	attempts.mu.Lock()
+	attempts.presentation = presentation
+	attempts.mu.Unlock()
+	if _, err := terminal.Write([]byte("pwd\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := terminal.Resize(t.Context(), CandidateExamTerminalWindow{Cols: 90, Rows: 30}); err != nil {
+		t.Fatal(err)
+	}
+	execution.mu.Lock()
+	releases := execution.releaseCalls
+	execution.mu.Unlock()
+	if releases != 0 {
+		t.Fatal("pause/recovery released grant")
+	}
 }

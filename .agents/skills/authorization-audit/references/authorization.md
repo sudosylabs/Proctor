@@ -318,9 +318,10 @@ revision, and idempotency; success commits with the policy and retained outcome.
 
 `exam.records.export` and `exam.records.export_override` grant no standalone
 read access. Creation and retrieval also require Submission read; Sitting
-exports require Sitting read, and integrity requires Browser Activity read.
-The latter requires exact Manager membership independently of
-the general export/Submission override. SQL rechecks credentials,
+exports require Sitting read. The `browser_activity` category additionally
+requires Browser Activity read and exact Manager membership independently of
+the general export/Submission override. The `integrity` category uses its
+separately authorized copied evidence and does not grant Browser Activity read. SQL rechecks credentials,
 bindings, Exam Manager/exact-unit membership, nested ownership and requester
 under authoritative locks. Critical creation audit, the exact ID-only retry
 outcome, source protections and build Job commit atomically. Archive bytes,

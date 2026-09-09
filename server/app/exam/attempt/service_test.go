@@ -222,7 +222,7 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		t.Fatalf("access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
 	}
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
-	if strings.Contains(auditCapture, "src") || strings.Contains(auditCapture, credential) ||
+	if len(f.audit.values) != 2 || f.audit.values["exam_attempt_id"] != f.attemptID.String() || f.audit.values["operation"] != string(model.AttemptWorkspaceMutationCreateDirectory) || strings.Contains(auditCapture, credential) ||
 		strings.Contains(auditCapture, model.HashToken(credential)) || strings.Contains(auditCapture, participationID.String()) {
 		t.Fatalf("private mutation material entered audit: %s", auditCapture)
 	}

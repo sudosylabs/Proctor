@@ -10,7 +10,6 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -523,20 +522,18 @@ func (row sittingCandidateStatusRow) item(serverTime time.Time, sittingState mod
 		return store.SittingCandidateStatusItem{}, invalidPersistedState("sitting_candidate_status", "attempt", errors.New("invalid Attempt fields"))
 	}
 	item.NativeSecurity = &model.NativeSecuritySummary{RetainedConditionRecords: row.NativeConditionRecords, Sources: []model.NativeSourceHealthSummary{}}
-	if len(row.NativeCoverage) > 2 {
-		var coverage struct {
-			Sources []model.NativeSourceCoverage `json:"sources"`
-		}
-		if json.Unmarshal(row.NativeCoverage, &coverage) != nil {
-			return item, model.ErrNativeDeliveryInvalid
+	if row.NativeCoverage != nil {
+		coverage, err := decodeNativeCoverageSnapshot(row.NativeCoverage)
+		if err != nil {
+			return item, err
 		}
 		item.NativeSecurity.LiveCoverageAvailable = true
 		for _, source := range coverage.Sources {
 			item.NativeSecurity.Sources = append(item.NativeSecurity.Sources, model.NativeSourceHealthSummary{SourceID: source.SourceID, Health: source.Health, Permission: source.Permission, Complete: source.Complete})
 		}
 	}
-	if item.NativeSecurity.Validate() != nil {
-		return item, model.ErrNativeDeliveryInvalid
+	if err := item.NativeSecurity.Validate(); err != nil {
+		return item, invalidPersistedState("sitting_candidate_status", "native_security", err)
 	}
 	item.Attempt = &store.SittingCandidateStatusAttempt{ID: attemptID, State: attemptState, Revision: row.AttemptRevision.Int64,
 		CreatedAt: model.TimeUTC(row.AttemptCreatedAt.Time), UpdatedAt: model.TimeUTC(row.AttemptUpdatedAt.Time)}

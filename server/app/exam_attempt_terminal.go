@@ -126,7 +126,7 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 	if semantic, ok := observation.(appexecution.PendingSemanticObservation); ok {
 		if err = service.drainSemanticObservations(ctx, invocation, command, placement.GrantID, semantic); err != nil {
 			_ = observation.Close()
-			if !errors.Is(err, appexecution.ErrProjectionPending) {
+			if !errors.Is(err, appexecution.ErrProjectionPending) && !errors.Is(err, appexecution.ErrInteractionBlocked) {
 				service.releasePlacement(ctx, placement)
 			}
 			return nil, service.failAudit(ctx, auditID, executionError(err))
@@ -137,7 +137,7 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 			if refreshErr == nil {
 				refreshErr = appexecution.ErrUnavailable
 			}
-			if !errors.Is(refreshErr, appexecution.ErrProjectionPending) {
+			if !errors.Is(refreshErr, appexecution.ErrProjectionPending) && !errors.Is(refreshErr, appexecution.ErrInteractionBlocked) {
 				service.releasePlacement(ctx, placement)
 			}
 			return nil, service.failAudit(ctx, auditID, executionError(refreshErr))
@@ -481,6 +481,18 @@ func (service *examAttemptTerminalService) synchronizeWorkspace(ctx context.Cont
 		} else {
 			applyErr = service.applyExecutionEvent(ctx, invocation, command, grantID, event)
 		}
+		if errors.Is(applyErr, appexecution.ErrInteractionBlocked) || errors.Is(applyErr, appexecution.ErrProjectionPending) {
+			// Leave the immutable event unacknowledged. After recovery Next returns
+			// the same capture, and SQL resolves any already committed outcome.
+			timer := time.NewTimer(50 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
+		}
 		if err := applyErr; err != nil {
 			if ctx.Err() != nil {
 				return
@@ -502,19 +514,6 @@ func (service *examAttemptTerminalService) failActiveTerminal(ctx context.Contex
 	// wakes the reader and permits the transport to expose another open.
 	service.releaseGrant(ctx, grantID)
 	terminal.completeFailure()
-}
-
-func ignoredExecutionPath(path string) bool {
-	if path == "" {
-		return false
-	}
-	for _, segment := range strings.Split(path, "/") {
-		switch segment {
-		case ".proctor", ".git", "node_modules", "target", "__pycache__":
-			return true
-		}
-	}
-	return false
 }
 
 func executionPathParent(path string) string {
@@ -547,7 +546,7 @@ func executionDeleteHasDirectoryAncestor(path string, byPath map[string]Candidat
 func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Context, invocation Invocation,
 	command OpenCandidateExamTerminalCommand, grantID model.ExecutionGrantID, event appexecution.Event,
 ) error {
-	pathIgnored, fromIgnored := ignoredExecutionPath(event.Path), ignoredExecutionPath(event.From)
+	pathIgnored, fromIgnored := model.IsIgnoredExecutionPath(event.Path), model.IsIgnoredExecutionPath(event.From)
 	if event.Operation == appexecution.OperationMove {
 		if pathIgnored && fromIgnored {
 			return nil
@@ -662,6 +661,10 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 func mapTerminalAttemptError(err error) error {
 	if err == nil {
 		return nil
+	}
+	var conflict *store.ErrConflict
+	if errors.As(err, &conflict) && conflict.Resource == "execution_observation" && conflict.Constraint == "interaction_blocked" {
+		return NewError("exam.attempt.terminal_unavailable").Wrap(errors.Join(appexecution.ErrInteractionBlocked, err))
 	}
 	return examAttemptError(err, true)
 }

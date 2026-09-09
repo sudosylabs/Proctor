@@ -66,6 +66,13 @@ func TestExecutionProjectionEffectsStore(t *testing.T, ss store.Store) {
 	if effect.Request == nil || effect.Receipt != nil {
 		t.Fatal("initial intent was not retained")
 	}
+	renew := executionHealthyRenewal(t, ctx, ss, connect, connected)
+	requireNoError(t, renew())
+	afterRenewal, err := grants.PrepareControl(ctx, grant.ID, control.EnvironmentEpoch, model.NowUTC())
+	requireNoError(t, err)
+	if afterRenewal.Fence() != initial.Fence {
+		t.Fatal("healthy renewal invalidated a retained projection request")
+	}
 	pending, err := grants.PendingProjection(ctx, grant.ID)
 	requireNoError(t, err)
 	if pending.MutationID != initial.MutationID || pending.Fence != initial.Fence || !pending.Initial {

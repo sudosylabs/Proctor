@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// NativeConditionEvidenceMaxBytes includes a full bounded batch record and its server provenance.
+const NativeConditionEvidenceMaxBytes = 256*1024 + 2048
+
 // NativeConditionEvidence preserves a selected occurrence transition without
 // asserting a violation or requiring a Flag. Raw platform identity is excluded.
 type NativeConditionEvidence struct {
@@ -39,7 +42,7 @@ func (v NativeConditionEvidence) Validate() error {
 		return ErrNativeDeliveryInvalid
 	}
 	raw, err := json.Marshal(v)
-	if err != nil || len(raw) > 16*1024 {
+	if err != nil || len(raw) > NativeConditionEvidenceMaxBytes {
 		return ErrNativeDeliveryInvalid
 	}
 	return nil
@@ -66,7 +69,7 @@ func (v NativeConditionInventory) Validate() error {
 	return nil
 }
 func (v NativeConditionInventory) Append(record []byte) (NativeConditionInventory, error) {
-	if v.Validate() != nil || v.Records == DeliveryAttemptRecordLimit || len(record) == 0 || len(record) > 16384 {
+	if v.Validate() != nil || v.Records == DeliveryAttemptRecordLimit || len(record) == 0 || len(record) > NativeConditionEvidenceMaxBytes {
 		return v, ErrNativeDeliveryInvalid
 	}
 	raw := append([]byte("proctor.native-conditions.append.v1\x00"), []byte(v.Digest)...)

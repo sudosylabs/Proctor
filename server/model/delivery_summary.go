@@ -9,10 +9,14 @@ package model
 
 import (
 	"bytes"
+	"encoding/json"
 	"time"
 )
 
 type UnretainedDeliverySummary struct {
+	firstUnretainedAtSpelling string
+	lastUnretainedAtSpelling  string
+
 	SummarySequence       int64      `json:"summary_sequence"`
 	UnretainedRecordCount int64      `json:"unretained_record_count"`
 	CountComplete         bool       `json:"count_complete"`
@@ -31,22 +35,6 @@ func (s UnretainedDeliverySummary) Canonical() ([]byte, error) {
 		return nil, ErrDeliveryInvalid
 	}
 	return encodeCanonicalExamDocument(s)
-}
-func (s *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
-	if s == nil {
-		return ErrDeliveryInvalid
-	}
-	type wire UnretainedDeliverySummary
-	var value wire
-	if decodeClosedDeliveryDeclaration(raw, &value, 2048) != nil {
-		return ErrDeliveryInvalid
-	}
-	candidate := UnretainedDeliverySummary(value)
-	if candidate.Validate() != nil {
-		return ErrDeliveryInvalid
-	}
-	*s = candidate
-	return nil
 }
 
 // Compare returns true only for exact current replay. The Store separately
@@ -82,4 +70,42 @@ func SaturatingDeliveryCount(count, additional int64, complete bool) (int64, boo
 		return maximum, false, nil
 	}
 	return count + additional, complete, nil
+}
+
+func (v UnretainedDeliverySummary) MarshalJSON() ([]byte, error) {
+	type wire UnretainedDeliverySummary
+	return json.Marshal(struct {
+		*wire
+		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at"`
+		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at"`
+	}{wire: (*wire)(&v), FirstUnretainedAt: optionalSecurityJSONInstant(v.FirstUnretainedAt, v.firstUnretainedAtSpelling), LastUnretainedAt: optionalSecurityJSONInstant(v.LastUnretainedAt, v.lastUnretainedAtSpelling)})
+}
+func (v *UnretainedDeliverySummary) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrDeliveryInvalid
+	}
+	type wire UnretainedDeliverySummary
+	var decoded wire
+	value := struct {
+		*wire
+		FirstUnretainedAt *securityJSONInstant `json:"first_unretained_at"`
+		LastUnretainedAt  *securityJSONInstant `json:"last_unretained_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, 2048) != nil {
+		return ErrDeliveryInvalid
+	}
+	candidate := UnretainedDeliverySummary(decoded)
+	if value.FirstUnretainedAt != nil {
+		candidate.FirstUnretainedAt = &value.FirstUnretainedAt.Time
+		candidate.firstUnretainedAtSpelling = value.FirstUnretainedAt.spelling
+	}
+	if value.LastUnretainedAt != nil {
+		candidate.LastUnretainedAt = &value.LastUnretainedAt.Time
+		candidate.lastUnretainedAtSpelling = value.LastUnretainedAt.spelling
+	}
+	if candidate.Validate() != nil {
+		return ErrDeliveryInvalid
+	}
+	*v = candidate
+	return nil
 }

@@ -162,7 +162,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			}
 			value, decodeErr := mutation.decode(row.OutcomeVersion, []byte(row.Outcome))
 			if decodeErr != nil {
-				return nil, fmt.Errorf("decode idempotent command outcome: %w", decodeErr)
+				return nil, invalidPersistedState("command_outcome", "outcome", decodeErr)
 			}
 			if mutation.hydrateReplay != nil {
 				value, decodeErr = mutation.hydrateReplay(ctx, tx, value)
@@ -214,7 +214,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			}
 			value, decodeErr := mutation.decode(canonical.OutcomeVersion, []byte(canonical.Outcome))
 			if decodeErr != nil {
-				return nil, fmt.Errorf("decode canonical batch outcome: %w", decodeErr)
+				return nil, invalidPersistedState("command_outcome", "canonical_outcome", decodeErr)
 			}
 			if mutation.hydrateReplay != nil {
 				value, decodeErr = mutation.hydrateReplay(ctx, tx, value)

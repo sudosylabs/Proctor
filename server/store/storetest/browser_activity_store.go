@@ -340,6 +340,18 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 		}
 		current = next
 	}
+	// Replay the original canonical command, not a helper that substitutes the
+	// new policy revision. Its refusal lives on the original closed predecessor.
+	refusedInput.AuditEventID = browserDeliveryAuditFixture(t, ctx, ss, store.BrowserDeliveryAccess{Access: access, SourceSessionID: refusal.Status.SourceSessionID, ParticipationID: connected.Participation.ID})
+	refusedInput.AuditAt = model.GetMillis()
+	_, err = ss.ExamAttempt().StartBrowserActivity(ctx, refusedInput)
+	if !errors.As(err, &replay) || replay.Status.SourceSessionID != refusal.Status.SourceSessionID || !replay.Status.Closure.ClosedAt.Equal(closedAt) || replay.Status.RemainingCorrectionStarts != 0 {
+		t.Fatalf("historical refusal replay after correction: %#v %v", replay, err)
+	}
+	altered = *refusedInput
+	altered.Transition.Reason = model.BrowserSourceResetCoordinatorRestarted
+	_, err = ss.ExamAttempt().StartBrowserActivity(ctx, &altered)
+	assertExamAttemptConflict(t, err, "browser_source_conflict")
 	statuses, err = ss.ExamAttempt().BrowserSourceList(ctx, store.BrowserDeliveryAccess{Access: access, ParticipationID: connected.Participation.ID})
 	requireNoError(t, err)
 	if len(statuses) != model.BrowserSourceMaximumPerParticipation {

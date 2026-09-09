@@ -105,7 +105,15 @@ func TestExecutionControlStore(t *testing.T, ss store.Store) {
 	}
 	update(control)
 	healthy := prepare()
+	if healthy.Fence() != applied.Fence() {
+		t.Fatal("unchanged healthy coverage advanced the execution fence")
+	}
 	acknowledge(healthy)
+	control.ControlSequence = 10
+	update(control)
+	if prepare().Fence() != healthy.Fence() {
+		t.Fatal("new healthy control receipt advanced the execution fence")
+	}
 	if value := update(control); value.ExecutionState != "ready" {
 		t.Fatalf("confirmed running: %#v", value)
 	}
@@ -143,6 +151,17 @@ func TestExecutionControlStore(t *testing.T, ss store.Store) {
 	if value := update(control); value.ExecutionState != "ready" {
 		t.Fatalf("recovered running: %#v", value)
 	}
+	// Even if no worker observes the intermediate fault, recovery cannot reuse
+	// the running acknowledgement from before that processed fault.
+	fault.ControlSequence = 13
+	update(fault)
+	control.ControlSequence = 14
+	update(control)
+	if _, err := ss.ExecutionGrant().AcknowledgeControl(ctx, recovered.Fence(), recovered.DesiredControlState, model.NowUTC()); !store.IsConflict(err) {
+		t.Fatalf("unobserved fault/recovery accepted old acknowledgement: %v", err)
+	}
+	recovered = prepare()
+	acknowledge(recovered)
 	// Sitting pause is an independent gate; native recovery cannot reopen it.
 	pauseAudit := saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID)
 	paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID, SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision, PrivateReason: "control pause test", ChangedAt: model.NowUTC(), AuditEventID: pauseAudit.ID.String(), AuditAt: model.GetMillis()}, examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "control-pause", "control-pause"))

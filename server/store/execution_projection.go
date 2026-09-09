@@ -15,6 +15,10 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+// ExecutionProjectionInitializationMaximumBytes bounds the complete initial tree,
+// including JSON-escaped paths. Incremental projection metadata remains 256 KiB.
+const ExecutionProjectionInitializationMaximumBytes = 4 << 20
+
 // ExecutionProjectionContent is a single-purpose host upload receipt, never a
 // VFS key or URL. It may be replayed only at its request's exact host fence.
 type ExecutionProjectionContent struct {
@@ -128,8 +132,12 @@ func (request ExecutionProjectionRequest) Validate() error {
 	if total > 50<<20 {
 		return invalid()
 	}
+	limit := 256 << 10
+	if request.Initial {
+		limit = ExecutionProjectionInitializationMaximumBytes
+	}
 	body, err := json.Marshal(request)
-	if err != nil || len(body) > 256<<10 {
+	if err != nil || len(body) > limit {
 		return invalid()
 	}
 	return nil

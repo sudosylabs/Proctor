@@ -1924,7 +1924,7 @@ CREATE TABLE execution_projection_effects (
     expected_host_cursor bigint NOT NULL CHECK (expected_host_cursor BETWEEN 0 AND 9007199254740991),
     initial boolean NOT NULL,
     request_digest bytea NOT NULL CHECK (octet_length(request_digest)=32),
-    request_canonical bytea CHECK (octet_length(request_canonical) BETWEEN 1 AND 262144),
+    request_canonical bytea CHECK (octet_length(request_canonical) BETWEEN 1 AND 4194304),
     completed boolean NOT NULL DEFAULT false,
     rejected boolean NOT NULL DEFAULT false CHECK (NOT rejected OR completed),
     PRIMARY KEY (execution_grant_id,mutation_id),
@@ -2128,12 +2128,12 @@ CREATE TABLE browser_activity_events (
     kind varchar(40) NOT NULL CHECK (kind IN (
         'browser_opened','browser_closed','top_level_navigation','top_level_redirect','blocked_top_level_navigation'
     )),
-    record_canonical bytea NOT NULL CHECK(octet_length(record_canonical)<=32768),
+    record_canonical bytea NOT NULL CHECK(octet_length(record_canonical)<=262144),
     receipt_canonical bytea NOT NULL CHECK(octet_length(receipt_canonical)<=512),
     metadata_canonical bytea NOT NULL CHECK(octet_length(metadata_canonical)<=256),
     interpretation_state smallint NOT NULL DEFAULT 0 CHECK(interpretation_state BETWEEN 0 AND 2),
     redirect_from_sequence bigint CHECK(redirect_from_sequence>0 AND redirect_from_sequence<sequence),
-    counted_bytes integer NOT NULL CHECK(counted_bytes BETWEEN 1 AND 33536),
+    counted_bytes integer NOT NULL CHECK(counted_bytes BETWEEN 1 AND 262912),
     client_occurred_at timestamptz NOT NULL,
     location_scheme varchar(32),
     location_host text,
@@ -2398,7 +2398,7 @@ CREATE TABLE integrity_evidence (
          missing_before >= 0) OR
         (policy_kind = 'browser_navigation' AND browser_detail_canonical IS NOT NULL AND focus_loss_signal_id IS NULL AND sequence IS NULL AND duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL)
     ),
-    browser_detail_canonical bytea CHECK(browser_detail_canonical IS NULL OR octet_length(browser_detail_canonical) BETWEEN 1 AND 32768)
+    browser_detail_canonical bytea CHECK(browser_detail_canonical IS NULL OR octet_length(browser_detail_canonical) BETWEEN 1 AND 262656)
 );
 
 CREATE UNIQUE INDEX integrity_flags_legacy_group_idx ON integrity_flags(exam_attempt_id,generation,policy_kind) WHERE policy_kind <> 'browser_navigation';
@@ -5051,6 +5051,7 @@ CREATE TABLE exam_attempt_security_owners (
  browser_retained_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_retained_bytes BETWEEN 0 AND 33554432),
  security_interaction_allowed boolean NOT NULL DEFAULT true,
  freeze_required boolean NOT NULL DEFAULT false,
+ execution_gate_sequence bigint NOT NULL DEFAULT 0 CHECK(execution_gate_sequence BETWEEN 0 AND 9007199254740991),
  allocated_through_sequence bigint NOT NULL DEFAULT 0 CHECK(allocated_through_sequence BETWEEN 0 AND 20000),
  acknowledged_through_sequence bigint NOT NULL DEFAULT 0 CHECK(acknowledged_through_sequence BETWEEN 0 AND allocated_through_sequence),
  summary_only boolean NOT NULL DEFAULT false,
@@ -5072,7 +5073,7 @@ CREATE INDEX exam_attempt_security_owners_attempt ON exam_attempt_security_owner
 CREATE TABLE exam_native_source_resets (
  participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
  reset_id text NOT NULL,
- reset_canonical bytea NOT NULL CHECK(octet_length(reset_canonical)<=2048),
+ reset_canonical bytea NOT NULL CHECK(octet_length(reset_canonical)<=262656),
  PRIMARY KEY(participation_id,reset_id)
 );
 
@@ -5103,8 +5104,8 @@ CREATE TABLE exam_native_delivery_records (
  batch_sequence bigint NOT NULL,
  record_index smallint NOT NULL CHECK(record_index BETWEEN 0 AND 63),
  kind varchar(24) NOT NULL CHECK(kind IN ('occurrence','coverage_transition','source_reset','source_gap')),
- record_canonical bytea NOT NULL CHECK(octet_length(record_canonical) <= 8192),
- metadata_canonical bytea NOT NULL CHECK(octet_length(metadata_canonical) <= 2048),
+ record_canonical bytea NOT NULL CHECK(octet_length(record_canonical) <= 262144),
+ metadata_canonical bytea NOT NULL CHECK(octet_length(metadata_canonical) <= 65536),
  PRIMARY KEY(participation_id,batch_sequence,record_index),
  FOREIGN KEY(participation_id,batch_sequence) REFERENCES exam_native_delivery_batches(participation_id,batch_sequence)
 );
@@ -5194,7 +5195,7 @@ CREATE TABLE native_condition_evidence (
  participation_id varchar(26) NOT NULL REFERENCES exam_attempt_participations(id),
  batch_sequence bigint NOT NULL CHECK(batch_sequence BETWEEN 1 AND 20000),
  record_index smallint NOT NULL CHECK(record_index BETWEEN 0 AND 63),
- canonical bytea NOT NULL CHECK(octet_length(canonical) BETWEEN 1 AND 16384),
+ canonical bytea NOT NULL CHECK(octet_length(canonical) BETWEEN 1 AND 264192),
  UNIQUE(participation_id,batch_sequence,record_index)
 );
 CREATE INDEX native_condition_evidence_attempt ON native_condition_evidence(exam_attempt_id,id);

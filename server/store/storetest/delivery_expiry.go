@@ -8,6 +8,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 
 // TestDeliveryExpiryStore verifies abandoned delivery converges without a client
 // status request, a fabricated receipt, quota refund or sealed-content mutation.
-func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, context.Context, model.ExamAttemptID)) {
+func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, context.Context, model.ExamAttemptID), corrupt ...func(string, string) func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	f, connected, access := newBrowserActivityFixture(t, ctx, ss, "delivery-expiry")
@@ -78,6 +79,16 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 			t.Fatal("expiry committed without audit")
 		}
 		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+		if d.Family == "native" && len(corrupt) > 0 {
+			for _, raw := range []string{`{`, `{}`, `{"closed_at":"2026-09-09T12:00:00Z"}`} {
+				restore := corrupt[0](d.SourceID, raw)
+				changed, err := ss.ExamAttempt().ExpireDelivery(ctx, input)
+				restore()
+				if changed || !errors.Is(err, store.ErrInvalidState) {
+					t.Fatalf("corrupt expiry closure: changed=%v err=%v", changed, err)
+				}
+			}
+		}
 		changed, err := ss.ExamAttempt().ExpireDelivery(ctx, input)
 		requireNoError(t, err)
 		if !changed {

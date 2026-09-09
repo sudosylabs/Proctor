@@ -72,8 +72,13 @@ func resolveExecutionObservation(ctx context.Context, tx *sqlxTxWrapper, access 
 	if err != nil {
 		return nil, err
 	}
-	if grant.AttemptID != access.AttemptID || grant.State != model.ExecutionGrantReady || grant.Fence() != event.Fence || grant.DesiredControlState != model.ExecutionControlRunning || grant.ControlAcknowledgedRevision != grant.ControlRevision || authority.desired(grant) != model.ExecutionControlRunning || authority.digest() != grant.ControlAuthorityDigest {
+	// The original capture is evidence from this occupancy, not authority for
+	// today's effect. Current lifecycle and security are checked independently.
+	if grant.AttemptID != access.AttemptID || grant.State != model.ExecutionGrantReady || grant.EnvironmentEpoch != event.Fence.EnvironmentEpoch || event.Fence.ControlRevision > grant.ControlRevision || grant.DesiredControlState == model.ExecutionControlRevoked || authority.desired(grant) == model.ExecutionControlRevoked {
 		return nil, executionObservationConflict("fence")
+	}
+	if grant.DesiredControlState != model.ExecutionControlRunning || grant.ControlAcknowledgedRevision != grant.ControlRevision || authority.desired(grant) != model.ExecutionControlRunning || authority.digest() != grant.ControlAuthorityDigest {
+		return nil, executionObservationConflict("interaction_blocked")
 	}
 	body, _ := json.Marshal(event)
 	digest := sha256.Sum256(body)
@@ -117,7 +122,7 @@ func resolveExecutionObservation(ctx context.Context, tx *sqlxTxWrapper, access 
 	if event.OriginProjectionMutationID != "" {
 		return nil, executionObservationConflict("unknown_projection_echo")
 	}
-	ignoredPath, ignoredDestination := ignoredObservedExecutionPath(event.Path), ignoredObservedExecutionPath(event.DestinationPath)
+	ignoredPath, ignoredDestination := model.IsIgnoredExecutionPath(event.Path), model.IsIgnoredExecutionPath(event.DestinationPath)
 	if event.Operation == model.AttemptWorkspaceMutationMoveEntry && ignoredPath != ignoredDestination {
 		return nil, executionObservationConflict("unsupported_boundary")
 	}
@@ -208,16 +213,6 @@ func resolveExecutionObservation(ctx context.Context, tx *sqlxTxWrapper, access 
 func executionPathsOverlap(a, b string) bool {
 	return a != "" && b != "" && (a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/"))
 }
-func ignoredObservedExecutionPath(path string) bool {
-	for _, part := range strings.Split(path, "/") {
-		switch part {
-		case ".proctor", ".git", "node_modules", "target", "__pycache__":
-			return true
-		}
-	}
-	return false
-}
-
 func checkExecutionObservationMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptWorkspaceMutation, target *store.ExecutionObservationTarget) error {
 	e := input.Access.SourceObservation
 	if e == nil {

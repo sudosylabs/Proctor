@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 // persistedStateError reports that authoritative data could not be safely
@@ -40,6 +41,8 @@ func parseNullablePersistedID[T any](
 func (e *persistedStateError) Error() string {
 	return fmt.Sprintf("sqlstore: invalid persisted state: entity=%s field=%s", e.Entity, e.Field)
 }
+
+func (e *persistedStateError) Is(target error) bool { return target == store.ErrInvalidState }
 
 func (e *persistedStateError) Unwrap() error {
 	return e.cause

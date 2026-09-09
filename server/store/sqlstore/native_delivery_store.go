@@ -48,7 +48,7 @@ func closeNativeDelivery(ctx context.Context, tx *sqlxTxWrapper, participationID
 		return err
 	}
 	var closure model.DeliveryClosure
-	if len(row.Raw) > 0 && json.Unmarshal(row.Raw, &closure) != nil {
+	if len(row.Raw) > 0 && (json.Unmarshal(row.Raw, &closure) != nil || closure.Validate(true) != nil) {
 		return invalidPersistedState("native_delivery", "closure", model.ErrDeliveryInvalid)
 	}
 	var lease time.Time
@@ -113,7 +113,7 @@ func (s *sqlExamAttemptStore) nativeDeliveryOwner(ctx context.Context, tx *sqlxT
 	}
 	var binding admittedSecurityBinding
 	if json.Unmarshal(owner.Binding, &binding) != nil || binding.Security.Validate() != nil {
-		return owner, model.ErrDeliveryInvalid
+		return owner, invalidPersistedState("native_delivery", "binding", model.ErrDeliveryInvalid)
 	}
 	if access.ParticipationID != "" && access.ParticipationID != binding.Security.ParticipationID || access.Generation != 0 && access.Generation != binding.Security.Generation {
 		return owner, store.NewErrNotFound("native_delivery", access.StreamID)
@@ -196,14 +196,6 @@ func nativeParticipationCloseReason(reason model.AttemptParticipationEndReason) 
 	}
 }
 
-type nativeDeclarationRecord struct {
-	Kind          string                          `json:"kind"`
-	RequestDigest string                          `json:"request_digest"`
-	Gaps          *model.DeclareDeliveryGaps      `json:"gaps"`
-	Final         *model.FinalDeliveryDeclaration `json:"final"`
-	Receipt       model.DeliveryGapReceipt        `json:"receipt"`
-}
-
 func nativeDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner) ([]model.SequenceRange, []model.SequenceRange, error) {
 	var positions []int64
 	if err := tx.Select(ctx, &positions, `SELECT batch_sequence FROM exam_native_delivery_batches WHERE participation_id=? ORDER BY batch_sequence`, owner.ParticipationID); err != nil {
@@ -223,8 +215,8 @@ func nativeDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, owner nativeDe
 	}
 	gaps := []model.SequenceRange{}
 	for _, raw := range declarations {
-		var declaration nativeDeclarationRecord
-		if json.Unmarshal(raw, &declaration) != nil || declaration.Gaps == nil || declaration.Gaps.Validate() != nil {
+		declaration, err := decodeDeliveryDeclarationRecord(raw)
+		if err != nil || declaration.Gaps == nil {
 			return nil, nil, invalidPersistedState("native_delivery", "gaps", model.ErrDeliveryInvalid)
 		}
 		gaps = append(gaps, declaration.Gaps.Ranges...)
@@ -267,7 +259,7 @@ func projectNativeDeliveryStatus(ctx context.Context, tx *sqlxTxWrapper, owner n
 	}
 	progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
 	if err != nil {
-		return nil, err
+		return nil, invalidPersistedState("delivery", "progress", err)
 	}
 	status := &model.NativeSecurityStreamStatus{NativeDeliveryProgress: model.NativeDeliveryProgress{HighestContiguousBatchSequence: progress.HighestContiguous, SettledThroughBatchSequence: progress.SettledThrough, HighestSeenBatchSequence: progress.HighestSeen, MissingBatchRanges: progress.Missing, MissingRangesTruncated: progress.MissingTruncated, ServerTime: owner.Now}, StreamID: streamID, AllocatedThroughSequence: owner.Allocated, TerminalMissingThroughSequence: owner.TerminalThrough, Closure: owner.Closure, DeclarationRevision: owner.DeclarationRevision, DetailMode: "collecting"}
 	if owner.SummaryOnly || owner.AttemptSummaryOnly {
@@ -289,11 +281,11 @@ func projectNativeDeliveryStatus(ctx context.Context, tx *sqlxTxWrapper, owner n
 	if len(owner.SummaryRaw) > 0 {
 		var summary model.UnretainedDeliverySummary
 		if json.Unmarshal(owner.SummaryRaw, &summary) != nil {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
 		}
 		status.Summary = &summary
 	}
-	if err := status.Validate(); err != nil {
+	if err := validatePersistedModel("native_delivery", status); err != nil {
 		return nil, err
 	}
 	return status, nil
@@ -326,7 +318,7 @@ func (s *sqlExamAttemptStore) NativeDeliveryReceipt(ctx context.Context, access 
 		}
 		var receipt model.NativeBatchReceipt
 		if json.Unmarshal(raw, &receipt) != nil || receipt.Validate() != nil {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
 		}
 		return &receipt, nil
 	})
@@ -336,7 +328,7 @@ func nativeDeliveryConflict() error {
 	return store.NewErrConflict("native_delivery", "declaration_conflict", nil)
 }
 
-func nativeDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, id, digest string) (*nativeDeclarationRecord, error) {
+func nativeDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, id, digest string) (*deliveryDeclarationRecord, error) {
 	var raw []byte
 	err := tx.Get(ctx, &raw, `SELECT canonical FROM exam_native_delivery_declarations WHERE participation_id=? AND declaration_id=?`, owner.ParticipationID, id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -345,9 +337,12 @@ func nativeDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner nativ
 	if err != nil {
 		return nil, err
 	}
-	var record nativeDeclarationRecord
-	if json.Unmarshal(raw, &record) != nil {
-		return nil, model.ErrDeliveryInvalid
+	record, err := decodeDeliveryDeclarationRecord(raw)
+	if err != nil {
+		return nil, err
+	}
+	if record.Receipt.DeclarationID != id || record.Receipt.SettledThroughSequence > owner.Allocated {
+		return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
 	}
 	if record.RequestDigest != digest {
 		return nil, nativeDeliveryConflict()
@@ -370,7 +365,7 @@ func (s *sqlExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, inp
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.declareNativeDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, nativeDeclarationRecord{Kind: "gaps", RequestDigest: model.SHA256Fingerprint(raw), Gaps: &input.Declaration})
+	result, err := s.declareNativeDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, deliveryDeclarationRecord{Kind: "gaps", RequestDigest: model.SHA256Fingerprint(raw), Gaps: &input.Declaration})
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +385,7 @@ func (s *sqlExamAttemptStore) SealNativeDelivery(ctx context.Context, input *sto
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.declareNativeDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, nativeDeclarationRecord{Kind: "final", RequestDigest: model.SHA256Fingerprint(raw), Final: &input.Declaration})
+	result, err := s.declareNativeDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, deliveryDeclarationRecord{Kind: "final", RequestDigest: model.SHA256Fingerprint(raw), Final: &input.Declaration})
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +398,7 @@ func (s *sqlExamAttemptStore) SealNativeDelivery(ctx context.Context, input *sto
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record nativeDeclarationRecord) (*nativeDeclarationOutcome, error) {
+func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*nativeDeclarationOutcome, error) {
 	if command == nil || command.UserID != access.Access.CandidateUserID || !model.IsValidId(auditID) || auditAt <= 0 {
 		return nil, store.NewErrInvalidInput("native_delivery", "declaration", nil)
 	}
@@ -445,7 +440,7 @@ func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 			}
 			progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
 			if err != nil {
-				return nil, err
+				return nil, invalidPersistedState("delivery", "progress", err)
 			}
 			newAllocated := owner.Allocated
 			if record.Gaps != nil {
@@ -554,9 +549,12 @@ func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 		decode: func(version int, raw []byte) (*nativeDeclarationOutcome, error) {
 			var result nativeDeclarationOutcome
 			if version != 1 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
 			}
 			if err := decodeCommandOutcome(raw, &result); err != nil {
+				return nil, err
+			}
+			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
 				return nil, err
 			}
 			return &result, nil
@@ -568,6 +566,9 @@ func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access 
 			}
 			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
 				return nil, model.ErrDeliveryExpired
+			}
+			if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != declarationID || value.Receipt.RequestDigest != record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
+				return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
 			}
 			if value.Capacity == nil {
 				value.Status, err = nativeDeliveryStatus(ctx, tx, owner, access.StreamID)
@@ -591,8 +592,7 @@ func latchDeliveryMetadata(ctx context.Context, tx *sqlxTxWrapper, attemptID mod
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET terminal_missing_through_sequence=allocated_through_sequence WHERE exam_attempt_id=?`, attemptID.String()); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET terminal_missing_through_sequence=allocated_through_sequence WHERE exam_attempt_id=?`, attemptID.String())
-	return err
+	return settleExhaustedBrowserSources(ctx, tx, attemptID, "")
 }
 func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id string, at int64, streamID string, replayed bool) error {
 	data, err := model.EncodeAuditData(map[string]any{"stream_id": streamID, "idempotency_replayed": replayed})
@@ -633,7 +633,7 @@ func (s *sqlExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 			if len(owner.SummaryRaw) > 0 {
 				var prior model.UnretainedDeliverySummary
 				if json.Unmarshal(owner.SummaryRaw, &prior) != nil {
-					return nil, model.ErrDeliveryInvalid
+					return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
 				}
 				replay, err = prior.Compare(input.Summary)
 				if err != nil {
@@ -662,7 +662,7 @@ func (s *sqlExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 		decode: func(version int, raw []byte) (*model.NativeSecurityStreamStatus, error) {
 			var v model.NativeSecurityStreamStatus
 			if version != 1 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("native_delivery", "value", model.ErrDeliveryInvalid)
 			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err
@@ -688,7 +688,7 @@ func (s *sqlExamAttemptStore) ResolveNativeDeliveryTarget(ctx context.Context, a
 		}
 		var binding admittedSecurityBinding
 		if json.Unmarshal(owner.Binding, &binding) != nil {
-			return nil, model.ErrNativeDeliveryInvalid
+			return nil, invalidPersistedState("native_delivery", "binding", model.ErrNativeDeliveryInvalid)
 		}
 		var row struct {
 			SittingID string `db:"sitting_id"`

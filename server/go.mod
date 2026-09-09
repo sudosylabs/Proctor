@@ -27,7 +27,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/rueidis v1.0.77
 	github.com/spf13/cobra v1.10.2
-	github.com/sudosylabs/execenv v0.3.0
+	github.com/sudosylabs/execenv v0.3.1
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260811012629-fe3dc2e7fe5b

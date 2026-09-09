@@ -52,6 +52,7 @@ components:
       required:
         - source_session_id
         - policy_revision_id
+        - policy_digest
         - rule_id
         - event
       properties:
@@ -59,13 +60,16 @@ components:
           $ref: '#/components/schemas/BrowserSourceSessionID'
         policy_revision_id:
           $ref: '#/components/schemas/ID'
+        policy_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
         rule_id:
           type: string
           minLength: 1
           maxLength: 64
         event:
           $ref: '#/components/schemas/BrowserDeliveryRecord'
-      description: Immutable minimized evidence copy independent of ordinary Browser Activity retention.
+      description: Immutable minimized evidence copy owning its policy revision and digest independently of ordinary Browser Activity retention.
     BrowserIntegrityOverflow:
       type: object
       additionalProperties: false

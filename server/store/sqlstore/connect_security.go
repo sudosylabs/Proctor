@@ -46,13 +46,16 @@ func (s *sqlExamAttemptStore) prepareConnectSecurity(ctx context.Context, tx *sq
 	if !row.ReportedAt.Valid || row.DatabaseNow.Before(row.ReportedAt.Time) || row.DatabaseNow.Sub(row.ReportedAt.Time) > model.SecurityPreflightAdmissionFreshness {
 		return zero, preflightConflict("preflight_expired")
 	}
-	var prepared store.SecurityPreflightPrepared
-	var report model.SecurityPreflightReport
-	if err := json.Unmarshal(row.Prepared, &prepared); err != nil {
-		return zero, invalidPersistedState("security_preflight", "prepared", err)
+	prepared, err := decodePreparedSecurityPreflight(row.Prepared, input.DesktopBuild.NativeAgreement)
+	if err != nil {
+		return zero, err
 	}
+	if prepared.Challenge.PreflightID != row.PreflightID || !prepared.Challenge.ExpiresAt.Equal(row.ExpiresAt) {
+		return zero, invalidPersistedState("security_preflight", "prepared", model.ErrSecurityPreflightInvalid)
+	}
+	var report model.SecurityPreflightReport
 	if err := json.Unmarshal(row.Report, &report); err != nil {
-		return zero, preflightConflict("preflight_required")
+		return zero, invalidPersistedState("security_preflight", "report", err)
 	}
 	if model.SHA256Fingerprint(row.Report) != input.Security.ReportDigest {
 		return zero, preflightConflict("preflight_report_changed")

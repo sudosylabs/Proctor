@@ -24,6 +24,9 @@ type NativeSourceRange struct {
 }
 
 type NativeOccurrence struct {
+	firstObservedAtSpelling string
+	lastConfirmedAtSpelling string
+
 	Kind            string                `json:"kind"`
 	OccurrenceID    string                `json:"occurrence_id"`
 	ConditionID     string                `json:"condition_id"`
@@ -58,6 +61,8 @@ func (o NativeOccurrence) Validate() error {
 }
 
 type NativeCoverageTransition struct {
+	occurredAtSpelling string
+
 	Kind       string               `json:"kind"`
 	Source     NativeSourceCoverage `json:"source"`
 	OccurredAt time.Time            `json:"occurred_at"`
@@ -65,13 +70,15 @@ type NativeCoverageTransition struct {
 }
 
 func (v NativeCoverageTransition) Validate() error {
-	if v.Kind != "coverage_transition" || validateNativeCoverageSnapshot([]NativeSourceCoverage{v.Source}, []NativeCoverageClaim{}) != nil || !securityInstant(v.OccurredAt) || !slices.Contains([]string{"initial", "health_changed", "permission_changed", "reconciled", "stopped"}, v.Reason) {
+	if v.Kind != "coverage_transition" || ValidateNativeCoverageSnapshot([]NativeSourceCoverage{v.Source}, []NativeCoverageClaim{}) != nil || !securityInstant(v.OccurredAt) || !slices.Contains([]string{"initial", "health_changed", "permission_changed", "reconciled", "stopped"}, v.Reason) {
 		return ErrNativeDeliveryInvalid
 	}
 	return nil
 }
 
 type NativeSourceGap struct {
+	occurredAtSpelling string
+
 	Kind                 string         `json:"kind"`
 	SourceID             NativeSourceID `json:"source_id"`
 	SourceInstanceID     string         `json:"source_instance_id"`
@@ -397,4 +404,98 @@ func AdvanceNativeOccurrence(prior *NativeOccurrenceProgress, next NativeOccurre
 func cloneNativeOccurrence(o NativeOccurrence) NativeOccurrence {
 	o.SourceRanges = slices.Clone(o.SourceRanges)
 	return o
+}
+
+func (v NativeOccurrence) MarshalJSON() ([]byte, error) {
+	type wire NativeOccurrence
+	return json.Marshal(struct {
+		*wire
+		FirstObservedAt securityJSONInstant `json:"first_observed_at"`
+		LastConfirmedAt securityJSONInstant `json:"last_confirmed_at"`
+	}{wire: (*wire)(&v), FirstObservedAt: securityJSONInstant{Time: v.FirstObservedAt, spelling: v.firstObservedAtSpelling}, LastConfirmedAt: securityJSONInstant{Time: v.LastConfirmedAt, spelling: v.lastConfirmedAtSpelling}})
+}
+func (v *NativeOccurrence) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrNativeDeliveryInvalid
+	}
+	type wire NativeOccurrence
+	var decoded wire
+	value := struct {
+		*wire
+		FirstObservedAt securityJSONInstant `json:"first_observed_at"`
+		LastConfirmedAt securityJSONInstant `json:"last_confirmed_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, 256*1024) != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	candidate := NativeOccurrence(decoded)
+	candidate.FirstObservedAt = value.FirstObservedAt.Time
+	candidate.firstObservedAtSpelling = value.FirstObservedAt.spelling
+	candidate.LastConfirmedAt = value.LastConfirmedAt.Time
+	candidate.lastConfirmedAtSpelling = value.LastConfirmedAt.spelling
+	if candidate.Validate() != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	*v = candidate
+	return nil
+}
+
+func (v NativeCoverageTransition) MarshalJSON() ([]byte, error) {
+	type wire NativeCoverageTransition
+	return json.Marshal(struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: (*wire)(&v), OccurredAt: securityJSONInstant{Time: v.OccurredAt, spelling: v.occurredAtSpelling}})
+}
+func (v *NativeCoverageTransition) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrNativeDeliveryInvalid
+	}
+	type wire NativeCoverageTransition
+	var decoded wire
+	value := struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, 256*1024) != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	candidate := NativeCoverageTransition(decoded)
+	candidate.OccurredAt = value.OccurredAt.Time
+	candidate.occurredAtSpelling = value.OccurredAt.spelling
+	if candidate.Validate() != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	*v = candidate
+	return nil
+}
+
+func (v NativeSourceGap) MarshalJSON() ([]byte, error) {
+	type wire NativeSourceGap
+	return json.Marshal(struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: (*wire)(&v), OccurredAt: securityJSONInstant{Time: v.OccurredAt, spelling: v.occurredAtSpelling}})
+}
+func (v *NativeSourceGap) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrNativeDeliveryInvalid
+	}
+	type wire NativeSourceGap
+	var decoded wire
+	value := struct {
+		*wire
+		OccurredAt securityJSONInstant `json:"occurred_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, 256*1024) != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	candidate := NativeSourceGap(decoded)
+	candidate.OccurredAt = value.OccurredAt.Time
+	candidate.occurredAtSpelling = value.OccurredAt.spelling
+	if candidate.Validate() != nil {
+		return ErrNativeDeliveryInvalid
+	}
+	*v = candidate
+	return nil
 }

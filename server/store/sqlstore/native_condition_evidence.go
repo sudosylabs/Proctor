@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -20,7 +21,7 @@ import (
 func retainNativeCondition(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, row nativeStoredRecord, occurrence model.NativeOccurrence, unresolved bool) error {
 	var binding admittedSecurityBinding
 	if json.Unmarshal(owner.Binding, &binding) != nil || binding.Security.Validate() != nil {
-		return model.ErrNativeDeliveryInvalid
+		return invalidPersistedState("native_condition", "value", model.ErrNativeDeliveryInvalid)
 	}
 	security := binding.Security
 	attempt := security.Policy.Scope.AttemptID
@@ -36,10 +37,13 @@ func retainNativeCondition(ctx context.Context, tx *sqlxTxWrapper, owner nativeD
 		return err
 	}
 	value := model.NativeConditionEvidence{ID: model.NewIntegrityEvidenceID(), AttemptID: attempt, ParticipationID: security.ParticipationID, Generation: security.Generation, StreamID: security.DeliveryStreamID, SecuritySessionID: security.SecuritySessionID, PolicyRevisionID: security.Policy.ExamRevisionID, PolicyDigest: security.Policy.Digest, ApplicationReleaseID: security.Policy.ApplicationReleaseID, MatrixID: security.Policy.MatrixID, BatchSequence: row.Sequence, RecordIndex: row.Index, Occurrence: occurrence, UnresolvedOpener: unresolved, ReceivedAt: received.UTC().Truncate(time.Millisecond), InterpretedAt: owner.Now.UTC().Truncate(time.Millisecond)}
-	if err := value.Validate(); err != nil {
+	if err := validatePersistedModel("native_condition", value); err != nil {
 		return err
 	}
-	raw, err := canonicalPreflightValue(value)
+	raw, err := json.Marshal(value)
+	if err == nil {
+		raw, err = canonicaljson.Canonicalize(raw, model.NativeConditionEvidenceMaxBytes)
+	}
 	if err != nil {
 		return err
 	}
@@ -83,7 +87,7 @@ func (s *SQLExamIntegrityReviewStore) ListNativeConditions(ctx context.Context, 
 	for _, raw := range rows {
 		var value model.NativeConditionEvidence
 		if json.Unmarshal(raw, &value) != nil || value.Validate() != nil {
-			return nil, model.ErrNativeDeliveryInvalid
+			return nil, invalidPersistedState("native_condition", "value", model.ErrNativeDeliveryInvalid)
 		}
 		page.Items = append(page.Items, value)
 	}
@@ -99,5 +103,5 @@ func nativeConditionInventory(ctx context.Context, tx *sqlxTxWrapper, attempt mo
 		return model.NativeConditionInventory{}, err
 	}
 	value := model.NativeConditionInventory{Records: row.Records, Digest: row.Digest}
-	return value, value.Validate()
+	return value, validatePersistedModel("native_condition", value)
 }

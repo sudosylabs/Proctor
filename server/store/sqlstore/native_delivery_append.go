@@ -153,7 +153,7 @@ func (s *sqlExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *s
 			}
 			progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
 			if err != nil {
-				return nil, err
+				return nil, invalidPersistedState("native_delivery", "progress", err)
 			}
 			if b.PriorAcknowledgement > progress.HighestContiguous {
 				return nil, nativeAppendConflict("batch_conflict")
@@ -335,7 +335,7 @@ func nativeBatchReplay(ctx context.Context, tx *sqlxTxWrapper, part string, seq 
 	}
 	var receipt model.NativeBatchReceipt
 	if json.Unmarshal(row.Raw, &receipt) != nil || receipt.Validate() != nil || receipt.RequestDigest != digest || receipt.BatchSequence != seq {
-		return nil, model.ErrNativeDeliveryInvalid
+		return nil, invalidPersistedState("native_delivery", "receipt", model.ErrNativeDeliveryInvalid)
 	}
 	return &receipt, nil
 }
@@ -343,7 +343,10 @@ func nativeBatchReplay(ctx context.Context, tx *sqlxTxWrapper, part string, seq 
 func resolveNativeDeliveryPolicy(ctx context.Context, tx *sqlxTxWrapper, owner nativeDeliveryOwner, build model.DesktopBuildTuple) (admittedSecurityBinding, model.ResolvedNativePolicy, error) {
 	var binding admittedSecurityBinding
 	var zero model.ResolvedNativePolicy
-	if json.Unmarshal(owner.Binding, &binding) != nil || binding.Security.Validate() != nil || build.NativeAgreement == nil || build.NativeAgreement.MatrixDigest() != binding.CapabilityMatrixDigest {
+	if json.Unmarshal(owner.Binding, &binding) != nil || binding.Security.Validate() != nil {
+		return binding, zero, invalidPersistedState("native_delivery", "binding", model.ErrNativeDeliveryInvalid)
+	}
+	if build.NativeAgreement == nil || build.NativeAgreement.MatrixDigest() != binding.CapabilityMatrixDigest {
 		return binding, zero, model.ErrNativeDeliveryInvalid
 	}
 	policy := binding.Security.Policy
@@ -368,7 +371,7 @@ func resolveNativeDeliveryPolicy(ctx context.Context, tx *sqlxTxWrapper, owner n
 		return binding, zero, err
 	}
 	if resolved.Policy.Digest != policy.Digest || resolved.PolicyContentDigest != binding.Security.PolicyContentDigest {
-		return binding, zero, model.ErrNativeDeliveryInvalid
+		return binding, zero, invalidPersistedState("native_delivery", "policy", model.ErrNativeDeliveryInvalid)
 	}
 	return binding, resolved, nil
 }

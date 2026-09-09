@@ -225,6 +225,9 @@ func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, call Ca
 }
 
 func mapNativeDeliveryError(err error) error {
+	if errors.Is(err, store.ErrInvalidState) {
+		return unavailable(err)
+	}
 	var refusal *store.NativeDeliveryRefusal
 	if errors.As(err, &refusal) {
 		return &Fault{Code: "exam.delivery." + refusal.Reason, Cause: err}

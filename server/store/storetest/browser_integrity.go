@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,9 +41,16 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 		v.Location = &model.BrowserLocation{Scheme: "https", Host: "elsewhere.example", Path: "/private"}
 		return v
 	}
+	prefix := "https://elsewhere.example/"
+	expanded, err := model.CanonicalizeBrowserLocation(prefix + strings.Repeat("漢", model.BrowserNavigationMaximumCharacters-len(prefix)))
+	requireNoError(t, err)
 	events := []model.BrowserActivityEvent{nav}
 	for seq := int64(2); seq <= 102; seq++ {
-		events = append(events, blocked(seq))
+		event := blocked(seq)
+		if seq == 2 {
+			event.Location = &expanded
+		}
+		events = append(events, event)
 	}
 	for from := 0; from < len(events); from += 64 {
 		end := min(from+64, len(events))
@@ -74,6 +82,18 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(details.Items) != 100 || details.Items[0].Browser == nil || details.Items[0].Validate() != nil {
 		t.Fatal("bounded independent evidence copies unavailable")
+	}
+	foundExpanded := false
+	for _, detail := range details.Items {
+		if detail.Browser == nil || detail.Browser.PolicyDigest != status.PolicyDigest {
+			t.Fatal("evidence lost frozen policy digest")
+		}
+		if detail.Browser != nil && detail.Browser.Event.Location != nil && detail.Browser.Event.Location.Path == expanded.Path {
+			foundExpanded = true
+		}
+	}
+	if !foundExpanded {
+		t.Fatal("large Unicode navigation was not copied into integrity evidence")
 	}
 	reviewID := model.NewSubmissionReviewID()
 	audit := func() string {
@@ -280,7 +300,9 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			blocked.BlockReason = &reason
 			blocked.RedirectFromSequence = &prior
 			blocked.Location = &model.BrowserLocation{Scheme: "https", Host: "outside.example", Path: "/"}
-			raw, err := json.Marshal(model.BrowserIntegrityEvidence{SourceSessionID: source, PolicyRevisionID: f.revisionID, RuleID: rule, Event: blocked})
+			digest, err := model.BrowserPolicyDigest(policy)
+			requireNoError(t, err)
+			raw, err := json.Marshal(model.BrowserIntegrityEvidence{SourceSessionID: source, PolicyRevisionID: f.revisionID, PolicyDigest: digest, RuleID: rule, Event: blocked})
 			requireNoError(t, err)
 			records, bytes := int64(0), int64(0)
 			if mode == "record limit" {
@@ -325,4 +347,35 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			requireNoError(t, err)
 		})
 	}
+}
+
+// Fill a valid single-event request to its exact wire ceiling. Evidence adds
+// frozen provenance to that event and must use its own larger retained bound.
+func maximumBrowserEvidenceEvent(t *testing.T, event model.BrowserActivityEvent, source model.BrowserSourceSessionID, part model.AttemptParticipationID, generation int64, digest string) model.BrowserActivityEvent {
+	t.Helper()
+	raw, err := json.Marshal(event)
+	requireNoError(t, err)
+	var fields map[string]json.RawMessage
+	requireNoError(t, json.Unmarshal(raw, &fields))
+	prefix := event.ClientOccurredAt.UTC().Format("2006-01-02T15:04:05.000")
+	fields["client_occurred_at"], err = json.Marshal(prefix + "Z")
+	requireNoError(t, err)
+	raw, err = json.Marshal(fields)
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal(raw, &event))
+	batch := model.BrowserActivityBatch{SourceSessionID: source, ParticipationID: part, Generation: generation, PolicyRevisionID: event.PolicyRevisionID, PolicyDigest: digest, Events: []model.BrowserActivityEvent{event}}
+	encoded, err := json.Marshal(batch)
+	requireNoError(t, err)
+	fields["client_occurred_at"], err = json.Marshal(prefix + strings.Repeat("0", model.BrowserActivityAppendMaximumBytes-len(encoded)) + "Z")
+	requireNoError(t, err)
+	raw, err = json.Marshal(fields)
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal(raw, &event))
+	batch.Events[0] = event
+	encoded, err = json.Marshal(batch)
+	requireNoError(t, err)
+	if len(encoded) != model.BrowserActivityAppendMaximumBytes || batch.Validate() != nil {
+		t.Fatal("maximum Browser fixture not at valid request limit")
+	}
+	return event
 }

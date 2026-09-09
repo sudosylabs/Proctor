@@ -6,19 +6,30 @@
 // ---------------------------------------------------------------------------------------------
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+// BrowserIntegrityEvidenceMaxBytes allows a full request record plus frozen provenance.
+const BrowserIntegrityEvidenceMaxBytes = BrowserActivityAppendMaximumBytes + 512
 
 // BrowserIntegrityEvidence is an immutable minimized copy. Ordinary Browser
 // Activity retirement cannot erase it or become an authorization prerequisite.
 type BrowserIntegrityEvidence struct {
 	SourceSessionID  BrowserSourceSessionID `json:"source_session_id"`
 	PolicyRevisionID ExamRevisionID         `json:"policy_revision_id"`
+	PolicyDigest     string                 `json:"policy_digest"`
 	RuleID           string                 `json:"rule_id"`
 	Event            BrowserActivityEvent   `json:"event"`
 }
 
 func (v BrowserIntegrityEvidence) Validate() error {
-	if !v.SourceSessionID.IsValid() || !v.PolicyRevisionID.IsValid() || v.Event.PolicyRevisionID != v.PolicyRevisionID || v.Event.ValidateClientRecord() != nil || v.Event.Kind != BrowserActivityBlockedNavigation || v.Event.MatchedRuleID == nil || *v.Event.MatchedRuleID != v.RuleID {
+	if !v.SourceSessionID.IsValid() || !v.PolicyRevisionID.IsValid() || !IsValidSHA256Fingerprint(v.PolicyDigest) || v.Event.PolicyRevisionID != v.PolicyRevisionID || v.Event.ValidateClientRecord() != nil || v.Event.Kind != BrowserActivityBlockedNavigation || v.Event.MatchedRuleID == nil || *v.Event.MatchedRuleID != v.RuleID {
+		return ErrDeliveryInvalid
+	}
+	raw, err := json.Marshal(v)
+	if err != nil || len(raw) > BrowserIntegrityEvidenceMaxBytes {
 		return ErrDeliveryInvalid
 	}
 	return nil

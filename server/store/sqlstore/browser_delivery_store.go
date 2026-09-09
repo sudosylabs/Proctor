@@ -27,13 +27,6 @@ type browserDeclarationOwner struct {
 	Closure                                         model.DeliveryClosure
 	Now                                             time.Time
 }
-type browserDeclarationRecord struct {
-	Kind          string                          `json:"kind"`
-	RequestDigest string                          `json:"request_digest"`
-	Gaps          *model.DeclareDeliveryGaps      `json:"gaps"`
-	Final         *model.FinalDeliveryDeclaration `json:"final"`
-	Receipt       model.DeliveryGapReceipt        `json:"receipt"`
-}
 
 func (s *sqlExamAttemptStore) lockBrowserDeclaration(ctx context.Context, tx *sqlxTxWrapper, access store.BrowserDeliveryAccess) (browserDeclarationOwner, error) {
 	var owner browserDeclarationOwner
@@ -61,7 +54,7 @@ func browserDeliveryConflict() error {
 	return store.NewErrConflict("browser_delivery", "declaration_conflict", nil)
 }
 
-func browserDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner browserDeclarationOwner, id, digest string) (*browserDeclarationRecord, error) {
+func browserDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner browserDeclarationOwner, id, digest string) (*deliveryDeclarationRecord, error) {
 	var raw []byte
 	err := tx.Get(ctx, &raw, `SELECT canonical FROM browser_delivery_declarations WHERE source_session_id=?::uuid AND declaration_id=?`, string(owner.SourceSessionID), id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -70,9 +63,12 @@ func browserDeclarationReplay(ctx context.Context, tx *sqlxTxWrapper, owner brow
 	if err != nil {
 		return nil, err
 	}
-	var record browserDeclarationRecord
-	if json.Unmarshal(raw, &record) != nil {
-		return nil, model.ErrDeliveryInvalid
+	record, err := decodeDeliveryDeclarationRecord(raw)
+	if err != nil {
+		return nil, err
+	}
+	if record.Receipt.DeclarationID != id || record.Receipt.SettledThroughSequence > owner.Allocated {
+		return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
 	}
 	if record.RequestDigest != digest {
 		return nil, browserDeliveryConflict()
@@ -95,7 +91,7 @@ func (s *sqlExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, in
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.declareBrowserDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, browserDeclarationRecord{Kind: "gaps", RequestDigest: model.SHA256Fingerprint(raw), Gaps: &input.Declaration})
+	result, err := s.declareBrowserDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, deliveryDeclarationRecord{Kind: "gaps", RequestDigest: model.SHA256Fingerprint(raw), Gaps: &input.Declaration})
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +111,7 @@ func (s *sqlExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *st
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.declareBrowserDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, browserDeclarationRecord{Kind: "final", RequestDigest: model.SHA256Fingerprint(raw), Final: &input.Declaration})
+	result, err := s.declareBrowserDelivery(ctx, input.Access, input.AuditEventID, input.AuditAt, command, deliveryDeclarationRecord{Kind: "final", RequestDigest: model.SHA256Fingerprint(raw), Final: &input.Declaration})
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +124,7 @@ func (s *sqlExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *st
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record browserDeclarationRecord) (*browserDeclarationOutcome, error) {
+func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*browserDeclarationOutcome, error) {
 	expectedOperation := store.BrowserDeliveryFinalOperation
 	if record.Gaps != nil {
 		expectedOperation = store.BrowserDeliveryGapsOperation
@@ -290,9 +286,12 @@ func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 		decode: func(version int, raw []byte) (*browserDeclarationOutcome, error) {
 			var result browserDeclarationOutcome
 			if version != 1 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 			}
 			if err := decodeCommandOutcome(raw, &result); err != nil {
+				return nil, err
+			}
+			if err := validateDeliveryDeclarationOutcome(result.Refusal, result.Receipt, result.Capacity); err != nil {
 				return nil, err
 			}
 			return &result, nil
@@ -304,6 +303,9 @@ func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access
 			}
 			if owner.Closure.UploadExpiresAt != nil && !owner.Now.Before(*owner.Closure.UploadExpiresAt) {
 				return nil, model.ErrDeliveryExpired
+			}
+			if value.Refusal == "" && value.Capacity == nil && (value.Receipt.DeclarationID != declarationID || value.Receipt.RequestDigest != record.RequestDigest || value.Receipt.SettledThroughSequence > owner.Allocated || value.Receipt.DeclarationRevision > owner.DeclarationRevision) {
+				return nil, invalidPersistedState("delivery_declaration", "receipt", model.ErrDeliveryInvalid)
 			}
 			if value.Capacity == nil {
 				value.Status, err = browserSourceStatus(ctx, tx, access.SourceSessionID)
@@ -326,7 +328,7 @@ func browserDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, source model.
 		return nil, nil, err
 	}
 	if len(positions) > 50000 {
-		return nil, nil, model.ErrDeliveryInvalid
+		return nil, nil, invalidPersistedState("browser_delivery", "ranges", model.ErrDeliveryInvalid)
 	}
 	received := []model.SequenceRange{}
 	for _, seq := range positions {
@@ -341,18 +343,18 @@ func browserDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, source model.
 		return nil, nil, err
 	}
 	if len(declarations) > 4096 {
-		return nil, nil, model.ErrDeliveryInvalid
+		return nil, nil, invalidPersistedState("browser_delivery", "ranges", model.ErrDeliveryInvalid)
 	}
 	gaps := []model.SequenceRange{}
 	for _, raw := range declarations {
-		var d browserDeclarationRecord
-		if json.Unmarshal(raw, &d) != nil || d.Gaps == nil || d.Gaps.Validate() != nil {
-			return nil, nil, model.ErrDeliveryInvalid
+		d, err := decodeDeliveryDeclarationRecord(raw)
+		if err != nil || d.Gaps == nil {
+			return nil, nil, invalidPersistedState("browser_delivery", "ranges", model.ErrDeliveryInvalid)
 		}
 		gaps = append(gaps, d.Gaps.Ranges...)
 	}
 	if len(gaps) > 4096 {
-		return nil, nil, model.ErrDeliveryInvalid
+		return nil, nil, invalidPersistedState("browser_delivery", "ranges", model.ErrDeliveryInvalid)
 	}
 	return received, mergeNativeDeliveryRanges(gaps), nil
 }
@@ -387,7 +389,7 @@ func (s *sqlExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, acces
 		for i, raw := range rows {
 			var receipt model.BrowserEventReceipt
 			if json.Unmarshal(raw, &receipt) != nil || receipt.Validate() != nil {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 			}
 			if i == limit {
 				next := receipt.Sequence
@@ -401,7 +403,7 @@ func (s *sqlExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, acces
 			return nil, err
 		}
 		if len(raw) > 16384 {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 		}
 		return value, nil
 	})
@@ -419,7 +421,7 @@ func (s *sqlExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, 
 			return nil, err
 		}
 		if status.Summary == nil {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 		}
 		return &model.BrowserDeliverySummaryResult{Summary: *status.Summary, Status: *status}, nil
 	}
@@ -441,7 +443,7 @@ func (s *sqlExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, 
 			if len(row.Raw) > 0 {
 				var prior model.UnretainedDeliverySummary
 				if json.Unmarshal(row.Raw, &prior) != nil {
-					return nil, model.ErrDeliveryInvalid
+					return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 				}
 				replay, err = prior.Compare(input.Summary)
 				if err != nil {
@@ -477,7 +479,7 @@ func (s *sqlExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, 
 		decode: func(version int, raw []byte) (*model.BrowserDeliverySummaryResult, error) {
 			var v model.BrowserDeliverySummaryResult
 			if version != 1 {
-				return nil, model.ErrDeliveryInvalid
+				return nil, invalidPersistedState("browser_delivery", "value", model.ErrDeliveryInvalid)
 			}
 			if err := decodeCommandOutcome(raw, &v); err != nil {
 				return nil, err

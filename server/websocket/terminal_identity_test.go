@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -121,6 +123,77 @@ func TestTerminalOpenRequiresSafeWorkspaceCursor(t *testing.T) {
 			response := nextInboundResponse(t, runtime)
 			if response.Status != "error" || response.Error.Code != "websocket.request.invalid" {
 				t.Fatalf("invalid cursor accepted: %#v", response)
+			}
+		})
+	}
+}
+
+// The application can reject a request while preserving the underlying PTY.
+type gatedInboundTerminal struct {
+	*inboundTerminalFake
+	interactionErr error
+}
+
+func (terminal *gatedInboundTerminal) Write(data []byte) (int, error) {
+	if terminal.interactionErr != nil {
+		return 0, terminal.interactionErr
+	}
+	return terminal.inboundTerminalFake.Write(data)
+}
+func (terminal *gatedInboundTerminal) Resize(ctx context.Context, window app.CandidateExamTerminalWindow) error {
+	if terminal.interactionErr != nil {
+		return terminal.interactionErr
+	}
+	return terminal.inboundTerminalFake.Resize(ctx, window)
+}
+func TestTerminalInteractionDenialPreservesTransportIdentity(t *testing.T) {
+	for _, action := range []string{examAttemptTerminalInputAction, examAttemptTerminalResizeAction} {
+		t.Run(action, func(t *testing.T) {
+			terminal := &gatedInboundTerminal{inboundTerminalFake: newInboundTerminalFake(), interactionErr: app.NewError("exam.attempt.terminal_unavailable").Wrap(appexecution.ErrInteractionBlocked)}
+			runtime := newInboundRuntime(&inboundTestApplication{}, newInboundTestSocket(), newRuntimeTestClock(time.Now()))
+			id := model.NewId()
+			runtime.terminal, runtime.terminalID = terminal, id
+			defer runtime.closeTerminal()
+			var data any = examAttemptTerminalInputRequest{TerminalID: id, Data: base64.StdEncoding.EncodeToString([]byte("pwd\n"))}
+			if action == examAttemptTerminalResizeAction {
+				data = examAttemptTerminalResizeRequest{TerminalID: id, Cols: 90, Rows: 30}
+			}
+			runtime.handleRequest(context.Background(), requestWithData(t, 1, action, data))
+			if runtime.terminal != terminal || runtime.terminalID != id {
+				t.Fatal("interaction denial detached original PTY")
+			}
+			response := nextInboundResponse(t, runtime)
+			if response.Status != "error" || response.Error.Code != "exam.attempt.terminal_unavailable" {
+				t.Fatalf("denied response: %#v", response)
+			}
+			select {
+			case <-terminal.closed:
+				t.Fatal("interaction denial closed PTY")
+			default:
+			}
+			select {
+			case message := <-runtime.send:
+				t.Fatalf("denial emitted extra terminal frame: %#v", message)
+			default:
+			}
+			terminal.interactionErr = nil
+			runtime.handleRequest(context.Background(), requestWithData(t, 2, action, data))
+			if response = nextInboundResponse(t, runtime); response.Status != "ok" {
+				t.Fatalf("recovery response: %#v", response)
+			}
+			if runtime.terminal != terminal || runtime.terminalID != id {
+				t.Fatal("recovery replaced original PTY")
+			}
+			// An actual failure still detaches and closes this same terminal.
+			terminal.interactionErr = app.NewError("exam.attempt.terminal_unavailable")
+			runtime.handleRequest(context.Background(), requestWithData(t, 3, action, data))
+			if runtime.terminal != nil || runtime.terminalID != "" {
+				t.Fatal("terminal failure retained handle")
+			}
+			select {
+			case <-terminal.closed:
+			default:
+				t.Fatal("terminal failure did not close PTY")
 			}
 		})
 	}

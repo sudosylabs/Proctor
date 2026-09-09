@@ -1252,6 +1252,9 @@ func invalidCause(field string, cause error) error {
 func unavailable(cause error) error { return &Fault{Code: "exam.attempt.unavailable", Cause: cause} }
 
 func mapStore(err error) error {
+	if errors.Is(err, store.ErrInvalidState) {
+		return unavailable(err)
+	}
 	var browserDelivery *store.ErrConflict
 	if errors.As(err, &browserDelivery) && browserDelivery.Resource == "browser_delivery" {
 		return &Fault{Code: "exam.delivery." + browserDelivery.Constraint, Cause: err}

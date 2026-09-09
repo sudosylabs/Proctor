@@ -160,8 +160,13 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		if grant.EnvironmentEpoch != "" && access.SourceObservation == nil {
 			return nil, time.Time{}, executionObservationConflict("semantic_observation_required")
 		}
-		if access.SourceObservation != nil && (grant.Fence() != access.SourceObservation.Fence || grant.DesiredControlState != model.ExecutionControlRunning || grant.ControlAcknowledgedRevision != grant.ControlRevision) {
-			return nil, time.Time{}, executionObservationConflict("fence")
+		if access.SourceObservation != nil {
+			if grant.EnvironmentEpoch != access.SourceObservation.Fence.EnvironmentEpoch || access.SourceObservation.Fence.ControlRevision > grant.ControlRevision || grant.DesiredControlState == model.ExecutionControlRevoked {
+				return nil, time.Time{}, executionObservationConflict("fence")
+			}
+			if grant.DesiredControlState != model.ExecutionControlRunning || grant.ControlAcknowledgedRevision != grant.ControlRevision {
+				return nil, time.Time{}, executionObservationConflict("interaction_blocked")
+			}
 		}
 	}
 	if err = tx.Select(ctx, &memberships, `SELECT start_at,end_at,archived_at FROM class_members
@@ -193,6 +198,9 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 	if row.ParticipationState != string(model.AttemptParticipationActive) || !databaseNow.Before(row.LeaseExpiresAt) {
 		return nil, time.Time{}, store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	}
+	if access.SourceObservation != nil && row.SittingState == string(model.ExamSittingPaused) && databaseNow.Before(row.ScheduledEndAt) {
+		return nil, time.Time{}, executionObservationConflict("interaction_blocked")
+	}
 	if row.SittingState != string(model.ExamSittingOpen) || !databaseNow.Before(row.ScheduledEndAt) {
 		return nil, time.Time{}, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
@@ -213,6 +221,10 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		return nil, time.Time{}, store.NewErrNotFound("attempt_workspace_access", access.AttemptID.String())
 	}
 	if err := lockSecurityInteraction(ctx, tx, access.AttemptID); err != nil {
+		var conflict *store.ErrConflict
+		if access.SourceObservation != nil && errors.As(err, &conflict) && conflict.Constraint == "posture_blocked" {
+			return nil, time.Time{}, executionObservationConflict("interaction_blocked")
+		}
 		return nil, time.Time{}, err
 	}
 	target, err := attemptWorkspaceTarget(row)

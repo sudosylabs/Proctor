@@ -276,8 +276,13 @@ func (s *Service) observeProjection(ctx context.Context, grant *model.ExecutionG
 	if err != nil {
 		return result, err
 	}
-	if latest.Fence() != current.Fence() || latest.ControlAcknowledgedRevision != latest.ControlRevision || latest.DesiredControlState != model.ExecutionControlRunning {
+	if latest.ID != current.ID || latest.EnvironmentEpoch != current.EnvironmentEpoch || latest.State != model.ExecutionGrantReady || latest.DesiredControlState == model.ExecutionControlRevoked {
 		return result, ErrUnavailable
+	}
+	// A reversible gate change invalidates this observation handle, not its
+	// environment. The next Watch acquires it under freshly acknowledged control.
+	if latest.Fence() != current.Fence() || latest.ControlAcknowledgedRevision != latest.ControlRevision || latest.DesiredControlState != model.ExecutionControlRunning || latest.LifecyclePending {
+		return result, ErrInteractionBlocked
 	}
 	return result, nil
 }

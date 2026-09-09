@@ -9,7 +9,9 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 	"github.com/sudosylabs/proctor/server/model"
 	"time"
 )
@@ -70,15 +72,22 @@ func retainBrowserIntegrity(ctx context.Context, tx *sqlxTxWrapper, source model
 	} else if err != nil {
 		return err
 	}
-	detail := model.BrowserIntegrityEvidence{SourceSessionID: source, PolicyRevisionID: event.PolicyRevisionID, RuleID: rule.RuleID, Event: event}
-	if err := detail.Validate(); err != nil {
-		return err
-	}
-	raw, err := canonicalPreflightValue(detail)
+	digest, err := model.BrowserPolicyDigest(policy)
 	if err != nil {
 		return err
 	}
-	if len(raw) > 32768 {
+	detail := model.BrowserIntegrityEvidence{SourceSessionID: source, PolicyRevisionID: event.PolicyRevisionID, PolicyDigest: digest, RuleID: rule.RuleID, Event: event}
+	if err := detail.Validate(); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(detail)
+	if err == nil {
+		raw, err = canonicaljson.Canonicalize(raw, model.BrowserIntegrityEvidenceMaxBytes)
+	}
+	if err != nil {
+		return err
+	}
+	if len(raw) > model.BrowserIntegrityEvidenceMaxBytes {
 		return model.ErrDeliveryInvalid
 	}
 	if group.Details < 100 && budget.Records < model.BrowserEvidenceRecordLimit && budget.Bytes+int64(len(raw)) <= model.BrowserEvidenceByteLimit {

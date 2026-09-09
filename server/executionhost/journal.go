@@ -243,34 +243,15 @@ func (o *journalObservation) NextPending(ctx context.Context) (appexecution.Even
 		return appexecution.Event{}, false, io.ErrClosedPipe
 	default:
 	}
+	if err := o.refreshControl(ctx); err != nil {
+		return appexecution.Event{}, false, err
+	}
 	if o.current != nil {
 		event := cloneObservation(*o.current)
 		return appexecution.Event{Semantic: &event}, true, nil
 	}
-	var status execenv.ControlReceipt
-	if err := o.environment.call(ctx, func(native execenv.SemanticEnv) error {
-		var err error
-		status, err = native.ControlStatus(ctx)
-		return err
-	}); err != nil {
-		return appexecution.Event{}, false, err
-	}
-	if status.Fence.ExecutionGrantID != hostFence(o.fence).ExecutionGrantID || status.Fence.EnvironmentEpoch != o.fence.EnvironmentEpoch || status.Fence.FenceRevision < uint64(o.fence.ControlRevision) {
-		return appexecution.Event{}, false, appexecution.ErrObservationLost
-	}
-	if !status.Confirmed || status.State == execenv.ControlFrozen {
-		return appexecution.Event{}, false, appexecution.ErrProjectionPending
-	}
-	if status.State != execenv.ControlRunning {
-		return appexecution.Event{}, false, appexecution.ErrRevoked
-	}
-	currentFence, err := applicationFence(status.Fence)
-	if err != nil {
-		return appexecution.Event{}, false, err
-	}
-	o.fence = currentFence
 	var page execenv.ObservationPage
-	err = o.environment.call(ctx, func(native execenv.SemanticEnv) error {
+	err := o.environment.call(ctx, func(native execenv.SemanticEnv) error {
 		var err error
 		page, err = native.Observe(ctx, hostFence(o.fence), uint64(o.after), 1)
 		return err
@@ -288,18 +269,50 @@ func (o *journalObservation) NextPending(ctx context.Context) (appexecution.Even
 		return appexecution.Event{}, false, nil
 	}
 	event, err := applicationObservation(page.Observations[0])
-	if err != nil || event.HostSequence != o.after+1 || event.Fence != o.fence {
+	if err != nil || event.HostSequence != o.after+1 || event.Fence.GrantID != o.fence.GrantID || event.Fence.EnvironmentEpoch != o.fence.EnvironmentEpoch || event.Fence.ControlRevision > o.fence.ControlRevision {
 		return appexecution.Event{}, false, appexecution.ErrObservationLost
 	}
 	retained := cloneObservation(event)
 	o.current = &retained
 	return appexecution.Event{Semantic: &event}, true, nil
 }
+
+// The capture stays immutable while each effect uses the current running fence.
+// A control transition may complete between selecting an event and acquiring
+// the caller's lifecycle lease; refresh again before using retained content.
+func (o *journalObservation) refreshControl(ctx context.Context) error {
+	var status execenv.ControlReceipt
+	if err := o.environment.call(ctx, func(native execenv.SemanticEnv) error {
+		var err error
+		status, err = native.ControlStatus(ctx)
+		return err
+	}); err != nil {
+		return err
+	}
+	if status.Fence.ExecutionGrantID != hostFence(o.fence).ExecutionGrantID || status.Fence.EnvironmentEpoch != o.fence.EnvironmentEpoch || status.Fence.FenceRevision < uint64(o.fence.ControlRevision) {
+		return appexecution.ErrObservationLost
+	}
+	if !status.Confirmed || status.State == execenv.ControlFrozen {
+		return appexecution.ErrProjectionPending
+	}
+	if status.State != execenv.ControlRunning {
+		return appexecution.ErrRevoked
+	}
+	currentFence, err := applicationFence(status.Fence)
+	if err != nil {
+		return err
+	}
+	o.fence = currentFence
+	return nil
+}
 func (o *journalObservation) OpenContent(ctx context.Context, event store.ExecutionObservation) (io.ReadCloser, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if !o.matches(event) || event.Content == nil {
 		return nil, appexecution.ErrInvalid
+	}
+	if err := o.refreshControl(ctx); err != nil {
+		return nil, err
 	}
 	var body io.ReadCloser
 	err := o.environment.call(ctx, func(native execenv.SemanticEnv) error {
@@ -319,6 +332,9 @@ func (o *journalObservation) Confirm(ctx context.Context, event store.ExecutionO
 	if !o.matches(event) {
 		return appexecution.ErrInvalid
 	}
+	if err := o.refreshControl(ctx); err != nil {
+		return err
+	}
 	return o.environment.call(ctx, func(native execenv.SemanticEnv) error {
 		return native.ConfirmObservationProjection(ctx, execenv.ObservationProjection{Fence: hostFence(o.fence), HostSequence: uint64(event.HostSequence), Mutation: hostMutation(mutation)})
 	})
@@ -328,6 +344,9 @@ func (o *journalObservation) Acknowledge(ctx context.Context, sequence int64) er
 	defer o.mu.Unlock()
 	if o.current == nil || o.current.HostSequence != sequence {
 		return appexecution.ErrInvalid
+	}
+	if err := o.refreshControl(ctx); err != nil {
+		return err
 	}
 	err := o.environment.call(ctx, func(native execenv.SemanticEnv) error {
 		return native.AcknowledgeObservations(ctx, hostFence(o.fence), uint64(sequence))

@@ -67,7 +67,7 @@ func applyBrowserControlWatermark(ctx context.Context, tx *sqlxTxWrapper, input 
 			return nil, err
 		}
 		if int64(len(ids)) > maximumAttemptBrowserSources {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("browser_watermark", "value", model.ErrDeliveryInvalid)
 		}
 		for _, id := range ids {
 			if _, err := settleBrowserSource(ctx, tx, model.BrowserSourceSessionID(id)); err != nil {

@@ -42,6 +42,9 @@ func (s SecurityPolicyScope) Validate() error {
 // EffectiveExamSecurityPolicy records frozen semantics and provenance. It has
 // no expiry: only the separately persisted Participation lease grants authority.
 type EffectiveExamSecurityPolicy struct {
+	issuedAtSpelling   string
+	activeFromSpelling string
+
 	PolicyID              string               `json:"policy_id"`
 	Revision              string               `json:"revision"`
 	Ordinal               int64                `json:"ordinal"`
@@ -125,10 +128,6 @@ func ResolveNativePolicy(input NativePolicyResolution) (ResolvedNativePolicy, er
 	if input.Build.Validate() != nil || agreement == nil || agreement.RegistryDigest() != input.Selections.Native.RegistryDigest {
 		return ResolvedNativePolicy{}, ErrNativeCoverageUnsupported
 	}
-	requirements, err := resolveNativeRequirements(input.Selections.Native, agreement)
-	if err != nil {
-		return ResolvedNativePolicy{}, err
-	}
 	matrix := agreement.Matrix()
 	policy := EffectiveExamSecurityPolicy{PolicyID: input.PolicyID, Revision: input.Revision, Ordinal: input.Ordinal, InstitutionID: input.InstitutionID, ExamRevisionID: input.ExamRevisionID, SittingID: input.SittingID, Scope: input.Scope, IssuedAt: input.IssuedAt, ActiveFrom: input.ActiveFrom, ApplicationReleaseID: matrix.ReleaseID, MatrixID: matrix.MatrixID, TargetTuple: matrix.TargetTuple, RegistryDigest: agreement.RegistryDigest(), FocusLossMode: NativeModeDisabled, ConnectionLossMode: NativeModeEnforce, ResolvedExceptionRefs: []string{}, EvidenceClassID: "native_integrity", VisibilityClassID: "examiner_restricted", RetentionClassID: "native_minimized", Capabilities: slices.Clone(input.Selections.Native.Families)}
 	if input.Selections.FocusLoss.Enabled {
@@ -140,12 +139,46 @@ func ResolveNativePolicy(input NativePolicyResolution) (ResolvedNativePolicy, er
 	if err := policy.seal(input.ActivationTime); err != nil {
 		return ResolvedNativePolicy{}, err
 	}
+	return resolvePolicyCoverage(policy, agreement)
+}
+
+// Validate checks the frozen projection against its policy and release agreement.
+// Source selection and requirements are derived meaning, not independent claims.
+func (r ResolvedNativePolicy) Validate(agreement *DesktopNativeAgreement, at time.Time) error {
+	if agreement == nil || r.Policy.Validate(at) != nil {
+		return ErrSecurityPolicyInvalid
+	}
+	expected, err := resolvePolicyCoverage(r.Policy, agreement)
+	if err != nil {
+		return err
+	}
+	before, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	after, err := json.Marshal(expected)
+	if err != nil || !bytes.Equal(before, after) {
+		return ErrSecurityPolicyInvalid
+	}
+	return nil
+}
+
+func resolvePolicyCoverage(policy EffectiveExamSecurityPolicy, agreement *DesktopNativeAgreement) (ResolvedNativePolicy, error) {
+	matrix := agreement.Matrix()
+	if policy.RegistryDigest != agreement.RegistryDigest() || policy.ApplicationReleaseID != matrix.ReleaseID || policy.MatrixID != matrix.MatrixID || policy.TargetTuple != matrix.TargetTuple {
+		return ResolvedNativePolicy{}, ErrNativeCoverageUnsupported
+	}
+	native := NativeSecurityPolicy{RegistryDigest: policy.RegistryDigest, Families: policy.Capabilities}
+	requirements, err := resolveNativeRequirements(native, agreement)
+	if err != nil {
+		return ResolvedNativePolicy{}, err
+	}
 	bindings := []SecurityCatalogBinding{{Kind: "detector", CatalogID: "native.detectors", Revision: agreement.DetectorCatalogDigest(), Digest: agreement.DetectorCatalogDigest()}}
 	digest, err := policy.ContentDigest(bindings, agreement.MatrixDigest())
 	if err != nil {
 		return ResolvedNativePolicy{}, err
 	}
-	result := ResolvedNativePolicy{Policy: policy, PolicyContentDigest: digest, CapabilityMatrixDigest: agreement.MatrixDigest(), CatalogBindings: bindings, Requirements: requirements, Sources: []NativeSourceID{}, Categories: selectedNativeCategories(input.Selections.Native)}
+	result := ResolvedNativePolicy{Policy: policy, PolicyContentDigest: digest, CapabilityMatrixDigest: agreement.MatrixDigest(), CatalogBindings: bindings, Requirements: requirements, Sources: []NativeSourceID{}, Categories: selectedNativeCategories(native)}
 	for _, source := range NativeSources() {
 		for _, requirement := range requirements {
 			if requirement.SourceID == source && requirement.Entry.Claim != NativeClaimUnavailable {
@@ -292,8 +325,7 @@ func (p EffectiveExamSecurityPolicy) validateFields(at time.Time) error {
 	return (NativeSecurityPolicy{RegistryDigest: p.RegistryDigest, BaselineID: "desktop_candidate", Families: p.Capabilities}).Validate()
 }
 func (p EffectiveExamSecurityPolicy) document(omitted ...string) (map[string]json.RawMessage, error) {
-	type wire EffectiveExamSecurityPolicy
-	raw, err := json.Marshal(wire(p))
+	raw, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
 	}
@@ -375,33 +407,42 @@ func (p EffectiveExamSecurityPolicy) RebindAttempt(id ExamAttemptID, at time.Tim
 	}
 	return p, nil
 }
-func (p *EffectiveExamSecurityPolicy) UnmarshalJSON(data []byte) error {
-	if p == nil || len(data) > SecurityPolicyResponseMaxBytes || validateExamDocumentJSON(data) != nil {
+
+func encodeCanonicalExamRaw(data []byte) ([]byte, error) {
+	var value json.RawMessage = data
+	return encodeCanonicalExamDocument(value)
+}
+
+func (v EffectiveExamSecurityPolicy) MarshalJSON() ([]byte, error) {
+	type wire EffectiveExamSecurityPolicy
+	return json.Marshal(struct {
+		*wire
+		IssuedAt   securityJSONInstant `json:"issued_at"`
+		ActiveFrom securityJSONInstant `json:"active_from"`
+	}{wire: (*wire)(&v), IssuedAt: securityJSONInstant{Time: v.IssuedAt, spelling: v.issuedAtSpelling}, ActiveFrom: securityJSONInstant{Time: v.ActiveFrom, spelling: v.activeFromSpelling}})
+}
+func (v *EffectiveExamSecurityPolicy) UnmarshalJSON(raw []byte) error {
+	if v == nil {
 		return ErrSecurityPolicyInvalid
 	}
 	type wire EffectiveExamSecurityPolicy
 	var decoded wire
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&decoded) != nil {
+	value := struct {
+		*wire
+		IssuedAt   securityJSONInstant `json:"issued_at"`
+		ActiveFrom securityJSONInstant `json:"active_from"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, SecurityPolicyResponseMaxBytes) != nil {
 		return ErrSecurityPolicyInvalid
 	}
 	candidate := EffectiveExamSecurityPolicy(decoded)
+	candidate.IssuedAt = value.IssuedAt.Time
+	candidate.issuedAtSpelling = value.IssuedAt.spelling
+	candidate.ActiveFrom = value.ActiveFrom.Time
+	candidate.activeFromSpelling = value.ActiveFrom.spelling
 	if candidate.Validate(candidate.ActiveFrom) != nil {
 		return ErrSecurityPolicyInvalid
 	}
-	supplied, err := encodeCanonicalExamRaw(data)
-	if err != nil {
-		return err
-	}
-	expected, err := encodeCanonicalExamDocument(decoded)
-	if err != nil || !bytes.Equal(supplied, expected) {
-		return ErrSecurityPolicyInvalid
-	}
-	*p = candidate
+	*v = candidate
 	return nil
-}
-func encodeCanonicalExamRaw(data []byte) ([]byte, error) {
-	var value json.RawMessage = data
-	return encodeCanonicalExamDocument(value)
 }

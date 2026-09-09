@@ -32,6 +32,10 @@ var ErrPasswordCredentialChanged = errors.New("password credential has changed")
 // leave the User without a method admitted by current policy and deployment.
 var ErrLastUsableAuthenticationMethod = errors.New("cannot remove the last usable authentication method")
 
+// ErrInvalidState identifies authoritative data that cannot be rehydrated safely.
+// Application error mapping must classify it before inspecting validation causes.
+var ErrInvalidState = errors.New("invalid persisted state")
+
 // ErrInvalidInput reports that a repository received a model in a state it
 // cannot persist.
 type ErrInvalidInput struct {

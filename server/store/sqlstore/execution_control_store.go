@@ -22,7 +22,8 @@ import (
 
 // The authority snapshot is application metadata only. Its digest is never sent
 // to a host. Renewed lease deadlines do not change the intent, but expiration,
-// control ordering, Participation replacement and correction/lifecycle changes do.
+// effective security transitions, Participation replacement and correction/lifecycle
+// changes do. Receipt history is not authority: healthy renewals retain the fence.
 type executionControlAuthority struct {
 	CredentialUsable      bool   `db:"credential_usable"`
 	UserRevision          int64  `db:"user_revision"`
@@ -37,7 +38,7 @@ type executionControlAuthority struct {
 	LeaseUsable           bool   `db:"lease_usable"`
 	SecurityAllowed       bool   `db:"security_allowed"`
 	FreezeRequired        bool   `db:"freeze_required"`
-	ControlLedger         []byte `db:"control_ledger"`
+	ExecutionGateSequence int64  `db:"execution_gate_sequence"`
 }
 
 func (a executionControlAuthority) desired(grant *model.ExecutionGrant) model.ExecutionControlState {
@@ -73,7 +74,7 @@ func readExecutionControlAuthority(ctx context.Context, tx *sqlxTxWrapper, attem
  COALESCE(u.revision,0) AS user_revision,
  COALESCE(p.id,'') AS participation_id,COALESCE(p.lease_expires_at>clock_timestamp(),false) AS lease_usable,
  COALESCE(o.security_interaction_allowed,false) AS security_allowed,COALESCE(o.freeze_required,true) AS freeze_required,
- COALESCE(o.control_ledger_canonical,''::bytea) AS control_ledger
+ COALESCE(o.execution_gate_sequence,0) AS execution_gate_sequence
  FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
  LEFT JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id AND p.state='active'
  LEFT JOIN exam_attempt_security_owners o ON o.participation_id=p.id

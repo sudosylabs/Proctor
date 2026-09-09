@@ -67,7 +67,7 @@ func encodeNativeRecord(record model.NativeRecord, sequence int64, index int) (n
 	}
 	// Reserve the larger spelling of the boolean within counted bytes so an
 	// unresolved projection never grows the stored representation.
-	if len(row.Raw) > 8192 || len(row.Metadata) > 2048 {
+	if len(row.Raw) > 256<<10 || len(row.Metadata) > 64<<10 {
 		return row, model.ErrNativeDeliveryInvalid
 	}
 	return row, nil
@@ -78,11 +78,9 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 	if err := tx.Get(ctx, &raw, `SELECT latest_report_canonical FROM exam_attempt_security_owners WHERE participation_id=?`, owner.ParticipationID); err != nil {
 		return err
 	}
-	var snapshot struct {
-		Sources []model.NativeSourceCoverage `json:"sources"`
-	}
-	if json.Unmarshal(raw, &snapshot) != nil {
-		return model.ErrNativeDeliveryInvalid
+	snapshot, err := decodeNativeCoverageSnapshot(raw)
+	if err != nil {
+		return err
 	}
 	var historyRaw [][]byte
 	if err := tx.Select(ctx, &historyRaw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=?`, owner.ParticipationID); err != nil {
@@ -97,13 +95,9 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 	// First collect all instances, then retire predecessors. SQL ordering is not
 	// an event ordering and must not resurrect an intermediate lifetime.
 	for _, raw := range historyRaw {
-		var record nativeResetRecord
-		if json.Unmarshal(raw, &record) != nil || record.Reset.Validate() != nil || record.ParticipationID.String() != owner.ParticipationID {
-			return model.ErrNativeDeliveryInvalid
-		}
-		canonical, err := record.Reset.Canonical()
-		if err != nil || model.SHA256Fingerprint(canonical) != record.Digest {
-			return model.ErrNativeDeliveryInvalid
+		record, err := decodeNativeResetRecord(raw, model.AttemptParticipationID(owner.ParticipationID), "")
+		if err != nil {
+			return err
 		}
 		history = append(history, record.Reset)
 		for _, instance := range []string{record.Reset.PreviousSourceInstanceID, record.Reset.NewSourceInstanceID} {
@@ -196,7 +190,7 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 				}
 				var m nativeRecordMetadata
 				if json.Unmarshal(row.Metadata, &m) != nil {
-					return model.ErrNativeDeliveryInvalid
+					return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 				}
 				for _, r := range m.SourceRanges {
 					if r.SourceID == edge.SourceID && r.SourceInstanceID == edge.PreviousSourceInstanceID && r.LastSequence > edge.PreviousFinalSequence {
@@ -219,7 +213,7 @@ func validateNativeBatchSources(ctx context.Context, tx *sqlxTxWrapper, owner na
 		encoded := make([][]byte, len(pendingResets))
 		required := int64(0)
 		for i, record := range pendingResets {
-			raw, err := canonicalPreflightValue(record)
+			raw, err := encodeNativeResetRecord(record)
 			if err != nil {
 				return err
 			}
@@ -265,7 +259,7 @@ func validateNativeOccurrenceNeighbors(ctx context.Context, tx *sqlxTxWrapper, o
 		}
 		var record model.NativeRecord
 		if json.Unmarshal(row.Raw, &record) != nil || record.Occurrence == nil {
-			return model.ErrNativeDeliveryInvalid
+			return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 		}
 		id := record.Occurrence.OccurrenceID
 		var previous, next []byte
@@ -277,7 +271,7 @@ func validateNativeOccurrenceNeighbors(ctx context.Context, tx *sqlxTxWrapper, o
 		if len(previous) > 0 {
 			var r model.NativeRecord
 			if json.Unmarshal(previous, &r) != nil || r.Occurrence == nil {
-				return model.ErrNativeDeliveryInvalid
+				return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 			}
 			prior = &model.NativeOccurrenceProgress{Latest: *r.Occurrence}
 		}
@@ -292,7 +286,7 @@ func validateNativeOccurrenceNeighbors(ctx context.Context, tx *sqlxTxWrapper, o
 		if len(next) > 0 {
 			var r model.NativeRecord
 			if json.Unmarshal(next, &r) != nil || r.Occurrence == nil {
-				return model.ErrNativeDeliveryInvalid
+				return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 			}
 			if _, err := model.AdvanceNativeOccurrence(&current, *r.Occurrence, false); err != nil {
 				return err
@@ -312,7 +306,7 @@ func advanceNativeInterpretation(ctx context.Context, tx *sqlxTxWrapper, owner n
 	}
 	progress, err := model.ResolveDeliveryProgress(owner.Allocated, received, gaps, owner.TerminalThrough)
 	if err != nil {
-		return err
+		return invalidPersistedState("delivery", "progress", err)
 	}
 	var rows []nativeStoredRecord
 	if err := tx.Select(ctx, &rows, `SELECT r.batch_sequence,r.record_index,r.kind,r.record_canonical,r.metadata_canonical FROM exam_native_delivery_records r JOIN exam_native_delivery_batches b USING(participation_id,batch_sequence) WHERE r.participation_id=? AND NOT b.processed AND r.batch_sequence<=? ORDER BY r.batch_sequence,r.record_index`, owner.ParticipationID, progress.SettledThrough); err != nil {
@@ -324,7 +318,7 @@ func advanceNativeInterpretation(ctx context.Context, tx *sqlxTxWrapper, owner n
 		}
 		var record model.NativeRecord
 		if json.Unmarshal(row.Raw, &record) != nil || record.Occurrence == nil {
-			return model.ErrNativeDeliveryInvalid
+			return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 		}
 		var previous struct {
 			Raw        []byte `db:"record_canonical"`
@@ -335,7 +329,7 @@ func advanceNativeInterpretation(ctx context.Context, tx *sqlxTxWrapper, owner n
 		if err == nil {
 			var r model.NativeRecord
 			if json.Unmarshal(previous.Raw, &r) != nil || r.Occurrence == nil {
-				return model.ErrNativeDeliveryInvalid
+				return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 			}
 			prior = &model.NativeOccurrenceProgress{Latest: *r.Occurrence, UnresolvedOpener: previous.Unresolved}
 		} else if !errors.Is(err, sql.ErrNoRows) {
@@ -344,7 +338,7 @@ func advanceNativeInterpretation(ctx context.Context, tx *sqlxTxWrapper, owner n
 		missingBefore := owner.TerminalThrough > 0 && row.Sequence > 1 || slices.ContainsFunc(gaps, func(r model.SequenceRange) bool { return r.First < row.Sequence })
 		value, err := model.AdvanceNativeOccurrence(prior, *record.Occurrence, missingBefore)
 		if err != nil {
-			return err
+			return invalidPersistedState("native_delivery", "occurrence_transition", err)
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO exam_native_occurrences(participation_id,occurrence_id,batch_sequence,record_index,unresolved_opener) VALUES(?,?,?,?,?) ON CONFLICT(participation_id,occurrence_id) DO UPDATE SET batch_sequence=EXCLUDED.batch_sequence,record_index=EXCLUDED.record_index,unresolved_opener=EXCLUDED.unresolved_opener`, owner.ParticipationID, record.Occurrence.OccurrenceID, row.Sequence, row.Index, value.UnresolvedOpener); err != nil {
 			return err
@@ -355,7 +349,7 @@ func advanceNativeInterpretation(ctx context.Context, tx *sqlxTxWrapper, owner n
 		if value.UnresolvedOpener {
 			var meta nativeRecordMetadata
 			if json.Unmarshal(row.Metadata, &meta) != nil {
-				return model.ErrNativeDeliveryInvalid
+				return invalidPersistedState("native_delivery", "record", model.ErrNativeDeliveryInvalid)
 			}
 			meta.UnresolvedOpener = true
 			raw, err := canonicalPreflightValue(meta)

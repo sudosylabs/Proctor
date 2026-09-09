@@ -39,6 +39,13 @@ type CandidateExamTerminal interface {
 	appexecution.Terminal
 	ProjectionStatus() appexecution.ProjectionStatus
 }
+
+// IsCandidateExamTerminalInteractionBlocked reports a recoverable input or resize
+// denial. Transports reject that request while retaining the original terminal.
+func IsCandidateExamTerminalInteractionBlocked(err error) bool {
+	return errors.Is(err, appexecution.ErrInteractionBlocked)
+}
+
 type CandidateExamTerminalWindow = appexecution.Window
 type CandidateExamActivityPage = examattempt.CandidateActivityPage
 type SittingCandidateStatusesPage = examattempt.SittingCandidateStatusesPage

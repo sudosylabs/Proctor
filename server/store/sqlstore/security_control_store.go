@@ -24,6 +24,48 @@ type nativeResetRecord struct {
 	Reset           model.NativeSourceReset      `json:"reset"`
 	Digest          string                       `json:"digest"`
 }
+
+// Historical records use the native batch bound; live controls keep their smaller outer bound.
+const nativeResetRecordMaxBytes = 256*1024 + 512
+
+func encodeNativeResetRecord(record nativeResetRecord) ([]byte, error) {
+	raw, err := json.Marshal(record)
+	if err != nil {
+		return nil, err
+	}
+	return canonicaljson.Canonicalize(raw, nativeResetRecordMaxBytes)
+}
+
+func decodeNativeResetRecord(raw []byte, participationID model.AttemptParticipationID, resetID string) (nativeResetRecord, error) {
+	var record nativeResetRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return record, invalidPersistedState("security_reset", "record", err)
+	}
+	canonical, err := record.Reset.Canonical()
+	if err != nil || record.ParticipationID != participationID || !participationID.IsValid() || (resetID != "" && record.Reset.ResetID != resetID) || record.Digest != model.SHA256Fingerprint(canonical) {
+		return record, invalidPersistedState("security_reset", "record", model.ErrSecurityControlInvalid)
+	}
+	return record, nil
+}
+
+// The initial retained value is a full preflight report; accepted renewals retain
+// only these facts. Both representations use the same domain validation.
+type nativeCoverageSnapshot struct {
+	Sources  []model.NativeSourceCoverage `json:"sources"`
+	Coverage []model.NativeCoverageClaim  `json:"coverage"`
+}
+
+func decodeNativeCoverageSnapshot(raw []byte) (nativeCoverageSnapshot, error) {
+	var snapshot nativeCoverageSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return snapshot, invalidPersistedState("security_owner", "latest_coverage", err)
+	}
+	if err := model.ValidateNativeCoverageSnapshot(snapshot.Sources, snapshot.Coverage); err != nil {
+		return snapshot, invalidPersistedState("security_owner", "latest_coverage", err)
+	}
+	return snapshot, nil
+}
+
 type nativeControlOwnerRow struct {
 	Binding        []byte `db:"binding_canonical"`
 	LatestCoverage []byte `db:"latest_report_canonical"`
@@ -140,12 +182,9 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	if processed {
 		return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, receipt, owner.Allowed, owner.FreezeRequired, sittingOpen)
 	}
-	var heads struct {
-		Sources  []model.NativeSourceCoverage `json:"sources"`
-		Coverage []model.NativeCoverageClaim  `json:"coverage"`
-	}
-	if err := json.Unmarshal(owner.LatestCoverage, &heads); err != nil {
-		return zero, invalidPersistedState("security_owner", "latest_coverage", err)
+	heads, err := decodeNativeCoverageSnapshot(owner.LatestCoverage)
+	if err != nil {
+		return zero, err
 	}
 	var historyRaw [][]byte
 	if err := tx.Select(ctx, &historyRaw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=? ORDER BY reset_id`, input.ParticipationID.String()); err != nil {
@@ -153,9 +192,9 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	}
 	history := make([]model.NativeSourceReset, 0, len(historyRaw))
 	for _, encoded := range historyRaw {
-		var record nativeResetRecord
-		if err := json.Unmarshal(encoded, &record); err != nil || record.Reset.Validate() != nil || record.ParticipationID != input.ParticipationID {
-			return zero, invalidPersistedState("security_reset", "record", model.ErrSecurityControlInvalid)
+		record, err := decodeNativeResetRecord(encoded, input.ParticipationID, "")
+		if err != nil {
+			return zero, err
 		}
 		history = append(history, record.Reset)
 	}
@@ -186,8 +225,8 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		if err != nil {
 			return zero, err
 		}
-		record, err := canonicalPreflightValue(nativeResetRecord{ParticipationID: input.ParticipationID, Reset: reset, Digest: model.SHA256Fingerprint(canonical)})
-		if err != nil || len(record) > 2048 {
+		record, err := encodeNativeResetRecord(nativeResetRecord{ParticipationID: input.ParticipationID, Reset: reset, Digest: model.SHA256Fingerprint(canonical)})
+		if err != nil || len(record) > nativeResetRecordMaxBytes {
 			return zero, store.NewErrInvalidInput("security_control", "reset_size", nil)
 		}
 		records = append(records, record)
@@ -267,10 +306,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		owner.Allowed = false
 	}
 	if continuity.Result == "accepted" {
-		owner.LatestCoverage, err = canonicalPreflightValue(struct {
-			Sources  []model.NativeSourceCoverage `json:"sources"`
-			Coverage []model.NativeCoverageClaim  `json:"coverage"`
-		}{control.Sources, control.Coverage})
+		owner.LatestCoverage, err = canonicalPreflightValue(nativeCoverageSnapshot{Sources: control.Sources, Coverage: control.Coverage})
 		if err != nil || len(owner.LatestCoverage) > model.SecurityControlMaxBytes {
 			return zero, store.NewErrInvalidInput("security_control", "coverage_size", nil)
 		}
@@ -287,7 +323,10 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	if err != nil {
 		return zero, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET latest_report_canonical=?,control_ledger_canonical=?,control_body_canonical=?,security_interaction_allowed=?,freeze_required=?,allocated_through_sequence=?,summary_only=?,stop_reason=CASE WHEN ? THEN COALESCE(stop_reason,'positions') ELSE stop_reason END,terminal_missing_through_sequence=CASE WHEN ? THEN ? ELSE terminal_missing_through_sequence END WHERE participation_id=?`, owner.LatestCoverage, ledgerRaw, raw, owner.Allowed, owner.FreezeRequired, owner.Allocated, owner.SummaryOnly, owner.SummaryOnly, owner.SummaryOnly || budget.SummaryOnly, owner.Allocated, input.ParticipationID.String()); err != nil {
+	// Record the processed boundary only when effective execution gates change.
+	// This preserves fault/recovery ordering even if no host worker observes the
+	// intermediate fault, without invalidating healthy captures on every renewal.
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET execution_gate_sequence=CASE WHEN security_interaction_allowed<>? OR freeze_required<>? THEN ? ELSE execution_gate_sequence END,latest_report_canonical=?,control_ledger_canonical=?,control_body_canonical=?,security_interaction_allowed=?,freeze_required=?,allocated_through_sequence=?,summary_only=?,stop_reason=CASE WHEN ? THEN COALESCE(stop_reason,'positions') ELSE stop_reason END,terminal_missing_through_sequence=CASE WHEN ? THEN ? ELSE terminal_missing_through_sequence END WHERE participation_id=?`, owner.Allowed, owner.FreezeRequired, control.ControlSequence, owner.LatestCoverage, ledgerRaw, raw, owner.Allowed, owner.FreezeRequired, owner.Allocated, owner.SummaryOnly, owner.SummaryOnly, owner.SummaryOnly || budget.SummaryOnly, owner.Allocated, input.ParticipationID.String()); err != nil {
 		return zero, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,native_allocated_positions=?,native_summary_only=?,native_stop_reason=CASE WHEN ? THEN COALESCE(native_stop_reason,'positions') ELSE native_stop_reason END WHERE exam_attempt_id=?`, budget.Metadata, budget.Positions, budget.SummaryOnly, budget.SummaryOnly, input.AttemptID.String()); err != nil {
@@ -349,8 +388,8 @@ func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mo
 			if err := tx.Get(ctx, &raw, `SELECT reset_canonical FROM exam_native_source_resets WHERE participation_id=? AND reset_id=?`, participationID.String(), id); err != nil {
 				return result, err
 			}
-			var record nativeResetRecord
-			if err := json.Unmarshal(raw, &record); err != nil {
+			record, err := decodeNativeResetRecord(raw, participationID, id)
+			if err != nil {
 				return result, err
 			}
 			result.SourceResetReceipts = append(result.SourceResetReceipts, model.SourceResetReceipt{ResetID: id, ResetDigest: record.Digest})
@@ -389,11 +428,8 @@ func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mode
 	if err := tx.Get(ctx, &owner, `SELECT latest_report_canonical,control_ledger_canonical,security_interaction_allowed,freeze_required FROM exam_attempt_security_owners WHERE participation_id=? FOR SHARE`, participationID.String()); err != nil {
 		return nil, err
 	}
-	var heads struct {
-		Sources  []model.NativeSourceCoverage `json:"sources"`
-		Coverage []model.NativeCoverageClaim  `json:"coverage"`
-	}
-	if err := json.Unmarshal(owner.LatestCoverage, &heads); err != nil {
+	heads, err := decodeNativeCoverageSnapshot(owner.LatestCoverage)
+	if err != nil {
 		return nil, err
 	}
 	var ledger model.NativeControlLedger
@@ -419,8 +455,8 @@ func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mode
 	}
 	records := make([]nativeResetRecord, 0, len(rawResets))
 	for _, raw := range rawResets {
-		var record nativeResetRecord
-		if err := json.Unmarshal(raw, &record); err != nil {
+		record, err := decodeNativeResetRecord(raw, participationID, "")
+		if err != nil {
 			return nil, err
 		}
 		records = append(records, record)

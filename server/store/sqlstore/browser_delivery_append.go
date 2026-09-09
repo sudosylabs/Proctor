@@ -145,7 +145,7 @@ func (s *sqlExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 				}
 				var receipt model.BrowserEventReceipt
 				if json.Unmarshal(retained.Receipt, &receipt) != nil || receipt.Validate() != nil {
-					return browserAppendResult{}, model.ErrDeliveryInvalid
+					return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
 				}
 				receipts = append(receipts, receipt)
 				continue
@@ -192,8 +192,11 @@ func (s *sqlExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 				return browserAppendResult{}, err
 			}
 			count := int64(len(raw) + len(receiptRaw) + len(metadata))
-			if len(raw) > 32768 || len(receiptRaw) > 512 || len(metadata) > 256 {
+			if len(raw) > model.BrowserActivityAppendMaximumBytes {
 				return browserAppendResult{}, model.ErrDeliveryInvalid
+			}
+			if len(receiptRaw) > 512 || len(metadata) > 256 {
+				return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
 			}
 			fresh = append(fresh, browserAppendRecord{Event: event, Raw: raw, Receipt: receiptRaw, Metadata: metadata, Fingerprint: fingerprint, Bytes: count})
 			receipts = append(receipts, receipt)
@@ -225,7 +228,7 @@ func (s *sqlExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 					reason = nextAttempt.StopReason
 				}
 				if reason == nil {
-					return browserAppendResult{}, model.ErrDeliveryInvalid
+					return browserAppendResult{}, invalidPersistedState("browser_delivery", "receipt", model.ErrDeliveryInvalid)
 				}
 				if err := latchBrowserDelivery(ctx, tx, input.Access.AttemptID, input.ParticipationID, *reason, attemptScope); err != nil {
 					return browserAppendResult{}, err
@@ -247,6 +250,9 @@ func (s *sqlExamAttemptStore) appendBrowserActivity(ctx context.Context, input *
 			if err := tx.Get(ctx, &recoverable, `SELECT EXISTS(SELECT 1 FROM browser_activity_sources WHERE exam_attempt_id=? AND allocated_through_sequence>GREATEST(highest_contiguous,settled_through_sequence,terminal_missing_through_sequence))`, input.Access.AttemptID.String()); err != nil {
 				return browserAppendResult{}, err
 			}
+			// Include the earlier gap this proposed out-of-order append creates;
+			// persisted watermarks still describe the state before admission.
+			recoverable = recoverable || !repair
 			if !model.CanRetainPendingDelivery(pending, part.RetainedBytes, part.ByteLimit, bytes, repair, recoverable) || !model.CanRetainPendingDelivery(pending, attempt.RetainedBytes, attempt.ByteLimit, bytes, repair, recoverable) {
 				return browserAppendResult{}, store.NewErrConflict("browser_delivery", "pending_capacity", nil)
 			}
@@ -388,14 +394,12 @@ func latchBrowserDelivery(ctx context.Context, tx *sqlxTxWrapper, attempt model.
 		if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET browser_summary_only=true,browser_stop_reason=COALESCE(browser_stop_reason,?) WHERE exam_attempt_id=?`, string(reason), attempt.String()); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET terminal_missing_through_sequence=allocated_through_sequence WHERE exam_attempt_id=?`, attempt.String())
-		return err
+		return settleExhaustedBrowserSources(ctx, tx, attempt, "")
 	}
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET browser_summary_only=true,browser_stop_reason=COALESCE(browser_stop_reason,?) WHERE participation_id=?`, string(reason), part.String()); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET terminal_missing_through_sequence=allocated_through_sequence WHERE participation_id=?`, part.String())
-	return err
+	return settleExhaustedBrowserSources(ctx, tx, attempt, part)
 }
 func insertBrowserEvent(ctx context.Context, tx *sqlxTxWrapper, input *store.BrowserActivityAppend, exam, sitting string, record browserAppendRecord, now time.Time) error {
 	event := record.Event
@@ -429,7 +433,7 @@ func browserVerifiedPrior(ctx context.Context, tx *sqlxTxWrapper, source model.B
 	}
 	var event model.BrowserActivityEvent
 	if json.Unmarshal(raw, &event) != nil {
-		return nil, model.ErrDeliveryInvalid
+		return nil, invalidPersistedState("browser_delivery", "record", model.ErrDeliveryInvalid)
 	}
 	return &event, nil
 }
@@ -444,13 +448,13 @@ func advanceBrowserInterpretation(ctx context.Context, tx *sqlxTxWrapper, source
 		return err
 	}
 	if len(rows) > 50000 {
-		return model.ErrDeliveryInvalid
+		return invalidPersistedState("browser_delivery", "interpretation", model.ErrDeliveryInvalid)
 	}
 	var released int64
 	for _, row := range rows {
 		var event model.BrowserActivityEvent
 		if json.Unmarshal(row.Raw, &event) != nil {
-			return model.ErrDeliveryInvalid
+			return invalidPersistedState("browser_delivery", "interpretation", model.ErrDeliveryInvalid)
 		}
 		prior, err := browserVerifiedPrior(ctx, tx, source, event.RedirectFromSequence)
 		if err != nil {
@@ -481,7 +485,7 @@ func advanceBrowserInterpretation(ctx context.Context, tx *sqlxTxWrapper, source
 			return err
 		}
 		if count, err := result.RowsAffected(); err != nil || count != 1 {
-			return model.ErrDeliveryInvalid
+			return invalidPersistedState("browser_delivery", "interpretation", model.ErrDeliveryInvalid)
 		}
 	}
 	return nil

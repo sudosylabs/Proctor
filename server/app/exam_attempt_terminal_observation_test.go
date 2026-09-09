@@ -177,7 +177,10 @@ func (o *startupSemanticObservation) Next(ctx context.Context) (appexecution.Eve
 }
 func (o *startupSemanticObservation) Close() error { return nil }
 
-type startupTerminalExecution struct{ semanticTerminalExecutionFake }
+type startupTerminalExecution struct {
+	semanticTerminalExecutionFake
+	refreshErr error
+}
 
 func (e *startupTerminalExecution) Ensure(ctx context.Context, request appexecution.Request) (*appexecution.Placement, error) {
 	result, err := e.terminalExecutionPortFake.Ensure(ctx, request)
@@ -188,6 +191,9 @@ func (e *startupTerminalExecution) Ensure(ctx context.Context, request appexecut
 	if e.ensureCalls == 1 {
 		value.Projection.State = store.ExecutionProjectionSynchronizing
 		return &value, appexecution.ErrProjectionPending
+	}
+	if e.refreshErr != nil {
+		return nil, e.refreshErr
 	}
 	return &value, nil
 }
@@ -200,7 +206,7 @@ func TestTerminalStartupDrainsBeforeAttachAndBoundsCatchUp(t *testing.T) {
 			base := &terminalExecutionPortFake{placement: &appexecution.Placement{GrantID: id, AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}}, terminal: newTerminalTrackedPTY()}
 			observation := &startupSemanticObservation{semanticTerminalObservationFake: &semanticTerminalObservationFake{calls: &base.order}, fence: model.ExecutionFence{GrantID: id, EnvironmentEpoch: "test_epoch", ControlRevision: 1}, remaining: count}
 			base.observation = observation
-			execution := &startupTerminalExecution{semanticTerminalExecutionFake{terminalExecutionPortFake: base, calls: &base.order}}
+			execution := &startupTerminalExecution{semanticTerminalExecutionFake: semanticTerminalExecutionFake{terminalExecutionPortFake: base, calls: &base.order}}
 			attempts := &semanticTerminalAttemptFake{terminalAttemptPortFake: &terminalAttemptPortFake{presentation: presentation}, calls: &base.order, target: store.ExecutionObservationTarget{Ignored: true, Processed: true}}
 			service, err := newExamAttemptTerminalService(attempts, execution, &terminalAuditPortFake{order: &base.order})
 			if err != nil {
@@ -219,5 +225,86 @@ func TestTerminalStartupDrainsBeforeAttachAndBoundsCatchUp(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTerminalStartupRetainsGrantWhenPausedAfterObservationDrain(t *testing.T) {
+	for _, scenario := range []struct {
+		name         string
+		refreshErr   error
+		wantReleases int
+	}{
+		{name: "paused", refreshErr: appexecution.ErrInteractionBlocked},
+		{name: "lost environment", refreshErr: appexecution.ErrUnavailable, wantReleases: 1},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			presentation, command := validTerminalOpenFixture()
+			id := model.NewExecutionGrantID()
+			base := &terminalExecutionPortFake{placement: &appexecution.Placement{GrantID: id, AttemptID: presentation.AttemptID, Ready: true, Projection: appexecution.ProjectionStatus{EnvironmentEpoch: "test_epoch", State: store.ExecutionProjectionReady}}, terminal: newTerminalTrackedPTY()}
+			observation := &startupSemanticObservation{semanticTerminalObservationFake: &semanticTerminalObservationFake{calls: &base.order}, fence: model.ExecutionFence{GrantID: id, EnvironmentEpoch: "test_epoch", ControlRevision: 1}, remaining: 1}
+			base.observation = observation
+			execution := &startupTerminalExecution{semanticTerminalExecutionFake: semanticTerminalExecutionFake{terminalExecutionPortFake: base, calls: &base.order}, refreshErr: scenario.refreshErr}
+			attempts := &semanticTerminalAttemptFake{terminalAttemptPortFake: &terminalAttemptPortFake{presentation: presentation}, calls: &base.order, target: store.ExecutionObservationTarget{Ignored: true, Processed: true}}
+			service, err := newExamAttemptTerminalService(attempts, execution, &terminalAuditPortFake{order: &base.order})
+			if err != nil {
+				t.Fatal(err)
+			}
+			terminal, err := service.Open(t.Context(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
+			if terminal != nil || !errors.Is(err, scenario.refreshErr) || base.attachCalls != 0 || observation.sequence != 1 || base.ensureCalls != 2 || base.releaseCalls != scenario.wantReleases {
+				t.Fatalf("startup after drain: terminal=%v err=%v releases=%d effects=%v", terminal, err, base.releaseCalls, base.order)
+			}
+		})
+	}
+}
+
+type pausedSemanticAttempts struct {
+	*semanticTerminalAttemptFake
+	resolutions int
+}
+
+func (f *pausedSemanticAttempts) ResolveExecutionObservation(ctx context.Context, call examattempt.Call, access examattempt.WorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
+	f.resolutions++
+	if f.resolutions == 1 {
+		return nil, store.NewErrConflict("execution_observation", "interaction_blocked", nil)
+	}
+	return f.semanticTerminalAttemptFake.ResolveExecutionObservation(ctx, call, access)
+}
+
+type resumedSemanticObservation struct {
+	*semanticTerminalObservationFake
+	event            store.ExecutionObservation
+	cancel           context.CancelFunc
+	acknowledgements int
+}
+
+func (o *resumedSemanticObservation) Next(ctx context.Context) (appexecution.Event, error) {
+	if err := ctx.Err(); err != nil {
+		return appexecution.Event{}, err
+	}
+	return appexecution.Event{Semantic: &o.event}, nil
+}
+func (o *resumedSemanticObservation) Acknowledge(context.Context, int64) error {
+	o.acknowledgements++
+	o.cancel()
+	return nil
+}
+func (o *resumedSemanticObservation) Close() error { return nil }
+func TestSemanticTerminalRetriesCaptureAfterTemporaryDenial(t *testing.T) {
+	var calls []string
+	presentation, command := validTerminalOpenFixture()
+	id := model.NewExecutionGrantID()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	observation := &resumedSemanticObservation{semanticTerminalObservationFake: &semanticTerminalObservationFake{calls: &calls}, cancel: cancel, event: store.ExecutionObservation{Fence: model.ExecutionFence{GrantID: id, EnvironmentEpoch: "epoch", ControlRevision: 1}, HostSequence: 1, Operation: model.AttemptWorkspaceMutationCreateDirectory, Kind: model.StarterWorkspaceEntryDirectory, NodeIdentity: "ignored_node", Path: ".git"}}
+	base := &terminalExecutionPortFake{}
+	execution := semanticTerminalExecutionFake{terminalExecutionPortFake: base, calls: &calls}
+	attempts := &pausedSemanticAttempts{semanticTerminalAttemptFake: &semanticTerminalAttemptFake{terminalAttemptPortFake: &terminalAttemptPortFake{presentation: presentation}, calls: &calls, target: store.ExecutionObservationTarget{Ignored: true, Processed: true}}}
+	service := &examAttemptTerminalService{attempts: attempts, execution: execution}
+	native := newTerminalTrackedPTY()
+	terminal := &candidateExamTerminal{terminal: native, observation: observation, cancel: cancel}
+	defer terminal.Close()
+	service.synchronizeWorkspace(ctx, NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command, id, observation, terminal)
+	if attempts.resolutions != 2 || observation.acknowledgements != 1 || base.releaseCalls != 0 || native.closeCalls != 0 {
+		t.Fatalf("capture retry: resolutions=%d acks=%d grant_releases=%d closes=%d", attempts.resolutions, observation.acknowledgements, base.releaseCalls, native.closeCalls)
 	}
 }

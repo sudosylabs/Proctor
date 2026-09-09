@@ -132,6 +132,9 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, call Call, comm
 }
 
 func mapBrowserDeliveryError(err error) error {
+	if errors.Is(err, store.ErrInvalidState) {
+		return unavailable(err)
+	}
 	var refusal *store.BrowserDeliveryRefusal
 	if errors.As(err, &refusal) {
 		return &Fault{Code: "exam.delivery." + refusal.Reason, Cause: err}

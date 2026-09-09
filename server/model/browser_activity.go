@@ -79,15 +79,16 @@ func (reason BrowserActivityBlockReason) IsValid() bool {
 }
 
 type BrowserActivityEvent struct {
-	RedirectFromSequence *int64
-	Sequence             int64
-	Kind                 BrowserActivityKind
-	PolicyRevisionID     ExamRevisionID
-	ClientOccurredAt     time.Time
-	Location             *BrowserLocation
-	MatchedRuleID        *string
-	BlockReason          *BrowserActivityBlockReason
-	ReceivedAt           time.Time
+	clientOccurredAtSpelling string
+	RedirectFromSequence     *int64
+	Sequence                 int64
+	Kind                     BrowserActivityKind
+	PolicyRevisionID         ExamRevisionID
+	ClientOccurredAt         time.Time
+	Location                 *BrowserLocation
+	MatchedRuleID            *string
+	BlockReason              *BrowserActivityBlockReason
+	ReceivedAt               time.Time
 }
 
 func (event BrowserActivityEvent) ValidateClientRecord() error {
@@ -195,7 +196,7 @@ type browserActivityEventWire struct {
 	Sequence             int64                       `json:"sequence"`
 	Kind                 BrowserActivityKind         `json:"kind"`
 	PolicyRevisionID     ExamRevisionID              `json:"policy_revision_id"`
-	ClientOccurredAt     time.Time                   `json:"client_occurred_at"`
+	ClientOccurredAt     securityJSONInstant         `json:"client_occurred_at"`
 	Location             *BrowserLocation            `json:"location,omitempty"`
 	MatchedRuleID        *string                     `json:"matched_rule_id,omitempty"`
 	BlockReason          *BrowserActivityBlockReason `json:"block_reason,omitempty"`
@@ -206,14 +207,14 @@ func (event BrowserActivityEvent) MarshalJSON() ([]byte, error) {
 	if event.ValidateClientRecord() != nil {
 		return nil, ErrDeliveryInvalid
 	}
-	return json.Marshal(browserActivityEventWire{Sequence: event.Sequence, Kind: event.Kind, PolicyRevisionID: event.PolicyRevisionID, ClientOccurredAt: event.ClientOccurredAt, Location: event.Location, MatchedRuleID: event.MatchedRuleID, BlockReason: event.BlockReason, RedirectFromSequence: event.RedirectFromSequence})
+	return json.Marshal(browserActivityEventWire{Sequence: event.Sequence, Kind: event.Kind, PolicyRevisionID: event.PolicyRevisionID, ClientOccurredAt: securityJSONInstant{Time: event.ClientOccurredAt, spelling: event.clientOccurredAtSpelling}, Location: event.Location, MatchedRuleID: event.MatchedRuleID, BlockReason: event.BlockReason, RedirectFromSequence: event.RedirectFromSequence})
 }
 func (event *BrowserActivityEvent) UnmarshalJSON(raw []byte) error {
 	var value browserActivityEventWire
-	if event == nil || decodeClosedDeliveryDeclaration(raw, &value, 32*1024) != nil {
+	if event == nil || decodeClosedDeliveryDeclaration(raw, &value, BrowserActivityAppendMaximumBytes) != nil {
 		return ErrDeliveryInvalid
 	}
-	candidate := BrowserActivityEvent{Sequence: value.Sequence, Kind: value.Kind, PolicyRevisionID: value.PolicyRevisionID, ClientOccurredAt: value.ClientOccurredAt, Location: value.Location, MatchedRuleID: value.MatchedRuleID, BlockReason: value.BlockReason, RedirectFromSequence: value.RedirectFromSequence}
+	candidate := BrowserActivityEvent{Sequence: value.Sequence, Kind: value.Kind, PolicyRevisionID: value.PolicyRevisionID, ClientOccurredAt: value.ClientOccurredAt.Time, clientOccurredAtSpelling: value.ClientOccurredAt.spelling, Location: value.Location, MatchedRuleID: value.MatchedRuleID, BlockReason: value.BlockReason, RedirectFromSequence: value.RedirectFromSequence}
 	if candidate.ValidateClientRecord() != nil {
 		return ErrDeliveryInvalid
 	}

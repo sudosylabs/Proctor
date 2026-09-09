@@ -44,6 +44,20 @@ func TestExecutionObservationStore(t *testing.T, ss store.Store) {
 	event := func(sequence int64, operation model.AttemptWorkspaceMutationKind, kind model.StarterWorkspaceEntryKind, identity, path string) store.ExecutionObservation {
 		return store.ExecutionObservation{Fence: control.Fence(), HostSequence: sequence, Operation: operation, Kind: kind, NodeIdentity: identity, Path: path}
 	}
+	// The capture may precede a control transition, but it can never claim a
+	// future revision or another epoch, even with otherwise valid access.
+	for _, fence := range []model.ExecutionFence{
+		{GrantID: grant.ID, EnvironmentEpoch: "another_epoch", ControlRevision: control.ControlRevision},
+		{GrantID: grant.ID, EnvironmentEpoch: control.EnvironmentEpoch, ControlRevision: control.ControlRevision + 1},
+	} {
+		invalid := event(1, model.AttemptWorkspaceMutationCreateDirectory, model.StarterWorkspaceEntryDirectory, "invalid_capture", "invalid")
+		invalid.Fence = fence
+		source := access
+		source.SourceGrantID, source.SourceObservation = grant.ID, &invalid
+		if _, err := workspace.ResolveObservation(ctx, source); !store.IsConflict(err) {
+			t.Fatalf("invalid capture fence accepted: %v", err)
+		}
+	}
 	var lastInput store.ExamAttemptWorkspaceMutation
 	var lastCommand *store.CommandIdempotency
 	apply := func(observation store.ExecutionObservation) *store.ExamAttemptWorkspaceMutationResult {

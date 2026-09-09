@@ -54,6 +54,20 @@ func TestDeliveryExpiryStore(t *testing.T) {
 				}
 			}
 		}
+	}, func(source, raw string) func() {
+		ctx := context.Background()
+		var original []byte
+		if err := s.GetMaster().Get(ctx, &original, `SELECT closure_canonical FROM exam_attempt_security_owners WHERE delivery_stream_id=?`, source); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, []byte(raw), source); err != nil {
+			t.Fatal(err)
+		}
+		return func() {
+			if _, err := s.GetMaster().Exec(ctx, `UPDATE exam_attempt_security_owners SET closure_canonical=? WHERE delivery_stream_id=?`, original, source); err != nil {
+				t.Fatal(err)
+			}
+		}
 	})
 }
 

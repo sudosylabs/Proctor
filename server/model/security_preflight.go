@@ -8,7 +8,6 @@
 package model
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -81,6 +80,8 @@ type NativeBaselineReport struct {
 	ContentProtection     string `json:"content_protection"`
 }
 type SecurityPreflightReport struct {
+	reportedAtSpelling string
+
 	Challenge                string                 `json:"challenge"`
 	PolicyDigest             string                 `json:"policy_digest"`
 	PolicyContentDigest      string                 `json:"policy_content_digest"`
@@ -104,6 +105,20 @@ type SecurityPreflightResult struct {
 	ExpiresAt    time.Time            `json:"expires_at"`
 }
 
+func (r SecurityPreflightResult) Validate() error {
+	if !IsValidAgreementID(r.PreflightID) || !IsValidSHA256Fingerprint(r.ReportDigest) || !securityInstant(r.ServerTime) || !securityInstant(r.ExpiresAt) || r.ReasonCodes == nil || len(r.ReasonCodes) > 10 || (r.Admission != "eligible" && r.Admission != "blocked") || (r.Admission == "eligible") != (len(r.ReasonCodes) == 0) {
+		return ErrSecurityPreflightInvalid
+	}
+	seen := map[SecurityReasonCode]bool{}
+	for _, reason := range r.ReasonCodes {
+		if !reason.IsValid() || seen[reason] {
+			return ErrSecurityPreflightInvalid
+		}
+		seen[reason] = true
+	}
+	return nil
+}
+
 func (r SecurityPreflightReport) Validate() error {
 	raw, err := base64.RawURLEncoding.DecodeString(r.Challenge)
 	if err != nil || len(raw) != 32 || base64.RawURLEncoding.EncodeToString(raw) != r.Challenge || !IsValidSHA256Fingerprint(r.PolicyDigest) || !IsValidSHA256Fingerprint(r.PolicyContentDigest) || !IsValidSHA256Fingerprint(r.CapabilityMatrixDigest) || !IsValidAgreementID(r.SecuritySessionID) || !IsValidSHA256Fingerprint(r.SourceManifestDigest) || r.SelectedSourceCategories == nil || len(r.SelectedSourceCategories) > len(NativeSourceCategories()) || r.Sources == nil || len(r.Sources) > len(NativeSources()) || r.Coverage == nil || len(r.Coverage) > NativeCoverageClaimLimit || !slices.Contains([]string{"compliant", "degraded", "contained", "failed"}, r.Posture) || !securityInstant(r.ReportedAt) {
@@ -119,7 +134,7 @@ func (r SecurityPreflightReport) Validate() error {
 			return ErrSecurityPreflightInvalid
 		}
 	}
-	if err := validateNativeCoverageSnapshot(r.Sources, r.Coverage); err != nil {
+	if err := ValidateNativeCoverageSnapshot(r.Sources, r.Coverage); err != nil {
 		return err
 	}
 	document, err := encodeCanonicalExamDocument(r)
@@ -172,34 +187,10 @@ func EvaluateSecurityPreflight(challenge SecurityPreflightChallenge, resolved Re
 	}
 	return result, nil
 }
-func (r *SecurityPreflightReport) UnmarshalJSON(data []byte) error {
-	if r == nil || len(data) > SecurityPreflightReportMaxBytes || validateExamDocumentJSON(data) != nil {
-		return ErrSecurityPreflightInvalid
-	}
-	type wire SecurityPreflightReport
-	var decoded wire
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&decoded) != nil {
-		return ErrSecurityPreflightInvalid
-	}
-	candidate := SecurityPreflightReport(decoded)
-	if candidate.Validate() != nil {
-		return ErrSecurityPreflightInvalid
-	}
-	supplied, err := encodeCanonicalExamRaw(data)
-	if err != nil {
-		return err
-	}
-	expected, err := encodeCanonicalExamDocument(decoded)
-	if err != nil || !bytes.Equal(supplied, expected) {
-		return ErrSecurityPreflightInvalid
-	}
-	*r = candidate
-	return nil
-}
 
-func validateNativeCoverageSnapshot(sources []NativeSourceCoverage, claims []NativeCoverageClaim) error {
+// ValidateNativeCoverageSnapshot validates the ordered source and coverage facts
+// shared by admission, renewal and retained recovery snapshots.
+func ValidateNativeCoverageSnapshot(sources []NativeSourceCoverage, claims []NativeCoverageClaim) error {
 	if sources == nil || len(sources) > len(NativeSources()) || claims == nil || len(claims) > NativeCoverageClaimLimit {
 		return ErrSecurityPreflightInvalid
 	}
@@ -224,7 +215,7 @@ func validateNativeCoverageSnapshot(sources []NativeSourceCoverage, claims []Nat
 // EvaluateNativeCoverage interprets current minimized coverage independently of
 // challenge expiry. The caller owns policy/Session/lease and source continuity.
 func EvaluateNativeCoverage(resolved ResolvedNativePolicy, sources []NativeSourceCoverage, claims []NativeCoverageClaim, posture string) ([]SecurityReasonCode, error) {
-	if validateNativeCoverageSnapshot(sources, claims) != nil || len(sources) != len(resolved.Sources) || len(claims) != len(resolved.Requirements) || !slices.Contains([]string{"checking", "compliant", "degraded", "contained", "failed"}, posture) {
+	if ValidateNativeCoverageSnapshot(sources, claims) != nil || len(sources) != len(resolved.Sources) || len(claims) != len(resolved.Requirements) || !slices.Contains([]string{"checking", "compliant", "degraded", "contained", "failed"}, posture) {
 		return nil, ErrSecurityControlInvalid
 	}
 	reasons := []SecurityReasonCode{}
@@ -273,4 +264,34 @@ func EvaluateNativeCoverage(resolved ResolvedNativePolicy, sources []NativeSourc
 		}
 	}
 	return reasons, nil
+}
+
+func (v SecurityPreflightReport) MarshalJSON() ([]byte, error) {
+	type wire SecurityPreflightReport
+	return json.Marshal(struct {
+		*wire
+		ReportedAt securityJSONInstant `json:"reported_at"`
+	}{wire: (*wire)(&v), ReportedAt: securityJSONInstant{Time: v.ReportedAt, spelling: v.reportedAtSpelling}})
+}
+func (v *SecurityPreflightReport) UnmarshalJSON(raw []byte) error {
+	if v == nil {
+		return ErrSecurityPreflightInvalid
+	}
+	type wire SecurityPreflightReport
+	var decoded wire
+	value := struct {
+		*wire
+		ReportedAt securityJSONInstant `json:"reported_at"`
+	}{wire: &decoded}
+	if decodeClosedDeliveryDeclaration(raw, &value, SecurityPreflightReportMaxBytes) != nil {
+		return ErrSecurityPreflightInvalid
+	}
+	candidate := SecurityPreflightReport(decoded)
+	candidate.ReportedAt = value.ReportedAt.Time
+	candidate.reportedAtSpelling = value.ReportedAt.spelling
+	if candidate.Validate() != nil {
+		return ErrSecurityPreflightInvalid
+	}
+	*v = candidate
+	return nil
 }

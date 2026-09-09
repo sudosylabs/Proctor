@@ -25,6 +25,25 @@ type browserSourceRefusalRecord struct {
 	Capacity        *model.DeliveryMetadataCapacity `json:"capacity"`
 }
 
+func (r browserSourceRefusalRecord) Validate() error {
+	if !r.SourceSessionID.IsValid() || !model.IsValidSHA256Fingerprint(r.RequestDigest) {
+		return model.ErrDeliveryInvalid
+	}
+	switch r.Code {
+	case "exam.browser.source_budget_exhausted":
+		if r.Capacity != nil {
+			return model.ErrDeliveryInvalid
+		}
+	case "exam.delivery.metadata_capacity":
+		if r.Capacity == nil || r.Capacity.Validate() != nil {
+			return model.ErrDeliveryInvalid
+		}
+	default:
+		return model.ErrDeliveryInvalid
+	}
+	return nil
+}
+
 func (s *sqlExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
 	if input == nil || input.Declaration().Validate() != nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_activity", "source_start", nil)
@@ -83,37 +102,47 @@ func (s *sqlExamAttemptStore) StartBrowserActivity(ctx context.Context, input *s
 		if !errors.Is(err, sql.ErrNoRows) {
 			return outcome{}, err
 		}
+		// A later policy correction can create a successor after a refusal.
+		// Retry identity belongs to the retained predecessor slot, not whichever
+		// source is newest today. Current owner/generation were reauthorized above.
+		var refused []struct {
+			ID   string `db:"id"`
+			Body []byte `db:"refusal_canonical"`
+		}
+		if err := tx.Select(ctx, &refused, `SELECT id::text,refusal_canonical FROM browser_activity_sources WHERE participation_id=? AND candidate_user_id=? AND registration_id=? AND key_thumbprint=? AND refusal_canonical IS NOT NULL ORDER BY start_ordinal LIMIT ? FOR UPDATE`, input.ParticipationID.String(), input.Access.CandidateUserID.String(), input.Access.DesktopRegistrationID.String(), input.Access.DPoPKeyThumbprint, model.BrowserSourceMaximumPerParticipation); err != nil {
+			return outcome{}, err
+		}
+		for _, saved := range refused {
+			var refusal browserSourceRefusalRecord
+			if json.Unmarshal(saved.Body, &refusal) != nil || refusal.Validate() != nil {
+				return outcome{}, invalidPersistedState("browser_activity_source", "refusal", nil)
+			}
+			if refusal.SourceSessionID != input.SourceSessionID {
+				continue
+			}
+			if refusal.RequestDigest != digest {
+				return outcome{}, store.NewErrConflict("browser_activity", "browser_source_conflict", nil)
+			}
+			status, err := browserSourceStatus(ctx, tx, model.BrowserSourceSessionID(saved.ID))
+			if err != nil {
+				return outcome{}, err
+			}
+			if err := completeBrowserSourceAudit(ctx, tx, input, true, refusal.Code); err != nil {
+				return outcome{}, err
+			}
+			return outcome{Refusal: &store.BrowserSourceRefusal{Code: refusal.Code, Status: *status, Capacity: refusal.Capacity}}, nil
+		}
 		var prior struct {
 			ID       string `db:"id"`
 			Revision string `db:"policy_revision_id"`
 			Digest   string `db:"policy_digest"`
 			State    string `db:"state"`
 			Closure  []byte `db:"closure_canonical"`
-			Refusal  []byte `db:"refusal_canonical"`
 		}
-		err = tx.Get(ctx, &prior, `SELECT id::text,policy_revision_id,policy_digest,state,closure_canonical,refusal_canonical FROM browser_activity_sources WHERE participation_id=? ORDER BY start_ordinal DESC LIMIT 1 FOR UPDATE`, input.ParticipationID.String())
+		err = tx.Get(ctx, &prior, `SELECT id::text,policy_revision_id,policy_digest,state,closure_canonical FROM browser_activity_sources WHERE participation_id=? ORDER BY start_ordinal DESC LIMIT 1 FOR UPDATE`, input.ParticipationID.String())
 		hasPrior := err == nil
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return outcome{}, err
-		}
-		if hasPrior && len(prior.Refusal) > 0 {
-			var refusal browserSourceRefusalRecord
-			if json.Unmarshal(prior.Refusal, &refusal) != nil {
-				return outcome{}, model.ErrDeliveryInvalid
-			}
-			if refusal.SourceSessionID == input.SourceSessionID {
-				if refusal.RequestDigest != digest {
-					return outcome{}, store.NewErrConflict("browser_activity", "browser_source_conflict", nil)
-				}
-				status, err := browserSourceStatus(ctx, tx, model.BrowserSourceSessionID(prior.ID))
-				if err != nil {
-					return outcome{}, err
-				}
-				if err := completeBrowserSourceAudit(ctx, tx, input, true, refusal.Code); err != nil {
-					return outcome{}, err
-				}
-				return outcome{Refusal: &store.BrowserSourceRefusal{Code: refusal.Code, Status: *status, Capacity: refusal.Capacity}}, nil
-			}
 		}
 		if guard.SittingState != string(model.ExamSittingOpen) {
 			return outcome{}, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
@@ -156,7 +185,10 @@ func (s *sqlExamAttemptStore) StartBrowserActivity(ctx context.Context, input *s
 			}
 		case "policy_correction":
 			var closure model.DeliveryClosure
-			if !hasPrior || prior.ID != string(input.Transition.PredecessorSourceSessionID) || prior.Revision == input.PolicyRevisionID.String() || json.Unmarshal(prior.Closure, &closure) != nil || closure.CloseReason == nil || (*closure.CloseReason != model.DeliveryClosedPolicyCorrection && *closure.CloseReason != model.DeliveryClosedBrowserDisabled && *closure.CloseReason != model.DeliveryClosedRuntimeReset) {
+			if hasPrior && (json.Unmarshal(prior.Closure, &closure) != nil || closure.Validate(false) != nil) {
+				return outcome{}, invalidPersistedState("browser_source", "predecessor_closure", model.ErrDeliveryInvalid)
+			}
+			if !hasPrior || prior.ID != string(input.Transition.PredecessorSourceSessionID) || prior.Revision == input.PolicyRevisionID.String() || closure.CloseReason == nil || (*closure.CloseReason != model.DeliveryClosedPolicyCorrection && *closure.CloseReason != model.DeliveryClosedBrowserDisabled && *closure.CloseReason != model.DeliveryClosedRuntimeReset) {
 				return outcome{}, store.NewErrConflict("browser_activity", "browser_source_predecessor", nil)
 			}
 		}
@@ -264,8 +296,8 @@ func closeBrowserSource(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 		return err
 	}
 	var closure model.DeliveryClosure
-	if len(row.Raw) > 0 && json.Unmarshal(row.Raw, &closure) != nil {
-		return model.ErrDeliveryInvalid
+	if len(row.Raw) > 0 && (json.Unmarshal(row.Raw, &closure) != nil || closure.Validate(false) != nil) {
+		return invalidPersistedState("browser_source", "closure", model.ErrDeliveryInvalid)
 	}
 	if row.Lease.Before(at) {
 		at = row.Lease
@@ -333,13 +365,13 @@ func browserSourceState(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 		reason := model.BrowserSourceResetReason(row.Reason.String)
 		value.RuntimeResetReason = &reason
 	}
-	if len(row.Closure) > 0 && json.Unmarshal(row.Closure, &value.Closure) != nil {
-		return nil, model.ErrDeliveryInvalid
+	if len(row.Closure) > 0 && (json.Unmarshal(row.Closure, &value.Closure) != nil || value.Closure.Validate(false) != nil) {
+		return nil, invalidPersistedState("browser_source", "value", model.ErrDeliveryInvalid)
 	}
 	if len(row.Summary) > 0 {
 		var summary model.UnretainedDeliverySummary
 		if json.Unmarshal(row.Summary, &summary) != nil {
-			return nil, model.ErrDeliveryInvalid
+			return nil, invalidPersistedState("browser_source", "value", model.ErrDeliveryInvalid)
 		}
 		value.Summary = &summary
 	}
@@ -359,7 +391,7 @@ func browserSourceState(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 		var err error
 		value.Closure, err = value.Closure.Expire(false, value.ServerTime)
 		if err != nil {
-			return nil, err
+			return nil, invalidPersistedState("browser_source", "closure", err)
 		}
 		row.Terminal = allocated
 		raw, err := canonicalPreflightValue(value.Closure)
@@ -378,7 +410,7 @@ func browserSourceState(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 	}
 	progress, err := model.ResolveDeliveryProgress(allocated, received, gaps, row.Terminal)
 	if err != nil {
-		return nil, err
+		return nil, invalidPersistedState("delivery", "progress", err)
 	}
 	if persist {
 		var policyRaw []byte
@@ -398,7 +430,7 @@ func browserSourceState(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 	}
 	value.BrowserDeliveryProgress = model.BrowserDeliveryProgress{HighestContiguous: progress.HighestContiguous, SettledThrough: progress.SettledThrough, HighestSeen: progress.HighestSeen, AllocatedThrough: allocated, TerminalMissingThrough: row.Terminal, MissingRanges: progress.Missing, MissingRangesTruncated: progress.MissingTruncated}
 	if value.Validate() != nil {
-		return nil, model.ErrDeliveryInvalid
+		return nil, invalidPersistedState("browser_source", "value", model.ErrDeliveryInvalid)
 	}
 	if persist {
 		if err := updateBrowserSourceSettlement(ctx, tx, value); err != nil {
@@ -510,8 +542,8 @@ func (s *sqlExamAttemptStore) lockBrowserDelivery(ctx context.Context, tx *sqlxT
 		return err
 	}
 	var closure model.DeliveryClosure
-	if len(row.Closure) > 0 && json.Unmarshal(row.Closure, &closure) != nil {
-		return model.ErrDeliveryInvalid
+	if len(row.Closure) > 0 && (json.Unmarshal(row.Closure, &closure) != nil || closure.Validate(false) != nil) {
+		return invalidPersistedState("browser_source", "closure", model.ErrDeliveryInvalid)
 	}
 	if closure.ClosedAt == nil && (row.Ended.Valid || row.PartEnded.Valid || !row.Now.Before(row.Lease)) {
 		at := row.Lease

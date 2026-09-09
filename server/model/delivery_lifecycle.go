@@ -93,6 +93,14 @@ type DeliveryGapReceipt struct {
 	DeclarationRevision    int64  `json:"declaration_revision"`
 	SettledThroughSequence int64  `json:"settled_through_sequence"`
 }
+
+func (r DeliveryGapReceipt) Validate() error {
+	if !IsValidAgreementID(r.DeclarationID) || !IsValidSHA256Fingerprint(r.RequestDigest) || r.DeclarationRevision < 1 || !securitySafeInt(r.DeclarationRevision) || !securitySafeInt(r.SettledThroughSequence) {
+		return ErrDeliveryInvalid
+	}
+	return nil
+}
+
 type FinalDeliveryDeclaration struct {
 	DeclarationID               string `json:"declaration_id"`
 	ExpectedDeclarationRevision int64  `json:"expected_declaration_revision"`

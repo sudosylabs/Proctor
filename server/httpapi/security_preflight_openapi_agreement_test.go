@@ -8,7 +8,6 @@
 package httpapi
 
 import (
-	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"testing"
@@ -21,7 +20,7 @@ func TestSecurityPreflightOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Key: "POST /api/v1/security-preflights/{security_preflight_id}/report", Auth: AuthSessionRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/SecurityPreflightReport", RequestSchema: "SecurityPreflightReport", SuccessStatus: "200", SuccessRef: "#/components/responses/SecurityPreflightResultOK", SuccessSchema: "SecurityPreflightResult", PublicErrorCodes: securityPreflightErrorCodes()},
 	}, Schemas: []openAPIAgreementSchema{
 		{Name: "SecurityCoverageResult", DTO: reflect.TypeOf(model.SecurityCoverageResult{}), Required: []string{"processed_control_sequence", "processed_control_digest", "coverage_result", "source_reset_receipts", "security_interaction_allowed", "execution_state", "delivery_watermark_rejections"}, Nullable: []string{"processed_control_digest"}},
-		{Name: "SecurityPolicyRecovery", DTO: reflect.TypeOf(application.RecoveredSecurityPolicy{}), Required: []string{"server_time", "security", "frozen_attempt_configuration", "current_sources", "current_coverage", "source_reset_receipts", "security_coverage"}, Nullable: []string{"security_coverage.processed_control_digest"}},
+		{Name: "SecurityPolicyRecovery", DTO: reflect.TypeOf(securityPolicyRecoveryResponse{}), Required: []string{"server_time", "security", "frozen_attempt_configuration", "current_sources", "current_coverage", "source_reset_receipts", "security_coverage"}, Nullable: []string{"security_coverage.processed_control_digest"}},
 		{Name: "AdmittedSecurity", DTO: reflect.TypeOf(model.AdmittedSecurity{}), Required: []string{"policy", "policy_content_digest", "preflight_id", "preflight_report_digest", "preflight_policy_digest", "participation_id", "generation", "security_session_id", "delivery_stream_id", "renewal_interval_seconds"}},
 		{Name: "PrepareSecurityPreflightRequest", DTO: reflect.TypeOf(prepareSecurityPreflightRequest{}), Required: []string{"native_registry_digest", "source_manifest_digest", "configuration_manifest_fingerprint"}},
 		{Name: "SecurityPolicyResponse", DTO: reflect.TypeOf(securityPolicyResponse{}), Required: []string{"server_time", "policy", "policy_content_digest", "capability_matrix_digest", "catalog_bindings", "preflight_challenge", "frozen_attempt_configuration", "browser_activity_disclosure"}, Nullable: []string{"frozen_attempt_configuration"}},

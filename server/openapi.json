@@ -7568,10 +7568,14 @@
       },
       "BrowserIntegrityEvidence": {
         "additionalProperties": false,
-        "description": "Immutable minimized evidence copy independent of ordinary Browser Activity retention.",
+        "description": "Immutable minimized evidence copy owning its policy revision and digest independently of ordinary Browser Activity retention.",
         "properties": {
           "event": {
             "$ref": "#/components/schemas/BrowserDeliveryRecord"
+          },
+          "policy_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
           },
           "policy_revision_id": {
             "$ref": "#/components/schemas/ID"
@@ -7588,6 +7592,7 @@
         "required": [
           "source_session_id",
           "policy_revision_id",
+          "policy_digest",
           "rule_id",
           "event"
         ],

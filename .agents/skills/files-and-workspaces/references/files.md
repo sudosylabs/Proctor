@@ -439,9 +439,13 @@ paths beneath its slash boundary. Retired attempt-owned objects remain
 protected by the retained command outcome without an unbounded object-ID list;
 published Starter content and submitted manifests retain their pins.
 
-Semantic Execution Host mutations additionally bind the exact grant/epoch/control
-fence, consecutive host sequence, original projected baseline and stable guest
-node identity. The same atomic Workspace mutation records its host outcome and
+Semantic Execution Host mutations bind the original capture's grant/epoch/control
+fence, consecutive host sequence, projected baseline and stable guest node identity.
+A capture from an earlier control revision in the same retained occupancy remains
+immutable; current running authority independently authorizes its acceptance and
+replay. Future revisions and replacement epochs fail. Temporary pause, security or
+control-acknowledgement denial leaves the capture unacknowledged for recovery.
+The same atomic Workspace mutation records its host outcome and
 binding. Replays return the retained outcome; old capture versions can advance
 only through that exact node's prior accepted outcomes. A foreign overlapping
 journal change conflicts instead of being adopted as an observed precondition.

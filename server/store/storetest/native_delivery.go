@@ -9,6 +9,9 @@ package storetest
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -180,4 +183,135 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 		t.Fatal("native replay duplicated review evidence")
 	}
 
+}
+
+// TestNativeMaximumRecordStore covers legal wire values that exceed former
+// private per-record caps while remaining within aggregate delivery admission.
+func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
+	ctx := t.Context()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	input := &store.ExamAttemptConnect{CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	input.SittingID = fixture.sitting.ID
+	schema := model.SHA256Fingerprint([]byte("maximum-source-schema"))
+	definitions := []model.NativeCoverageDefinition{}
+	matrix := model.NativeCapabilityMatrix{RegistryDigest: model.NativeRegistryDigest, MatrixID: input.DesktopBuild.CapabilityMatrixIdentity, ReleaseID: "synthetic-release", TargetTuple: input.DesktopBuild.DesktopTarget}
+	for _, source := range model.NativeSources() {
+		key := "baseline." + string(source)
+		definitions = append(definitions, model.NativeCoverageDefinition{CoverageKey: key, CapabilityID: "baseline", SourceID: source, SourceSchemaDigest: schema, PermittedClaims: []model.NativeCapabilityClaim{model.NativeClaimEnforce}, RequiredPermissions: []string{}, Baseline: true})
+		matrix.Entries = append(matrix.Entries, model.NativeCapabilityMatrixEntry{CoverageKey: key, SourceSchemaDigest: schema, Claim: model.NativeClaimEnforce, ComponentID: "synthetic-component", AdapterVersion: "synthetic-adapter", RequiredPermissions: []string{}, Limitations: []string{}, Verification: "passed"})
+	}
+	slices.SortFunc(definitions, func(a, b model.NativeCoverageDefinition) int { return strings.Compare(a.CoverageKey, b.CoverageKey) })
+	slices.SortFunc(matrix.Entries, func(a, b model.NativeCapabilityMatrixEntry) int { return strings.Compare(a.CoverageKey, b.CoverageKey) })
+	agreement, err := model.NewDesktopNativeAgreement(model.NativeRegistryDigest, model.SHA256Fingerprint([]byte("maximum-manifest")), model.SHA256Fingerprint([]byte("maximum-matrix")), model.SHA256Fingerprint([]byte("maximum-detectors")), definitions, matrix, []model.NativeDetectorDefinition{{DetectorID: "synthetic-baseline", Version: 1, CapabilityID: "baseline", ConditionIDs: []string{"baseline.capture"}, SourceIDs: model.NativeSources(), AllowedModes: []model.NativeCapabilityClaim{model.NativeClaimEnforce}}})
+	requireNoError(t, err)
+	input.DesktopBuild.NativeAgreement = agreement
+	access := store.SecurityPreflightAccess{SittingID: input.SittingID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, DesktopBuild: input.DesktopBuild, DesktopCompatibilityPolicyRevision: input.DesktopCompatibilityPolicyRevision}
+	prepare := &store.SecurityPreflightPrepare{Access: access, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: agreement.RegistryDigest(), SourceManifestDigest: agreement.SourceManifestDigest(), ConfigurationManifestFingerprint: input.ConfigurationManifestFingerprint, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepared, err := ss.ExamAttempt().PrepareSecurityPreflight(ctx, prepare, examCommand(input.CandidateUserID, store.SecurityPreflightPrepareOperation, "maximum-prepare", "maximum-prepare"))
+	requireNoError(t, err)
+	report := syntheticPreflightReport(prepared, agreement)
+	for i := range report.Sources {
+		report.Sources[i].SourceInstanceID = strings.Repeat("i", 128)
+	}
+	accepted, err := ss.ExamAttempt().ReportSecurityPreflight(ctx, &store.SecurityPreflightReport{Access: access, PreflightID: prepare.PreflightID, Report: report, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}, examCommand(input.CandidateUserID, store.SecurityPreflightReportOperation, "maximum-report", "maximum-report"))
+	requireNoError(t, err)
+	input.Security = model.ConnectSecurity{Kind: "preflight", PreflightID: prepare.PreflightID, ReportDigest: accepted.ReportDigest}
+	connected, err := ss.ExamAttempt().Connect(ctx, input, examCommand(input.CandidateUserID, store.ExamAttemptConnectOperation, "maximum-connect", "maximum-connect"))
+	requireNoError(t, err)
+	at := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	occurrence := model.NativeOccurrence{Kind: "occurrence", OccurrenceID: strings.Repeat("o", 128), ConditionID: "baseline.capture", DetectorID: "synthetic-baseline", DetectorVersion: 1, CapabilityID: "baseline", Mode: model.NativeClaimEnforce, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []model.NativeSourceRange{}}
+	for _, source := range report.Sources {
+		occurrence.SourceRanges = append(occurrence.SourceRanges, model.NativeSourceRange{SourceID: source.SourceID, SourceInstanceID: source.SourceInstanceID, FirstSequence: 0, LastSequence: 1})
+	}
+	raw, err := json.Marshal(occurrence)
+	requireNoError(t, err)
+	var fields map[string]json.RawMessage
+	requireNoError(t, json.Unmarshal(raw, &fields))
+	fields["first_observed_at"], err = json.Marshal("2026-09-09T12:00:00." + strings.Repeat("0", 240000) + "Z")
+	requireNoError(t, err)
+	raw, err = json.Marshal(fields)
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal(raw, &occurrence))
+	if len(raw) <= 8192 || len(occurrence.SourceRanges) != 11 {
+		t.Fatal("maximum fixture missed record bounds")
+	}
+	batch := model.NativeSecurityBatch{StreamID: connected.Security.DeliveryStreamID, BatchSequence: 1, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SecuritySessionID: connected.Security.SecuritySessionID, PolicyDigest: connected.Security.Policy.Digest, ApplicationReleaseID: connected.Security.Policy.ApplicationReleaseID, MatrixID: connected.Security.Policy.MatrixID, Records: []model.NativeRecord{{Occurrence: &occurrence}}}
+	canonical, err := batch.Canonical()
+	requireNoError(t, err)
+	fields["first_observed_at"], err = json.Marshal("2026-09-09T12:00:00." + strings.Repeat("0", 240000+256*1024-len(canonical)) + "Z")
+	requireNoError(t, err)
+	raw, err = json.Marshal(fields)
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal(raw, &occurrence))
+	canonical, err = batch.Canonical()
+	requireNoError(t, err)
+	if len(canonical) != 256*1024 {
+		t.Fatal("occurrence batch did not reach exact request limit")
+	}
+	deliveryAccess := store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, CandidateUserID: input.CandidateUserID, SessionID: input.SessionID, DesktopRegistrationID: input.DesktopRegistrationID, DPoPKeyThumbprint: input.DPoPKeyThumbprint, ConnectionID: connected.Connection.ID, ContinuityCredentialHash: input.ContinuityCredentialHash}, StreamID: batch.StreamID, ParticipationID: batch.ParticipationID, Generation: batch.Generation}
+	appendBatch := func(key string) (*model.NativeSecurityAcknowledgement, error) {
+		return ss.ExamAttempt().AppendNativeDelivery(ctx, &store.NativeDeliveryAppend{Access: deliveryAccess, Batch: batch, DesktopBuild: input.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}, examCommand(input.CandidateUserID, store.NativeDeliveryAppendOperation, key, model.SHA256Fingerprint(canonical)))
+	}
+	result, err := appendBatch("maximum-append")
+	requireNoError(t, err)
+	replay, err := appendBatch("maximum-replay")
+	requireNoError(t, err)
+	if result.HighestContiguousBatchSequence != 1 || result.Receipt != replay.Receipt || result.Receipt.RequestDigest != model.SHA256Fingerprint(canonical) {
+		t.Fatal("large legal native record failed exact acknowledgement/replay")
+	}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: deliveryAccess.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	attachSubmissionReceipt(t, fixture.candidate, seal)
+	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "maximum-seal", "maximum-seal"))
+	requireNoError(t, err)
+	page, err := ss.ExamIntegrityReview().ListNativeConditions(ctx, store.NativeConditionListOptions{SubmissionID: sealed.Receipt.SubmissionID, Limit: 10})
+	requireNoError(t, err)
+	if len(page.Items) != 1 {
+		t.Fatal("large occurrence was not interpreted and copied")
+	}
+	copied, err := json.Marshal(page.Items[0].Occurrence)
+	requireNoError(t, err)
+	original, err := json.Marshal(occurrence)
+	requireNoError(t, err)
+	if string(copied) != string(original) {
+		t.Fatal("evidence copy changed timestamp spelling")
+	}
+	reset := nativeResetWithLongTimestamp(t, model.NativeSourceReset{Kind: "source_reset", ResetID: model.NewId(), SourceID: report.Sources[0].SourceID, PreviousSourceInstanceID: report.Sources[0].SourceInstanceID, PreviousFinalSequence: 1, NewSourceInstanceID: model.NewId(), Reason: "restart", OccurredAt: at}, 240000)
+	deliveryAccess.Access.ConnectionID = ""
+	deliveryAccess.Access.ContinuityCredentialHash = ""
+	_, err = ss.ExamAttempt().SealNativeDelivery(ctx, &store.NativeDeliveryFinalDeclaration{Access: deliveryAccess, Declaration: model.FinalDeliveryDeclaration{DeclarationID: model.NewId(), FinalSequence: 2, ExpectedDeclarationRevision: 0}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}, examCommand(fixture.candidate.ID, store.NativeDeliveryFinalOperation, "maximum-final", "maximum-final"))
+	requireNoError(t, err)
+	batch.BatchSequence = 2
+	batch.Records = []model.NativeRecord{{Reset: &reset}}
+	canonical, err = batch.Canonical()
+	requireNoError(t, err)
+	reset = nativeResetWithLongTimestamp(t, reset, 240000+256*1024-len(canonical))
+	canonical, err = batch.Canonical()
+	requireNoError(t, err)
+	if len(canonical) != 256*1024 {
+		t.Fatal("reset batch did not reach exact request limit")
+	}
+	resetAck, err := appendBatch("maximum-historical-reset")
+	requireNoError(t, err)
+	resetReplay, err := appendBatch("maximum-historical-reset-replay")
+	requireNoError(t, err)
+	if resetAck.Receipt != resetReplay.Receipt || resetAck.Receipt.RequestDigest != model.SHA256Fingerprint(canonical) {
+		t.Fatal("large historical reset lost exact receipt")
+	}
+
+}
+
+// A lexical zero tail changes canonical bytes while retaining the same instant.
+func nativeResetWithLongTimestamp(t *testing.T, reset model.NativeSourceReset, zeros int) model.NativeSourceReset {
+	t.Helper()
+	raw, err := json.Marshal(reset)
+	requireNoError(t, err)
+	var fields map[string]json.RawMessage
+	requireNoError(t, json.Unmarshal(raw, &fields))
+	fields["occurred_at"], err = json.Marshal(reset.OccurredAt.UTC().Format("2006-01-02T15:04:05.000") + strings.Repeat("0", zeros) + "Z")
+	requireNoError(t, err)
+	raw, err = json.Marshal(fields)
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal(raw, &reset))
+	return reset
 }

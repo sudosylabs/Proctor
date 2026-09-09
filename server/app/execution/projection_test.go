@@ -11,9 +11,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,5 +198,98 @@ func TestEnsureRejectsFutureCursorBeforeHostAccess(t *testing.T) {
 	placement, err := service.Ensure(context.Background(), Request{AttemptID: model.NewExamAttemptID(), Image: "go", Network: NetworkNone, ExpectedWorkspaceCursor: 8})
 	if placement != nil || !errors.Is(err, ErrInvalid) {
 		t.Fatalf("future cursor: %v", err)
+	}
+}
+
+type startupObservationEnvironment struct {
+	*projectionTestEnvironment
+	observation SemanticObservation
+}
+
+func (e *startupObservationEnvironment) Observe(context.Context, model.ExecutionFence, int64) (SemanticObservation, error) {
+	return e.observation, nil
+}
+
+type startupSemanticObservation struct {
+	SemanticObservation
+	closed bool
+}
+
+func (o *startupSemanticObservation) Close() error { o.closed = true; return nil }
+
+func TestObservationStartupPreservesRecoverableControlTransition(t *testing.T) {
+	for _, state := range []model.ExecutionControlState{model.ExecutionControlFrozen, model.ExecutionControlRunning, model.ExecutionControlRevoked} {
+		t.Run(string(state), func(t *testing.T) {
+			base, grant, _, calls := projectionFixture(t, 0)
+			grant.EnvironmentEpoch = "epoch"
+			grant.ControlRevision = 1
+			grant.ControlAcknowledgedRevision = 1
+			grant.DesiredControlState = model.ExecutionControlRunning
+			grant.ControlAuthorityDigest = strings.Repeat("a", 64)
+			latest := *grant
+			latest.ControlRevision++
+			latest.DesiredControlState = state
+			grants := &controlTestStore{grantStoreFake: base, prepared: []*model.ExecutionGrant{grant, &latest}, calls: calls}
+			observed := &startupSemanticObservation{}
+			host := &startupObservationEnvironment{projectionTestEnvironment: &projectionTestEnvironment{controlTestEnvironment: &controlTestEnvironment{epoch: "epoch"}}, observation: observed}
+			service := &Service{grants: grants, hosts: projectionHosts{environment: host}, now: time.Now}
+			value, err := service.Watch(t.Context(), grant.AttemptID, grant.ID, "")
+			if value != nil || !observed.closed {
+				t.Fatalf("stale observation escaped: value=%v closed=%v error=%v", value, observed.closed, err)
+			}
+			if state == model.ExecutionControlRevoked {
+				if err == nil || errors.Is(err, ErrInteractionBlocked) {
+					t.Fatalf("terminal revocation became recoverable: %v", err)
+				}
+			} else if !errors.Is(err, ErrInteractionBlocked) {
+				t.Fatalf("recoverable control change became fatal: %v", err)
+			}
+			if base.current != grant {
+				t.Fatal("watcher retired healthy grant")
+			}
+		})
+	}
+}
+
+func TestProjectionInitializesLargeEscapedWorkspaceAtOriginalCursor(t *testing.T) {
+	t.Parallel()
+	var calls []string
+	grant := &model.ExecutionGrant{ID: model.NewExecutionGrantID(), AttemptID: model.NewExamAttemptID(), HostID: "runner", State: model.ExecutionGrantReserved, EnvironmentEpoch: "epoch", ControlRevision: 1, ControlAcknowledgedRevision: 1, DesiredControlState: model.ExecutionControlRunning}
+	snapshot := &store.ExecutionWorkspaceSnapshot{}
+	parent := ""
+	for i := 0; i < model.ExamWorkspaceDefaultMaximumEntries; i++ {
+		path := ""
+		if i < 3 {
+			if parent != "" {
+				parent += "/"
+			}
+			parent += strings.Repeat("&", 255)
+			path = parent
+		} else {
+			path = parent + "/" + strings.Repeat("&", 251) + fmt.Sprintf("%04d", i)
+		}
+		snapshot.Nodes = append(snapshot.Nodes, store.ExecutionWorkspaceNode{EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryDirectory, Path: path})
+	}
+	grants := &projectionTestStore{grantStoreFake: &grantStoreFake{current: grant, events: &calls, snapshot: snapshot}, calls: &calls}
+	host := &projectionTestEnvironment{controlTestEnvironment: &controlTestEnvironment{epoch: "epoch"}, calls: &calls, failure: context.DeadlineExceeded}
+	service := &Service{grants: grants}
+	if _, err := service.projectEnvironment(t.Context(), grant, host, controlTestLease{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("lost initial receipt: %v", err)
+	}
+	if grants.pending == nil {
+		t.Fatal("initial snapshot not retained")
+	}
+	raw, err := json.Marshal(grants.pending)
+	if err != nil || len(raw) <= 1<<20 {
+		t.Fatalf("expected escaped large snapshot: bytes=%d err=%v", len(raw), err)
+	}
+	grants.snapshot = nil
+	host.failure = nil
+	result, err := service.projectEnvironment(t.Context(), grant, host, controlTestLease{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != model.ExecutionGrantReady || result.AppliedWorkspaceCursor != 0 || result.WorkspacePending || len(host.applied) != 2 || !reflect.DeepEqual(host.applied[0], host.applied[1]) || !host.applied[0].Initial || len(host.applied[0].Entries) != model.ExamWorkspaceDefaultMaximumEntries {
+		t.Fatal("initial retry changed the complete snapshot, invented a cursor or did not become ready")
 	}
 }

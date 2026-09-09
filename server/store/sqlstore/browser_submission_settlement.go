@@ -24,7 +24,7 @@ func updateBrowserSourceSettlement(ctx context.Context, tx *sqlxTxWrapper, statu
 	}
 	pending, incomplete, err := model.BrowserSourceSettlementFacts(*status, unresolved)
 	if err != nil {
-		return err
+		return invalidPersistedState("browser_submission", "settlement", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET settlement_pending=?,settlement_incomplete=? WHERE id=?::uuid`, pending, incomplete, string(status.SourceSessionID)); err != nil {
 		return err
@@ -38,7 +38,7 @@ func updateBrowserSourceSettlement(ctx context.Context, tx *sqlxTxWrapper, statu
 		return err
 	}
 	if counts.Sources > maximumAttemptBrowserSources {
-		return model.ErrDeliveryInvalid
+		return invalidPersistedState("browser_submission", "value", model.ErrDeliveryInvalid)
 	}
 	state := "settled"
 	switch {
@@ -71,7 +71,7 @@ func browserSubmissionSettlement(ctx context.Context, tx *sqlxTxWrapper, attempt
 		return model.BrowserSubmissionSettlement{}, err
 	}
 	value := model.BrowserSubmissionSettlement{State: row.State, InventoryRevision: row.Revision, SourceCount: row.Sources, PendingSourceCount: row.Pending, IncompleteSourceCount: row.Incomplete}
-	return value, value.Validate()
+	return value, validatePersistedModel("browser_submission", value)
 }
 func settleSubmissionBrowserSources(ctx context.Context, tx *sqlxTxWrapper, attempt model.ExamAttemptID, reason model.DeliveryCloseReason, at time.Time) (int64, model.BrowserSubmissionSettlement, error) {
 	var ids []string
@@ -79,7 +79,7 @@ func settleSubmissionBrowserSources(ctx context.Context, tx *sqlxTxWrapper, atte
 		return 0, model.BrowserSubmissionSettlement{}, err
 	}
 	if int64(len(ids)) > maximumAttemptBrowserSources {
-		return 0, model.BrowserSubmissionSettlement{}, model.ErrDeliveryInvalid
+		return 0, model.BrowserSubmissionSettlement{}, invalidPersistedState("browser_submission", "value", model.ErrDeliveryInvalid)
 	}
 	for _, id := range ids {
 		source := model.BrowserSourceSessionID(id)
@@ -94,4 +94,51 @@ func settleSubmissionBrowserSources(ctx context.Context, tx *sqlxTxWrapper, atte
 	// Browser delivery uncertainty has its own changing inventory. It is not an
 	// immutable Focus Loss discrepancy or an automatically generated Flag.
 	return 0, value, err
+}
+
+// Exhaustion is a settlement transition. The caller holds Sitting then Attempt;
+// every affected source, pending-byte charge and Review changes in that transaction.
+// An empty Participation selects every source in the Attempt.
+func settleExhaustedBrowserSources(ctx context.Context, tx *sqlxTxWrapper, attempt model.ExamAttemptID, part model.AttemptParticipationID) error {
+	where := "exam_attempt_id=?"
+	args := []any{attempt.String()}
+	if !part.IsZero() {
+		where += " AND participation_id=?"
+		args = append(args, part.String())
+	}
+	var ids []string
+	selectionArgs := append(append([]any{}, args...), maximumAttemptBrowserSources+1)
+	if err := tx.Select(ctx, &ids, `SELECT id::text FROM browser_activity_sources WHERE `+where+` ORDER BY participation_id,start_ordinal LIMIT ? FOR UPDATE`, selectionArgs...); err != nil {
+		return err
+	}
+	if int64(len(ids)) > maximumAttemptBrowserSources {
+		return invalidPersistedState("browser_delivery", "sources", model.ErrDeliveryInvalid)
+	}
+	var before, after int64
+	if err := tx.Get(ctx, &before, `SELECT browser_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, attempt.String()); err != nil {
+		return err
+	}
+	result, err := tx.Exec(ctx, `UPDATE browser_activity_sources SET terminal_missing_through_sequence=allocated_through_sequence WHERE `+where+` AND terminal_missing_through_sequence<>allocated_through_sequence`, args...)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := settleBrowserSource(ctx, tx, model.BrowserSourceSessionID(id)); err != nil {
+			return err
+		}
+	}
+	if changed > 0 {
+		return markBrowserInventoryChanged(ctx, tx, attempt)
+	}
+	if err := tx.Get(ctx, &after, `SELECT browser_inventory_revision FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=?`, attempt.String()); err != nil {
+		return err
+	}
+	if after != before {
+		return invalidateDeliveryReviewInventory(ctx, tx, attempt)
+	}
+	return nil
 }

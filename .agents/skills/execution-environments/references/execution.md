@@ -153,7 +153,13 @@ fenced grant for recovery. Other failures after placement release the exact gran
 release retries until its durable fence succeeds, even after request cancellation. After return,
 observation loss or an unacknowledgeable event closes the caller-owned terminal and
 releases that exact grant, forcing the next authorized open to build a fresh
-projection from durable Workspace state. A normal caller close does not revoke
+projection from durable Workspace state. Temporary interaction denial instead
+retains the original terminal identity, PTY and unacknowledged semantic capture.
+Input and resize return a failure without a closed frame; observation processing
+retries after current authority permits it. Immutable captures keep their original
+fence while content access, confirmation and acknowledgement use the current
+running fence of the same grant/epoch. Capture revisions cannot exceed it.
+A normal caller close does not revoke
 the placement; the Attempt lifecycle remains the authority for when that grant
 may otherwise exist. This bridge does not create an independent terminal
 lifecycle.
@@ -166,8 +172,12 @@ control revision, requested state and acknowledged revision. Preparation commits
 before host I/O. Identical retries keep the same intent; a replacement epoch
 requires a new grant. An acknowledgement must match the exact grant, epoch,
 revision and requested state, and the original current-authority digest. The
-private digest binds lifecycle, native control ordering, Participation, credential,
-correction and deadline gates. It is never transmitted to the host.
+private digest binds lifecycle, effective native security transitions,
+Participation, credential, correction and deadline gates. Native receipt and
+watermark churn alone never changes execution authority. The security owner
+retains the processed control sequence of its latest effective gate transition,
+so a fault followed by recovery still supersedes the earlier acknowledgement even
+when no host worker saw the intermediate fault. It is never transmitted to the host.
 
 Native coverage and host acknowledgement are separate gates. Healthy native
 coverage may permit recovery, but execution input waits for confirmed running
@@ -183,7 +193,7 @@ periodic reconciliation repairs a missed callback. Security projections distingu
 freeze_pending/frozen and thaw_pending/ready from actual acknowledgements.
 Browser-only corrections do not enter the terminal gate.
 
-The execenv v0.3.0 adapter selects this extension only when the authenticated
+The execenv v0.3.1 adapter selects this extension only when the authenticated
 host advertises ordered control, journal projection and semantic observations,
 and the native environment supplies a valid opaque epoch. Unsupported hosts retain
 protective refusals. Protocol and persistence tests do not certify Linux/KVM
@@ -206,6 +216,9 @@ Reconciliation compares durable Workspace progress independently of control.
 The private journal reader preserves the original object reference and expected
 file version at each position; it never reads a newer live file as an earlier
 save. Pages contain at most 128 consecutive changes and 256 KiB of metadata.
+Atomic initialization carries the complete tree at its actual Workspace cursor
+under a separate 4 MiB metadata ceiling, including JSON-escaped paths. It never
+splits a snapshot by inventing journal positions.
 A missing journal position or missing pinned body returns no partial batch.
 Obsolete objects needed by a bound ready grant's unapplied retained journal
 prefix remain protected from cleanup. Grant release or confirmed advancement
@@ -216,8 +229,9 @@ recovery and consecutive journal projection, including when reusing an existing
 epoch. Frozen control performs no projection I/O. Unknown transport outcomes
 retain the pending request for retry; an invalid receipt, lost epoch or unusable
 content handle requires exact-grant retirement. Host cursor conflicts require
-observation reconciliation before further projection. This consumer-owned path
-does not by itself activate the currently pinned legacy adapter.
+observation reconciliation before further projection. Normal builds select the
+released journal adapter only when the authenticated host advertises the required
+capabilities. Unsupported hosts remain unavailable.
 
 A definitive host validation refusal has its own durable outcome: retain the
 request digest as rejected, clear its pending marker, and leave the applied
@@ -362,7 +376,7 @@ exposes it.
 
 ## Implemented boundary
 
-The server integration pins execenv v0.3.0: typed multi-host
+The server integration pins execenv v0.3.1: typed multi-host
 deployment configuration and secret redaction, TLS 1.3/mTLS or loopback-only
 development dialing, connection recovery, fail-closed readiness, deterministic
 capability/capacity placement, durable assignment and cleanup history,
@@ -420,9 +434,9 @@ because it has no callers inside this monorepo.
 ### Released journal adapter integration
 
 Normal and independent server builds select the concrete ordered-control,
-projection and semantic-observation adapter from execenv v0.3.0. All three
+projection and semantic-observation adapter from execenv v0.3.1. All three
 capabilities must be authenticated; interface assertions alone never prove host
-support. Use matching v0.3.0 host binaries and guest images: the remote protocol
+support. Use matching v0.3.1 host binaries and guest images: the remote protocol
 requires revision 2 and the guest helper requires revision 3. The isolated adapter
 advertises journal support only with `require_journal` enabled and refuses guests
 without the required native workload handshake. Enable this option only after the
