@@ -9,10 +9,11 @@ package attempt
 import (
 	"context"
 	"errors"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type expiryDeliveryStoreFake struct {

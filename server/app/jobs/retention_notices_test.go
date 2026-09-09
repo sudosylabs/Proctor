@@ -10,9 +10,10 @@ package jobs
 import (
 	"context"
 	"errors"
+	"testing"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
-	"testing"
 )
 
 type retentionNoticesFake struct {

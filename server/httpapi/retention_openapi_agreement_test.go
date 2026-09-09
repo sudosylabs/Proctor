@@ -8,10 +8,11 @@
 package httpapi
 
 import (
-	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestRetentionOpenAPIAgreesWithRuntime(t *testing.T) {

@@ -11,9 +11,10 @@ package sqlstore
 
 import (
 	"context"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
-	"testing"
 )
 
 func TestBrowserRetainedRepairReservation(t *testing.T) {

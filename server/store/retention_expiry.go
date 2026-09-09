@@ -8,8 +8,9 @@
 package store
 
 import (
-	"github.com/sudosylabs/proctor/server/model"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Before is an immutable upper event-time bound shared by all pages of one

@@ -7,9 +7,10 @@
 package httpapi
 
 import (
-	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestDeliveryBudgetOpenAPIAgreesWithRuntime(t *testing.T) {

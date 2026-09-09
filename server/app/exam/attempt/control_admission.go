@@ -8,9 +8,10 @@ package attempt
 
 import (
 	"context"
-	"github.com/sudosylabs/proctor/server/model"
 	"sync"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 const (

@@ -10,11 +10,12 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func evaluateOpenAPISchemaAgreement(

@@ -9,6 +9,7 @@ package sqlstore
 
 import (
 	"context"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )

@@ -8,8 +8,9 @@
 package app
 
 import (
-	"github.com/sudosylabs/proctor/server/model"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // MembershipPageQuery selects an effective instant or full retained history.

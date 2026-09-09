@@ -10,10 +10,11 @@ package storetest
 import (
 	"context"
 	"fmt"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExecutionObservationStore(t *testing.T, ss store.Store) {

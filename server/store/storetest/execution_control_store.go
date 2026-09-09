@@ -9,9 +9,10 @@ package storetest
 
 import (
 	"context"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"testing"
 )
 
 func TestExecutionControlStore(t *testing.T, ss store.Store) {

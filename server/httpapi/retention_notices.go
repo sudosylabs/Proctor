@@ -9,9 +9,10 @@ package httpapi
 
 import (
 	"errors"
+	"net/http"
+
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
-	"net/http"
 )
 
 type retentionNoticeResponse struct {

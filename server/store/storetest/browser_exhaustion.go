@@ -10,9 +10,10 @@ package storetest
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"testing"
 )
 
 // TestBrowserExhaustionSettlement covers the transaction that refuses new detail,

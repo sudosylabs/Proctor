@@ -9,9 +9,10 @@ package attempt
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"testing"
 )
 
 func TestDeliveryCorruptionRemainsInternal(t *testing.T) {

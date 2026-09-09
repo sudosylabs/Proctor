@@ -9,10 +9,11 @@ package storetest
 
 import (
 	"context"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type ExecutionProjectionSQLProbe struct {

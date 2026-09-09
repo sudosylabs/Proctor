@@ -9,6 +9,7 @@ package sqlstore
 
 import (
 	"encoding/json"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 

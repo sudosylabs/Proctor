@@ -11,9 +11,10 @@ package sqlstore
 import (
 	"context"
 	"errors"
-	"github.com/sudosylabs/proctor/server/store"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestDeliveryAppendAdmissionReservesDatabaseCapacity(t *testing.T) {

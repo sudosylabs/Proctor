@@ -9,10 +9,11 @@ package sqlstore
 
 import (
 	"bytes"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestExamAttemptConnectOutcomeIsBoundedAndCredentialFree(t *testing.T) {

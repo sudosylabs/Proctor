@@ -7,9 +7,10 @@
 package httpapi
 
 import (
+	"net/http"
+
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
-	"net/http"
 )
 
 func deliveryBudgetResource(app ExamAttemptApplication) resource {

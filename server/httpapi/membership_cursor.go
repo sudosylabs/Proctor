@@ -9,6 +9,7 @@ package httpapi
 
 import (
 	"errors"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 

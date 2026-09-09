@@ -8,8 +8,9 @@
 package store
 
 import (
-	"github.com/sudosylabs/proctor/server/model"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 const (

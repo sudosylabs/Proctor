@@ -11,9 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/sudosylabs/proctor/server/model"
 	"reflect"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func nativeObservePolicy(t *testing.T) model.NativeSecurityPolicy {

@@ -10,11 +10,12 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/sudosylabs/proctor/server/model"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestBrowserDeliveryHTTPDecodesExpandedUnicodeNavigation(t *testing.T) {

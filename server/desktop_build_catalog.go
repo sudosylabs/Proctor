@@ -9,6 +9,7 @@ package server
 
 import (
 	"crypto/ed25519"
+
 	"github.com/sudosylabs/proctor/server/desktoprelease"
 	"github.com/sudosylabs/proctor/server/model"
 )

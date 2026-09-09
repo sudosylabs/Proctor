@@ -10,11 +10,12 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/sudosylabs/proctor/server/model"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestExamNativePolicyHTTPStrictBoundary(t *testing.T) {

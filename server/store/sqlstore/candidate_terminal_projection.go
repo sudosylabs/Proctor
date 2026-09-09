@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )

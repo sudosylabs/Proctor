@@ -9,8 +9,9 @@ package sqlstore
 
 import (
 	"context"
-	"github.com/sudosylabs/proctor/server/model"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Each source owns a nonrefundable metadata reservation. This bounds the whole

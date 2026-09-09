@@ -8,10 +8,11 @@ package storetest
 
 import (
 	"context"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestDeliveryBudgetStore(t *testing.T, ss store.Store) {

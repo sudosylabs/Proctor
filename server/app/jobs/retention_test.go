@@ -11,12 +11,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"strings"
 	"testing"
 	"time"
+
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type retentionJobStoreFake struct {

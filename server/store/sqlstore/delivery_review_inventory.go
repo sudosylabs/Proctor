@@ -10,8 +10,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/sudosylabs/proctor/server/model"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 // Accepted delivery mutations hold Sitting then Attempt. A late inventory

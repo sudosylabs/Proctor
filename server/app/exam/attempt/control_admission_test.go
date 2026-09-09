@@ -9,10 +9,11 @@ package attempt
 import (
 	"context"
 	"errors"
-	"github.com/sudosylabs/proctor/server/model"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing.T) {

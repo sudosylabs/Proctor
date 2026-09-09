@@ -8,11 +8,12 @@
 package httpapi
 
 import (
-	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/model"
 	"net/http"
 	"strconv"
 	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func browserDeliveryResource(app ExamAttemptApplication) resource {

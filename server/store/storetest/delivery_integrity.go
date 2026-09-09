@@ -11,11 +11,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 // TestDeliveryCorruptReads exercises retained reads after the SQL harness injects

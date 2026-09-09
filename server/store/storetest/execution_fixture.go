@@ -10,9 +10,10 @@ package storetest
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"testing"
 )
 
 // ExecutionWorkspaceFixture supplies real admitted authority with an empty

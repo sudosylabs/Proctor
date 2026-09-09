@@ -11,9 +11,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
+
 	"github.com/sudosylabs/proctor/server/internal/canonicaljson"
 	"github.com/sudosylabs/proctor/server/model"
-	"time"
 )
 
 // Interpretation runs once per source/sequence under the Attempt fence. Its

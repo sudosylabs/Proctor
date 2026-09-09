@@ -10,9 +10,10 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"time"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
-	"time"
 )
 
 func lockDeliveryParticipationOwner(ctx context.Context, tx *sqlxTxWrapper, access store.DeliveryBudgetAccess) error {

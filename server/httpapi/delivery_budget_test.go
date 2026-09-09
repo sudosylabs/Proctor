@@ -8,14 +8,15 @@ package httpapi
 
 import (
 	"context"
-	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/model"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type deliveryBudgetHTTPFake struct {

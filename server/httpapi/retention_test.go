@@ -10,13 +10,14 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/model"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 type retentionHTTPFake struct {

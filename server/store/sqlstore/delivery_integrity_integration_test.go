@@ -12,9 +12,10 @@ package sqlstore
 import (
 	"context"
 	"encoding/json"
+	"testing"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store/storetest"
-	"testing"
 )
 
 func TestDeliveryCorruptReads(t *testing.T) {
