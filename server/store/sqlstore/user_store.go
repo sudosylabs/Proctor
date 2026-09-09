@@ -408,6 +408,21 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	if !userID.IsValid() || scopeLimit < 1 || scopeLimit > 51 {
 		return nil, store.NewErrInvalidInput("user", "current_context", nil)
 	}
+	examManagementActions := pq.Array([]string{
+		string(model.ActionExamCreate), string(model.ActionExamView),
+		string(model.ActionExamManage), string(model.ActionExamPublish), string(model.ActionExamSittingCreate),
+		string(model.ActionExamSittingView), string(model.ActionExamSittingManage), string(model.ActionSubmissionView),
+	})
+	administrationActions := pq.Array([]string{
+		string(model.ActionInstitutionManage), string(model.ActionRoleManage), string(model.ActionAuditView),
+		string(model.ActionAcademicAuditView), string(model.ActionUserView), string(model.ActionUserManage),
+		string(model.ActionJobView), string(model.ActionJobManage), string(model.ActionMailView), string(model.ActionMailManage),
+		string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage), string(model.ActionAcademicUnitMembersView),
+		string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
+		string(model.ActionProgrammeView), string(model.ActionProgrammeManage), string(model.ActionProgrammeLevelView),
+		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
+		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
+	})
 	var row struct {
 		UserID             string `db:"user_id"`
 		Username           string `db:"username"`
@@ -446,26 +461,15 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 			AND attempt.state IN ('ready','active','suspended'))) AS has_student_activity,
 		EXISTS(SELECT 1 FROM active_bindings binding WHERE
 			(binding.name=? AND ?=ANY(binding.permissions) AND binding.scope_type='institution') OR
-			(binding.permissions && ARRAY[?,?,?,?,?,?,?,?]::varchar[] AND EXISTS (
+			(binding.permissions && ?::text[] AND EXISTS (
 				SELECT 1 FROM managed_exams managed WHERE binding.scope_type='institution' OR
 					(binding.scope_type='academic_unit' AND binding.scope_id IN (
 						SELECT id FROM unit_ancestors WHERE root_id=managed.academic_unit_id))))) AS has_exam_management,
 		EXISTS(SELECT 1 FROM active_bindings binding WHERE binding.permissions &&
-			ARRAY[?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?]::varchar[]) AS has_administration
+			?::text[]) AS has_administration
 	FROM users u WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL`,
 		userID.String(), userID.String(), userID.String(), model.SystemAdministratorRoleName,
-		string(model.ActionExamManageOverride), string(model.ActionExamCreate), string(model.ActionExamView),
-		string(model.ActionExamManage), string(model.ActionExamPublish), string(model.ActionExamSittingCreate),
-		string(model.ActionExamSittingView), string(model.ActionExamSittingManage), string(model.ActionSubmissionView),
-		string(model.ActionInstitutionManage), string(model.ActionRoleManage), string(model.ActionAuditView),
-		string(model.ActionAcademicAuditView), string(model.ActionUserView), string(model.ActionUserManage),
-		string(model.ActionJobView), string(model.ActionJobManage), string(model.ActionMailView), string(model.ActionMailManage),
-		string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage), string(model.ActionAcademicUnitMembersView),
-		string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
-		string(model.ActionProgrammeView), string(model.ActionProgrammeManage), string(model.ActionProgrammeLevelView),
-		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
-		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
-		userID.String())
+		string(model.ActionExamManageOverride), examManagementActions, administrationActions, userID.String())
 	if err != nil {
 		return nil, translateError("user", userID.String(), err)
 	}
@@ -513,9 +517,9 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 		AND (member.end_at IS NULL OR member.end_at>statement_timestamp())
 	), navigable_bindings AS (
 		SELECT binding.* FROM active_bindings binding WHERE binding.scope_type IN ('institution','academic_unit') AND (
-			binding.permissions && ARRAY[?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?]::varchar[] OR
+			binding.permissions && ?::text[] OR
 			(binding.name=? AND ?=ANY(binding.permissions) AND binding.scope_type='institution') OR
-			(binding.permissions && ARRAY[?,?,?,?,?,?,?,?]::varchar[] AND EXISTS (
+			(binding.permissions && ?::text[] AND EXISTS (
 				SELECT 1 FROM managed_exams managed WHERE binding.scope_type='institution' OR
 					(binding.scope_type='academic_unit' AND binding.scope_id IN (
 						SELECT id FROM unit_ancestors WHERE root_id=managed.academic_unit_id))))
@@ -529,19 +533,8 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 		JOIN academic_units unit ON binding.scope_type='academic_unit' AND unit.id=binding.scope_id WHERE unit.archived_at IS NULL
 	)
 	SELECT scope_type,scope_id,display_name FROM scopes ORDER BY scope_type,display_name,scope_id LIMIT ?`,
-		userID.String(), userID.String(), userID.String(),
-		string(model.ActionInstitutionManage), string(model.ActionRoleManage), string(model.ActionAuditView),
-		string(model.ActionAcademicAuditView), string(model.ActionUserView), string(model.ActionUserManage),
-		string(model.ActionJobView), string(model.ActionJobManage), string(model.ActionMailView), string(model.ActionMailManage),
-		string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage), string(model.ActionAcademicUnitMembersView),
-		string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
-		string(model.ActionProgrammeView), string(model.ActionProgrammeManage), string(model.ActionProgrammeLevelView),
-		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
-		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
-		model.SystemAdministratorRoleName, string(model.ActionExamManageOverride),
-		string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage), string(model.ActionExamPublish),
-		string(model.ActionExamSittingCreate), string(model.ActionExamSittingView), string(model.ActionExamSittingManage),
-		string(model.ActionSubmissionView), scopeLimit); err != nil {
+		userID.String(), userID.String(), userID.String(), administrationActions,
+		model.SystemAdministratorRoleName, string(model.ActionExamManageOverride), examManagementActions, scopeLimit); err != nil {
 		return nil, fmt.Errorf("list current User management scopes: %w", err)
 	}
 	result.ManagementScopesHasMore = len(rows) == scopeLimit

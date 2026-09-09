@@ -29,6 +29,7 @@ type UserStoreSQLProbe struct {
 }
 
 func TestUserStore(t *testing.T, ss store.Store, probes ...UserStoreSQLProbe) {
+	t.Run("CurrentContext", func(t *testing.T) { testUserStoreCurrentContext(t, ss) })
 	t.Run("CreateAndGet", func(t *testing.T) { testUserStoreCreateAndGet(t, ss) })
 	t.Run("CreationAndDefaultJobAreAtomic", func(t *testing.T) { testUserCreationAndDefaultJobAreAtomic(t, ss) })
 	if len(probes) > 0 && probes[0].SetPublicRegistration != nil {
