@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -79,46 +80,52 @@ func TestContentWorkPipelinesShareCapacityAndRefuseBeforeInputOrStorage(t *testi
 	cases := contentWorkCases(t)
 	for _, holder := range cases {
 		t.Run(holder.name, func(t *testing.T) {
-			entered, release := make(chan struct{}), make(chan struct{})
-			var releaseOnce sync.Once
-			recorder := &contentWorkRecorder{onStart: func() { close(entered); <-release }}
-			filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
-			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
-			if err != nil {
-				t.Fatal(err)
-			}
-			done, outcome := make(chan struct{}), make(chan error, 1)
-			go func() {
-				defer close(done)
-				outcome <- holder.run(content, context.Background(), bytes.NewReader(holder.body))
-			}()
-			t.Cleanup(func() {
+			// Rendering speed under race and coverage instrumentation must not
+			// determine whether the synchronization deadlines expire.
+			synctest.Test(t, func(t *testing.T) {
+				entered, release := make(chan struct{}), make(chan struct{})
+				var releaseOnce sync.Once
+				recorder := &contentWorkRecorder{onStart: func() { close(entered); <-release }}
+				filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+				content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
+				if err != nil {
+					t.Fatal(err)
+				}
+				done, outcome := make(chan struct{}), make(chan error, 1)
+				go func() {
+					defer close(done)
+					outcome <- holder.run(content, context.Background(), bytes.NewReader(holder.body))
+				}()
+				t.Cleanup(func() {
+					releaseOnce.Do(func() { close(release) })
+					awaitContentWork(t, done)
+				})
+				awaitContentWork(t, entered)
+				for _, refused := range cases {
+					body := &unreadContentWorkBody{}
+					err := refused.run(content, context.Background(), body)
+					var capacity interface{ WorkCapacityExceeded() }
+					if !errors.Is(err, ErrWorkCapacity) || !errors.As(err, &capacity) {
+						t.Fatalf("%s while %s runs: error=%v", refused.name, holder.name, err)
+					}
+					if body.reads.Load() != 0 || filesystem.writes.Load() != 0 {
+						t.Fatalf("refused %s performed work: reads=%d writes=%d", refused.name, body.reads.Load(), filesystem.writes.Load())
+					}
+				}
+				if recorder.started.Load() != 1 || recorder.active.Load() != 1 || recorder.rejected.Load() != int64(len(cases)) {
+					t.Fatalf("admission metrics: started=%d active=%d rejected=%d", recorder.started.Load(), recorder.active.Load(), recorder.rejected.Load())
+				}
+				// Measure a known duration while the admitted operation is blocked.
+				time.Sleep(time.Second)
 				releaseOnce.Do(func() { close(release) })
 				awaitContentWork(t, done)
+				if err := <-outcome; err != nil {
+					t.Fatalf("admitted %s: %v", holder.name, err)
+				}
+				if recorder.active.Load() != 0 || recorder.finished.Load() != 1 || recorder.duration.Load() != int64(time.Second) {
+					t.Fatalf("completion metrics: active=%d finished=%d duration=%d", recorder.active.Load(), recorder.finished.Load(), recorder.duration.Load())
+				}
 			})
-			awaitContentWork(t, entered)
-			for _, refused := range cases {
-				body := &unreadContentWorkBody{}
-				err := refused.run(content, context.Background(), body)
-				var capacity interface{ WorkCapacityExceeded() }
-				if !errors.Is(err, ErrWorkCapacity) || !errors.As(err, &capacity) {
-					t.Fatalf("%s while %s runs: error=%v", refused.name, holder.name, err)
-				}
-				if body.reads.Load() != 0 || filesystem.writes.Load() != 0 {
-					t.Fatalf("refused %s performed work: reads=%d writes=%d", refused.name, body.reads.Load(), filesystem.writes.Load())
-				}
-			}
-			if recorder.started.Load() != 1 || recorder.active.Load() != 1 || recorder.rejected.Load() != int64(len(cases)) {
-				t.Fatalf("admission metrics: started=%d active=%d rejected=%d", recorder.started.Load(), recorder.active.Load(), recorder.rejected.Load())
-			}
-			releaseOnce.Do(func() { close(release) })
-			awaitContentWork(t, done)
-			if err := <-outcome; err != nil {
-				t.Fatalf("admitted %s: %v", holder.name, err)
-			}
-			if recorder.active.Load() != 0 || recorder.finished.Load() != 1 || recorder.duration.Load() <= 0 {
-				t.Fatalf("completion metrics: active=%d finished=%d duration=%d", recorder.active.Load(), recorder.finished.Load(), recorder.duration.Load())
-			}
 		})
 	}
 }
