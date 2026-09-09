@@ -985,3 +985,21 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Mattermost service environment selection
+---------------------------------------
+The service_environment.go, service_environment_production_default.go, and
+service_environment_dev_default.go files adapt the environment selection and
+build-tag defaults from https://github.com/mattermost/mattermost at revision
+f6f2719165ffb132e351342add570f3b1b6fd07a:
+- server/public/model/service_environment.go
+- server/public/model/service_environment_production_default.go
+- server/public/model/service_environment_dev_default.go
+
+Upstream copyright: Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+Governing license: Apache License 2.0 (server/public/LICENSE.txt), reproduced
+in LICENSES/Apache-2.0.txt.
+
+Proctor places selection in the composition root, reads its own process-only
+environment variable once at startup, rejects unknown nonempty values, and
+passes an immutable Desktop compatibility policy into application services.

@@ -16,7 +16,8 @@ import (
 // verifiedDesktopBuildCatalog is intentionally empty until coordinated
 // activation supplies signed Desktop target artifacts and capability matrices.
 // Server releases must embed exact verified tuples here; configuration and
-// Institution policy are not permitted to invent compatible builds.
+// Institution policy are not permitted to invent compatible released builds.
+// Development skips login compatibility checks without modifying this catalog.
 func verifiedDesktopBuildCatalog() ([]model.DesktopBuildTuple, error) {
 	// Real activation must add verified target artifacts and the admitted release
 	// public keys together. Synthetic certification belongs only in tests.

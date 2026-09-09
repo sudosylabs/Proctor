@@ -248,6 +248,14 @@ mix-up with another installation or issuer. Discovery never returns provider
 secrets, claim policy, recipient data, private readiness detail, or arbitrary
 navigation destinations.
 
+The dev service environment skips Desktop login compatibility checks without
+introducing synthetic verified builds. Selection is immutable and supplied by
+root composition, never read from process environment by application services.
+Production and test enforce compatibility; test graphs opt into dev explicitly.
+Every environment retains request validation, Access Policy, maintenance, PKCE,
+registered-key DPoP and Session rotation. Protected Attempt admission always
+rechecks the verified native catalog and current compatibility policy.
+
 ## Hosted pages and browser authentication
 
 Proctor Desktop contains no login, registration, password, invitation, or

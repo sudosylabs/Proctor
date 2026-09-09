@@ -76,8 +76,11 @@ type Dependencies struct {
 	FileContent      FileContent
 	ExecutionHosts   appexecution.HostDirectory
 	// DesktopBuildCatalog is the immutable verified build catalog embedded by
-	// the server release. An empty catalog keeps compatibility dormant.
+	// the server release. An empty catalog admits no released builds.
 	DesktopBuildCatalog []model.DesktopBuildTuple
+	// SkipDesktopCompatibility is the immutable development-environment policy
+	// for login. Protected Attempt admission always requires a verified build.
+	SkipDesktopCompatibility bool
 
 	NodeID    string
 	PublicURL string

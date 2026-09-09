@@ -29,12 +29,13 @@ import (
 )
 
 type setupOptions struct {
-	updateConfig     func(*config.Config)
-	persistence      store.Store
-	cluster          platform.Cluster
-	configuredMailer bool
-	buildInfo        httpapi.BuildInfo
-	desktopBuilds    []model.DesktopBuildTuple
+	serviceEnvironment server.ServiceEnvironment
+	updateConfig       func(*config.Config)
+	persistence        store.Store
+	cluster            platform.Cluster
+	configuredMailer   bool
+	buildInfo          httpapi.BuildInfo
+	desktopBuilds      []model.DesktopBuildTuple
 }
 
 // Option customizes one concern in the test graph; everything else is
@@ -46,6 +47,14 @@ type Option func(*setupOptions)
 func WithConfig(update func(*config.Config)) Option {
 	return func(options *setupOptions) {
 		options.updateConfig = update
+	}
+}
+
+// WithServiceEnvironment selects environment behavior explicitly for this
+// test graph. The default is test, regardless of ambient process settings.
+func WithServiceEnvironment(environment server.ServiceEnvironment) Option {
+	return func(options *setupOptions) {
+		options.serviceEnvironment = environment
 	}
 }
 
@@ -208,6 +217,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		AllowMissingJobs:    lifecycle != nil,
 		BuildInfo:           settings.buildInfo,
 		DesktopBuildCatalog: settings.desktopBuilds,
+		ServiceEnvironment:  settings.serviceEnvironment,
 	})
 	if err != nil {
 		tb.Fatalf("create test server: %v", err)

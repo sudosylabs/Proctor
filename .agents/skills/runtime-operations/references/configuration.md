@@ -172,3 +172,14 @@ A User-owned portable presentation document is neither deployment
 configuration nor an institution application setting. Its exact-source,
 revision, self-access, and client-interpretation boundaries are defined in
 the [`user-settings` skill](../../user-settings/SKILL.md); it never enters `config.Store`.
+
+`PROCTOR_SERVICE_ENVIRONMENT` is process-only and independent of `config.Config`,
+its backing, and PostgreSQL. Root construction reads it once; unset or blank
+uses the compiled default (`production` with the production build tag, `dev`
+otherwise). Valid values are production, test, and dev; unknown values fail
+startup. Release packages and runtime images compile with the production tag.
+Root composition passes the immutable development compatibility decision into
+the application rather than making application services read environment state.
+Only dev skips Desktop login compatibility checks. Protected Attempt admission
+retains its verified-build requirements. Test graphs default to test and use
+explicit per-graph overrides for development behavior.

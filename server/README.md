@@ -103,6 +103,22 @@ to `./webapp/dist` relative to the process working directory. Production
 startup validates `webapp-build.json` against the Go binary version and commit
 and fails before readiness when the artifacts do not belong to the same build.
 
+### Service environment
+
+`PROCTOR_SERVICE_ENVIRONMENT` selects `production`, `test`, or `dev` once during
+server construction, outside `config.Config` and its persisted backing. Values
+are trimmed and case-insensitive; unset or blank uses the build default, while
+unknown values fail startup. Builds with the `production` Go tag default to
+production; other builds default to dev. Packaging and runtime-image builds
+always include the production tag. An explicit environment value overrides the
+build default and requires restart to change.
+
+Only dev skips Desktop login compatibility checks. Request validation,
+readiness, maintenance, account access, browser proof and Session security
+remain active. Protected Attempt admission retains verified-build checks.
+`NewForTesting` defaults to test independently of process environment and build
+tags; `testlib.WithServiceEnvironment` selects development behavior explicitly.
+
 ### Run under systemd
 
 The `serve` command supports systemd's notification protocol. When systemd

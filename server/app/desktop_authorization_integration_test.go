@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	server "github.com/sudosylabs/proctor/server"
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -30,6 +31,15 @@ import (
 )
 
 func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSession(t *testing.T) {
+	testDesktopAuthorizationRotatingSession(t, false)
+}
+
+func TestDesktopDevelopmentAuthorizationCreatesAnOrdinaryRotatingSession(t *testing.T) {
+	testDesktopAuthorizationRotatingSession(t, true)
+}
+
+func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
+	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
@@ -37,7 +47,11 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 	primaryStore := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, primaryStore)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
-	publicOrigin := func(cfg *config.Config) { cfg.Server.PublicURL = "https://proctor.example.edu" }
+	origin := "https://proctor.example.edu"
+	if development {
+		origin = "http://localhost:8065"
+	}
+	publicOrigin := func(cfg *config.Config) { cfg.Server.PublicURL = origin }
 	build := model.DesktopBuildTuple{
 		DesktopRelease: "0.1.0", DesktopBuildID: "integration-build",
 		Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64,
@@ -47,8 +61,14 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 		DesktopTarget:                           "darwin-arm64", ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
 		CapabilityMatrixIdentity: "integration-matrix",
 	}
-	primary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(primaryStore), testlib.WithDesktopBuildCatalog(build))
-	secondary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(secondaryStore), testlib.WithDesktopBuildCatalog(build))
+	behavior := testlib.WithDesktopBuildCatalog(build)
+	if development {
+		// Use the actual environment projection with an empty release catalog.
+		behavior = testlib.WithServiceEnvironment(server.ServiceEnvironmentDev)
+	}
+
+	primary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(primaryStore), behavior)
+	secondary := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(secondaryStore), behavior)
 
 	ctx := context.Background()
 	institution, err := primaryStore.Institution().Save(ctx, &model.Institution{
@@ -57,6 +77,25 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 	if err != nil || institution == nil {
 		t.Fatalf("save institution: %#v, %v", institution, err)
 	}
+	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), application.DesktopCompatibilityQuery{
+		DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
+	})
+	if err != nil || compatibility.Compatibility != application.DesktopCompatibilityCompatible {
+		t.Fatalf("configured build unavailable: %#v, %v", compatibility, err)
+	}
+
+	if development {
+		// The test graph must ignore the host environment and default to strict
+		// compatibility even when the test binary itself was built without production.
+		strict := testlib.Setup(t, testlib.WithConfig(publicOrigin), testlib.WithStore(openAdditionalUserSettingsStore(t, dataSource)))
+		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), application.DesktopCompatibilityQuery{
+			DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
+		})
+		if err != nil || result.Compatibility != application.DesktopCompatibilityUnsupportedTarget {
+			t.Fatalf("default test graph bypassed compatibility: %#v, %v", result, err)
+		}
+	}
+
 	user, err := primary.App.CreateLocalUser(ctx, &model.User{
 		Username: "desktop-user", Email: "desktop-user@example.edu",
 	}, "correct horse battery staple")
@@ -119,7 +158,7 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 	}
 	proof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
-		"htu": "https://proctor.example.edu/api/v1/auth/desktop/token",
+		"htu": origin + "/api/v1/auth/desktop/token",
 		"iat": time.Now().Unix(), "nonce": started.DPoPNonce,
 	})
 	exchanged, err := primary.App.ExchangeDesktopAuthorization(ctx, application.Invocation{}, application.ExchangeDesktopAuthorizationCommand{
@@ -144,7 +183,7 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 	}
 	refreshProof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
-		"htu": "https://proctor.example.edu/api/v1/auth/refresh",
+		"htu": origin + "/api/v1/auth/refresh",
 		"iat": time.Now().Unix(), "nonce": exchanged.DPoPNonce,
 	})
 	_, _, err = secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
@@ -162,7 +201,7 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 	}
 	refreshProof = integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
-		"htu": "https://proctor.example.edu/api/v1/auth/refresh",
+		"htu": origin + "/api/v1/auth/refresh",
 		"iat": time.Now().Unix(), "nonce": refreshNonce,
 	})
 	rotatedSession, rotated, err := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{

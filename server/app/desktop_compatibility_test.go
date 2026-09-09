@@ -74,6 +74,7 @@ func desktopCompatibilityServiceFixture(
 				1,
 			),
 		},
+		false,
 		time.Minute,
 		func() time.Time { return at.Add(30 * time.Second) },
 	)
@@ -469,5 +470,80 @@ func testDesktopBuildTuple(
 		DesktopSettingsRegistryFingerprint:      "fnv1a64:" + strings.Repeat("b", 16),
 		DesktopTarget:                           string(platform) + "-" + string(architecture), ConfigurationManifest: model.EmptyAttemptConfigurationManifest(),
 		CapabilityMatrixIdentity: "matrix-" + buildID,
+	}
+}
+
+func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidation(t *testing.T) {
+	t.Parallel()
+	strict, persistence, _, _, _ := desktopCompatibilityServiceFixture(t)
+	development, err := newDesktopCompatibilityService(strict.policies, strict.institutions, strict.authorization, strict.audit, nil, true, time.Minute, strict.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence.policy.MinimumDesktopRelease = "9.0.0"
+	persistence.policy.RevokedDesktopBuildIDs = []string{"dev-build"}
+	for _, query := range []DesktopCompatibilityQuery{
+		{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1},
+		{DesktopRelease: "100.0.0", DesktopBuildID: "next-build", Platform: "linux", Architecture: "x64", RealtimeProtocol: 99},
+	} {
+		result, err := development.Evaluate(t.Context(), query)
+		if err != nil || result.Compatibility != DesktopCompatibilityCompatible || result.PolicyRevision != persistence.policy.Revision {
+			t.Fatalf("dev build rejected: %#v, %v", result, err)
+		}
+		if result.MinimumDesktopRelease != "" || result.MaximumDesktopRelease != "" || result.MinimumRealtimeProtocol != 0 || result.MaximumRealtimeProtocol != 0 {
+			t.Fatal("bypass invented supported bounds")
+		}
+		enforced, err := strict.Evaluate(t.Context(), query)
+		if err != nil || enforced.Compatibility == DesktopCompatibilityCompatible {
+			t.Fatalf("strict environment admitted build: %#v, %v", enforced, err)
+		}
+	}
+	query := DesktopCompatibilityQuery{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1}
+	persistence.policy.Availability = model.DesktopAvailabilityMaintenance
+	result, err := development.Evaluate(t.Context(), query)
+	if err != nil || result.Availability != model.DesktopAvailabilityMaintenance {
+		t.Fatalf("maintenance ignored: %#v, %v", result, err)
+	}
+	if _, err := development.Evaluate(t.Context(), DesktopCompatibilityQuery{}); !Is(err, "request.invalid") {
+		t.Fatalf("malformed selectors accepted: %v", err)
+	}
+	persistence.getErr = errors.New("store offline")
+	if _, err := development.Evaluate(t.Context(), query); !Is(err, "desktop_compatibility_policy.unavailable") {
+		t.Fatalf("policy outage ignored: %v", err)
+	}
+	persistence.getErr = nil
+	persistence.policy.Revision = 0
+	if _, err := development.Evaluate(t.Context(), query); !Is(err, "desktop_compatibility_policy.unavailable") {
+		t.Fatalf("corrupt policy ignored: %v", err)
+	}
+}
+
+func TestDevelopmentLoginDoesNotBypassProtectedAttemptBuildChecks(t *testing.T) {
+	t.Parallel()
+	service, persistence, _, _, invocation := desktopCompatibilityServiceFixture(t)
+	service.skipBuildChecks = true
+	principal := invocation.Principal()
+	principal.ClientType = model.SessionClientDesktop
+	principal.RegisteredDesktopKey = true
+	principal.DesktopRegistrationID = model.NewDesktopRegistrationID()
+	principal.DPoPKeyThumbprint = strings.Repeat("A", 43)
+	principal.DesktopRelease = "1.2.3"
+	principal.DesktopBuildID = "development"
+	principal.DesktopPlatform = model.DesktopPlatformDarwin
+	principal.DesktopArchitecture = model.DesktopArchitectureARM64
+	principal.DesktopRealtimeProtocol = 1
+	if err := principal.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err == nil {
+		t.Fatal("uncataloged dev build obtained Attempt authority")
+	}
+	principal.DesktopBuildID = "darwin-current"
+	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err != nil {
+		t.Fatalf("verified build could not resolve: %v", err)
+	}
+	persistence.policy.RevokedDesktopBuildIDs = []string{principal.DesktopBuildID}
+	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err == nil {
+		t.Fatal("revoked build obtained Attempt authority in dev")
 	}
 }

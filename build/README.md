@@ -128,6 +128,33 @@ release archiver normalizes ordering, ownership, permissions, and timestamps;
 already exist, avoiding accidental reuse of a directory containing operator
 configuration.
 
+## Service environments and Desktop development
+
+An ordinary `make run-server` uses the development build default and skips
+Desktop login compatibility checks. Keep it running, run `make dev-seed` in
+another terminal, then launch Desktop from its own checkout with
+`npm run dev -- --allow-http-loopback`. Connect to `http://localhost:8065` and
+use a seeded account. No build manifest or extra server configuration is needed.
+
+`PROCTOR_SERVICE_ENVIRONMENT` selects `dev`, `test`, or `production` for the
+process. It is read once at server construction and is never stored in JSON or
+PostgreSQL. Unset or blank uses the compiled default: `dev` without the
+`production` Go build tag, `production` with it. Release packages and runtime
+images always include that tag. Unknown nonempty values stop startup.
+
+To exercise production compatibility locally, run:
+
+```sh
+PROCTOR_SERVICE_ENVIRONMENT=production make run-server
+```
+
+Only `dev` bypasses the release catalog, version, build, target, and realtime
+protocol compatibility checks for login. Server readiness, maintenance,
+request validation, account access, PKCE, DPoP, and Session rotation remain
+active. Protected Attempt admission still requires a verified native build.
+Test graphs default to `test` independently of the host environment; tests opt
+into development behavior explicitly.
+
 ## Development datasets
 
 Keep `make run-server` running in one terminal, then seed from the repository

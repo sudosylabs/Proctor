@@ -23,16 +23,18 @@ import (
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/localization"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/websocket"
 	"github.com/sudosylabs/proctor/server/webui"
 )
 
 type compositionInput struct {
-	configPath       string
-	overrides        TestingOverrides
-	allowMissingJobs bool
-	constructors     *consumerConstructors
+	serviceEnvironment ServiceEnvironment
+	configPath         string
+	overrides          TestingOverrides
+	allowMissingJobs   bool
+	constructors       *consumerConstructors
 }
 
 var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is unavailable")
@@ -91,6 +93,7 @@ func defaultConsumerConstructors(
 	snapshot config.Config,
 	overrideWebappFiles fs.FS,
 	overrideDesktopBuildCatalog []model.DesktopBuildTuple,
+	environment ServiceEnvironment,
 ) (consumerConstructors, error) {
 	catalogFiles, err := runtimeAssetDirectory("i18n")
 	if err != nil {
@@ -125,6 +128,7 @@ func defaultConsumerConstructors(
 		},
 		dependencies: func(capabilities constructionCapabilities, content app.FileContent) (app.Dependencies, error) {
 			dependencies, err := applicationDependencies(capabilities, snapshot, content, mailRenderer)
+			dependencies.SkipDesktopCompatibility = environment == ServiceEnvironmentDev
 			if err == nil && overrideDesktopBuildCatalog != nil {
 				dependencies.DesktopBuildCatalog = append([]model.DesktopBuildTuple(nil), overrideDesktopBuildCatalog...)
 			}
@@ -176,6 +180,9 @@ type compositionResult struct {
 // phase completes before the next becomes observable; construction remains
 // inert and transfers all lifecycle authority into the returned Server.
 func composeNode(ctx context.Context, input compositionInput) (*compositionResult, error) {
+	if !input.serviceEnvironment.valid() {
+		return nil, errors.New("invalid service environment")
+	}
 	// 1. Acquire and decorate infrastructure under one temporary owner.
 	infrastructure, err := openRuntimeInfrastructure(ctx, input.configPath, input.overrides)
 	if err != nil {
@@ -189,11 +196,16 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 		return nil, fmt.Errorf("accept platform ownership: %w", err)
 	}
 	logStartupInfrastructure(snapshot, capabilities.logger, capabilities.migration)
+	capabilities.logger.Info("service environment selected",
+		logging.String("environment", string(input.serviceEnvironment)),
+		logging.Bool("desktop_compatibility_enforced", input.serviceEnvironment != ServiceEnvironmentDev),
+	)
 
 	constructors, constructorsErr := defaultConsumerConstructors(
 		snapshot,
 		input.overrides.WebappFiles,
 		input.overrides.DesktopBuildCatalog,
+		input.serviceEnvironment,
 	)
 	if constructorsErr != nil {
 		return nil, errors.Join(constructorsErr, closeAcceptedRuntime(applicationPlatform, capabilities.metrics))

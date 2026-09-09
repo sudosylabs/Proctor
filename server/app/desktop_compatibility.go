@@ -77,6 +77,7 @@ type desktopCompatibilityService struct {
 	authorization           desktopCompatibilityAuthorizer
 	audit                   mutationAuditor
 	catalog                 *desktopBuildCatalog
+	skipBuildChecks         bool
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
 }
@@ -126,6 +127,7 @@ func newDesktopCompatibilityService(
 	authorization desktopCompatibilityAuthorizer,
 	audit mutationAuditor,
 	builds []model.DesktopBuildTuple,
+	skipBuildChecks bool,
 	recentAuthenticationTTL time.Duration,
 	now func() time.Time,
 ) (*desktopCompatibilityService, error) {
@@ -143,6 +145,7 @@ func newDesktopCompatibilityService(
 		authorization:           authorization,
 		audit:                   audit,
 		catalog:                 catalog,
+		skipBuildChecks:         skipBuildChecks,
 		recentAuthenticationTTL: recentAuthenticationTTL,
 		now:                     now,
 	}, nil
@@ -187,6 +190,14 @@ func (s *desktopCompatibilityService) Evaluate(
 	ctx context.Context,
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
+	return s.evaluate(ctx, query, s.skipBuildChecks)
+}
+
+func (s *desktopCompatibilityService) evaluate(
+	ctx context.Context,
+	query DesktopCompatibilityQuery,
+	skipBuildChecks bool,
+) (DesktopCompatibilityResult, error) {
 	if err := validateDesktopCompatibilityQuery(query); err != nil {
 		return DesktopCompatibilityResult{}, err
 	}
@@ -194,7 +205,19 @@ func (s *desktopCompatibilityService) Evaluate(
 	if err != nil || policy == nil {
 		return DesktopCompatibilityResult{}, desktopCompatibilityPolicyError(err)
 	}
-	result, err := s.catalog.evaluate(policy, query)
+	var result DesktopCompatibilityResult
+	if skipBuildChecks {
+		if policy.Validate() != nil {
+			return DesktopCompatibilityResult{}, NewError("desktop_compatibility_policy.unavailable")
+		}
+		result = DesktopCompatibilityResult{
+			Availability: policy.Availability, RetryAt: policy.RetryAt,
+			Compatibility: DesktopCompatibilityCompatible, Reason: "compatible",
+			AdministratorMessage: policy.AdministratorMessage,
+		}
+	} else {
+		result, err = s.catalog.evaluate(policy, query)
+	}
 	if err != nil {
 		return DesktopCompatibilityResult{}, err
 	}
@@ -221,7 +244,7 @@ func (s *desktopCompatibilityService) ResolveAttemptDesktopBuild(
 		Platform: string(principal.DesktopPlatform), Architecture: string(principal.DesktopArchitecture),
 		RealtimeProtocol: principal.DesktopRealtimeProtocol,
 	}
-	result, err := s.Evaluate(ctx, query)
+	result, err := s.evaluate(ctx, query, false)
 	if err != nil || result.Availability != model.DesktopAvailabilityReady ||
 		result.Compatibility != DesktopCompatibilityCompatible {
 		return examattempt.DesktopBuildResolution{}, errors.New("Desktop build is not compatible")

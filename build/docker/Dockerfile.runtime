@@ -38,10 +38,10 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -mod=readonly -trimpath \
+    CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -mod=readonly -trimpath -tags production \
       -ldflags "-buildid= -s -w -X github.com/sudosylabs/proctor/server/app.Version=$VERSION -X github.com/sudosylabs/proctor/server/app.Commit=$COMMIT -X github.com/sudosylabs/proctor/server/app.BuildTime=$BUILD_TIME" \
       -o /out/proctor ./server/cmd/proctor \
-    && CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -mod=readonly -trimpath \
+    && CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -mod=readonly -trimpath -tags production \
       -ldflags "-buildid= -s -w" -o /out/proctor-healthcheck ./server/cmd/proctor-healthcheck
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab

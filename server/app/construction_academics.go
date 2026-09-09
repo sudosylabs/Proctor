@@ -66,6 +66,7 @@ func constructAccessAndAcademics(
 		academicAuthorization,
 		mutationAuditAdapter{audit: foundation.audit},
 		deps.DesktopBuildCatalog,
+		deps.SkipDesktopCompatibility,
 		deps.RecentAuthenticationTTL,
 		time.Now,
 	)

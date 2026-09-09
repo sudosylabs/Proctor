@@ -371,7 +371,11 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 		}
 	}
 
-	result, err := composeNode(ctx, compositionInput{configPath: settings.configPath})
+	environment, err := readServiceEnvironment()
+	if err != nil {
+		return nil, err
+	}
+	result, err := composeNode(ctx, compositionInput{configPath: settings.configPath, serviceEnvironment: environment})
 	if err != nil {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}

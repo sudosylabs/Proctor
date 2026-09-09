@@ -42,3 +42,8 @@ The production release catalog and admitted key set remain empty until real
 signed target artifacts and certification evidence are supplied. Synthetic test
 fixtures verify rejection behavior without claiming that any production target
 has passed native certification. No runtime or test reads an adjacent checkout.
+
+The `dev` service environment skips compatibility checks for Desktop login.
+It never creates catalog entries or native certification. Protected Attempt
+admission still evaluates the verified build and current policy in every
+environment. See the [development workflow](../../build/README.md#service-environments-and-desktop-development).

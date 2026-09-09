@@ -127,6 +127,24 @@ Compatibility is an admission prerequisite, not a Role permission. Updating a
 policy is a strong, recent, audited administrative mutation. A client-reported
 build string is untrusted input; it never selects server behavior by itself.
 
+## Test a Client Under Development
+
+From the server repository, run `make run-server`, then run `make dev-seed`
+in another terminal. From the Desktop checkout, run
+`npm run dev -- --allow-http-loopback` and connect to `http://localhost:8065`.
+The browser uses the seeded credentials and performs the real approval handoff.
+
+Development builds default to the `dev` service environment, which skips
+Desktop login compatibility checks. No manifest or configuration entry is
+required. `PROCTOR_SERVICE_ENVIRONMENT=production make run-server` enables
+production checks locally. The process-only variable also accepts `test`,
+which enforces compatibility. Release packages and runtime images compile with
+`-tags production` and therefore default to production behavior.
+
+Development still enforces request validity, readiness, maintenance, account
+access, PKCE, DPoP and Session checks. Protected Attempt admission requires a
+verified native build in every service environment.
+
 ## Admit an Attempt Only After Activity Entry
 
 Candidate Exam Activity owns navigation and lazy creation of one Ready Attempt

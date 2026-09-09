@@ -67,8 +67,8 @@ package:
 	@test -f "$(WEBAPP_DIST_DIR)/index.html" || (echo 'webapp distribution is missing index.html; run the root package target' >&2; exit 2)
 	@test -f "$(WEBAPP_DIST_DIR)/webapp-build.json" || (echo 'webapp distribution is missing webapp-build.json; run the root package target' >&2; exit 2)
 	mkdir -p "$(PACKAGE_DIR)/config" "$(PACKAGE_DIR)/webapp/dist"
-	go build $(GO_BUILD_FLAGS) -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
-	go build $(GO_BUILD_FLAGS) -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor-healthcheck" ./cmd/proctor-healthcheck
+	go build $(GO_BUILD_FLAGS) -tags production -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
+	go build $(GO_BUILD_FLAGS) -tags production -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor-healthcheck" ./cmd/proctor-healthcheck
 	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
 	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
 	cp -R "$(WEBAPP_DIST_DIR)/." "$(PACKAGE_DIR)/webapp/dist"

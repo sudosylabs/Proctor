@@ -88,6 +88,20 @@ for (const group of groupOrder) {
 }
 
 lines.push(
+  '## Service Environment',
+  '',
+  '`PROCTOR_SERVICE_ENVIRONMENT` is a process-only selector, outside the JSON',
+  'configuration overrides listed above. It accepts `production`, `test`, or `dev`',
+  '(trimmed and case-insensitive). Unset or blank uses the compiled default:',
+  '`production` for binaries built with `-tags production`, `dev` otherwise.',
+  'Unknown nonempty values stop server construction. Selection is read once at',
+  'startup and never persisted; changing it requires a restart.',
+  '',
+  'Only `dev` skips Desktop login compatibility checks. Authentication, readiness,',
+  'maintenance, and protected Attempt admission remain enforced. Packages and',
+  'runtime images default to production. Test graphs default to `test` and',
+  'explicitly opt into development behavior when needed.',
+  '',
   '## Source and Validation',
   '',
   'The corresponding JSON shape and safe synthetic defaults live in',

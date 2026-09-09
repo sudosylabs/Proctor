@@ -115,3 +115,16 @@ test("server manifest requires both architectures, source, and an immutable imag
   assert.equal(provenance.artifacts.length, 4);
   assert.match(await readFile(join(directory, "SHA256SUMS"), "utf8"), /image-digest.txt/);
 });
+
+test("release executables always compile with the production environment default", async () => {
+  const commands = execFileSync("make", ["--dry-run", "package", "PACKAGE_DIR=/tmp/proctor-release-test-output"], {
+    cwd: new URL("../../server/", import.meta.url), encoding: "utf8",
+  });
+  const builds = commands.split("\n").filter((line) => line.startsWith("go build "));
+  assert.equal(builds.length, 2);
+  for (const command of builds) assert.match(command, /-tags production /);
+  const dockerfile = await readFile(new URL("../docker/Dockerfile.runtime", import.meta.url), "utf8");
+  const containerBuilds = dockerfile.split("\n").filter((line) => line.includes("go build "));
+  assert.equal(containerBuilds.length, 2);
+  for (const command of containerBuilds) assert.match(command, /-tags production/);
+});

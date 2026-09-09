@@ -39,14 +39,17 @@ import (
 // This surface exists for testlib and focused tests. Production composition
 // uses New with WithConfigPath only.
 type TestingOverrides struct {
-	Configuration     *config.Store
-	Logger            *logging.Logger
-	Persistence       store.Store
-	StoreRetry        *retrylayer.Policy
-	StoreMetrics      timerlayer.Recorder
-	StoreLocalCache   localcachelayer.Cache
-	StoreCachePolicy  *localcachelayer.Policy
-	StoreCacheMetrics localcachelayer.Recorder
+	// ServiceEnvironment defaults to test, independent of process environment
+	// and build tags. Only explicit dev tests bypass Desktop compatibility.
+	ServiceEnvironment ServiceEnvironment
+	Configuration      *config.Store
+	Logger             *logging.Logger
+	Persistence        store.Store
+	StoreRetry         *retrylayer.Policy
+	StoreMetrics       timerlayer.Recorder
+	StoreLocalCache    localcachelayer.Cache
+	StoreCachePolicy   *localcachelayer.Policy
+	StoreCacheMetrics  localcachelayer.Recorder
 	// MailMetrics captures bounded mail outcome, queue, and health observations.
 	// A nil value keeps the production bounded operational telemetry recorder.
 	MailMetrics    app.MailDeliveryRecorder
@@ -92,6 +95,9 @@ type TestingRuntime struct {
 // so startup, readiness, shutdown, and cleanup behavior is identical to
 // production.
 func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRuntime, error) {
+	if overrides.ServiceEnvironment == "" {
+		overrides.ServiceEnvironment = ServiceEnvironmentTest
+	}
 	if overrides.BootstrapSecretWriter == nil {
 		overrides.BootstrapSecretWriter = io.Discard
 	}
@@ -99,8 +105,9 @@ func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRun
 		overrides.WebappFiles = testingWebappFiles(overrides.BuildInfo)
 	}
 	result, err := composeNode(ctx, compositionInput{
-		overrides:        overrides,
-		allowMissingJobs: overrides.AllowMissingJobs,
+		serviceEnvironment: overrides.ServiceEnvironment,
+		overrides:          overrides,
+		allowMissingJobs:   overrides.AllowMissingJobs,
 	})
 	if err != nil {
 		return nil, err
