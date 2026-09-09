@@ -5881,9 +5881,10 @@ export interface components {
             /** Format: int64 */
             sequence: number;
         };
-        /** @description Immutable minimized evidence copy independent of ordinary Browser Activity retention. */
+        /** @description Immutable minimized evidence copy owning its policy revision and digest independently of ordinary Browser Activity retention. */
         BrowserIntegrityEvidence: {
             event: components["schemas"]["BrowserDeliveryRecord"];
+            policy_digest: string;
             policy_revision_id: components["schemas"]["ID"];
             rule_id: string;
             source_session_id: components["schemas"]["BrowserSourceSessionID"];
