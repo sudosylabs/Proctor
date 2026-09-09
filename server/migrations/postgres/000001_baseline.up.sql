@@ -1888,9 +1888,6 @@ CREATE TABLE exam_attempt_workspace_journal (
     projected_object_id varchar(26),
     source_grant_id varchar(26),
     CONSTRAINT exam_attempt_workspace_journal_projection_check CHECK (
-        (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
-        (projected_object_id IS NULL OR projected_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
-        (source_grant_id IS NULL OR source_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$') AND
         ((operation IN ('create_file','replace_file')) = (projected_object_id IS NOT NULL)) AND
         ((entry_kind='file' AND operation IN ('replace_file','move_entry','delete_entry')) = (expected_content_version IS NOT NULL))
     ),
@@ -1916,7 +1913,7 @@ CREATE INDEX exam_attempt_workspace_journal_projected_object_idx
 
 CREATE TABLE execution_projection_effects (
     execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
-    mutation_id varchar(26) NOT NULL CHECK (mutation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    mutation_id varchar(26) NOT NULL,
     environment_epoch varchar(128) NOT NULL CHECK (environment_epoch ~ '^[A-Za-z0-9_-]{1,128}$'),
     control_revision bigint NOT NULL CHECK (control_revision BETWEEN 1 AND 9007199254740991),
     from_workspace_cursor bigint NOT NULL CHECK (from_workspace_cursor>=0),
@@ -1959,7 +1956,7 @@ CREATE TABLE execution_observation_outcomes (
 CREATE TABLE execution_observed_nodes (
     execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
     node_identity varchar(128) NOT NULL CHECK (node_identity ~ '^[A-Za-z0-9_-]{1,128}$'),
-    entry_id varchar(26) NOT NULL CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    entry_id varchar(26) NOT NULL,
     kind varchar(16) NOT NULL CHECK (kind IN ('file','directory')),
     path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
     expected_content_version varchar(26),
@@ -1967,9 +1964,7 @@ CREATE TABLE execution_observed_nodes (
     workspace_cursor bigint NOT NULL CHECK (workspace_cursor BETWEEN 1 AND 9007199254740991),
     deleted boolean NOT NULL,
     PRIMARY KEY (execution_grant_id,node_identity),
-    UNIQUE (execution_grant_id,entry_id),
-    CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    CHECK (resulting_content_version IS NULL OR resulting_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
+    UNIQUE (execution_grant_id,entry_id)
 );
 
 CREATE TABLE exam_attempt_participations (
@@ -4108,7 +4103,23 @@ ALTER TABLE exam_attempt_workspace_entries
 ALTER TABLE exam_attempt_workspace_journal
     ADD CONSTRAINT exam_attempt_workspace_journal_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_journal_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_journal_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_workspace_journal_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_journal_expected_content_version_canonical_check CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_journal_projected_object_id_canonical_check CHECK (projected_object_id IS NULL OR projected_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_journal_source_grant_id_canonical_check CHECK (source_grant_id IS NULL OR source_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE execution_projection_effects
+    ADD CONSTRAINT execution_projection_effects_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT execution_projection_effects_mutation_id_canonical_check CHECK (mutation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE execution_observation_outcomes
+    ADD CONSTRAINT execution_observation_outcomes_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE execution_observed_nodes
+    ADD CONSTRAINT execution_observed_nodes_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT execution_observed_nodes_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT execution_observed_nodes_expected_content_version_canonical_check CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT execution_observed_nodes_resulting_content_version_canonical_check CHECK (resulting_content_version IS NULL OR resulting_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_participations
     ADD CONSTRAINT exam_attempt_participations_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
