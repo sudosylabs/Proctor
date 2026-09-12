@@ -359,7 +359,10 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	if count := probe.ArtifactCount(t, ctx, integrity.ID); count != 0 {
 		t.Fatalf("finished writer cleanup reference=%d", count)
 	}
-	_, err = ss.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis())
+	// End the already-active fixture binding in its past interval. A host clock
+	// slightly ahead of PostgreSQL must not schedule this revocation in the
+	// database future and make the immediate peer authorization check race it.
+	_, err = ss.RoleBinding().End(ctx, binding.ID.String(), model.MillisFromTime(binding.StartsAt.Add(time.Second)))
 	requireNoError(t, err)
 	if _, err = peer.Get(ctx, &access); !store.IsConflict(err) {
 		t.Fatalf("revoked role read retained archive: %v", err)

@@ -267,6 +267,8 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	}
 	disableLocal := beforeDisable.Policy.Settings()
 	disableLocal.LocalLoginEnabled = false
+	// Either racing policy may win; public registration requires local login.
+	disableLocal.PublicRegistrationEnabled = false
 	disableLocal.InvitationLocalCredentialEnabled = false
 	disableLocal.ProviderAdmissions = map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionLinkedOnly}
 	if _, err = primary.App.ReplaceAccessPolicy(context.Background(), invocation, application.ReplaceAccessPolicyCommand{

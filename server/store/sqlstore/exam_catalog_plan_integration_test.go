@@ -146,6 +146,12 @@ func testExamCatalogBoundedPlan(t *testing.T, persistence *SQLStore) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	// Flush the bulk COPY pending list before measuring the settled GIN index.
+	// ANALYZE alone leaves pending pages in place; their scan cost can make a
+	// full primary-key scan cheaper even when the title predicate is selective.
+	if _, err = persistence.GetMaster().Exec(ctx, `SELECT gin_clean_pending_list('exam_drafts_title_search_idx')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := persistence.GetMaster().Exec(ctx, `ANALYZE exams; ANALYZE exam_drafts; ANALYZE exam_managers; ANALYZE academic_unit_members`); err != nil {
 		t.Fatal(err)
 	}
