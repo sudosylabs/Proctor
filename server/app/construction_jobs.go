@@ -182,7 +182,6 @@ func buildApplicationJobDefinitions(
 	})
 	periodicTasks := []jobengine.PeriodicTask{
 		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
-		{Name: executionReconciliationPeriodicTaskName, Interval: executionReconciliationInterval, Runner: executionReconciliationPeriodicRunner{execution: examinations.execution}},
 		{Name: "browser-authentication-maintenance", Interval: browserAuthenticationMaintenanceInterval,
 			Runner: browserAuthenticationMaintenancePeriodicRunner{transactions: deps.Store.BrowserAuthentication()}},
 		{Name: "external-authentication-maintenance", Interval: externalAuthenticationMaintenanceInterval,

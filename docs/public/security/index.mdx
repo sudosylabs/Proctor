@@ -1,6 +1,6 @@
 ---
 title: Review Proctor Security
-description: Trace implemented controls and operator responsibilities across identity, authorization, data, content, execution, and deployment trust boundaries.
+description: Trace implemented controls and operator responsibilities across identity, authorization, data, content, and deployment trust boundaries.
 audience: security-reviewer
 maturity: preview
 slug: /security/
@@ -30,8 +30,8 @@ explicitly marks product or production policy that has not been decided.
    Exam data, diagnostics, integrity evidence, and redaction.
 4. [Keys, certificates, and network](./keys-network.mdx) assigns Desktop, MFA,
    mail, Memberlist, TLS, listener, and outbound dependency responsibility.
-5. [Content and execution](./content-execution.mdx) covers VFS, Workspace,
-   Submission, Browser Activity, and execution-host isolation.
+5. [Content and workspace](./content-workspace.mdx) covers VFS, Workspace,
+   Submission and Browser Activity.
 6. [Errors, limits, and compatibility](./errors-limits-compatibility.mdx)
    explains fail-closed public errors, bounded inputs, compatibility, and safe
    recovery.
@@ -42,8 +42,7 @@ explicitly marks product or production policy that has not been decided.
   reusable permission snapshot.
 - Every application action resolves current authority on the canonical
   resource and records required audit durably.
-- PostgreSQL is authority for durable state. Cache, cluster, realtime, and
-  execution projections are reconstructible.
+- PostgreSQL is authority for durable state. Cache, cluster, and realtime effects are reconstructible.
 - Credentials, secrets, Exam answers, student content, private Review fields,
   and unbounded input stay out of ordinary logs and unsafe audit fields.
 - Candidate delivery requires a registered-key Desktop Session plus the exact

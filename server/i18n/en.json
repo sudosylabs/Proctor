@@ -3656,46 +3656,6 @@
     "translation": "Invalid Exam Attempt renewal request."
   },
   {
-    "id": "websocket.error.exam_attempt.terminal.already_open",
-    "translation": "A terminal is already open."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.close_request_invalid",
-    "translation": "Invalid terminal close request."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.input_failed",
-    "translation": "Terminal input failed."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.input_invalid",
-    "translation": "Invalid terminal input."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.not_open",
-    "translation": "Terminal is not open."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.open_failed",
-    "translation": "Terminal could not be opened."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.open_request_invalid",
-    "translation": "Invalid Exam Attempt terminal request."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.resize_failed",
-    "translation": "Terminal resize failed."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.size_invalid",
-    "translation": "Invalid terminal size."
-  },
-  {
-    "id": "websocket.error.exam_attempt.terminal.unavailable",
-    "translation": "Terminal is unavailable."
-  },
-  {
     "id": "websocket.error.request.invalid",
     "translation": "Invalid WebSocket request."
   },

@@ -44,9 +44,6 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 	module.JobStarted("example_job")
 	module.JobFinished("example_job", "succeeded", time.Millisecond)
 	module.ObserveJobActivity("job", "example_job", "claim", "success", time.Millisecond, time.Second)
-	module.ObserveExecutionHost("ensure", nil, time.Millisecond)
-	module.SetExecutionHostSnapshot(map[string]int{"usable": 1, "isolated": 1, "thawed": 1}, map[string]int{"usable": 2})
-	module.ObserveExecutionStream("terminal", "read", "success", 16)
 	module.ObserveVFSObject("s3", "open", 64)
 	module.ObserveVFSList("s3", 3)
 	module.AddVFSBytes("s3", "read", 64)
@@ -92,14 +89,12 @@ func TestModuleServesAuthenticatedNodeMetricsWithoutDebugEndpoints(t *testing.T)
 		"proctor_vfs_operations_total", "proctor_smtp_operations_total",
 		"proctor_websocket_backpressure_disconnects_total",
 		"proctor_http_requests_total", "proctor_cluster_operations_total",
-		"proctor_jobs_executions_total", "proctor_execution_host_operations_total",
-		"proctor_http_request_size_bytes", "proctor_http_response_size_bytes",
+		"proctor_jobs_executions_total", "proctor_http_request_size_bytes", "proctor_http_response_size_bytes",
 		"proctor_websocket_messages_total", "proctor_websocket_broadcasts_total",
 		"proctor_websocket_replays_total", "proctor_websocket_subscriptions",
 		"proctor_cluster_messages_total", "proctor_cluster_membership_events_total",
 		"proctor_cluster_discovery_operations_total", "proctor_cluster_admission_rejections_total",
 		"proctor_jobs_activities_total", "proctor_jobs_queue_latency_seconds",
-		"proctor_execution_host_hosts", "proctor_execution_host_stream_operations_total",
 		"proctor_vfs_bytes_total", "proctor_vfs_object_size_bytes", "proctor_vfs_streams_total",
 		"proctor_cache_bytes_total", "proctor_smtp_messages_total", "proctor_mail_deliveries_total",
 		"proctor_mail_queue", "proctor_mail_queue_snapshot_truncated", "proctor_mail_health", "proctor_application_events_total", "proctor_store_retries_total",

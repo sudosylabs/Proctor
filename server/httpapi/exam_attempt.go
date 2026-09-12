@@ -489,7 +489,6 @@ type candidateRuntimeCapabilitiesResponse struct {
 	PendingCorrectionCapabilities []model.CandidateCapability           `json:"pending_correction_capabilities"`
 	WorkspaceMutationAllowed      bool                                  `json:"workspace_mutation_allowed"`
 	SubmissionAllowed             bool                                  `json:"submission_allowed"`
-	Terminal                      candidateTerminalCapabilityResponse   `json:"terminal"`
 	Browser                       candidateBrowserCapabilityResponse    `json:"browser"`
 	ExamRevision                  candidateExamRevisionResponse         `json:"exam_revision"`
 	Departure                     candidateDepartureResponse            `json:"departure"`
@@ -501,12 +500,6 @@ type candidateAttemptConfigurationResponse struct {
 	ApprovedCommands    []string                               `json:"approved_commands"`
 	ApprovedKeybindings []string                               `json:"approved_keybindings"`
 	Digest              string                                 `json:"digest"`
-}
-type candidateTerminalCapabilityResponse struct {
-	State                  string  `json:"state"`
-	EnvironmentEpoch       *string `json:"environment_epoch"`
-	AppliedWorkspaceCursor int64   `json:"applied_workspace_cursor"`
-	ProjectionState        string  `json:"projection_state"`
 }
 type candidateBrowserCapabilityResponse struct {
 	State            string `json:"state"`
@@ -1168,9 +1161,7 @@ func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCap
 		FocusLossCollectionEnabled:    value.FocusLossCollectionEnabled,
 		PendingCorrectionCapabilities: append([]model.CandidateCapability{}, value.PendingCorrectionCapabilities...),
 		WorkspaceMutationAllowed:      value.WorkspaceMutationAllowed, SubmissionAllowed: value.SubmissionAllowed,
-		Terminal: candidateTerminalCapabilityResponse{State: string(value.Terminal.State),
-			EnvironmentEpoch: value.Terminal.EnvironmentEpoch, AppliedWorkspaceCursor: value.Terminal.AppliedWorkspaceCursor,
-			ProjectionState: string(value.Terminal.ProjectionState)}, Browser: browser,
+		Browser: browser,
 		ExamRevision: candidateExamRevisionResponse{AdmissionRevisionID: value.ExamRevision.AdmissionRevisionID.String(),
 			CurrentRevisionID: value.ExamRevision.CurrentRevisionID.String(), AcknowledgementRequired: value.ExamRevision.AcknowledgementRequired},
 		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}

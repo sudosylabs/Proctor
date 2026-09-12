@@ -140,7 +140,7 @@ export const glossaryTerms = [
     "term": "Exam Capacity Policy",
     "section": "Examinations",
     "definition": "The institution-owned limits on Exam Resources and Starter or Attempt Workspace growth; publication freezes the applicable policy in an exam revision so later institution changes cannot alter admitted attempts.",
-    "avoid": "Execution-host capacity, deployment configuration, retention policy"
+    "avoid": "deployment configuration, retention policy"
   },
   {
     "id": "exam-sitting",
@@ -225,34 +225,6 @@ export const glossaryTerms = [
     "section": "Examinations",
     "definition": "The isolated, remotely authoritative hierarchy of mutable working files belonging to one exam attempt.",
     "avoid": "Shared workspace, local folder"
-  },
-  {
-    "id": "execution-environment",
-    "term": "Execution Environment",
-    "section": "Examinations",
-    "definition": "The isolated, non-authoritative projection of one attempt workspace in which a candidate may use an attempt terminal.",
-    "avoid": "Code runner, coderunner, microVM, sandbox, local folder"
-  },
-  {
-    "id": "attempt-terminal",
-    "term": "Attempt Terminal",
-    "section": "Examinations",
-    "definition": "One interactive PTY attached to an execution environment for one exam attempt.",
-    "avoid": "SSH session, local terminal, code runner"
-  },
-  {
-    "id": "execution-profile",
-    "term": "Execution Profile",
-    "section": "Examinations",
-    "definition": "The authored, revision-frozen choice of whether an exam offers an attempt terminal, which catalog image it uses, and which network mode applies.",
-    "avoid": "Devcontainer, Dockerfile, deployment configuration, executable policy"
-  },
-  {
-    "id": "execution-image",
-    "term": "Execution Image",
-    "section": "Examinations",
-    "definition": "A named, installation-provided guest runtime a creator may select in an execution profile.",
-    "avoid": "Dockerfile, devcontainer, rootfs"
   },
   {
     "id": "workspace-entry",

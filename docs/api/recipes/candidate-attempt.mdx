@@ -103,11 +103,6 @@ ordered journal retains a bounded history; when the server cannot bridge the
 requested cursor, replace the local projection from a complete manifest rather
 than pushing an unacknowledged local tree over authority.
 
-The Attempt Terminal is a non-authoritative projection of the same Workspace.
-Guest writes become durable only after harvest, validation, and server
-acknowledgement. Paths outside the Workspace mount and ignored build or
-dependency trees do not enter Submission.
-
 ## 5. Deliver Integrity Signals
 
 Send focus-loss and Browser Activity through their versioned WebSocket streams
@@ -132,7 +127,7 @@ not manufacture `not_applicable` to bypass an enabled collection policy.
 ## 6. Acknowledge Live Corrections
 
 When the presentation reports a required correction, stop governed navigation,
-terminal use, Workspace mutation, and voluntary submission. Continue lease
+Workspace mutation, and voluntary submission. Continue lease
 renewal and permitted integrity delivery, present the correction, then
 acknowledge the oldest pending Revision with the current Participation fence,
 `expected_current_revision_id`, and a stable idempotency key. Refetch the

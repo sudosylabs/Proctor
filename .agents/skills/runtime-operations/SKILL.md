@@ -18,7 +18,7 @@ description: Change Proctor runtime composition, startup or shutdown, readiness,
    `platform.Service` as infrastructure lifecycle owner. Completion:
    application services receive immutable policy or narrow providers, never
    platform/config service location.
-3. Commit durable state before cache, cluster, realtime, execution, mail, or
+3. Commit durable state before cache, cluster, realtime, mail, or
    other effects. Completion: single-node and multi-node behavior differ only
    by adapter, not product semantics.
 4. Preserve distinct liveness, readiness, and authorized diagnostics; drain

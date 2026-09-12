@@ -14,8 +14,8 @@ import (
 )
 
 func TestCorrectionSelectionsEnforceActualChangedAreaMinimums(t *testing.T) {
-	all := []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}
-	work := []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}
+	all := []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}
+	work := []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityWorkspace}
 	for _, test := range []struct {
 		name         string
 		areas        []ExamCorrectionChangedArea
@@ -31,12 +31,11 @@ func TestCorrectionSelectionsEnforceActualChangedAreaMinimums(t *testing.T) {
 		{"empty selection", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, []CandidateCapability{}, false},
 		{"no content change", nil, all, false},
 		{"browser omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, work, false},
-		{"workspace omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityTerminal}, false},
-		{"submission omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedResources}, []CandidateCapability{CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, false},
-		{"terminal omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, false},
+		{"workspace omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, []CandidateCapability{CandidateCapabilitySubmission}, false},
+		{"submission omitted", []ExamCorrectionChangedArea{ExamCorrectionChangedResources}, []CandidateCapability{CandidateCapabilityWorkspace}, false},
 		{"unknown", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, []CandidateCapability{"arbitrary", CandidateCapabilityBrowser}, false},
 		{"duplicate", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilityBrowser}, false},
-		{"unsorted", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, []CandidateCapability{CandidateCapabilityTerminal, CandidateCapabilityBrowser}, false},
+		{"unsorted", []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, []CandidateCapability{CandidateCapabilityWorkspace, CandidateCapabilityBrowser}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, required := range []bool{false, true} {
@@ -62,7 +61,7 @@ func TestPendingCorrectionUnionPreservesOverlapsAndIgnoresNoticeOnly(t *testing.
 	notices := []CandidateLiveCorrection{
 		{RevisionID: NewExamRevisionID(), RevisionNumber: 2, EffectiveAt: at, Summary: "Browser changed.", ChangedAreas: []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser}, AcknowledgementRequired: true, AcknowledgementState: CorrectionAcknowledgementPending},
 		{RevisionID: NewExamRevisionID(), RevisionNumber: 3, EffectiveAt: at, Summary: "Browser changed again.", ChangedAreas: []ExamCorrectionChangedArea{ExamCorrectionChangedBrowserPolicy}, AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser}, AcknowledgementRequired: true, AcknowledgementState: CorrectionAcknowledgementPending},
-		{RevisionID: NewExamRevisionID(), RevisionNumber: 4, EffectiveAt: at, Summary: "Instructions changed.", ChangedAreas: []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, AffectedCapabilities: []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, AcknowledgementState: CorrectionAcknowledgementNotRequired},
+		{RevisionID: NewExamRevisionID(), RevisionNumber: 4, EffectiveAt: at, Summary: "Instructions changed.", ChangedAreas: []ExamCorrectionChangedArea{ExamCorrectionChangedInstructions}, AffectedCapabilities: []CandidateCapability{CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, AcknowledgementState: CorrectionAcknowledgementNotRequired},
 	}
 	for _, notice := range notices {
 		if err := notice.Validate(); err != nil {

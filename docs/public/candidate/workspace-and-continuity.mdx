@@ -8,7 +8,7 @@ maturity: preview
 # Keep Work and Continuity Acknowledged
 
 The Attempt Workspace is remotely authoritative. A local editor buffer,
-terminal filesystem, WebSocket write, or “saved” indicator is not durable until
+WebSocket write, or “saved” indicator is not durable until
 the server acknowledges the exact mutation and Workspace Cursor.
 
 ## Work Inside the Protected Workspace
@@ -22,11 +22,6 @@ Each file has a stable Entry identity, mutable path, and opaque current Content
 Version. Create, replace, move, and delete compare expected state and use an
 Attempt-scoped idempotency key. After acknowledgement, retain the new Content
 Version and Workspace Cursor.
-
-An enabled Attempt Terminal is a non-authoritative projection of the same
-Workspace. Guest changes become durable only after the server harvests,
-validates, and acknowledges them. Ignored build/dependency trees and paths
-outside the Workspace mount remain ephemeral and do not enter Submission.
 
 ## Separate Ping, Renewal, and Connection
 

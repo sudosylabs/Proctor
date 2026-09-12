@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
   <title id="title">Proctor installation commit order</title>
-  <desc id="description">Client requests enter one or more identical Proctor nodes. Those nodes commit application state to PostgreSQL and managed content through VFS before publishing reconstructible effects to Redis, realtime clients, execution hosts, or mail delivery.</desc>
+  <desc id="description">Client requests enter one or more identical Proctor nodes. Those nodes commit application state to PostgreSQL and managed content through VFS before publishing reconstructible effects to Redis, realtime clients or mail delivery.</desc>
   <defs>
     <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
       <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
@@ -56,7 +56,7 @@
 
   <rect x="616" y="320" width="216" height="80" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
   <text x="640" y="354" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">VFS</text>
-  <text x="640" y="378" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Managed content</text>
+  <text x="640" y="378" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Opaque content bytes</text>
 
   <path d="M 856 284 H 912" fill="none" stroke="#0b766e" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
 
@@ -69,7 +69,7 @@
   <rect x="936" y="256" width="184" height="48" rx="16" fill="#ffffff" stroke="#0b766e" stroke-width="2"/>
   <text x="960" y="286" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Realtime publication</text>
   <rect x="936" y="320" width="184" height="48" rx="16" fill="#ffffff" stroke="#0b766e" stroke-width="2"/>
-  <text x="960" y="350" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Execution hosts</text>
+  <text x="960" y="350" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Memberlist</text>
   <rect x="936" y="384" width="184" height="48" rx="16" fill="#ffffff" stroke="#0b766e" stroke-width="2"/>
   <text x="960" y="414" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Mail delivery</text>
 

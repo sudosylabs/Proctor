@@ -283,19 +283,6 @@ type ExamDraftNativePolicyUpdate struct {
 	AuditAt          int64
 }
 
-// ExamDraftExecutionProfileUpdate replaces the complete authored terminal
-// choice. Installation resources and host addresses never enter this value.
-type ExamDraftExecutionProfileUpdate struct {
-	ExamID           model.ExamID
-	ActorUserID      model.UserID
-	ManagerOverride  bool
-	ExpectedRevision int64
-	Profile          model.ExecutionProfile
-	UpdatedAt        int64
-	AuditEventID     string
-	AuditAt          int64
-}
-
 // ExamDraftBrowserPolicyUpdate replaces the complete canonical Browser Policy
 // value. Individual rules are never independently mutable Store entities.
 type ExamDraftBrowserPolicyUpdate struct {
@@ -324,7 +311,6 @@ type ExamAuthoringStore interface {
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftNativePolicy(context.Context, *ExamDraftNativePolicyUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
-	UpdateDraftExecutionProfile(context.Context, *ExamDraftExecutionProfileUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftBrowserPolicy(context.Context, *ExamDraftBrowserPolicyUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	// List returns at most Limit summaries in descending (UpdatedAt, ExamID)
 	// order, strictly before the optional complete cursor pair. The adapter must
@@ -376,7 +362,6 @@ type Catalog interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
-	ExecutionGrant() ExecutionGrantStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore
@@ -429,7 +414,6 @@ type Store interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
-	ExecutionGrant() ExecutionGrantStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore

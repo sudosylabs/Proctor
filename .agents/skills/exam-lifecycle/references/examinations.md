@@ -24,8 +24,6 @@ Academic Unit
             ├── one immutable Attempt Configuration
             ├── Correction Acknowledgements
             ├── one Attempt Workspace
-            ├── optional Execution Environment
-            │   └── one Attempt Terminal
             ├── Integrity Flags and Evidence
             └── one Submission
                 └── one Submission Review
@@ -62,7 +60,7 @@ monotonically numbered Exam Revision, selects it as the future default, rebases
 the Draft, records audit and idempotent outcome, and only then emits transient
 effects. An unchanged Draft does not produce a redundant revision. A Revision
 freezes title, instructions, policy, resource snapshots, Starter Workspace,
-Execution Profile, publisher, publication time, optional base revision, and
+publisher, publication time, optional base revision, and
 whether it is a standard publication or live correction.
 
 Manager-facing Revision discovery is a separate bounded metadata projection.
@@ -79,9 +77,9 @@ operation creates a live-correction Revision from that Sitting's current
 Revision and atomically retargets only the affected Sitting. It records the
 old/new revisions, actor, reason, and effective time. Other Sittings remain on
 their selected revisions. The operation requires the new and current policy
-digests, Starter Workspace digests, and Execution Profile digests to match, so
+digests and Starter Workspace digests to match, so
 only instructions, Exam Resources, and the separate Browser Policy can change;
-eligibility, schedule, Exam Policy, starter files, and execution cannot change
+eligibility, schedule, Exam Policy, and starter files cannot change
 through this path. Selecting the correction as the future default is
 explicit, and changing the reusable Draft remains a separate operation.
 
@@ -101,7 +99,7 @@ summary of 1 to 500 Unicode characters and at most 2,000 UTF-8 bytes, the
 canonically ordered changed areas (`instructions`, `resources`, and/or
 `browser_policy`), an explicit sorted `affected_capabilities` selection, and
 whether acknowledgement is required. Actual Browser Policy changes require
-`browser`; instructions or resources require `submission`, `terminal`, and
+`browser`; instructions or resources require `submission` and
 `workspace`. Authors may select a superset, including when acknowledgement is
 not required. Missing, unknown, duplicate, or unsorted selections fail; changing
 only the selection cannot manufacture a content correction. One Sitting may
@@ -227,9 +225,7 @@ material and every Attempt Workspace admitted from that Revision. A later
 Institution update affects future Draft mutation and publication only; it does
 not shrink an open Sitting, an admitted Attempt, a live-correction Revision, or
 an immutable Submission. Live correction preserves the base Revision's policy.
-Execution-host CPU, memory, disk, and process admission belong to the Execution
-Profile/host capacity contract, and retention belongs to its purpose-specific
-policy; neither is part of Exam Capacity Policy.
+Retention belongs to its purpose-specific policy rather than Exam Capacity Policy.
 
 ## Sitting lifecycle and eligibility
 
@@ -271,11 +267,8 @@ Durable Jobs open at the scheduled start and enter Closing at
 the deadline; recovery after the whole window elapsed cancels with
 `schedule_elapsed`. Managers may close early with a reason. Schedule fields may
 change before opening; after opening the end may only be extended. Pause blocks
-new Attempts, workspace mutation, execution, and submission while retaining
-read-only candidate presentation and integrity monitoring. Execution means an
-enabled Execution Profile's Attempt Terminal and its Execution Environment;
-the accepted contract is in
-the [`execution-environments` skill](../../execution-environments/SKILL.md). In version 1,
+new Attempts, workspace mutation, and submission while retaining
+read-only candidate presentation and integrity monitoring. In version 1,
 `ScheduledEndAt` is the sole delivery deadline: paused duration does not extend
 it and there is no separate effective-deadline field or pause-extension policy.
 Manager pause, resume, extension, and early close are exposed as distinct
@@ -392,7 +385,7 @@ Successful connection and candidate presentation return one bounded runtime
 capability document derived from the immutable Attempt Configuration, current
 Revision, Sitting state, pending correction acknowledgement, and live server
 capabilities. It explicitly states whether Workspace mutation, Submission,
-terminal use, and the governed Browser surface are available and why they are
+and the governed Browser surface are available and why they are
 not. The projection is a client instruction, not an authorization grant; each
 operation rechecks authoritative state.
 
@@ -458,7 +451,7 @@ rule and produce neutral continuity evidence for manager review.
 
 A manual Kick and an automatic policy Suspension have the same blocking effect
 but distinct provenance. Both deny connections, workspace and exam-material
-access, execution, and student submission. One append-preserving suspension
+access and student submission. One append-preserving suspension
 episode records source, safe candidate reason, private manager reason, linked
 flag where applicable, and re-allow decision. Re-allow requires the exact
 Suspension, the expected Attempt revision, and a private trimmed UTF-8 reason
@@ -510,7 +503,7 @@ generation. Required notices are acknowledged oldest-first through an exact
 Revision route with required idempotency and the current Revision,
 Participation, generation, bound Session, credential, and open Connection
 fence. Each pending acknowledgement blocks only its immutable selected
-capabilities. A browser-only notice leaves Workspace, terminal, and voluntary
+capabilities. A browser-only notice leaves Workspace and voluntary
 Submission authority independent. The sorted pending union is a projection of
 the current notices, and each mutation checks its capability inside the existing
 aggregate transaction. Pending browser acknowledgements also withhold usable
@@ -520,8 +513,6 @@ itself, or authorized closure. Acknowledgement remains available while the
 Sitting is paused. Exact replay repeats current authorization and audit checks
 but returns the retained acknowledgement time together with freshly resolved
 current Revision and capability state, without repeating the domain mutation.
-Actual reversible guest containment remains an execution lifecycle concern;
-denying input is not proof that a running process is frozen.
 
 Normal submission first denies new edits, settles workspace mutations, closes
 and reconciles integrity source sequences/gaps, and then atomically creates one
@@ -727,7 +718,7 @@ generation may produce another Flag.
 Each policy kind and generation retains at most 100 qualifying evidence
 episodes. Overflow retains only a count, first and last receipt times, and
 maximum duration. Initial evidence excludes screenshots, webcam, clipboard,
-terminal output, source code, and arbitrary unbounded payloads.
+source code, and arbitrary unbounded payloads.
 
 Every submitted Attempt terminates integrity collection as `Settled` or
 `Gapped`. One Submission Review may be finalized only after that state is
@@ -855,10 +846,7 @@ The initial implemented scope excludes grading, scoring, questions/rubrics,
 dedicated proctor assignment,
 accommodations, Exam copying or templates, resource search, binary integrity
 capture, arbitrary policies, and
-offline participation. Execution Environments and the Attempt Terminal server
-contract are implemented as described in
-the [`execution-environments` skill](../../execution-environments/SKILL.md);
-the candidate UI remains a separate client slice. Exact
+offline participation. Exact
 close-work budgets remain an explicit decision for their owning slice.
 Sitting Records Completion defines the examination retention anchor above.
 The revisioned Institution Retention Policy and separate Retention Control

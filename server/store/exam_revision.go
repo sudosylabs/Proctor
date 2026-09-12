@@ -46,7 +46,6 @@ type ExamRevisionSummary struct {
 	Title                   string
 	PolicySchemaVersion     int
 	PolicyDigest            string
-	ExecutionProfileDigest  string
 	BrowserPolicyDigest     string
 	Capacity                model.ExamCapacityPolicy
 	StarterWorkspaceDigest  string

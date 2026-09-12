@@ -122,27 +122,7 @@ directory is not recursive. Apply the Institution's current entry, per-file,
 and total-byte policy before upload while still handling authoritative
 mutation-time rejection.
 
-## 6. Choose the Execution Profile
-
-Read <Link to="/api/reference/list-exam-execution-images">List Exam execution images</Link>,
-then <Link to="/api/reference/configure-exam-draft-execution-profile">Configure Draft Execution Profile</Link>
-with the exact Draft revision.
-
-```json
-{
-  "expected_draft_revision": 11,
-  "enabled": true,
-  "image": "go-1.25",
-  "network": "none"
-}
-```
-
-The safe catalog is an intersection of currently usable isolated hosts. It
-exposes image IDs and network modes—not host identity or capacity. Disabled is
-the default. `allowlist` selects operator-defined destinations; it is not an
-arbitrary URL list.
-
-## 7. Govern Managers and Ownership
+## 6. Govern Managers and Ownership
 
 Use <Link to="/api/reference/list-exam-managers">List Exam Managers</Link> for
 bounded relationship provenance. An added Manager must be active and currently
@@ -159,11 +139,11 @@ All three compare `expected_exam_revision`, require idempotency, preserve
 provenance, and commit the matching safe notice without duplicating it on exact
 replay.
 
-## 8. Publish the Complete Snapshot
+## 7. Publish the Complete Snapshot
 
 Fetch the complete current authoring view and confirm title, rendered
 instructions, typed policies, Resource order/content, Starter Workspace,
-Execution Profile, capacity totals, and Draft revision. Then call
+capacity totals, and Draft revision. Then call
 <Link to="/api/reference/publish-exam-revision">Publish Exam Revision</Link>
 with a required idempotency key.
 

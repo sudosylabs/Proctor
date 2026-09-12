@@ -970,8 +970,7 @@ func candidateTestRuntimeCapabilities(t *testing.T, at time.Time, attempt *model
 		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision, Presentation: configuration.Presentation,
 			ApprovedCommands: append([]string{}, configuration.ApprovedCommands...), ApprovedKeybindings: append([]string{}, configuration.ApprovedKeybindings...), Digest: configuration.Digest},
 		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
-		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled, ProjectionState: store.ExecutionProjectionUnavailable},
-		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
+		Browser: store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: attempt.AdmissionRevisionID,
 			CurrentRevisionID: model.NewExamRevisionID()},
 		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"}}

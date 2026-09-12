@@ -23,9 +23,9 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 		selected               []model.CandidateCapability
 	}{
 		{"browser only", false, true, []model.CandidateCapability{model.CandidateCapabilityBrowser}},
-		{"instructions minimum", true, true, []model.CandidateCapability{model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}},
+		{"instructions minimum", true, true, []model.CandidateCapability{model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}},
 		{"browser notice only", false, false, []model.CandidateCapability{model.CandidateCapabilityBrowser}},
-		{"browser deliberate superset", false, true, []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}},
+		{"browser deliberate superset", false, true, []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -93,15 +93,6 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				requireNoError(t, err)
 				cursor = changed.Change.Cursor
 			}
-			// This exercises the Store's atomic terminal gate. No host or PTY
-			// is created, and this is not evidence of actual guest containment.
-			_, err = ss.ExecutionGrant().Reserve(ctx, store.ExecutionGrantReservation{ID: model.NewExecutionGrantID(),
-				AttemptID: connected.Attempt.ID, HostID: "correction-test-host", Image: "go-1.25", Network: model.ExecutionNetworkNone, At: model.NowUTC()})
-			if blocked(model.CandidateCapabilityTerminal) {
-				assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_required")
-			} else {
-				requireNoError(t, err)
-			}
 			source := browserSourceID(501 + caseIndex)
 			_, err = startBrowserSourceFixture(t, ctx, ss, &store.BrowserActivitySourceStart{Access: access,
 				ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source})
@@ -139,7 +130,7 @@ func testCorrectionPublicationWorkspaceRace(t *testing.T, ss store.Store) {
 		SittingID: fixture.sitting.ID, CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision,
 		ActorUserID: fixture.manager.ID, InstructionsMarkdown: &instructions, Resources: []store.ExamCorrectionResourceManifestItem{},
 		CandidateSummary: "Instructions changed.", AcknowledgementRequired: true,
-		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace},
+		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace},
 		PrivateReason:        "Verify correction and Workspace serialization", AppliedAt: model.NowUTC(),
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()}
 	write := &store.ExamAttemptWorkspaceMutation{Access: store.ExamAttemptWorkspaceMutationAccess{

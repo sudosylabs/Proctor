@@ -161,7 +161,7 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.applyReplayed = true
-	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	wantIdempotency, prepareErr := prepareApplyIdempotency(f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID,
 		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID,
 		Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{},
-		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true,
+		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
@@ -195,7 +195,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.effects.err = errors.New("realtime unavailable")
-	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}

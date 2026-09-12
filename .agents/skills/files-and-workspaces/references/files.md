@@ -33,8 +33,7 @@ existing retry path. Pending Upload Leases and correction Stage reservations
 retain their ordinary recovery rules; refused processing never publishes
 available content.
 
-An acknowledged file change must survive loss of an application node or
-execution environment. Shared VFS stores the bytes in clustered production,
+An acknowledged file change must survive loss of an application node. Shared VFS stores the bytes in clustered production,
 while PostgreSQL records the application-visible identity and revision needed
 to resolve them. Backend revisions remain opaque storage concurrency tokens
 and are not exposed as domain meaning.
@@ -98,8 +97,7 @@ authoritative visibility and concurrency fence. This preserves identical
 application behavior without emulating a racy stat-then-write condition.
 
 New revisions pass through `Pending` to `Available`, `Quarantined`, or
-`Rejected`. Only available revisions may be downloaded, indexed, distributed,
-or projected into an execution environment. Content inspection may initially
+`Rejected`. Only available revisions may be downloaded, indexed, or distributed. Content inspection may initially
 be a no-op adapter, but consumers cannot bypass the availability boundary.
 
 Retention is purpose-specific. Replaced profile pictures may expire after
@@ -418,13 +416,7 @@ Each accepted mutation has one idempotency key and explicit expected entry,
 path, content version, and destination conditions. An Attempt-scoped ordered
 journal records identities, old/new paths, resulting content versions,
 mutation keys, and Workspace Cursors without retaining the complete body of
-every prior save. Private projection metadata also retains each changed file's
-expected version and exact original object reference, plus explicit source grant
-identity. Unapplied retained journal positions of a bound ready Execution Grant
-protect their obsolete object bytes from cleanup. This protection ends when the
-prefix is applied, the journal position expires, or the grant is released;
-other durable references retain their independent protection. Public candidate
-journal responses omit these private projection fields. Reconnect applies ordered changes after the last acknowledged
+every prior save. Reconnect applies ordered changes after the last acknowledged
 cursor or refreshes a complete manifest after a gap. Conflicted, rejected, or
 outcome-unknown client work remains protected until acknowledged replacement
 or explicit discard.
@@ -438,19 +430,6 @@ one deletion journal record marked recursive. Clients remove the root and
 paths beneath its slash boundary. Retired attempt-owned objects remain
 protected by the retained command outcome without an unbounded object-ID list;
 published Starter content and submitted manifests retain their pins.
-
-Semantic Execution Host mutations bind the original capture's grant/epoch/control
-fence, consecutive host sequence, projected baseline and stable guest node identity.
-A capture from an earlier control revision in the same retained occupancy remains
-immutable; current running authority independently authorizes its acceptance and
-replay. Future revisions and replacement epochs fail. Temporary pause, security or
-control-acknowledgement denial leaves the capture unacknowledged for recovery.
-The same atomic Workspace mutation records its host outcome and
-binding. Replays return the retained outcome; old capture versions can advance
-only through that exact node's prior accepted outcomes. A foreign overlapping
-journal change conflicts instead of being adopted as an observed precondition.
-Ignored-tree acknowledgements advance only host processing, not the Workspace
-cursor. These are private ingestion rules, not additional public mutation routes.
 
 The public protocol is deliberately asymmetric. Authoritative create,
 replace, move/rename, and delete commands are HTTP-only, require the active
@@ -474,14 +453,10 @@ paths never enter URLs or access logs. If the pinned manifest advances, or a
 journal cursor falls behind retention, the response explicitly requires a
 full manifest refresh and returns no partial page.
 
-Execution environments are synchronized projections rather than durable
-authorities. Losing a client, node, or execution environment cannot discard an
-acknowledged change. The client exposes the workspace only inside the protected
-Exam IDE; recovery storage is encrypted and opaque, and candidate export or
-ordinary local-folder access is prohibited. Execution environments never
-receive general VFS credentials. The accepted host contract, dual-writer
-ingest, and Attempt Terminal path are in
-[execution environments](../../execution-environments/references/execution.md).
+Losing a client or node cannot discard an acknowledged change. The client
+exposes the workspace only inside the protected Exam IDE; recovery storage is
+encrypted and opaque, and candidate export or ordinary local-folder access is
+prohibited.
 
 Only acknowledged state at an expected Workspace Cursor may be submitted.
 Normal submission settles workspace changes and integrity source watermarks,

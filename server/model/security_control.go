@@ -144,7 +144,6 @@ type SecurityCoverageResult struct {
 	CoverageResult              string                       `json:"coverage_result"`
 	SourceResetReceipts         []SourceResetReceipt         `json:"source_reset_receipts"`
 	SecurityInteractionAllowed  bool                         `json:"security_interaction_allowed"`
-	ExecutionState              string                       `json:"execution_state"`
 	DeliveryWatermarkRejections []DeliveryWatermarkRejection `json:"delivery_watermark_rejections"`
 }
 
@@ -361,7 +360,7 @@ func ResolveNativeSourceContinuity(heads, current []NativeSourceCoverage, histor
 }
 
 func (r SecurityCoverageResult) Validate() error {
-	if !securitySafeInt(r.ProcessedControlSequence) || (r.ProcessedControlSequence == 0) != (r.ProcessedControlDigest == nil) || r.ProcessedControlDigest != nil && !IsValidSHA256Fingerprint(*r.ProcessedControlDigest) || !slices.Contains([]string{"accepted", "stale_control", "reset_required", "reset_conflict"}, r.CoverageResult) || r.SourceResetReceipts == nil || len(r.SourceResetReceipts) > 11 || r.DeliveryWatermarkRejections == nil || len(r.DeliveryWatermarkRejections) > 50 || !slices.Contains([]string{"not_allocated", "ready", "freeze_pending", "frozen", "thaw_pending", "unavailable"}, r.ExecutionState) {
+	if !securitySafeInt(r.ProcessedControlSequence) || (r.ProcessedControlSequence == 0) != (r.ProcessedControlDigest == nil) || r.ProcessedControlDigest != nil && !IsValidSHA256Fingerprint(*r.ProcessedControlDigest) || !slices.Contains([]string{"accepted", "stale_control", "reset_required", "reset_conflict"}, r.CoverageResult) || r.SourceResetReceipts == nil || len(r.SourceResetReceipts) > 11 || r.DeliveryWatermarkRejections == nil || len(r.DeliveryWatermarkRejections) > 50 {
 		return ErrSecurityControlInvalid
 	}
 	for i, receipt := range r.SourceResetReceipts {

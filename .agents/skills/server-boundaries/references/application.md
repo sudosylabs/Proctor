@@ -108,16 +108,6 @@ receipt and repeats neither effect. Manager queries authorize the canonical
 Submission resource before concealing any nested ownership mismatch, and
 stream retained file bytes only through the narrow content port.
 
-The Attempt Terminal bridge is a focused unexported parent-application service.
-It coordinates the Attempt and Execution modules through narrow consumer-owned
-ports because neither child owns the complete cross-module workflow. Workspace
-mutation origin is an explicit closed command value: candidate mutations may
-synchronize to the Execution Environment, while execution-host mutations still
-publish realtime results but never echo back to the host. Context remains only
-for cancellation and deadlines, not mutation provenance. Origin is deliberately
-excluded from the retained version-one Workspace fingerprint: both origins
-commit the same durable change, and replay repeats neither post-commit effect.
-
 The package is introduced with the first working vertical slice, not as an
 empty architectural placeholder. Its `doc.go` must define the Exam, Draft,
 Revision, Sitting, Attempt, Participation, Resource, Starter Workspace,

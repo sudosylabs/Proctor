@@ -28,7 +28,7 @@ changes infrastructure redundancy, not authorization or feature availability.
 3. Choose the tracked [systemd or container runtime](./systemd-and-container.mdx)
    without weakening non-root and read-only boundaries.
 4. Select [single-node or active-active topology](./topology-and-dependencies.mdx)
-   and assign PostgreSQL, Redis, VFS, SMTP, execution-host, and load-balancer
+   and assign PostgreSQL, Redis, VFS, SMTP, and load-balancer
    responsibility.
 5. Configure [TLS and reverse-proxy behavior](./tls-and-proxy.mdx), including
    the separate metrics and cluster boundaries.
@@ -50,9 +50,8 @@ changes infrastructure redundancy, not authorization or feature availability.
 | Redis | disposable shared cache and installation-wide counters in cluster mode |
 | Memberlist | best-effort peer discovery and effect propagation, never durable state |
 | SMTP | transport acceptance for durable mail delivery, not application truth |
-| Execution hosts | isolated, replaceable Attempt Workspace projections |
 
 PostgreSQL commits before cache invalidation, peer fan-out, WebSocket
-publication, execution projection, or SMTP delivery. A failure of a transient
+publication, or SMTP delivery. A failure of a transient
 effect is recovered by durable state and refetch, not by treating that effect
 as the source of truth.

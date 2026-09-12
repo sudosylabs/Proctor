@@ -12,15 +12,10 @@ import (
 	"errors"
 	"time"
 
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 )
-
-type executionImageCatalog interface {
-	Images(context.Context) ([]appexecution.ImageOption, error)
-}
 
 // App is the long-lived application facade. Construction receives only the
 // explicit Dependencies bundle; infrastructure getters and platform location
@@ -59,8 +54,6 @@ type App struct {
 	examRecords                       examRecordsUseCases
 	examExports                       examExportUseCases
 	examAttempts                      examAttemptUseCases
-	examAttemptTerminals              examAttemptTerminalUseCases
-	execution                         executionImageCatalog
 	examReviews                       examReviewUseCases
 	examResources                     examResourceUseCases
 	examCorrections                   examCorrectionUseCases

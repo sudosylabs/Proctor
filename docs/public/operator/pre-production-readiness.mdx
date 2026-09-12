@@ -22,7 +22,7 @@ certification.
 
 - `config validate` passes for every node's effective inputs;
 - config/environment/secret files have least-readable ownership and modes;
-- bootstrap, MFA, mail, Memberlist, TLS, metrics, execution, and dependency
+- bootstrap, MFA, mail, Memberlist, TLS, metrics, and dependency
   secrets are independent and rotation ownership is recorded;
 - every restart-required change is documented in the deployment procedure.
 
@@ -44,7 +44,6 @@ certification.
 - one application node can be removed and restored in the tested topology;
 - delayed/lost peer notification recovers through refetch and durable state;
 - queued Job and mail retry/cancellation behavior is understood;
-- execution-host loss preserves authoritative Workspace state;
 - administrator recovery is rehearsed only in an isolated non-production copy.
 
 ## Data and Diagnostics
@@ -59,11 +58,10 @@ certification.
 
 Do not publish or rely on a Proctor-supported production matrix, sizing table,
 backup/restore guarantee, RPO/RTO, stable upgrade/mixed-version/rollback policy,
-alert thresholds, support bundle, release support window, security-update SLA,
-or certified execution-host capacity. Each requires explicit decisions and
+alert thresholds, support bundle, release support window, or security-update SLA.
+Each requires explicit decisions and
 evidence in a declared environment.
 
 The tracked systemd and container definitions are hardened implementation
 examples. They are not certifications for a particular operating system,
-orchestrator, cloud, database service, object store, mail relay, identity
-provider, or execution host.
+orchestrator, cloud, database service, object store, mail relay, or identity provider.

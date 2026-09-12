@@ -18,7 +18,7 @@ description: Design or change Proctor server packages, dependency direction, app
      [composition reference](references/composition.md).
    Completion: every affected production dependency is accounted for.
 3. Keep domain and application policy independent of HTTP, WebSocket, SQL,
-   Redis, SMTP, VFS, Memberlist, execution hosts, and concrete adapters.
+   Redis, SMTP, VFS, Memberlist, and concrete adapters.
    Completion: infrastructure points inward through a consumer-owned port or
    the deliberate bounded Store contracts.
 4. Introduce the boundary with a working vertical slice. Completion: package

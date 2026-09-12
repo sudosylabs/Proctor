@@ -31,26 +31,24 @@ func assertStoreIdempotency(t *testing.T, got *store.CommandIdempotency, userID 
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"create":                      idempotencyOperationCreate,
-		"edit Draft text":             idempotencyOperationEditDraftText,
-		"configure Draft Focus Loss":  idempotencyOperationConfigureDraftFocusLoss,
-		"configure Execution Profile": idempotencyOperationConfigureExecutionProfile,
-		"archive":                     idempotencyOperationArchive,
-		"add manager":                 idempotencyOperationAddManager,
-		"remove manager":              idempotencyOperationRemoveManager,
-		"transfer owner":              idempotencyOperationTransferOwner,
-		"publish Revision":            idempotencyOperationPublishRevision,
+		"create":                     idempotencyOperationCreate,
+		"edit Draft text":            idempotencyOperationEditDraftText,
+		"configure Draft Focus Loss": idempotencyOperationConfigureDraftFocusLoss,
+		"archive":                    idempotencyOperationArchive,
+		"add manager":                idempotencyOperationAddManager,
+		"remove manager":             idempotencyOperationRemoveManager,
+		"transfer owner":             idempotencyOperationTransferOwner,
+		"publish Revision":           idempotencyOperationPublishRevision,
 	}
 	want := map[string]string{
-		"create":                      "exam.create.v1",
-		"edit Draft text":             "exam.draft.text.edit.v1",
-		"configure Draft Focus Loss":  "exam.draft.focus_loss.configure.v1",
-		"configure Execution Profile": "exam.draft.execution_profile.configure.v1",
-		"archive":                     "exam.archive.v1",
-		"add manager":                 "exam.manager.add.v1",
-		"remove manager":              "exam.manager.remove.v1",
-		"transfer owner":              "exam.owner.transfer.v1",
-		"publish Revision":            "exam.revision.publish.v1",
+		"create":                     "exam.create.v1",
+		"edit Draft text":            "exam.draft.text.edit.v1",
+		"configure Draft Focus Loss": "exam.draft.focus_loss.configure.v1",
+		"archive":                    "exam.archive.v1",
+		"add manager":                "exam.manager.add.v1",
+		"remove manager":             "exam.manager.remove.v1",
+		"transfer owner":             "exam.owner.transfer.v1",
+		"publish Revision":           "exam.revision.publish.v1",
 	}
 	for name, operation := range tests {
 		if operation != want[name] {

@@ -169,7 +169,7 @@
       "page": "docs/api/recipes/author-and-publish-exam.mdx",
       "operations": [
         "createExam", "editExamDraftText", "configureExamDraftFocusLoss",
-        "configureExamDraftBrowserPolicy", "configureExamDraftExecutionProfile",
+        "configureExamDraftBrowserPolicy",
         "createExamDraftResource", "replaceExamDraftResourceContent",
         "createExamDraftStarterWorkspaceDirectory",
         "createExamDraftStarterWorkspaceFile", "publishExamRevision",

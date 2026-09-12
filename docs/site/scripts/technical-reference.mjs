@@ -24,8 +24,8 @@ for (const match of source.matchAll(matcher)) {
   variables.push({name, parser});
 }
 
-if (variables.length !== 124) {
-  throw new Error(`expected 124 environment overrides, found ${variables.length}`);
+if (variables.length !== 121) {
+  throw new Error(`expected 121 environment overrides, found ${variables.length}`);
 }
 
 const typeLabel = {
@@ -41,7 +41,7 @@ const typeLabel = {
 
 const groupOrder = [
   'Server', 'Metrics', 'Database', 'Cache', 'Cluster', 'Mail', 'VFS', 'FileContent',
-  'Execution', 'Authentication', 'Log',
+  'Authentication', 'Log',
 ];
 const groups = new Map(groupOrder.map((group) => [group, []]));
 for (const variable of variables) {

@@ -135,7 +135,7 @@ beyond loopback requires static TLS plus a 32-to-512-byte bearer token; the
 token is environment-overridable, redacted from configuration display, and
 compared without content-dependent timing. The listener exposes no pprof
 routes. Metrics are node-local and low-cardinality: they never label raw URL
-paths, VFS paths, Redis/cache keys, execution-host IDs or addresses, cluster
+paths, VFS paths, Redis/cache keys, cluster
 node IDs, users, sessions, exam entities, mail addresses, payloads, or error
 strings. Deployment monitoring systems add target identity outside Proctor.
 

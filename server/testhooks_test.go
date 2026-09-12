@@ -73,9 +73,6 @@ func (s *hookStore) ExamAuthoring() store.ExamAuthoringStore {
 func (s *hookStore) ExamAttempt() store.ExamAttemptStore {
 	return hookExamAttemptStore{}
 }
-func (s *hookStore) ExecutionGrant() store.ExecutionGrantStore {
-	return hookExecutionGrantStore{}
-}
 func (s *hookStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 	return hookExamAttemptWorkspaceStore{}
 }
@@ -187,7 +184,6 @@ func (s *hookStore) Close() error {
 
 type hookExamAuthoringStore struct{ store.ExamAuthoringStore }
 type hookExamAttemptStore struct{ store.ExamAttemptStore }
-type hookExecutionGrantStore struct{ store.ExecutionGrantStore }
 type hookExamAttemptWorkspaceStore struct {
 	store.ExamAttemptWorkspaceStore
 }

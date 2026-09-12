@@ -1595,7 +1595,6 @@ components:
         - coverage_result
         - source_reset_receipts
         - security_interaction_allowed
-        - execution_state
         - delivery_watermark_rejections
       properties:
         processed_control_sequence:
@@ -1620,15 +1619,6 @@ components:
             $ref: '#/components/schemas/SourceResetReceipt'
         security_interaction_allowed:
           type: boolean
-        execution_state:
-          type: string
-          enum:
-            - not_allocated
-            - ready
-            - freeze_pending
-            - frozen
-            - thaw_pending
-            - unavailable
         delivery_watermark_rejections:
           type: array
           maxItems: 50

@@ -1986,52 +1986,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/exams/{exam_id}/draft/execution-images": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The Exam identifier. */
-                exam_id: components["parameters"]["ExamID"];
-            };
-            cookie?: never;
-        };
-        /**
-         * List safe execution image choices available for Exam authoring
-         * @description Returns the stable identifiers and permitted network modes of execution images available for the current Exam Draft. Registry coordinates, credentials, internal runtime metadata, and unavailable images are not exposed.
-         */
-        get: operations["listExamExecutionImages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/exams/{exam_id}/draft/execution-profile": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The Exam identifier. */
-                exam_id: components["parameters"]["ExamID"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Replace the execution profile on the active Exam Draft
-         * @description Replaces the Draft's complete execution profile at the expected Draft revision. The selected image and network mode must be present in the current safe catalog; disabling execution still records an explicit, validated profile.
-         */
-        put: operations["configureExamDraftExecutionProfile"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/exams/{exam_id}/draft/policies/focus-loss": {
         parameters: {
             query?: never;
@@ -6105,7 +6059,7 @@ export interface components {
             enabled?: true;
         });
         /** @enum {string} */
-        CandidateCapability: "browser" | "submission" | "terminal" | "workspace";
+        CandidateCapability: "browser" | "submission" | "workspace";
         CandidateDepartureCapability: {
             /** @enum {boolean} */
             allowed: false;
@@ -6252,18 +6206,7 @@ export interface components {
             /** Format: date-time */
             server_time: string;
             submission_allowed: boolean;
-            terminal: components["schemas"]["CandidateTerminalCapability"];
             workspace_mutation_allowed: boolean;
-        };
-        CandidateTerminalCapability: {
-            /** Format: int64 */
-            applied_workspace_cursor: number;
-            /** @description Host environment identity; null until an environment has been created. */
-            environment_epoch: string | null;
-            /** @enum {string} */
-            projection_state: "synchronizing" | "ready" | "conflict" | "unavailable";
-            /** @enum {string} */
-            state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required" | "temporarily_unavailable";
         };
         CandidateWorkspaceFileUploadMetadata: {
             /**
@@ -6388,14 +6331,6 @@ export interface components {
             /** Format: int64 */
             expected_draft_revision: number;
         };
-        ConfigureExamDraftExecutionProfileRequest: {
-            enabled: boolean;
-            /** Format: int64 */
-            expected_draft_revision: number;
-            image: string;
-            /** @enum {string} */
-            network: "none" | "allowlist";
-        };
         ConfigureExamDraftFocusLossRequest: {
             enabled: boolean;
             /** Format: int64 */
@@ -6420,7 +6355,7 @@ export interface components {
             /** @constant */
             outcome: "flag_and_suspend";
         };
-        /** @description Explicit sorted selection. A Browser Policy change requires browser; an instructions or resources change requires submission, terminal and workspace. Supersets are permitted. The selection cannot create a correction without an actual content change and remains present when acknowledgement is not required. */
+        /** @description Explicit sorted selection. A Browser Policy change requires browser; an instructions or resources change requires submission and workspace. Supersets are permitted. The selection cannot create a correction without an actual content change and remains present when acknowledgement is not required. */
         CorrectionCapabilitySelection: components["schemas"]["CandidateCapability"][];
         /** @description Complete owner, presentation, and time window for a new Academic Period. */
         CreateAcademicPeriodRequest: {
@@ -7297,7 +7232,6 @@ export interface components {
             browser_policy: components["schemas"]["BrowserPolicy"];
             capacity: components["schemas"]["ExamCapacityPolicy"];
             exam_id: components["schemas"]["ID"];
-            execution_profile: components["schemas"]["ExecutionProfile"];
             has_starter_workspace: boolean;
             /** @description Authored Markdown encoded as UTF-8 and limited to 65536 bytes. */
             instructions_markdown: string;
@@ -7633,7 +7567,6 @@ export interface components {
             capacity: components["schemas"]["ExamCapacityPolicy"];
             content_digest: components["schemas"]["SHA256"];
             exam_id: components["schemas"]["ID"];
-            execution_profile_digest: components["schemas"]["SHA256"];
             id: components["schemas"]["ID"];
             /** Format: int64 */
             number: number;
@@ -8045,19 +7978,6 @@ export interface components {
             title: string;
             /** Format: date-time */
             updated_at: string;
-        };
-        ExecutionImage: {
-            id: string;
-            networks: ("none" | "allowlist")[];
-        };
-        ExecutionImageListResponse: {
-            items: components["schemas"]["ExecutionImage"][];
-        };
-        ExecutionProfile: {
-            enabled: boolean;
-            image: string;
-            /** @enum {string} */
-            network: "none" | "allowlist";
         };
         /** @description Revision-fenced deadline extension for an open or paused Sitting. */
         ExtendExamSittingRequest: {
@@ -9699,8 +9619,6 @@ export interface components {
             /** @enum {string} */
             coverage_result: "accepted" | "stale_control" | "reset_required" | "reset_conflict";
             delivery_watermark_rejections: components["schemas"]["DeliveryWatermarkRejection"][];
-            /** @enum {string} */
-            execution_state: "not_allocated" | "ready" | "freeze_pending" | "frozen" | "thaw_pending" | "unavailable";
             processed_control_digest: string | null;
             /** Format: int64 */
             processed_control_sequence: number;
@@ -11525,16 +11443,6 @@ export interface components {
                 "application/json": components["schemas"]["ExamSubmissionReceiptResponse"];
             };
         };
-        /** @description Safe execution image authoring catalog */
-        ExecutionImageListOK: {
-            headers: {
-                "Cache-Control": components["headers"]["NoStore"];
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ExecutionImageListResponse"];
-            };
-        };
         /** @description External authentication provider collection */
         ExternalAuthenticationProviderListOK: {
             headers: {
@@ -12791,7 +12699,6 @@ export interface components {
                  *       "acknowledgement_required": true,
                  *       "affected_capabilities": [
                  *         "submission",
-                 *         "terminal",
                  *         "workspace"
                  *       ],
                  *       "candidate_summary": "The formula sheet for Question 3 was corrected.",
@@ -13037,20 +12944,6 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["ConfigureExamDraftBrowserPolicyRequest"];
-            };
-        };
-        /** @description Supplies the expected Draft revision and the complete enabled, image, and network selection that should replace the current profile. */
-        ConfigureExamDraftExecutionProfile: {
-            content: {
-                /**
-                 * @example {
-                 *       "enabled": true,
-                 *       "expected_draft_revision": 3,
-                 *       "image": "go-1.25",
-                 *       "network": "none"
-                 *     }
-                 */
-                "application/json": components["schemas"]["ConfigureExamDraftExecutionProfileRequest"];
             };
         };
         /** @description Supplies the expected Draft revision and the complete replacement Focus Loss collection and outcome policy. */
@@ -16827,52 +16720,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody: components["requestBodies"]["ConfigureExamDraftBrowserPolicy"];
-        responses: {
-            200: components["responses"]["ExamOK"];
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    listExamExecutionImages: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The Exam identifier. */
-                exam_id: components["parameters"]["ExamID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["ExecutionImageListOK"];
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalError"];
-            503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    configureExamDraftExecutionProfile: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
-                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
-            };
-            path: {
-                /** @description The Exam identifier. */
-                exam_id: components["parameters"]["ExamID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["ConfigureExamDraftExecutionProfile"];
         responses: {
             200: components["responses"]["ExamOK"];
             400: components["responses"]["BadRequest"];

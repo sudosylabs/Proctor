@@ -10,7 +10,7 @@ slug: /developers/server/browser-activity-submission/
 
 Browser Activity is a narrow integrity stream, not browser surveillance.
 Submission is a terminal snapshot of acknowledged authority, not a copy of
-whatever happens to be on an execution host or in a local editor buffer.
+whatever happens to be in a local editor buffer.
 
 <GovernedFigure asset="browser-activity-privacy-boundary" />
 
@@ -36,7 +36,7 @@ Retain only top-level browser open/close, allowed navigation or redirect, and
 blocked navigation. Query, fragment, URL credentials, page content, title,
 referrer, headers, cookies, DOM, downloaded bodies, local paths, and scheme
 payloads are excluded. Other integrity evidence also excludes screenshots,
-webcam, clipboard, terminal output, source code, and arbitrary payloads.
+webcam, clipboard, source code, and arbitrary payloads.
 
 Minimization happens before durable persistence and before logs, metrics, audit,
 or realtime publication. A manager response is a bounded projection that omits

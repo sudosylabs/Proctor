@@ -68,18 +68,6 @@ func TestConfigurationSerializationNeverOmitsFields(t *testing.T) {
 func TestStructuredConfigurationExamplesAreCompleteAndValid(t *testing.T) {
 	t.Parallel()
 
-	t.Run("execution host", func(t *testing.T) {
-		var host ExecutionHost
-		data := decodeStructuredExample(t, "examples/execution-host.json", &host)
-		assertExampleContainsEveryField(t, data, reflect.TypeOf(host), "ExecutionHost")
-		configuration := Default()
-		configuration.Execution.Enabled = true
-		configuration.Execution.Hosts = []ExecutionHost{host}
-		if err := configuration.Validate(); err != nil {
-			t.Fatalf("validate execution-host example: %v", err)
-		}
-	})
-
 	for _, test := range []struct {
 		name string
 		path string

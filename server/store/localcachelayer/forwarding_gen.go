@@ -46,8 +46,6 @@ type localCacheStores struct {
 	examStarterWorkspaceOnce       sync.Once
 	examSubmission                 store.ExamSubmissionStore
 	examSubmissionOnce             sync.Once
-	executionGrant                 store.ExecutionGrantStore
-	executionGrantOnce             sync.Once
 	retention                      store.RetentionStore
 	retentionOnce                  sync.Once
 	retentionPolicy                store.RetentionPolicyStore
@@ -190,11 +188,6 @@ type examStarterWorkspaceStore struct {
 
 type examSubmissionStore struct {
 	store.ExamSubmissionStore
-	layer *Layer
-}
-
-type executionGrantStore struct {
-	store.ExecutionGrantStore
 	layer *Layer
 }
 
@@ -456,16 +449,6 @@ func (l *Layer) ExamAttempt() store.ExamAttemptStore {
 		}
 	})
 	return l.stores.examAttempt
-}
-
-func (l *Layer) ExecutionGrant() store.ExecutionGrantStore {
-	l.stores.executionGrantOnce.Do(func() {
-		next := l.Store.ExecutionGrant()
-		if next != nil {
-			l.stores.executionGrant = &executionGrantStore{ExecutionGrantStore: next, layer: l}
-		}
-	})
-	return l.stores.executionGrant
 }
 
 func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
@@ -885,7 +868,6 @@ var (
 	_ store.ExamSittingStore                = (*examSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore       = (*examStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore             = (*examSubmissionStore)(nil)
-	_ store.ExecutionGrantStore             = (*executionGrantStore)(nil)
 	_ store.RetentionStore                  = (*retentionStore)(nil)
 	_ store.RetentionPolicyStore            = (*retentionPolicyStore)(nil)
 	_ store.ServingNodeLeaseStore           = (*servingNodeLeaseStore)(nil)

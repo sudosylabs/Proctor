@@ -515,7 +515,6 @@
               "acknowledgement_required": true,
               "affected_capabilities": [
                 "submission",
-                "terminal",
                 "workspace"
               ],
               "candidate_summary": "The formula sheet for Question 3 was corrected.",
@@ -821,23 +820,6 @@
           }
         },
         "description": "Supplies the expected Draft revision and complete replacement Browser Policy.",
-        "required": true
-      },
-      "ConfigureExamDraftExecutionProfile": {
-        "content": {
-          "application/json": {
-            "example": {
-              "enabled": true,
-              "expected_draft_revision": 3,
-              "image": "go-1.25",
-              "network": "none"
-            },
-            "schema": {
-              "$ref": "#/components/schemas/ConfigureExamDraftExecutionProfileRequest"
-            }
-          }
-        },
-        "description": "Supplies the expected Draft revision and the complete enabled, image, and network selection that should replace the current profile.",
         "required": true
       },
       "ConfigureExamDraftFocusLoss": {
@@ -4030,21 +4012,6 @@
           }
         },
         "description": "Candidate-safe retained receipt for the manager-ended Submission or its exact replay",
-        "headers": {
-          "Cache-Control": {
-            "$ref": "#/components/headers/NoStore"
-          }
-        }
-      },
-      "ExecutionImageListOK": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/ExecutionImageListResponse"
-            }
-          }
-        },
-        "description": "Safe execution image authoring catalog",
         "headers": {
           "Cache-Control": {
             "$ref": "#/components/headers/NoStore"
@@ -8466,7 +8433,6 @@
         "enum": [
           "browser",
           "submission",
-          "terminal",
           "workspace"
         ],
         "type": "string"
@@ -9082,7 +9048,7 @@
             "items": {
               "$ref": "#/components/schemas/CandidateCapability"
             },
-            "maxItems": 4,
+            "maxItems": 3,
             "type": "array",
             "uniqueItems": true
           },
@@ -9099,9 +9065,6 @@
           "submission_allowed": {
             "type": "boolean"
           },
-          "terminal": {
-            "$ref": "#/components/schemas/CandidateTerminalCapability"
-          },
           "workspace_mutation_allowed": {
             "type": "boolean"
           }
@@ -9115,55 +9078,9 @@
           "pending_correction_capabilities",
           "workspace_mutation_allowed",
           "submission_allowed",
-          "terminal",
           "browser",
           "exam_revision",
           "departure"
-        ],
-        "type": "object"
-      },
-      "CandidateTerminalCapability": {
-        "additionalProperties": false,
-        "properties": {
-          "applied_workspace_cursor": {
-            "format": "int64",
-            "maximum": 9007199254740991,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "environment_epoch": {
-            "description": "Host environment identity; null until an environment has been created.",
-            "pattern": "^[A-Za-z0-9_-]{1,128}$",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "projection_state": {
-            "enum": [
-              "synchronizing",
-              "ready",
-              "conflict",
-              "unavailable"
-            ],
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "disabled",
-              "available",
-              "sitting_paused",
-              "acknowledgement_required",
-              "temporarily_unavailable"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "state",
-          "environment_epoch",
-          "applied_workspace_cursor",
-          "projection_state"
         ],
         "type": "object"
       },
@@ -9551,37 +9468,6 @@
         ],
         "type": "object"
       },
-      "ConfigureExamDraftExecutionProfileRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "expected_draft_revision": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "image": {
-            "maxLength": 255,
-            "type": "string"
-          },
-          "network": {
-            "enum": [
-              "none",
-              "allowlist"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "expected_draft_revision",
-          "enabled",
-          "image",
-          "network"
-        ],
-        "type": "object"
-      },
       "ConfigureExamDraftFocusLossRequest": {
         "additionalProperties": false,
         "properties": {
@@ -9662,11 +9548,11 @@
         "type": "object"
       },
       "CorrectionCapabilitySelection": {
-        "description": "Explicit sorted selection. A Browser Policy change requires browser; an instructions or resources change requires submission, terminal and workspace. Supersets are permitted. The selection cannot create a correction without an actual content change and remains present when acknowledgement is not required.",
+        "description": "Explicit sorted selection. A Browser Policy change requires browser; an instructions or resources change requires submission and workspace. Supersets are permitted. The selection cannot create a correction without an actual content change and remains present when acknowledgement is not required.",
         "items": {
           "$ref": "#/components/schemas/CandidateCapability"
         },
-        "maxItems": 4,
+        "maxItems": 3,
         "minItems": 1,
         "type": "array",
         "uniqueItems": true
@@ -13021,9 +12907,6 @@
           "exam_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "execution_profile": {
-            "$ref": "#/components/schemas/ExecutionProfile"
-          },
           "has_starter_workspace": {
             "type": "boolean"
           },
@@ -13056,7 +12939,6 @@
           "title",
           "instructions_markdown",
           "policy",
-          "execution_profile",
           "browser_policy",
           "capacity",
           "updated_at",
@@ -14137,9 +14019,6 @@
           "exam_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "execution_profile_digest": {
-            "$ref": "#/components/schemas/SHA256"
-          },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
@@ -14207,7 +14086,6 @@
           "title",
           "policy_schema_version",
           "policy_digest",
-          "execution_profile_digest",
           "capacity",
           "starter_workspace_digest",
           "content_digest",
@@ -15440,69 +15318,6 @@
           "sitting_count",
           "matching_sitting_count",
           "sitting_summary"
-        ],
-        "type": "object"
-      },
-      "ExecutionImage": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "networks": {
-            "items": {
-              "enum": [
-                "none",
-                "allowlist"
-              ],
-              "type": "string"
-            },
-            "type": "array",
-            "uniqueItems": true
-          }
-        },
-        "required": [
-          "id",
-          "networks"
-        ],
-        "type": "object"
-      },
-      "ExecutionImageListResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ExecutionImage"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "type": "object"
-      },
-      "ExecutionProfile": {
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "image": {
-            "type": "string"
-          },
-          "network": {
-            "enum": [
-              "none",
-              "allowlist"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "enabled",
-          "image",
-          "network"
         ],
         "type": "object"
       },
@@ -21516,17 +21331,6 @@
             "maxItems": 50,
             "type": "array"
           },
-          "execution_state": {
-            "enum": [
-              "not_allocated",
-              "ready",
-              "freeze_pending",
-              "frozen",
-              "thaw_pending",
-              "unavailable"
-            ],
-            "type": "string"
-          },
           "processed_control_digest": {
             "pattern": "^sha256:[0-9a-f]{64}$",
             "type": [
@@ -21557,7 +21361,6 @@
           "coverage_result",
           "source_reset_receipts",
           "security_interaction_allowed",
-          "execution_state",
           "delivery_watermark_rejections"
         ],
         "type": "object"
@@ -31955,162 +31758,6 @@
           }
         ],
         "summary": "Replace the Browser Policy on the active Exam Draft",
-        "tags": [
-          "Examinations"
-        ],
-        "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": [
-          "authentication.required",
-          "authentication.invalid_token",
-          "authentication.credential_ambiguous",
-          "authentication.csrf.invalid",
-          "authorization.denied",
-          "authorization.request.invalid",
-          "authorization.unavailable",
-          "audit.unavailable",
-          "request.invalid",
-          "resource.not_found",
-          "exam.invalid",
-          "exam.archived",
-          "exam.draft.revision_conflict",
-          "exam.draft.no_changes",
-          "exam.unavailable",
-          "idempotency.key_required",
-          "idempotency.invalid_key",
-          "idempotency.conflict",
-          "idempotency.in_progress",
-          "administration.unavailable",
-          "authentication.dpop.invalid",
-          "authentication.dpop.replayed",
-          "authentication.dpop.use_nonce",
-          "authentication.dpop.unavailable"
-        ],
-        "x-proctor-idempotency": "required"
-      }
-    },
-    "/api/v1/exams/{exam_id}/draft/execution-images": {
-      "get": {
-        "description": "Returns the stable identifiers and permitted network modes of execution images available for the current Exam Draft. Registry coordinates, credentials, internal runtime metadata, and unavailable images are not exposed.",
-        "operationId": "listExamExecutionImages",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/ExecutionImageListOK"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "dpopAuth": []
-          },
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "List safe execution image choices available for Exam authoring",
-        "tags": [
-          "Examinations"
-        ],
-        "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": [
-          "authentication.required",
-          "authentication.invalid_token",
-          "authentication.credential_ambiguous",
-          "authorization.denied",
-          "authorization.request.invalid",
-          "authorization.unavailable",
-          "request.invalid",
-          "resource.not_found",
-          "exam.unavailable",
-          "administration.unavailable",
-          "authentication.dpop.invalid",
-          "authentication.dpop.replayed",
-          "authentication.dpop.use_nonce",
-          "authentication.dpop.unavailable"
-        ],
-        "x-proctor-idempotency": "none"
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/ExamID"
-        }
-      ]
-    },
-    "/api/v1/exams/{exam_id}/draft/execution-profile": {
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/ExamID"
-        }
-      ],
-      "put": {
-        "description": "Replaces the Draft's complete execution profile at the expected Draft revision. The selected image and network mode must be present in the current safe catalog; disabling execution still records an explicit, validated profile.",
-        "operationId": "configureExamDraftExecutionProfile",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/RequiredIdempotencyKey"
-          }
-        ],
-        "requestBody": {
-          "$ref": "#/components/requestBodies/ConfigureExamDraftExecutionProfile"
-        },
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/ExamOK"
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
-          },
-          "409": {
-            "$ref": "#/components/responses/Conflict"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "dpopAuth": []
-          },
-          {
-            "csrfToken": [],
-            "sessionCookie": []
-          }
-        ],
-        "summary": "Replace the execution profile on the active Exam Draft",
         "tags": [
           "Examinations"
         ],

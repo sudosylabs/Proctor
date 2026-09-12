@@ -48,16 +48,6 @@
     {
       "datasource": {"type": "prometheus", "uid": "proctor-prometheus"},
       "fieldConfig": {"defaults": {"mappings": [], "unit": "short"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
-      "id": 5,
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
-      "targets": [{"expr": "sum(proctor_execution_host_slots{state=\"usable\"})", "legendFormat": "slots", "refId": "A"}],
-      "title": "Usable execution slots",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "proctor-prometheus"},
-      "fieldConfig": {"defaults": {"mappings": [], "unit": "short"}, "overrides": []},
       "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
       "id": 6,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},

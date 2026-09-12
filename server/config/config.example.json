@@ -121,12 +121,6 @@
   "FileContent": {
     "MaximumConcurrentOperations": 2
   },
-  "Execution": {
-    "Enabled": false,
-    "DialTimeout": "10s",
-    "OperationTimeout": "30s",
-    "Hosts": []
-  },
   "Authentication": {
     "Bootstrap": {
       "Secret": "",

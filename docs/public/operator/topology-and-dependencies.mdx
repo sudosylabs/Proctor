@@ -14,7 +14,7 @@ dependency and the traffic path have suitable redundancy.
 ## Single Application Node
 
 Use `Cluster.Backend: local`, a stable node ID, production-suitable PostgreSQL
-and VFS, and the selected mail/execution/provider services. The application may
+and VFS, and the selected mail/provider services. The application may
 use bounded process-local cache. Memberlist has no peers and broadcast is a
 no-op.
 
@@ -34,7 +34,7 @@ balancer and route only to ready nodes. Configure:
   converged gossip keyring;
 - private reachable TCP and UDP bind/advertise endpoints;
 - the same validated application and policy configuration; and
-- shared SMTP, identity-provider, and execution-host capabilities as selected.
+- shared SMTP and identity-provider capabilities as selected.
 
 Memberlist carries best-effort invalidation and realtime facts. Redis does not
 transport Memberlist messages. Neither replaces PostgreSQL authority.
@@ -47,7 +47,6 @@ transport Memberlist messages. Neither replaces PostgreSQL authority.
 | Redis unavailable in Memberlist mode | required shared security/cache capability is unavailable; do not downgrade silently to local memory |
 | VFS unavailable | metadata may remain readable, but protected content operations fail; do not substitute object listings |
 | SMTP unavailable | durable delivery remains queued/retryable according to descriptor; application state is not rolled back |
-| execution host unavailable | terminal placement/open fails or is revoked; Workspace authority remains in PostgreSQL/VFS |
 | peer message lost | affected clients/nodes recover through refetch, TTL, renewal, and durable state |
 | load balancer unhealthy | application nodes may be ready but externally unreachable; this is operator infrastructure |
 

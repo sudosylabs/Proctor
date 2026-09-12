@@ -20,7 +20,7 @@ test('the glossary skill produces the complete canonical vocabulary', async () =
       'utf8',
     ),
   );
-  assert.equal(terms.length, 70);
+  assert.equal(terms.length, 66);
   assert.deepEqual(terms[0], {
     id: 'installation',
     term: 'Installation',

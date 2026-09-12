@@ -32,7 +32,7 @@ chapters during review.
 | Current authorization, assurance, concealment, Problem Details, and audit | [Authorization, errors, and audit](./server/authorization-errors-audit.mdx) |
 | Browser-mediated Desktop trust, DPoP, compatibility, and admission | [Desktop trust and admission](./server/desktop-trust-admission.mdx) |
 | Process-loss-safe background work and transactional delivery | [Jobs and transactional mail](./server/jobs-mail.mdx) |
-| File metadata, VFS bytes, uploads, protected downloads, and execution projection | [Files, workspaces, and execution](./server/files-execution.mdx) |
+| File metadata, VFS bytes, uploads, and protected downloads | [Files and workspaces](./server/files-workspaces.mdx) |
 | Participation renewal, expiry, reconnect, correction, and re-allow | [Attempt continuity](./server/attempt-continuity.mdx) |
 | Privacy-minimized navigation, terminal fences, and immutable sealing | [Browser Activity and Submission](./server/browser-activity-submission.mdx) |
 | Private Review concurrency, finalization, and candidate release | [Integrity Review and release](./server/integrity-review-release.mdx) |
@@ -94,7 +94,7 @@ For an actor-sensitive mutation, the usual chronology is:
 4. Prepare safe audit intent and, when required, command idempotency.
 5. Commit the durable state, required audit, retained outcome, Job, or mail
    intent through one named Store operation.
-6. Publish cache, cluster, WebSocket, execution, or other reconstructible
+6. Publish cache, cluster, WebSocket, or other reconstructible
    effects only after commit.
 7. Translate the result into an allowlisted public response.
 

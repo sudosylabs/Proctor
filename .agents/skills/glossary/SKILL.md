@@ -127,7 +127,7 @@ _Avoid_: Deployment configuration, executable policy
 The institution-owned limits on Exam Resources and Starter or Attempt
 Workspace growth; publication freezes the applicable policy in an exam
 revision so later institution changes cannot alter admitted attempts.
-_Avoid_: Execution-host capacity, deployment configuration, retention policy
+_Avoid_: deployment configuration, retention policy
 
 **Exam Sitting**:
 A scheduled delivery of one exam revision to one class.
@@ -188,26 +188,6 @@ _Avoid_: Exam resource, shared workspace
 The isolated, remotely authoritative hierarchy of mutable working files
 belonging to one exam attempt.
 _Avoid_: Shared workspace, local folder
-
-**Execution Environment**:
-The isolated, non-authoritative projection of one attempt workspace in which
-a candidate may use an attempt terminal.
-_Avoid_: Code runner, coderunner, microVM, sandbox, local folder
-
-**Attempt Terminal**:
-One interactive PTY attached to an execution environment for one exam
-attempt.
-_Avoid_: SSH session, local terminal, code runner
-
-**Execution Profile**:
-The authored, revision-frozen choice of whether an exam offers an attempt
-terminal, which catalog image it uses, and which network mode applies.
-_Avoid_: Devcontainer, Dockerfile, deployment configuration, executable policy
-
-**Execution Image**:
-A named, installation-provided guest runtime a creator may select in an
-execution profile.
-_Avoid_: Dockerfile, devcontainer, rootfs
 
 **Workspace Entry**:
 A stable logical file or directory in one attempt workspace whose identity

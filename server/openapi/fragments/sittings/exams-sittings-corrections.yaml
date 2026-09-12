@@ -90,7 +90,7 @@ components:
             expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza3
             instructions_markdown: Read the corrected resource before continuing.
             candidate_summary: The formula sheet for Question 3 was corrected.
-            affected_capabilities: [submission, terminal, workspace]
+            affected_capabilities: [submission, workspace]
             acknowledgement_required: true
             reason: Question 3 contained an incorrect constant.
             resources:
@@ -184,18 +184,18 @@ components:
     CorrectionCapabilitySelection:
       type: array
       minItems: 1
-      maxItems: 4
+      maxItems: 3
       uniqueItems: true
       description: >-
         Explicit sorted selection. A Browser Policy change requires browser;
-        an instructions or resources change requires submission, terminal and workspace.
+        an instructions or resources change requires submission and workspace.
         Supersets are permitted. The selection cannot create a correction without
         an actual content change and remains present when acknowledgement is not required.
       items:
         $ref: '#/components/schemas/CandidateCapability'
     CandidateCapability:
       type: string
-      enum: [browser, submission, terminal, workspace]
+      enum: [browser, submission, workspace]
     ExamSittingCorrectionResponse:
       description: Immutable correction Revision and updated Sitting state committed by the transition.
       type: object

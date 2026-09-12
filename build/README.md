@@ -114,8 +114,7 @@ This differs from Mattermost where Proctor's product boundary differs. The
 development stack does not add MySQL because PostgreSQL is Proctor's sole
 authoritative store; it does not add Elasticsearch because server directory
 search is PostgreSQL-backed and workspace-content search belongs to the
-desktop product; and it does not run a local execution-host emulator because
-the execution-host contract requires a real compatible `execenv` deployment.
+desktop product.
 Production examples likewise do not package a single-host database/cache/object
 store bundle as “HA”: operators supply redundant infrastructure and a
 redundant external load balancer for an active-active installation.

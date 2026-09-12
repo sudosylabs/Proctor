@@ -131,7 +131,7 @@ The disposable application cache is either a bounded per-process memory LRU or
 Redis. The independent store read-through cache is always a small bounded local
 LRU and uses cluster messages only for best-effort invalidation after durable
 commits. Neither cache is authoritative. Startup logs the selected application
-cache, store cache, VFS, cluster, mail, execution-host, external-authentication,
+cache, store cache, VFS, cluster, mail, external-authentication,
 configuration-source, and schema-migration state without emitting secrets.
 
 ## Cluster transport
@@ -251,8 +251,7 @@ bounded deadlines. Every goroutine, client, queue, channel, and closer has an
 owner and shutdown path; request/event fan-out is bounded with an explicit
 backpressure, drop, or disconnect policy.
 
-The WebSocket Hub owns connection shutdown through pump termination, Attempt
-Terminal disposal, and durable Attempt Connection finalization. Its Close uses
+The WebSocket Hub owns connection shutdown through pump termination, durable Attempt Connection finalization. Its Close uses
 one `Server.ShutdownTimeout` budget, stops new work, and waits for these owned
 operations before normal dependency disposal. Close frames share one short
 write deadline across all peers; a slow peer cannot multiply the shutdown
@@ -282,8 +281,7 @@ templates, sizes, SQL pools, complete store timing/retries, logging drops, and
 local store-cache decisions; WebSocket messages, publication fan-out, replay,
 subscriptions, and backpressure; Memberlist message flow, membership,
 discovery/rejoin, and admission; durable Job claim, queue, lease, checkpoint,
-completion, recurrence, and periodic work; execution-host state/capacity and
-streams; VFS outcomes, sizes, streams, and bytes; shared-cache/Redis outcomes,
+completion, recurrence, and periodic work; VFS outcomes, sizes, streams, and bytes; shared-cache/Redis outcomes,
 latency, and bytes; SMTP stages and durable mail delivery/queue/health; and
 named authentication, authorization, realtime, and examination outcomes.
 Each subsystem owns a narrow recorder or transparent wrapper. The application

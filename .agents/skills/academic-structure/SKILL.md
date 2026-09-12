@@ -86,9 +86,6 @@ permission without becoming managers or bypassing structural invariants.
 
 Each Attempt has one mutable, remotely authoritative code workspace and may
 have sequential fenced Participation generations and transport Connections.
-An enabled Execution Profile may attach one Execution Environment as a
-non-authoritative projection of that workspace; see
-[`execution-environments`](../execution-environments/SKILL.md).
 Manual kick or automatic policy enforcement may suspend an active Attempt;
 authorized re-allow preserves evidence and resumes the same Attempt through a
 new generation where required. Submission is terminal: exactly one immutable

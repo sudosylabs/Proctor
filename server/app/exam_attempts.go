@@ -16,7 +16,6 @@ import (
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -35,18 +34,6 @@ type OpenedExamAttemptContent = examattempt.OpenedContent
 type ExamAttemptWorkspaceMutationAccess = examattempt.WorkspaceMutationAccess
 type ExamAttemptWorkspaceMutationResult = examattempt.WorkspaceMutationResult
 type CandidateExamWorkspaceJournalPage = examattempt.WorkspaceJournalPage
-type CandidateExamTerminal interface {
-	appexecution.Terminal
-	ProjectionStatus() appexecution.ProjectionStatus
-}
-
-// IsCandidateExamTerminalInteractionBlocked reports a recoverable input or resize
-// denial. Transports reject that request while retaining the original terminal.
-func IsCandidateExamTerminalInteractionBlocked(err error) bool {
-	return errors.Is(err, appexecution.ErrInteractionBlocked)
-}
-
-type CandidateExamTerminalWindow = appexecution.Window
 type CandidateExamActivityPage = examattempt.CandidateActivityPage
 type SittingCandidateStatusesPage = examattempt.SittingCandidateStatusesPage
 type SittingCandidatePresenceState = store.SittingCandidatePresenceState
@@ -104,16 +91,6 @@ func (a *App) EndExamAttemptByManager(ctx context.Context, invocation Invocation
 		return ExamSubmissionReceipt{}, examAttemptError(err, true)
 	}
 	return result.Receipt, nil
-}
-
-type OpenCandidateExamTerminalCommand struct {
-	ExpectedWorkspaceCursor int64
-	Access                  CandidateExamAttemptAccess
-	SittingID               model.ExamSittingID
-	ClassID                 model.ClassID
-	ParticipationID         model.AttemptParticipationID
-	Generation              int64
-	Window                  appexecution.Window
 }
 
 type ConnectExamAttemptCommand struct {
@@ -299,18 +276,11 @@ func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation 
 	return result, nil
 }
 
-func (a *App) OpenCandidateExamTerminal(ctx context.Context, invocation Invocation, command OpenCandidateExamTerminalCommand) (CandidateExamTerminal, error) {
-	if a == nil || a.examAttemptTerminals == nil {
-		return nil, NewError("exam.attempt.terminal_unavailable")
-	}
-	return a.examAttemptTerminals.Open(ctx, invocation, command)
-}
-
 func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
 	command CreateCandidateExamWorkspaceDirectoryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
+		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -321,7 +291,7 @@ func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation I
 	command CreateCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.CreateWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, Path: command.Path, MediaType: command.MediaType,
+		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Path: command.Path, MediaType: command.MediaType,
 			ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
@@ -333,7 +303,7 @@ func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation 
 	command ReplaceCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
 			ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType, ExpectedSHA256: command.ExpectedSHA256,
 			Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
@@ -346,7 +316,7 @@ func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation In
 	command MoveCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
 			DestinationPath: command.DestinationPath, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
@@ -358,7 +328,7 @@ func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation 
 	command DeleteCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
 			ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
 			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
@@ -637,13 +607,7 @@ func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id, code string
 }
 
 type examAttemptRealtimeEffects struct {
-	realtime  *realtimeService
-	execution interface {
-		ReconcileAttempt(context.Context, model.ExamAttemptID) error
-		Release(context.Context, model.ExamAttemptID) error
-		SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
-		AcknowledgeChange(context.Context, model.ExamAttemptID, model.ExecutionGrantID, model.AttemptWorkspaceJournalEntry) error
-	}
+	realtime *realtimeService
 }
 
 func (effects examAttemptRealtimeEffects) publishCandidateActivityInvalidation(ctx context.Context,
@@ -721,25 +685,17 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 		return err
 	}
 	if !result.ConnectionClosed {
-		var executionErr error
-		if effects.execution != nil {
-			executionErr = effects.execution.Release(ctx, result.Attempt.ID)
-		}
 		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
-			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID), executionErr)
+			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 	}
 	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 	if err != nil {
 		return err
 	}
-	var executionErr error
-	if effects.execution != nil {
-		executionErr = effects.execution.Release(ctx, result.Attempt.ID)
-	}
 	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
 		effects.realtime.Publish(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
-			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID), executionErr)
+			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
 func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result examattempt.ReallowResult) error {
@@ -763,15 +719,7 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	var executionErr error
-	if effects.execution != nil {
-		if result.Origin == examattempt.WorkspaceMutationOriginCandidate {
-			executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
-		} else if result.SourceHostSequence == 0 {
-			executionErr = effects.execution.AcknowledgeChange(ctx, result.AttemptID, result.SourceGrantID, result.Change)
-		}
-	}
-	return errors.Join(effects.realtime.Publish(ctx, event), executionErr)
+	return errors.Join(effects.realtime.Publish(ctx, event))
 }
 
 func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
@@ -834,9 +782,6 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 	if result.SuspensionCreated {
 		joined = errors.Join(joined, effects.publishCandidateActivityInvalidation(ctx, result.CandidateUserID))
 	}
-	if result.SuspensionCreated && effects.execution != nil {
-		joined = errors.Join(joined, effects.execution.Release(ctx, result.AttemptID))
-	}
 	if result.ConnectionClosed {
 		joined = errors.Join(joined, effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 	}
@@ -848,12 +793,8 @@ func (effects examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, 
 	if constructionErr != nil {
 		return constructionErr
 	}
-	var executionErr error
-	if effects.execution != nil {
-		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
-	}
 	return errors.Join(publishErr, effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID,
-		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
+		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
 }
 
 func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context.Context,
@@ -888,12 +829,8 @@ func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx conte
 		}
 		publishErr = errors.Join(publishErr, effects.realtime.Publish(ctx, connectionEvent))
 	}
-	var executionErr error
-	if effects.execution != nil {
-		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
-	}
 	return errors.Join(publishErr, effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID,
-		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
+		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {
@@ -1033,10 +970,3 @@ func (a *App) StopDeliveryDetails(ctx context.Context, invocation Invocation, co
 
 // SupportsDeliveryRecovery reports whether a failure can carry delivery repair context.
 func SupportsDeliveryRecovery(code string) bool { return examattempt.SupportsDeliveryRecovery(code) }
-
-func (effects examAttemptRealtimeEffects) SecurityCoverageChanged(ctx context.Context, attemptID model.ExamAttemptID) error {
-	if effects.execution == nil {
-		return nil
-	}
-	return effects.execution.ReconcileAttempt(ctx, attemptID)
-}

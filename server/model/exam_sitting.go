@@ -37,7 +37,7 @@ func (state ExamSittingState) AllowsCandidateAdmission() bool {
 	return state == ExamSittingOpen
 }
 
-// AllowsCandidateMutation gates workspace writes, execution, and submission
+// AllowsCandidateMutation gates workspace writes and submission
 // before the later Attempt- and Participation-specific checks are applied.
 func (state ExamSittingState) AllowsCandidateMutation() bool {
 	return state == ExamSittingOpen

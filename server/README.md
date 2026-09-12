@@ -67,13 +67,13 @@ go run ./server/cmd/proctor serve --config ./server/config/config.json
 The active `config.json` is operator-owned and ignored by Git; Proctor never
 creates it. The tracked example is the copy source, not an active fallback. It
 renders every deployment field, including empty secret placeholders. Complete,
-validated entries for the structured `Execution.Hosts` and
-`Authentication.External.Providers` lists live under `config/examples/`; copy
+validated entries for the structured
+`Authentication.External.Providers` list live under `config/examples/`; copy
 the applicable object into the canonical file and replace its placeholder
 values. Protect the active file because it contains real deployment secrets.
 On startup Proctor connects to PostgreSQL, applies pending forward migrations
 under a named database migration lock, validates the resulting schema, and
-checks its configured cache, cluster, VFS, and execution-host dependencies.
+checks its configured cache, cluster, and VFS dependencies.
 Enabled SMTP is connection-tested and reported without making a temporary relay
 outage fail general server readiness. The example uses memory cache, disabled
 mail, and local VFS.
@@ -147,7 +147,7 @@ up any data you need before resetting a database.
 
 Baseline changes never invent compatibility records or lifecycle facts. In
 particular, the server must not fabricate Attempt Participation, Session
-binding or assurance, Attempt Configuration, Submission, or terminal
+binding or assurance, Attempt Configuration or Submission
 provenance merely to make retained development data fit a newer pre-release
 model. Preserving a non-empty development database is unsupported unless a
 separately reviewed read-only preflight can prove that every retained record is
@@ -648,8 +648,7 @@ WebSocket connections, messages, broadcasts, fan-out, replay, subscriptions,
 and backpressure; cluster messages/bytes, fan-out, membership, discovery,
 rejoin, and admission; durable Job claims, queue latency, lease heartbeats,
 reservations, checkpoints, completion, recurrence, and periodic work;
-execution-host state, capacity, calls, observations, files, and terminals; VFS
-operation outcomes, object/page sizes, streams, and bytes; shared memory/Redis
+VFS operation outcomes, object/page sizes, streams, and bytes; shared memory/Redis
 cache hits, misses, conditional outcomes, latency, and bytes; SMTP stages,
 portable delivery outcomes, recipients/bytes, and durable mail queue/health;
 and selected authentication, authorization, realtime, and examination

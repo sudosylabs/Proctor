@@ -17,8 +17,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 124 {
-		t.Fatalf("environment override definitions = %d, want 124", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 121 {
+		t.Fatalf("environment override definitions = %d, want 121", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -263,11 +263,6 @@ func validBaseForEnvironmentOverride(key string) Config {
 		base.Mail.SecretSealing.EncryptionKey = base64.StdEncoding.EncodeToString(
 			[]byte("mail-primary-key-material-32-byt"),
 		)
-	case "PROCTOR_EXECUTION_ENABLED":
-		base.Execution.Hosts = []ExecutionHost{{
-			ID: "local-1", Address: "127.0.0.1:9443",
-			Security: "insecure_local", Token: "development-token",
-		}}
 	case "PROCTOR_AUTHENTICATION_MFA_ENABLED":
 		base.Authentication.MFA.Enabled = true
 		base.Authentication.MFA.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))

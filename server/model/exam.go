@@ -130,7 +130,6 @@ type ExamDraft struct {
 	Title                string
 	InstructionsMarkdown string
 	Policy               ExamPolicySet
-	ExecutionProfile     ExecutionProfile
 	BrowserPolicy        BrowserPolicy
 	BaseRevisionID       ExamRevisionID
 	UpdatedAt            time.Time
@@ -140,7 +139,7 @@ type ExamDraft struct {
 func NewExamDraft(examID ExamID, title, instructionsMarkdown string, policy ExamPolicySet, at time.Time) (*ExamDraft, error) {
 	draft := &ExamDraft{
 		ExamID: examID, Title: strings.TrimSpace(title),
-		InstructionsMarkdown: instructionsMarkdown, Policy: policy.Clone(), ExecutionProfile: DefaultExecutionProfile(), BrowserPolicy: DisabledBrowserPolicy(),
+		InstructionsMarkdown: instructionsMarkdown, Policy: policy.Clone(), BrowserPolicy: DisabledBrowserPolicy(),
 		UpdatedAt: TimeUTC(at), Revision: 1,
 	}
 	if err := draft.Validate(); err != nil {
@@ -175,9 +174,6 @@ func (d *ExamDraft) Validate() error {
 	}
 	if _, err := EncodeExamPolicySet(d.Policy); err != nil {
 		return fmt.Errorf("%s: policy: %w", where, err)
-	}
-	if err := d.ExecutionProfile.Validate(); err != nil {
-		return fmt.Errorf("%s: execution profile: %w", where, err)
 	}
 	browserPolicy := d.BrowserPolicy
 	if browserPolicy.SchemaVersion == 0 {
@@ -223,29 +219,6 @@ func (d *ExamDraft) ApplyBrowserPolicy(policy BrowserPolicy, at time.Time) (bool
 		candidate.UpdatedAt = d.UpdatedAt
 	}
 	if err = candidate.Validate(); err != nil {
-		return false, err
-	}
-	*d = candidate
-	return true, nil
-}
-
-// ApplyExecutionProfile replaces the complete authored terminal choice. A
-// validated no-op leaves revision and time untouched.
-func (d *ExamDraft) ApplyExecutionProfile(profile ExecutionProfile, at time.Time) (bool, error) {
-	if d == nil {
-		return false, invalidModelError("ExamDraft.ApplyExecutionProfile", "exam_draft", "value", "is required", "")
-	}
-	if profile == d.ExecutionProfile {
-		return false, nil
-	}
-	candidate := *d
-	candidate.ExecutionProfile = profile
-	candidate.Revision++
-	candidate.UpdatedAt = TimeUTC(at)
-	if candidate.UpdatedAt.Before(d.UpdatedAt) {
-		candidate.UpdatedAt = d.UpdatedAt
-	}
-	if err := candidate.Validate(); err != nil {
 		return false, err
 	}
 	*d = candidate

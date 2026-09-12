@@ -272,15 +272,6 @@ var dependencyRules = []dependencyRule{
 		project:        only(exact(serverModule + "/model")),
 	},
 	{
-		name:           "execution application",
-		sources:        []pathPattern{subtree(serverModule + "/app/execution")},
-		deniedStandard: standardInfrastructure,
-		project: only(
-			exact(serverModule+"/model"),
-			exact(serverModule+"/store"),
-		),
-	},
-	{
 		name:           "mail application",
 		sources:        []pathPattern{subtree(serverModule + "/app/mail")},
 		deniedStandard: standardInfrastructureExceptFS,
@@ -401,7 +392,6 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/app/jobs"),
 			exact(serverModule+"/app/realtime"),
 			exact(serverModule+"/app/mail"),
-			exact(serverModule+"/app/execution"),
 			exact(serverModule+"/secretseal"),
 			subtree(serverModule+"/app/exam"),
 		),
@@ -473,14 +463,6 @@ var dependencyRules = []dependencyRule{
 			subtree(serverModule+"/app"),
 			subtree(serverModule+"/httpapi"),
 			subtree(serverModule+"/websocket"),
-		),
-	},
-	{
-		name:    "execution-host adapter",
-		sources: []pathPattern{exact(serverModule + "/executionhost")},
-		project: only(exact(serverModule+"/app/execution"), exact(serverModule+"/model"), exact(serverModule+"/store")),
-		thirdParty: only(
-			subtree("github.com/sudosylabs/execenv"),
 		),
 	},
 	{

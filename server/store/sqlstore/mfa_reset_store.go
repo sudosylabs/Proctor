@@ -151,11 +151,6 @@ func resetMFAUserAccess(ctx context.Context, tx *sqlxTxWrapper, userID model.Use
 	if _, err := tx.Exec(ctx, `UPDATE browser_authentication_transactions SET state='cancelled',updated_at=?,cancelled_at=?,handle_hash=NULL,browser_proof_hash=NULL,state_hash=NULL,callback_url=NULL,code_challenge=NULL,proposed_public_jwk=NULL,proposed_key_thumbprint=NULL,desktop_release=NULL,desktop_build_id=NULL,desktop_platform=NULL,desktop_architecture=NULL,desktop_realtime_protocol=NULL,user_id=NULL,authentication_method=NULL,authentication_provider_id=NULL,external_identity_id=NULL,password_credential_id=NULL,password_credential_revision=NULL,authentication_strength=NULL,authenticated_at=NULL,mfa_completed_at=NULL,code_hash=NULL,code_expires_at=NULL WHERE user_id=? AND purpose='desktop_authorization' AND state IN ('authenticated','code_issued')`, at, at, userID.String()); err != nil {
 		return nil, err
 	}
-	// Execution resources lose authority immediately; their existing durable
-	// release reconciliation performs the physical host teardown afterwards.
-	if _, err := tx.Exec(ctx, `UPDATE execution_grants g SET state='released',released_at=?,updated_at=GREATEST(g.updated_at,?),lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,workspace_pending=false,pending_workspace_cursor=0,revision=g.revision+1 FROM exam_attempts a WHERE a.id=g.exam_attempt_id AND a.candidate_user_id=? AND g.state IN ('reserved','ready')`, at, at, userID.String()); err != nil {
-		return nil, err
-	}
 	recovery, err := getMFARecoveryState(ctx, tx, userID)
 	if err != nil {
 		return nil, err

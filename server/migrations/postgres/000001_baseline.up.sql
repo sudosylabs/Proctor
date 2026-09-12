@@ -855,7 +855,6 @@ CREATE TABLE exam_drafts (
     title text NOT NULL,
     instructions_markdown text NOT NULL DEFAULT '',
     policy jsonb NOT NULL,
-    execution_profile jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false,"image":"","network":"none"}'::jsonb,
     browser_policy jsonb NOT NULL DEFAULT '{"enabled":false}'::jsonb,
     base_revision_id varchar(26),
     updated_at timestamptz NOT NULL,
@@ -864,7 +863,6 @@ CREATE TABLE exam_drafts (
     CONSTRAINT exam_drafts_instructions_markdown_check
         CHECK (octet_length(instructions_markdown) <= 65536),
     CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536),
-    CONSTRAINT exam_drafts_execution_profile_size_check CHECK (octet_length(execution_profile::text) <= 1024),
     CONSTRAINT exam_drafts_browser_policy_size_check CHECK (octet_length(browser_policy::text) <= 65536)
 );
 
@@ -1051,9 +1049,6 @@ CREATE TABLE exam_revisions (
     policy_document jsonb NOT NULL,
     policy_canonical bytea NOT NULL CHECK (octet_length(policy_canonical) BETWEEN 1 AND 65536),
     policy_digest char(64) NOT NULL CHECK (policy_digest ~ '^[0-9a-f]{64}$'),
-    execution_profile_document jsonb NOT NULL,
-    execution_profile_canonical bytea NOT NULL CHECK (octet_length(execution_profile_canonical) BETWEEN 1 AND 1024),
-    execution_profile_digest char(64) NOT NULL CHECK (execution_profile_digest ~ '^[0-9a-f]{64}$'),
     browser_policy_document jsonb NOT NULL CHECK (octet_length(browser_policy_document::text) <= 65536),
     browser_policy_canonical bytea NOT NULL CHECK (octet_length(browser_policy_canonical) BETWEEN 1 AND 32768),
     browser_policy_digest varchar(71) NOT NULL CHECK (browser_policy_digest ~ '^sha256:[0-9a-f]{64}$'),
@@ -1100,13 +1095,12 @@ CREATE TABLE exam_revisions (
             candidate_correction_affected_capabilities = array_remove(ARRAY[
                 CASE WHEN 'browser' = ANY(candidate_correction_affected_capabilities) THEN 'browser' END,
                 CASE WHEN 'submission' = ANY(candidate_correction_affected_capabilities) THEN 'submission' END,
-                CASE WHEN 'terminal' = ANY(candidate_correction_affected_capabilities) THEN 'terminal' END,
                 CASE WHEN 'workspace' = ANY(candidate_correction_affected_capabilities) THEN 'workspace' END
             ], NULL) AND
             (NOT ('browser_policy' = ANY(candidate_correction_changed_areas)) OR
                 'browser' = ANY(candidate_correction_affected_capabilities)) AND
             (NOT (candidate_correction_changed_areas && ARRAY['instructions','resources']::text[]) OR
-                candidate_correction_affected_capabilities @> ARRAY['submission','terminal','workspace']::text[]) AND
+                candidate_correction_affected_capabilities @> ARRAY['submission','workspace']::text[]) AND
             candidate_correction_acknowledgement_required IS NOT NULL)
     )
 );
@@ -1699,63 +1693,6 @@ CREATE UNIQUE INDEX exam_attempts_one_unresolved_candidate_key
     ON exam_attempts (candidate_user_id)
     WHERE state IN ('ready', 'active', 'suspended');
 
--- An Execution Grant records only authoritative placement and cleanup state.
--- Live host readiness and capacity are deliberately not indexed in PostgreSQL.
-CREATE TABLE execution_grants (
-    id varchar(26) PRIMARY KEY,
-    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
-    host_id varchar(64) NOT NULL CHECK (host_id ~ '^[A-Za-z0-9._-]{1,64}$'),
-    image varchar(255) NOT NULL CHECK (image <> ''),
-    network varchar(16) NOT NULL CHECK (network IN ('none', 'allowlist')),
-    state varchar(16) NOT NULL CHECK (state IN ('reserved', 'ready', 'released')),
-    applied_sitting_state varchar(16) NOT NULL CHECK (applied_sitting_state IN ('open', 'paused')),
-    applied_sitting_revision bigint NOT NULL CHECK (applied_sitting_revision > 0),
-    lifecycle_pending boolean NOT NULL DEFAULT false,
-    pending_sitting_state varchar(16) CHECK (pending_sitting_state IN ('open', 'paused')),
-    pending_sitting_revision bigint CHECK (pending_sitting_revision > 0),
-    applied_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (applied_workspace_cursor >= 0),
-    workspace_pending boolean NOT NULL DEFAULT false,
-    pending_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (pending_workspace_cursor >= 0),
-    processed_host_sequence bigint NOT NULL DEFAULT 0 CHECK (processed_host_sequence BETWEEN 0 AND 9007199254740991),
-    environment_epoch varchar(128) NOT NULL DEFAULT '',
-    control_revision bigint NOT NULL DEFAULT 0,
-    control_acknowledged_revision bigint NOT NULL DEFAULT 0,
-    desired_control_state varchar(16) NOT NULL DEFAULT '',
-    control_authority_digest varchar(64) NOT NULL DEFAULT '',
-    CONSTRAINT execution_grants_control_check CHECK (
-        (environment_epoch='' AND processed_host_sequence=0 AND control_revision=0 AND control_acknowledged_revision=0
-         AND desired_control_state='' AND control_authority_digest='') OR
-        (environment_epoch ~ '^[A-Za-z0-9_-]{1,128}$' AND control_revision BETWEEN 1 AND 9007199254740991
-         AND control_acknowledged_revision BETWEEN 0 AND control_revision
-         AND desired_control_state IN ('running','frozen','revoked')
-         AND control_authority_digest ~ '^[0-9a-f]{64}$')
-    ),
-    created_at timestamptz NOT NULL,
-    updated_at timestamptz NOT NULL,
-    released_at timestamptz,
-    revoked_at timestamptz,
-    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    CONSTRAINT execution_grants_lifecycle_check CHECK (
-        updated_at >= created_at AND
-        ((state IN ('reserved', 'ready') AND released_at IS NULL AND revoked_at IS NULL) OR
-         (state = 'released' AND released_at IS NOT NULL AND released_at >= created_at AND
-          (revoked_at IS NULL OR revoked_at >= released_at)))
-    ),
-    CONSTRAINT execution_grants_pending_lifecycle_check CHECK (
-        (lifecycle_pending AND pending_sitting_state IS NOT NULL AND pending_sitting_revision IS NOT NULL) OR
-        (NOT lifecycle_pending AND pending_sitting_state IS NULL AND pending_sitting_revision IS NULL)
-    ),
-    CONSTRAINT execution_grants_pending_workspace_check CHECK (
-        (workspace_pending AND NOT lifecycle_pending AND pending_workspace_cursor >= applied_workspace_cursor) OR
-        (NOT workspace_pending AND pending_workspace_cursor = 0)
-    )
-);
-
-CREATE UNIQUE INDEX execution_grants_one_active_attempt_idx
-    ON execution_grants (exam_attempt_id) WHERE state IN ('reserved', 'ready');
-CREATE INDEX execution_grants_pending_revocation_idx
-    ON execution_grants (id) WHERE state = 'released' AND revoked_at IS NULL;
-
 CREATE TABLE exam_attempt_workspaces (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL UNIQUE,
@@ -1884,13 +1821,6 @@ CREATE TABLE exam_attempt_workspace_journal (
     old_path text,
     new_path text,
     content_version varchar(26),
-    expected_content_version varchar(26),
-    projected_object_id varchar(26),
-    source_grant_id varchar(26),
-    CONSTRAINT exam_attempt_workspace_journal_projection_check CHECK (
-        ((operation IN ('create_file','replace_file')) = (projected_object_id IS NOT NULL)) AND
-        ((entry_kind='file' AND operation IN ('replace_file','move_entry','delete_entry')) = (expected_content_version IS NOT NULL))
-    ),
     mutation_key_digest bytea NOT NULL CHECK (octet_length(mutation_key_digest) = 32),
     changed_at timestamptz NOT NULL,
     recursive boolean NOT NULL DEFAULT false,
@@ -1906,66 +1836,6 @@ CREATE TABLE exam_attempt_workspace_journal (
 
 CREATE INDEX exam_attempt_workspace_journal_entry_cursor_idx
     ON exam_attempt_workspace_journal (workspace_id, entry_id, cursor DESC);
-
-CREATE INDEX exam_attempt_workspace_journal_projected_object_idx
-    ON exam_attempt_workspace_journal (projected_object_id, workspace_id, cursor)
-    WHERE projected_object_id IS NOT NULL;
-
-CREATE TABLE execution_projection_effects (
-    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
-    mutation_id varchar(26) NOT NULL,
-    environment_epoch varchar(128) NOT NULL CHECK (environment_epoch ~ '^[A-Za-z0-9_-]{1,128}$'),
-    control_revision bigint NOT NULL CHECK (control_revision BETWEEN 1 AND 9007199254740991),
-    from_workspace_cursor bigint NOT NULL CHECK (from_workspace_cursor>=0),
-    through_workspace_cursor bigint NOT NULL CHECK (through_workspace_cursor>=from_workspace_cursor AND through_workspace_cursor<=9007199254740991),
-    expected_host_cursor bigint NOT NULL CHECK (expected_host_cursor BETWEEN 0 AND 9007199254740991),
-    initial boolean NOT NULL,
-    request_digest bytea NOT NULL CHECK (octet_length(request_digest)=32),
-    request_canonical bytea CHECK (octet_length(request_canonical) BETWEEN 1 AND 4194304),
-    completed boolean NOT NULL DEFAULT false,
-    rejected boolean NOT NULL DEFAULT false CHECK (NOT rejected OR completed),
-    PRIMARY KEY (execution_grant_id,mutation_id),
-    CONSTRAINT execution_projection_effects_state_check CHECK (completed = (request_canonical IS NULL))
-);
-CREATE UNIQUE INDEX execution_projection_effects_one_pending_idx ON execution_projection_effects (execution_grant_id) WHERE NOT completed;
-
--- A released grant cannot retry an unfinished host effect. Drop its private
--- request (paths and transfer handles); completed receipts retain metadata only.
-CREATE FUNCTION discard_released_execution_projection() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    IF NEW.state='released' THEN
-        DELETE FROM execution_projection_effects WHERE execution_grant_id=NEW.id AND NOT completed;
-        DELETE FROM execution_observed_nodes WHERE execution_grant_id=NEW.id;
-        DELETE FROM execution_observation_outcomes WHERE execution_grant_id=NEW.id;
-    END IF;
-    RETURN NEW;
-END;
-$$;
-CREATE TRIGGER execution_projection_release AFTER UPDATE OF state ON execution_grants
-    FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION discard_released_execution_projection();
-
--- Semantic host evidence and stable identities live only for the exact grant.
--- The grant's safe sequence cap bounds these rows; no pending content bytes live here.
-CREATE TABLE execution_observation_outcomes (
-    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
-    host_sequence bigint NOT NULL CHECK (host_sequence BETWEEN 1 AND 65536),
-    observation_digest bytea NOT NULL CHECK (octet_length(observation_digest)=32),
-    outcome_canonical bytea NOT NULL CHECK (octet_length(outcome_canonical) BETWEEN 1 AND 8192),
-    PRIMARY KEY (execution_grant_id,host_sequence)
-);
-CREATE TABLE execution_observed_nodes (
-    execution_grant_id varchar(26) NOT NULL REFERENCES execution_grants(id) ON DELETE CASCADE,
-    node_identity varchar(128) NOT NULL CHECK (node_identity ~ '^[A-Za-z0-9_-]{1,128}$'),
-    entry_id varchar(26) NOT NULL,
-    kind varchar(16) NOT NULL CHECK (kind IN ('file','directory')),
-    path text NOT NULL CHECK (octet_length(path) BETWEEN 1 AND 1024),
-    expected_content_version varchar(26),
-    resulting_content_version varchar(26),
-    workspace_cursor bigint NOT NULL CHECK (workspace_cursor BETWEEN 1 AND 9007199254740991),
-    deleted boolean NOT NULL,
-    PRIMARY KEY (execution_grant_id,node_identity),
-    UNIQUE (execution_grant_id,entry_id)
-);
 
 CREATE TABLE exam_attempt_participations (
     id varchar(26) PRIMARY KEY,
@@ -4076,10 +3946,6 @@ ALTER TABLE exam_attempts
     ADD CONSTRAINT exam_attempts_candidate_user_id_canonical_check CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempts_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
-ALTER TABLE execution_grants
-    ADD CONSTRAINT execution_grants_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT execution_grants_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
-
 ALTER TABLE exam_attempt_workspaces
     ADD CONSTRAINT exam_attempt_workspaces_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspaces_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -4103,23 +3969,7 @@ ALTER TABLE exam_attempt_workspace_entries
 ALTER TABLE exam_attempt_workspace_journal
     ADD CONSTRAINT exam_attempt_workspace_journal_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_journal_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_journal_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_journal_expected_content_version_canonical_check CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_journal_projected_object_id_canonical_check CHECK (projected_object_id IS NULL OR projected_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_journal_source_grant_id_canonical_check CHECK (source_grant_id IS NULL OR source_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
-
-ALTER TABLE execution_projection_effects
-    ADD CONSTRAINT execution_projection_effects_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT execution_projection_effects_mutation_id_canonical_check CHECK (mutation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
-
-ALTER TABLE execution_observation_outcomes
-    ADD CONSTRAINT execution_observation_outcomes_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
-
-ALTER TABLE execution_observed_nodes
-    ADD CONSTRAINT execution_observed_nodes_execution_grant_id_canonical_check CHECK (execution_grant_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT execution_observed_nodes_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT execution_observed_nodes_expected_content_version_canonical_check CHECK (expected_content_version IS NULL OR expected_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT execution_observed_nodes_resulting_content_version_canonical_check CHECK (resulting_content_version IS NULL OR resulting_content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_workspace_journal_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_participations
     ADD CONSTRAINT exam_attempt_participations_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -4558,7 +4408,6 @@ CREATE INDEX academic_unit_members_scope_page_idx
 CREATE INDEX class_members_scope_page_idx
     ON class_members (class_id, user_id, id) WHERE archived_at IS NULL;
 
-
 -- Explicit examination records completion and scoped manual preservation.
 CREATE TABLE exam_sitting_records_completions (
     exam_sitting_id varchar(26) PRIMARY KEY REFERENCES exam_sittings(id),
@@ -4680,8 +4529,6 @@ ALTER TABLE exam_submissions
          integrity_state='retired' AND final_focus_loss_sequence IS NULL AND
          unresolved_integrity_count IS NULL)
     );
-
-
 
 CREATE TABLE retention_retirements (
     id varchar(26) PRIMARY KEY,
@@ -4973,7 +4820,6 @@ ALTER TABLE user_mfa_recovery
     ADD CONSTRAINT user_mfa_recovery_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
-
 -- One bounded pending transaction per authenticated Desktop Session and Sitting.
 -- Supersession overwrites this short-lived state; idempotency outcomes preserve
 -- bounded command identity without creating an Attempt or locking the account.
@@ -5061,8 +4907,6 @@ CREATE TABLE exam_attempt_security_owners (
  browser_retained_records bigint NOT NULL DEFAULT 0 CHECK(browser_retained_records BETWEEN 0 AND 50000),
  browser_retained_bytes bigint NOT NULL DEFAULT 0 CHECK(browser_retained_bytes BETWEEN 0 AND 33554432),
  security_interaction_allowed boolean NOT NULL DEFAULT true,
- freeze_required boolean NOT NULL DEFAULT false,
- execution_gate_sequence bigint NOT NULL DEFAULT 0 CHECK(execution_gate_sequence BETWEEN 0 AND 9007199254740991),
  allocated_through_sequence bigint NOT NULL DEFAULT 0 CHECK(allocated_through_sequence BETWEEN 0 AND 20000),
  acknowledged_through_sequence bigint NOT NULL DEFAULT 0 CHECK(acknowledged_through_sequence BETWEEN 0 AND allocated_through_sequence),
  summary_only boolean NOT NULL DEFAULT false,
@@ -5088,7 +4932,6 @@ CREATE TABLE exam_native_source_resets (
  PRIMARY KEY(participation_id,reset_id)
 );
 
-
 CREATE TABLE exam_native_delivery_declarations (
     participation_id varchar(26) NOT NULL REFERENCES exam_attempt_security_owners(participation_id),
     declaration_id varchar(128) NOT NULL,
@@ -5108,7 +4951,6 @@ CREATE TABLE exam_native_delivery_batches (
     processed boolean NOT NULL DEFAULT false,
     PRIMARY KEY (participation_id, batch_sequence)
 );
-
 
 CREATE TABLE exam_native_delivery_records (
  participation_id varchar(26) NOT NULL,

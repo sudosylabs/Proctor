@@ -24,13 +24,12 @@ type CandidateCapability string
 const (
 	CandidateCapabilityBrowser    CandidateCapability = "browser"
 	CandidateCapabilitySubmission CandidateCapability = "submission"
-	CandidateCapabilityTerminal   CandidateCapability = "terminal"
 	CandidateCapabilityWorkspace  CandidateCapability = "workspace"
 )
 
 func (capability CandidateCapability) IsValid() bool {
 	switch capability {
-	case CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace:
+	case CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace:
 		return true
 	default:
 		return false
@@ -40,7 +39,7 @@ func (capability CandidateCapability) IsValid() bool {
 // ValidateCandidateCapabilities checks the bounded, sorted, unique projection.
 // An empty set is valid for a pending union; authored selections must be nonempty.
 func ValidateCandidateCapabilities(capabilities []CandidateCapability) error {
-	if len(capabilities) > 4 {
+	if len(capabilities) > 3 {
 		return errors.New("model: invalid Candidate capabilities")
 	}
 	for index, capability := range capabilities {
@@ -61,14 +60,14 @@ func ValidateCandidateCorrectionSelection(summary string, capabilities []Candida
 }
 
 // MinimumCorrectionCapabilities returns the sorted union required by actual
-// semantic changes. A browser-only correction has no execution or submission gate.
+// semantic changes. A browser-only correction has no workspace or submission gate.
 func MinimumCorrectionCapabilities(areas []ExamCorrectionChangedArea) []CandidateCapability {
-	result := make([]CandidateCapability, 0, 4)
+	result := make([]CandidateCapability, 0, 3)
 	if slices.Contains(areas, ExamCorrectionChangedBrowserPolicy) {
 		result = append(result, CandidateCapabilityBrowser)
 	}
 	if slices.Contains(areas, ExamCorrectionChangedInstructions) || slices.Contains(areas, ExamCorrectionChangedResources) {
-		result = append(result, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace)
+		result = append(result, CandidateCapabilitySubmission, CandidateCapabilityWorkspace)
 	}
 	return result
 }
@@ -76,8 +75,8 @@ func MinimumCorrectionCapabilities(areas []ExamCorrectionChangedArea) []Candidat
 // PendingCorrectionCapabilities derives a projection from validated immutable
 // notices. Acknowledging one notice cannot remove another notice's gate.
 func PendingCorrectionCapabilities(corrections []CandidateLiveCorrection) []CandidateCapability {
-	pending := make([]CandidateCapability, 0, 4)
-	for _, capability := range []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace} {
+	pending := make([]CandidateCapability, 0, 3)
+	for _, capability := range []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace} {
 		for _, correction := range corrections {
 			if correction.AcknowledgementState == CorrectionAcknowledgementPending && slices.Contains(correction.AffectedCapabilities, capability) {
 				pending = append(pending, capability)

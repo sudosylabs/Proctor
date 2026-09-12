@@ -28,12 +28,10 @@ import (
 	localvfs "github.com/sudosylabs/proctor/packages/vfs/local"
 	s3vfs "github.com/sudosylabs/proctor/packages/vfs/s3"
 	"github.com/sudosylabs/proctor/server/app"
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/executionhost"
 	"github.com/sudosylabs/proctor/server/logging"
 	metricspkg "github.com/sudosylabs/proctor/server/metrics"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -64,14 +62,8 @@ type ownedInfrastructure struct {
 	mailer                 platform.Mailer
 	filesystem             vfspkg.FileSystem
 	externalAuthentication *externalauth.Registry
-	executionHosts         executionHostDirectory
 	migration              *sqlstore.MigrationResult
 	metrics                *metricspkg.Module
-}
-
-type executionHostDirectory interface {
-	appexecution.HostDirectory
-	platform.ExecutionHosts
 }
 
 // constructionCapabilities is a short-lived, non-owning projection used only
@@ -86,7 +78,6 @@ type constructionCapabilities struct {
 	mailer                 borrowedMailer
 	filesystem             vfspkg.FileSystem
 	externalAuthentication *externalauth.Registry
-	executionHosts         appexecution.HostDirectory
 	nodeID                 string
 	migration              *sqlstore.MigrationResult
 	metrics                *metricspkg.Module
@@ -118,14 +109,13 @@ func openRuntimeInfrastructure(
 	overrides TestingOverrides,
 ) (result ownedInfrastructure, resultErr error) {
 	result = ownedInfrastructure{
-		configuration:  overrides.Configuration,
-		logger:         overrides.Logger,
-		persistence:    overrides.Persistence,
-		cache:          overrides.Cache,
-		cluster:        overrides.Cluster,
-		mailer:         overrides.Mailer,
-		filesystem:     overrides.Filesystem,
-		executionHosts: overrides.ExecutionHosts,
+		configuration: overrides.Configuration,
+		logger:        overrides.Logger,
+		persistence:   overrides.Persistence,
+		cache:         overrides.Cache,
+		cluster:       overrides.Cluster,
+		mailer:        overrides.Mailer,
+		filesystem:    overrides.Filesystem,
 	}
 	defer func() {
 		if resultErr != nil {
@@ -159,16 +149,6 @@ func openRuntimeInfrastructure(
 	}
 
 	cfg := result.configuration.Get()
-	if result.executionHosts == nil {
-		directory, err := newExecutionHostDirectory(cfg.Execution)
-		if err != nil {
-			return result, fmt.Errorf("open execution hosts: %w", err)
-		}
-		result.executionHosts = directory
-	}
-	if err := checkAcquisitionContext(ctx, "acquire execution hosts"); err != nil {
-		return result, err
-	}
 	if result.persistence == nil {
 		persistence, err := sqlstore.New(ctx, sqlstore.SettingsFromConfig(cfg.Database))
 		if err != nil {
@@ -206,9 +186,6 @@ func openRuntimeInfrastructure(
 		return result, fmt.Errorf("construct metrics module: %w", err)
 	}
 	result.metrics = metricsModule
-	if metricsModule.Enabled() && result.executionHosts != nil {
-		result.executionHosts = &measuredExecutionHosts{next: result.executionHosts, metrics: metricsModule}
-	}
 	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
 	if overrides.StoreRetry != nil {
 		storeRetry = *overrides.StoreRetry
@@ -412,7 +389,6 @@ func (i *ownedInfrastructure) acceptPlatform(
 		mailer:                 i.mailer,
 		filesystem:             i.filesystem,
 		externalAuthentication: i.externalAuthentication,
-		executionHosts:         i.executionHosts,
 		migration:              i.migration,
 		metrics:                i.metrics,
 	}
@@ -428,7 +404,6 @@ func (i *ownedInfrastructure) acceptPlatform(
 		Mailer:                 i.mailer,
 		VFS:                    i.filesystem,
 		ExternalAuthentication: i.externalAuthentication,
-		ExecutionHosts:         i.executionHosts,
 	}
 	*i = ownedInfrastructure{}
 	service, snapshot, err := platform.Accept(ctx, resources)
@@ -469,10 +444,6 @@ func (i *ownedInfrastructure) release() error {
 	if i.persistence != nil {
 		storeErr = i.persistence.Close()
 	}
-	var executionErr error
-	if i.executionHosts != nil {
-		executionErr = i.executionHosts.Close()
-	}
 	var loggerErr error
 	if i.logger != nil {
 		loggerErr = i.logger.Shutdown(stopCtx)
@@ -492,23 +463,9 @@ func (i *ownedInfrastructure) release() error {
 		mailErr,
 		cacheErr,
 		storeErr,
-		executionErr,
 		loggerErr,
 		configErr,
 	)
-}
-
-func newExecutionHostDirectory(settings config.Execution) (*executionhost.Directory, error) {
-	hosts := make([]executionhost.HostConfig, 0, len(settings.Hosts))
-	for _, host := range settings.Hosts {
-		hosts = append(hosts, executionhost.HostConfig{
-			ID: host.ID, Address: host.Address, Security: host.Security, Token: host.Token,
-			ServerName: host.ServerName, CAFile: host.CAFile,
-			ClientCertificateFile: host.ClientCertificateFile, ClientKeyFile: host.ClientKeyFile,
-		})
-	}
-	return executionhost.New(executionhost.Settings{Enabled: settings.Enabled,
-		DialTimeout: settings.DialTimeout.Duration, OperationTimeout: settings.OperationTimeout.Duration, Hosts: hosts})
 }
 
 func newCache(settings config.Cache) (platform.Cache, error) {

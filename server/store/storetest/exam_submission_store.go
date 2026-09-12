@@ -341,7 +341,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &firstInstructions,
-			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: firstAudit.ID.String(), AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-first", "correction-acknowledgement-first"))
@@ -352,7 +352,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: first.Revision.ID, ExpectedSittingRevision: first.Sitting.Sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &secondInstructions,
-			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
 			AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-second", "correction-acknowledgement-second"))
@@ -520,7 +520,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			CurrentRevisionID: second.Revision.ID, ExpectedSittingRevision: resumed.Value.Sitting.Revision,
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &thirdInstructions,
-			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "A later correction changes the instructions without requiring acknowledgement.",
+			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "A later correction changes the instructions without requiring acknowledgement.",
 			PrivateReason: "prove retained acknowledgement replay after a later correction", AppliedAt: model.NowUTC(),
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(),
 			AuditAt:      model.GetMillis(),

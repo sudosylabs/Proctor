@@ -1621,25 +1621,21 @@ func (s *sqlExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context
 		SittingState         string    `db:"sitting_state"`
 		DatabaseNow          time.Time `db:"database_now"`
 		Policy               []byte    `db:"policy_canonical"`
-		ExecutionProfile     []byte    `db:"execution_profile_canonical"`
 		BrowserPolicy        []byte    `db:"browser_policy_canonical"`
 		BrowserPolicyDigest  string    `db:"browser_policy_digest"`
 		PolicyRevisionNumber int64     `db:"policy_revision_number"`
 		BrowserUnavailable   bool      `db:"browser_unavailable"`
 		RuntimeAvailable     bool      `db:"runtime_available"`
-		TerminalAvailable    bool      `db:"terminal_available"`
 	}
 	if err := s.GetMaster().Get(ctx, &row, `SELECT a.attempt_configuration_canonical,a.attempt_configuration_digest,
 		a.admission_revision_id,s.exam_revision_id AS current_revision_id,s.state AS sitting_state,
-		statement_timestamp() AS database_now,r.policy_canonical,r.execution_profile_canonical,
+		statement_timestamp() AS database_now,r.policy_canonical,
 		r.browser_policy_canonical,r.browser_policy_digest,r.number AS policy_revision_number,
  EXISTS(SELECT 1 FROM exam_attempt_security_owners bo JOIN exam_attempt_participations bp ON bp.id=bo.participation_id WHERE bo.exam_attempt_id=a.id AND bp.state='active' AND bo.browser_source_unavailable) AS browser_unavailable,
 		EXISTS (SELECT 1 FROM exam_attempt_participations p JOIN exam_attempt_connections c
 			ON c.participation_id=p.id AND c.exam_attempt_id=p.exam_attempt_id
 			WHERE p.id=? AND c.id=? AND p.exam_attempt_id=a.id AND p.state='active' AND c.state='open'
-			AND p.session_id=? AND c.session_id=?) AS runtime_available,
-		EXISTS (SELECT 1 FROM execution_grants grant_record WHERE grant_record.exam_attempt_id=a.id
-			AND grant_record.state='ready' AND grant_record.lifecycle_pending=false) AS terminal_available
+			AND p.session_id=? AND c.session_id=?) AS runtime_available
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_revisions r ON r.id=s.exam_revision_id AND r.exam_id=s.exam_id AND r.sealed=true
 		WHERE a.id=? AND a.candidate_user_id=?`, outcome.ParticipationID, outcome.ConnectionID, outcome.SessionID, outcome.SessionID,
@@ -1670,16 +1666,13 @@ func (s *sqlExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context
 		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, err
 	}
 	capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, row.AdmissionRevisionID, row.CurrentRevisionID,
-		row.SittingState, row.DatabaseNow, row.Policy, row.ExecutionProfile, row.BrowserPolicy, row.BrowserPolicyDigest, pendingCapabilities, row.TerminalAvailable, row.PolicyRevisionNumber, retention, row.BrowserUnavailable)
-	if err == nil {
-		err = populateCandidateTerminalProjection(ctx, s.GetMaster(), attemptID, &capabilities.Terminal)
-	}
+		row.SittingState, row.DatabaseNow, row.Policy, row.BrowserPolicy, row.BrowserPolicyDigest, pendingCapabilities, row.PolicyRevisionNumber, retention, row.BrowserUnavailable)
 	return configuration, capabilities, browserPolicy, liveCorrections, err
 }
 
 func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admissionRevision, currentRevision, sittingState string,
-	databaseNow time.Time, policyDocument, executionProfileDocument, browserPolicyDocument []byte, browserPolicyDigest string,
-	pendingCapabilities []model.CandidateCapability, terminalDependencyAvailable bool, revisionNumber int64, retention *model.RetentionPolicy, browserUnavailable bool,
+	databaseNow time.Time, policyDocument, browserPolicyDocument []byte, browserPolicyDigest string,
+	pendingCapabilities []model.CandidateCapability, revisionNumber int64, retention *model.RetentionPolicy, browserUnavailable bool,
 ) (store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, error) {
 	admissionRevisionID, err := model.ParseExamRevisionID(admissionRevision)
 	if err != nil {
@@ -1692,10 +1685,6 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 	policy, err := model.DecodeExamPolicySet(policyDocument)
 	if err != nil {
 		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "policy_canonical", err)
-	}
-	profile, err := model.DecodeExecutionProfile(executionProfileDocument)
-	if err != nil {
-		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
 	}
 	browserPolicy, err := model.ParseBrowserPolicyDocument(browserPolicyDocument)
 	if err != nil {
@@ -1710,17 +1699,6 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 		interaction = store.CandidateInteractionSittingPaused
 	} else if sittingState != string(model.ExamSittingOpen) {
 		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_sitting", "state", errors.New("runtime projection requires Open or Paused"))
-	}
-	terminalState := store.CandidateTerminalAvailable
-	switch {
-	case !profile.Enabled:
-		terminalState = store.CandidateTerminalDisabled
-	case interaction == store.CandidateInteractionSittingPaused:
-		terminalState = store.CandidateTerminalSittingPaused
-	case slices.Contains(pendingCapabilities, model.CandidateCapabilityTerminal):
-		terminalState = store.CandidateTerminalAcknowledgementRequired
-	case !terminalDependencyAvailable:
-		terminalState = store.CandidateTerminalTemporarilyUnavailable
 	}
 	workspaceAllowed := interaction == store.CandidateInteractionInteractive && !slices.Contains(pendingCapabilities, model.CandidateCapabilityWorkspace)
 	submissionAllowed := interaction == store.CandidateInteractionInteractive && !slices.Contains(pendingCapabilities, model.CandidateCapabilitySubmission)
@@ -1753,8 +1731,8 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 			ApprovedKeybindings: slices.Clone(configuration.ApprovedKeybindings), Digest: configuration.Digest},
 		FocusLossCollectionEnabled: policy.FocusLoss.Enabled, WorkspaceMutationAllowed: workspaceAllowed,
 		PendingCorrectionCapabilities: append([]model.CandidateCapability{}, pendingCapabilities...),
-		SubmissionAllowed:             submissionAllowed, Terminal: store.CandidateTerminalCapability{State: terminalState},
-		Browser: browserCapability,
+		SubmissionAllowed:             submissionAllowed,
+		Browser:                       browserCapability,
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: admissionRevisionID,
 			CurrentRevisionID: currentRevisionID, AcknowledgementRequired: len(pendingCapabilities) != 0},
 		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"},
@@ -2203,7 +2181,6 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			Title                string    `db:"title"`
 			Instructions         string    `db:"instructions_markdown"`
 			Policy               []byte    `db:"policy_canonical"`
-			ExecutionProfile     []byte    `db:"execution_profile_canonical"`
 			BrowserPolicy        []byte    `db:"browser_policy_canonical"`
 			BrowserPolicyDigest  string    `db:"browser_policy_digest"`
 			PolicyRevisionNumber int64     `db:"policy_revision_number"`
@@ -2212,17 +2189,14 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			ConfigurationDigest  string    `db:"attempt_configuration_digest"`
 			SittingState         string    `db:"sitting_state"`
 			DatabaseNow          time.Time `db:"database_now"`
-			TerminalAvailable    bool      `db:"terminal_available"`
 		}
-		if err = tx.Get(ctx, &header, `SELECT r.title,r.instructions_markdown,r.policy_canonical,r.execution_profile_canonical,
+		if err = tx.Get(ctx, &header, `SELECT r.title,r.instructions_markdown,r.policy_canonical,
 			r.browser_policy_canonical,r.browser_policy_digest,r.number AS policy_revision_number,
 			admitted.exam_resource_max_count,admitted.exam_resource_max_bytes,
 			admitted.exam_workspace_max_entries,admitted.exam_workspace_max_file_bytes,admitted.exam_workspace_max_total_bytes,
  EXISTS(SELECT 1 FROM exam_attempt_security_owners bo JOIN exam_attempt_participations bp ON bp.id=bo.participation_id WHERE bo.exam_attempt_id=a.id AND bp.state='active' AND bo.browser_source_unavailable) AS browser_unavailable,
 			a.attempt_configuration_canonical,a.attempt_configuration_digest,s.state AS sitting_state,
-			statement_timestamp() AS database_now,
-			EXISTS (SELECT 1 FROM execution_grants grant_record WHERE grant_record.exam_attempt_id=a.id
-				AND grant_record.state='ready' AND grant_record.lifecycle_pending=false) AS terminal_available
+			statement_timestamp() AS database_now
 			FROM exam_revisions r JOIN exam_sittings s ON s.exam_revision_id=r.id
 			JOIN exam_attempts a ON a.id=? AND a.exam_sitting_id=s.id
 			JOIN exam_revisions admitted ON admitted.id=a.admission_revision_id AND admitted.sealed=true
@@ -2254,16 +2228,9 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, err
 		}
 		capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, guard.AdmissionRevisionID, guard.RevisionID,
-			header.SittingState, header.DatabaseNow, header.Policy, header.ExecutionProfile, header.BrowserPolicy, header.BrowserPolicyDigest, pendingCapabilities, header.TerminalAvailable, header.PolicyRevisionNumber, retention, header.BrowserUnavailable)
+			header.SittingState, header.DatabaseNow, header.Policy, header.BrowserPolicy, header.BrowserPolicyDigest, pendingCapabilities, header.PolicyRevisionNumber, retention, header.BrowserUnavailable)
 		if err != nil {
 			return nil, err
-		}
-		if err = populateCandidateTerminalProjection(ctx, tx, attemptID, &capabilities.Terminal); err != nil {
-			return nil, err
-		}
-		executionProfile, err := model.DecodeExecutionProfile(header.ExecutionProfile)
-		if err != nil {
-			return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
 		}
 		var rows []struct {
 			ResourceID  string `db:"resource_id"`
@@ -2288,7 +2255,7 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		}
 		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
 			Title: header.Title, InstructionsMarkdown: header.Instructions, Capacity: capacity,
-			RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, ExecutionProfile: executionProfile,
+			RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections,
 			Resources: make([]store.CandidateExamResource, 0, len(rows))}
 		for _, row := range rows {
 			resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)

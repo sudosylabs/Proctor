@@ -663,7 +663,7 @@ func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevi
 	}
 	return &store.ExamRevisionSummary{ID: revision.ID, ExamID: revision.ExamID, Number: revision.Number,
 		SourceDraftRevision: revision.SourceDraftRevision, Title: revision.Title, PolicySchemaVersion: revision.Policy.SchemaVersion,
-		PolicyDigest: revision.PolicyDigest, ExecutionProfileDigest: revision.ExecutionProfileDigest,
+		PolicyDigest:        revision.PolicyDigest,
 		BrowserPolicyDigest: revision.BrowserPolicyDigest, Capacity: revision.Capacity,
 		StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
 		ResourceCount: len(revision.Resources), StarterWorkspaceEntries: len(revision.StarterWorkspace), StarterWorkspaceBytes: starterBytes,

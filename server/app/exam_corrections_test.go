@@ -47,7 +47,7 @@ func TestCorrectionApplyPreservesOptionalInputsAndOwnsManifest(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			command := ApplyExamSittingCorrectionCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 				ExpectedSittingRevision: 2, ExpectedCurrentRevisionID: model.NewExamRevisionID(), Instructions: test.instructions,
-				BrowserPolicy: test.policy, Resources: test.resources, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: " raw summary ", AcknowledgementRequired: true,
+				BrowserPolicy: test.policy, Resources: test.resources, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: " raw summary ", AcknowledgementRequired: true,
 				PrivateReason: " raw reason ", IdempotencyKey: " raw-key "}
 			fake := &examCorrectionUseCasesFake{}
 			if _, err := (&App{examCorrections: fake}).ApplyExamSittingCorrection(ctx, invocation, command); err != nil {
@@ -201,25 +201,6 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 		events[3].Name != "candidate.exam_activity.changed" || events[3].UserID != candidateID.String() {
 		t.Fatalf("events = %#v", events)
 	}
-	for _, test := range []struct {
-		selected    []model.CandidateCapability
-		required    bool
-		wantRelease int
-	}{
-		{[]model.CandidateCapability{model.CandidateCapabilityBrowser}, true, 0},
-		{[]model.CandidateCapability{model.CandidateCapabilityTerminal}, false, 0},
-		{[]model.CandidateCapability{model.CandidateCapabilityTerminal}, true, 1},
-	} {
-		execution := &correctionExecutionFake{}
-		err := (examCorrectionRealtimeEffects{realtime: realtime, collections: collections, execution: execution}).Corrected(context.Background(), examcorrection.Result{
-			ExamID: examID, SittingID: sittingID, PreviousRevisionID: previousRevisionID,
-			RevisionID: revisionID, SittingRevision: 7, EffectiveAt: at,
-			AffectedCapabilities: test.selected, AcknowledgementRequired: test.required,
-		})
-		if err != nil || execution.releases != test.wantRelease {
-			t.Fatalf("correction release=%d, want=%d, err=%v", execution.releases, test.wantRelease, err)
-		}
-	}
 
 }
 
@@ -240,12 +221,4 @@ func (f *examCorrectionUseCasesFake) StageResourceContent(ctx context.Context, c
 func (f *examCorrectionUseCasesFake) Apply(ctx context.Context, call examcorrection.Call, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
 	f.ctx, f.call, f.apply = ctx, call, c
 	return f.applyResult, f.err
-}
-
-// This verifies selection of the existing protective release, not actual freeze.
-type correctionExecutionFake struct{ releases int }
-
-func (fake *correctionExecutionFake) ReleaseSitting(context.Context, model.ExamSittingID) error {
-	fake.releases++
-	return nil
 }

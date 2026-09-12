@@ -16,7 +16,7 @@ the same product semantics with different adapters.
 ## Separate Configuration from Application Data
 
 Deployment configuration includes listeners, public URL, PostgreSQL, cache,
-cluster, VFS, SMTP, execution hosts, external providers, logging, metrics,
+cluster, VFS, SMTP, external providers, logging, metrics,
 secrets, and process limits. It is operator-owned JSON plus explicit
 `PROCTOR_` environment overrides.
 
@@ -42,8 +42,7 @@ Reload only when the owning capability can validate a complete replacement and
 swap it atomically while in-flight callers retain a coherent snapshot.
 
 Current dynamic examples include logging targets and the external-provider
-registry. Listener addresses, TLS mode, cluster backend, node identity, and
-execution-host catalog require restart. Do not claim a field is reloadable
+registry. Listener addresses, TLS mode, cluster backend, and node identity require restart. Do not claim a field is reloadable
 because its Go struct can be changed.
 
 When adding configuration:

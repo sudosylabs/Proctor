@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
   <title id="title">Governed Browser Policy and privacy-minimized Browser Activity</title>
-  <desc id="description">A versioned Browser Policy permits one governed Desktop browser surface using HTTPS origin, host match, path prefix, redirect behavior, and start rule. Only top-level open, close, allowed navigation or redirect, and blocked navigation events enter a minimization boundary. Retained fields include source and sequence, policy Revision, time, closed reason, and a minimized network location. Queries, fragments, credentials, page content, titles, referrers, headers, cookies, DOM data, download bodies, local paths, screenshots, clipboard, terminal output, and source code are excluded.</desc>
+  <desc id="description">A versioned Browser Policy permits one governed Desktop browser surface using HTTPS origin, host match, path prefix, redirect behavior, and start rule. Only top-level open, close, allowed navigation or redirect, and blocked navigation events enter a minimization boundary. Retained fields include source and sequence, policy Revision, time, closed reason, and a minimized network location. Queries, fragments, credentials, page content, titles, referrers, headers, cookies, DOM data, download bodies, local paths, screenshots, clipboard, and source code are excluded.</desc>
   <defs>
     <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
     <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
@@ -42,6 +42,6 @@
   <rect x="56" y="472" width="1088" height="144" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
   <text x="80" y="510" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXCLUDED FROM POLICY AND ACTIVITY</text>
   <text x="80" y="546" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">URL credentials · query · fragment · page title/content · referrer · headers · cookies · DOM · download bodies · local paths</text>
-  <text x="80" y="578" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">screenshots · webcam · clipboard · terminal output · source code · arbitrary payloads</text>
+  <text x="80" y="578" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">screenshots · webcam · clipboard · source code · arbitrary payloads</text>
   <text x="600" y="668" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">A gap records uncertainty. Proctor never invents an observation.</text>
 </svg>

@@ -205,9 +205,8 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		CandidateUserID: f.userID, WorkspaceID: workspaceID,
 		Entry: &store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: model.StarterWorkspaceEntryDirectory, Path: "src"}, Change: change}
 
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Origin: WorkspaceMutationOriginCandidate,
-		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
-			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+		ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
 		Path: "src", IdempotencyKey: "test-key",
 	})
 	if err != nil {
@@ -256,9 +255,8 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 		model.AttemptWorkspaceMutationCreateFile, "", "main.go", version, false)
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
 
-	result, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate,
-		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
-			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 2},
+	result, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+		ContinuityCredential: credential}, ParticipationID: participationID, Generation: 2},
 		Path: "main.go", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4,
 		IdempotencyKey: "test-key",
 	})
@@ -302,7 +300,7 @@ func TestReplaceWorkspaceFilePassesOwnedIdempotencyToStore(t *testing.T) {
 	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, entryID, model.StarterWorkspaceEntryFile,
 		model.AttemptWorkspaceMutationReplaceFile, "main.go", "main.go", nextVersion, false)
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
-	command := ReplaceWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+	command := ReplaceWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "main.go", ExpectedContentVersion: currentVersion, MediaType: "text/plain",
 		ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4, IdempotencyKey: "replace-key"}
 	if _, err := f.service.ReplaceWorkspaceFile(context.Background(), f.call, command); err != nil {
@@ -331,8 +329,7 @@ func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
 	f.workspace.proposedVersion = model.NewWorkspaceContentVersion()
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-	_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate,
-		Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
+	_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
 		Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
 	if err != nil || len(f.workspace.reclaimable) != 1 || f.effects.workspaceChanged != 0 ||
@@ -351,26 +348,10 @@ func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *t
 	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, retainedID, model.StarterWorkspaceEntryDirectory,
 		model.AttemptWorkspaceMutationCreateDirectory, "", "src", "", true)
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Origin: WorkspaceMutationOriginCandidate,
-		Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key",
-	})
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key"})
 	if err != nil || result.Entry == nil || result.Entry.EntryID != retainedID || f.workspace.mutation.EntryID != f.workspace.proposedEntryID ||
 		f.workspace.mutation.EntryID == retainedID || f.effects.workspaceChanged != 0 {
 		t.Fatalf("result=%#v mutation=%#v error=%v", result, f.workspace.mutation, err)
-	}
-}
-
-func TestWorkspaceMutationOriginFailsClosed(t *testing.T) {
-	t.Parallel()
-	for _, origin := range []WorkspaceMutationOrigin{"", "unknown"} {
-		f := newFixture(t)
-		_, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
-			Origin: origin, Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key",
-		})
-		var fault *Fault
-		if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || f.workspace.mutation != nil {
-			t.Fatalf("origin %q error/mutation = %v/%#v", origin, err, f.workspace.mutation)
-		}
 	}
 }
 
@@ -395,7 +376,7 @@ func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcom
 			f.workspace.mutationErr = test.err
 			checksum := strings.Repeat("d", 64)
 			f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key"})
 			var fault *Fault
@@ -415,7 +396,7 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 		check     func(*testing.T, *store.ExamAttemptWorkspaceMutation)
 	}{
 		{name: "move", operation: model.AttemptWorkspaceMutationMoveEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, _ model.WorkspaceContentVersion) error {
-			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.call, MoveWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.call, MoveWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: id, ExpectedPath: "old", DestinationPath: "new", IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
@@ -424,7 +405,7 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 			}
 		}},
 		{name: "delete_file", operation: model.AttemptWorkspaceMutationDeleteEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, version model.WorkspaceContentVersion) error {
-			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, DeleteWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
@@ -519,7 +500,7 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 	}
 }
 
-func TestDuplicateParticipationRenewalRepairsControlWithoutRepublishingRenewal(t *testing.T) {
+func TestDuplicateParticipationRenewalDoesNotRepublishRenewal(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	participationID := model.NewAttemptParticipationID()
@@ -528,12 +509,11 @@ func TestDuplicateParticipationRenewalRepairsControlWithoutRepublishingRenewal(t
 		CandidateUserID: f.call.Principal().UserID, ParticipationID: participationID, Generation: 2,
 		AcceptedSequence: 4, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease), Duplicate: true,
 	}
-	f.effects.securityError = errors.New("host response lost")
 	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 4, ContinuityCredential: model.NewCredentialToken(),
 	})
-	if err != nil || f.effects.renewed != 0 || f.effects.securityChanges != 1 || f.effects.securityReports != 1 {
+	if err != nil || f.effects.renewed != 0 {
 		t.Fatalf("error=%v renewal effects=%d", err, f.effects.renewed)
 	}
 }
@@ -1397,8 +1377,7 @@ func runtimeCapabilitiesFixture(f *fixture, currentRevisionID model.ExamRevision
 		AttemptConfiguration: store.CandidateAttemptConfiguration{Revision: configuration.Revision, Presentation: configuration.Presentation,
 			ApprovedCommands: append([]string{}, configuration.ApprovedCommands...), ApprovedKeybindings: append([]string{}, configuration.ApprovedKeybindings...), Digest: configuration.Digest},
 		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
-		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled, ProjectionState: store.ExecutionProjectionUnavailable},
-		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
+		Browser: store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
 		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: f.revision.ID,
 			CurrentRevisionID: currentRevisionID},
 		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"}}
@@ -1498,9 +1477,6 @@ func (fake *auditFake) Complete(_ context.Context, _ string, _ map[string]any) e
 }
 
 type effectsFake struct {
-	securityChanges  int
-	securityError    error
-	securityReports  int
 	f                *fixture
 	opened, closed   int
 	renewed          int
@@ -1562,9 +1538,6 @@ func (fake *effectsFake) AttemptSealedForSittingClose(context.Context, Automatic
 	return nil
 }
 func (fake *effectsFake) Report(_ context.Context, kind string, _ error) {
-	if kind == "exam_attempt_security_coverage_changed" {
-		fake.securityReports++
-	}
 }
 
 type contentFake struct {
@@ -1983,7 +1956,7 @@ func renewalCoverageFixture() model.SecurityCoverageRenewal {
 }
 func renewalCoverageResultFixture() model.SecurityCoverageResult {
 	digest := model.SHA256Fingerprint([]byte("renewal-control"))
-	return model.SecurityCoverageResult{ProcessedControlSequence: 1, ProcessedControlDigest: &digest, CoverageResult: "accepted", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: true, ExecutionState: "not_allocated", DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
+	return model.SecurityCoverageResult{ProcessedControlSequence: 1, ProcessedControlDigest: &digest, CoverageResult: "accepted", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: true, DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
 }
 
 func (fake *attemptStoreFake) NativeDeliveryStatus(context.Context, store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
@@ -2067,17 +2040,4 @@ func (fake *attemptStoreFake) DeliveryBudget(context.Context, store.DeliveryBudg
 }
 func (fake *attemptStoreFake) StopDeliveryDetails(context.Context, *store.DeliveryDetailsStop, *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
-}
-
-func (fake *effectsFake) SecurityCoverageChanged(context.Context, model.ExamAttemptID) error {
-	fake.securityChanges++
-	return fake.securityError
-}
-
-func (*attemptWorkspaceStoreFake) ResolveObservation(context.Context, store.ExamAttemptWorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
-	return nil, store.NewErrInvalidInput("execution_observation", "unsupported", nil)
-}
-
-func (*attemptWorkspaceStoreFake) RecordIgnoredObservation(context.Context, store.ExamAttemptWorkspaceMutationAccess) (*store.ExecutionObservationTarget, error) {
-	return nil, store.NewErrInvalidInput("execution_observation", "unsupported", nil)
 }

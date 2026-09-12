@@ -93,10 +93,6 @@ func validExamAuthoringRow(t *testing.T) examAuthoringRow {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile, err := model.EncodeExecutionProfile(model.DefaultExecutionProfile())
-	if err != nil {
-		t.Fatal(err)
-	}
 	browserPolicy, err := model.EncodeBrowserPolicy(model.DisabledBrowserPolicy())
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +100,7 @@ func validExamAuthoringRow(t *testing.T) examAuthoringRow {
 	return examAuthoringRow{
 		ID: model.NewId(), AcademicUnitID: model.NewId(), CreatorUserID: model.NewId(), OwnerUserID: model.NewId(),
 		DefaultRevisionID: sql.NullString{}, CreatedAt: at, UpdatedAt: at, ExamRevision: 1,
-		DraftTitle: "Test", Policy: jsonValue(policy), ExecutionProfile: jsonValue(profile), BrowserPolicy: jsonValue(browserPolicy),
+		DraftTitle: "Test", Policy: jsonValue(policy), BrowserPolicy: jsonValue(browserPolicy),
 		BaseRevisionID: sql.NullString{}, DraftUpdatedAt: at,
 		DraftRevision: 1, ManagerCount: 1, ActorIsManager: true,
 		OwnerIsManager: true,

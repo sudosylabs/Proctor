@@ -260,7 +260,6 @@ components:
         - title
         - policy_schema_version
         - policy_digest
-        - execution_profile_digest
         - capacity
         - starter_workspace_digest
         - content_digest
@@ -291,8 +290,6 @@ components:
           type: integer
           const: 1
         policy_digest:
-          $ref: '#/components/schemas/SHA256'
-        execution_profile_digest:
           $ref: '#/components/schemas/SHA256'
         capacity:
           $ref: '#/components/schemas/ExamCapacityPolicy'

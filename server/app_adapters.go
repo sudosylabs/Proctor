@@ -78,7 +78,6 @@ func applicationDependencies(
 		MailSecretSealer:        mailSecretSealer,
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
-		ExecutionHosts:          capabilities.executionHosts,
 		DesktopBuildCatalog:     desktopBuilds,
 		NodeID:                  capabilities.nodeID,
 		PublicURL:               cfg.Server.PublicURL,

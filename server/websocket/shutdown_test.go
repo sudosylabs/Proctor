@@ -10,9 +10,9 @@ package websocket
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
@@ -132,78 +132,6 @@ func TestHubShutdownDeadlineCancelsFinalizationAndRetainsError(t *testing.T) {
 	}
 }
 
-type shutdownTerminal struct {
-	*inboundTerminalFake
-	readerClosing chan struct{}
-	release       chan struct{}
-}
-
-func (terminal *shutdownTerminal) Read([]byte) (int, error) {
-	<-terminal.closed
-	close(terminal.readerClosing)
-	<-terminal.release
-	return 0, io.EOF
-}
-
-func TestHubShutdownWaitsForAttemptTerminalReader(t *testing.T) {
-	t.Parallel()
-	terminal := &shutdownTerminal{inboundTerminalFake: newInboundTerminalFake(), readerClosing: make(chan struct{}), release: make(chan struct{})}
-	application := &inboundTestApplication{terminal: terminal}
-	hub, err := NewHub(application, replayTestLogger{}, "https://proctor.example", "node-a", nil, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := hub.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	socket := newRuntimeTestSocket()
-	runtime, _ := hub.register(socket, model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}, model.RequestMetadata{}, "", 0, "")
-	if runtime == nil {
-		t.Fatal("register failed")
-	}
-	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), sittingID: model.NewExamSittingID(), classID: model.NewClassID(), connectionID: model.NewAttemptConnectionID(), participationID: model.NewAttemptParticipationID(), generation: 1}
-	runtime.handleRequest(context.Background(), requestWithData(t, 1, examAttemptTerminalOpenAction,
-		examAttemptTerminalOpenRequest{ExpectedWorkspaceCursor: new(int64), Generation: 1, ContinuityCredential: model.NewCredentialToken(), Cols: 80, Rows: 24}))
-	finished := make(chan struct{})
-	go func() { runtime.run(context.Background()); hub.unregister(runtime); close(finished) }()
-	t.Cleanup(func() {
-		_ = terminal.Close()
-		close(terminal.release)
-		_ = hub.Close()
-		select {
-		case <-finished:
-		case <-time.After(time.Second):
-			t.Error("terminal connection did not finish")
-		}
-	})
-	select {
-	case <-socket.readDeadline:
-	case <-time.After(time.Second):
-		t.Fatal("connection did not start")
-	}
-	closed := make(chan error, 1)
-	go func() { closed <- hub.Close() }()
-	select {
-	case <-terminal.readerClosing:
-	case <-time.After(time.Second):
-		t.Fatal("terminal reader was not stopped")
-	}
-	select {
-	case err := <-closed:
-		t.Fatalf("Close returned %v before terminal reader drained", err)
-	case <-time.After(20 * time.Millisecond):
-	}
-	terminal.release <- struct{}{}
-	select {
-	case err := <-closed:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Close did not finish after terminal reader")
-	}
-}
-
 type shutdownSlowSocket struct {
 	*runtimeTestSocket
 	mu        sync.Mutex
@@ -225,45 +153,47 @@ func (s *shutdownSlowSocket) WriteControl(_ int, _ []byte, deadline time.Time) e
 
 func TestHubShutdownUsesOneControlWriteBudgetForAllPeers(t *testing.T) {
 	t.Parallel()
-	hub := newInternalTestHub(t)
-	hub.shutdownTimeout = 40 * time.Millisecond
-	if err := hub.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var sockets []*shutdownSlowSocket
-	for range 4 {
-		socket := &shutdownSlowSocket{runtimeTestSocket: newRuntimeTestSocket()}
-		sockets = append(sockets, socket)
-		principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
-		if connection, _ := hub.register(socket, principal, model.RequestMetadata{}, "", 0, ""); connection == nil {
-			t.Fatal("register failed")
+	synctest.Test(t, func(t *testing.T) {
+		hub := newInternalTestHub(t)
+		hub.shutdownTimeout = 40 * time.Millisecond
+		if err := hub.Start(context.Background()); err != nil {
+			t.Fatal(err)
 		}
-	}
-	started := time.Now()
-	if err := hub.Close(); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Close error = %v", err)
-	}
-	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
-		t.Fatalf("serial peers extended the drain budget: %s", elapsed)
-	}
-	var firstDeadline time.Time
-	for _, socket := range sockets {
-		select {
-		case <-socket.closed:
-		default:
-			t.Fatal("shutdown left a socket open")
-		}
-		socket.mu.Lock()
-		for _, deadline := range socket.deadlines {
-			if firstDeadline.IsZero() {
-				firstDeadline = deadline
-			}
-			if !deadline.Equal(firstDeadline) {
-				t.Fatal("close frames received separate deadlines")
+		var sockets []*shutdownSlowSocket
+		for range 4 {
+			socket := &shutdownSlowSocket{runtimeTestSocket: newRuntimeTestSocket()}
+			sockets = append(sockets, socket)
+			principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
+			if connection, _ := hub.register(socket, principal, model.RequestMetadata{}, "", 0, ""); connection == nil {
+				t.Fatal("register failed")
 			}
 		}
-		socket.mu.Unlock()
-	}
+		started := time.Now()
+		if err := hub.Close(); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Close error = %v", err)
+		}
+		if elapsed := time.Since(started); elapsed != hub.shutdownTimeout {
+			t.Fatalf("serial peers extended the drain budget: %s", elapsed)
+		}
+		var firstDeadline time.Time
+		for _, socket := range sockets {
+			select {
+			case <-socket.closed:
+			default:
+				t.Fatal("shutdown left a socket open")
+			}
+			socket.mu.Lock()
+			for _, deadline := range socket.deadlines {
+				if firstDeadline.IsZero() {
+					firstDeadline = deadline
+				}
+				if !deadline.Equal(firstDeadline) {
+					t.Fatal("close frames received separate deadlines")
+				}
+			}
+			socket.mu.Unlock()
+		}
+	})
 }
 
 func TestHubShutdownPreventsRegisteredConnectionFromStarting(t *testing.T) {

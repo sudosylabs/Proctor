@@ -83,11 +83,7 @@ boundary. Role, binding, assurance, account, and session changes invalidate
 affected connections. Cluster-received events are delivered locally without
 rebroadcast, preventing loops.
 
-When an Execution Profile enables an Attempt Terminal, PTY octets travel on
-the same Attempt Connection and then through execenv to the Execution Host.
-They are not workspace mutations, not realtime event payloads, and not
-ordinary log fields. The accepted path is in
-the [`execution-environments` skill](../../execution-environments/SKILL.md).
+
 
 A committed voluntary Submission publishes bounded `exam_attempt_submitted`
 facts to the authorized manager Sitting subscription and the candidate user,

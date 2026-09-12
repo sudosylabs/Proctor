@@ -58,13 +58,13 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: revisionID,
 		Instructions:         OptionalInstructions{Present: true, Markdown: "Updated"},
 		Resources:            []ResourceManifestItem{{ResourceID: resourceID, DisplayName: "Reference", DescriptionMarkdown: "Read it", StageID: stageID}},
-		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityTerminal, model.CandidateCapabilityWorkspace}, CandidateSummary: "Instructions and reference were corrected.", AcknowledgementRequired: true,
+		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "Instructions and reference were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "ambiguity", IdempotencyKey: "apply-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertPreparedIdempotency(t, applied, userID, idempotencyOperationApplyCorrection, "apply-key",
-		fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"expected_sitting_revision":3,"expected_current_revision_id":%q,"instructions_present":true,"instructions_markdown":"Updated","browser_policy_present":false,"browser_policy":"","resources":[{"resource_id":%q,"display_name":"Reference","description_markdown":"Read it","stage_id":%q}],"candidate_summary":"Instructions and reference were corrected.","acknowledgement_required":true,"affected_capabilities":["browser","submission","terminal","workspace"],"private_reason":"ambiguity"}`,
+		fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"expected_sitting_revision":3,"expected_current_revision_id":%q,"instructions_present":true,"instructions_markdown":"Updated","browser_policy_present":false,"browser_policy":"","resources":[{"resource_id":%q,"display_name":"Reference","description_markdown":"Read it","stage_id":%q}],"candidate_summary":"Instructions and reference were corrected.","acknowledgement_required":true,"affected_capabilities":["browser","submission","workspace"],"private_reason":"ambiguity"}`,
 			examID, sittingID, revisionID, resourceID, stageID))
 }
 

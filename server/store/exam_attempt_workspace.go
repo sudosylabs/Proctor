@@ -30,11 +30,6 @@ type ExamAttemptWorkspaceMutationAccess struct {
 	DPoPKeyThumbprint        string
 	ConnectionID             model.AttemptConnectionID
 	ContinuityCredentialHash string
-	// SourceGrantID fences harvested guest writes to their exact ready grant.
-	// Candidate-originated commands leave it zero.
-	SourceGrantID model.ExecutionGrantID
-	// SourceObservation is required for the semantic host protocol; legacy callers omit it.
-	SourceObservation *ExecutionObservation
 }
 
 // ExamAttemptWorkspaceMutationTarget is the bounded preflight projection used
@@ -160,11 +155,6 @@ type ExamAttemptWorkspaceStore interface {
 	List(context.Context, CandidateWorkspaceListOptions) (*CandidateAttemptWorkspacePage, error)
 	ResolveFile(context.Context, CandidateAttemptAccess, model.AttemptWorkspaceEntryID) (*CandidateWorkspaceContent, error)
 	ListJournal(context.Context, CandidateWorkspaceJournalOptions) (*CandidateWorkspaceJournalPage, error)
-	ResolveObservation(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExecutionObservationTarget, error)
-	// RecordIgnoredObservation advances only the durable host outcome/sequence
-	// for an event wholly within an ignored tree. Boundary moves are refused;
-	// no Workspace mutation or projection confirmation is fabricated.
-	RecordIgnoredObservation(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExecutionObservationTarget, error)
 	ResolveMutationTarget(context.Context, ExamAttemptWorkspaceMutationAccess) (*ExamAttemptWorkspaceMutationTarget, error)
 	ReserveObject(context.Context, *ExamAttemptWorkspaceObjectReservation) (*model.AttemptWorkspaceObject, error)
 	MarkObjectReady(context.Context, *ExamAttemptWorkspaceObjectReady) (*model.AttemptWorkspaceObject, error)

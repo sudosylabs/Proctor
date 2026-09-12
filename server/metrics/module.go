@@ -62,74 +62,68 @@ type Module struct {
 
 	ready atomic.Bool
 
-	httpRequests            *prometheus.CounterVec
-	httpDuration            *prometheus.HistogramVec
-	httpInFlight            prometheus.Gauge
-	workActive              *prometheus.GaugeVec
-	workRejected            *prometheus.CounterVec
-	workDuration            *prometheus.HistogramVec
-	httpRequestBytes        *prometheus.HistogramVec
-	httpResponseBytes       *prometheus.HistogramVec
-	storeDuration           *prometheus.HistogramVec
-	storeCache              *prometheus.CounterVec
-	storeRetries            *prometheus.CounterVec
-	websocketConnections    prometheus.Gauge
-	websocketTransitions    *prometheus.CounterVec
-	websocketBackpressure   prometheus.Counter
-	websocketMessages       *prometheus.CounterVec
-	websocketMessageBytes   *prometheus.CounterVec
-	websocketBroadcasts     *prometheus.CounterVec
-	websocketFanout         prometheus.Histogram
-	websocketReplays        *prometheus.CounterVec
-	websocketReplayEvents   prometheus.Histogram
-	websocketSubscriptions  prometheus.Gauge
-	clusterOperations       *prometheus.CounterVec
-	clusterDuration         *prometheus.HistogramVec
-	clusterMessages         *prometheus.CounterVec
-	clusterMessageBytes     *prometheus.CounterVec
-	clusterMembership       *prometheus.CounterVec
-	clusterDiscovery        *prometheus.CounterVec
-	clusterAdmission        *prometheus.CounterVec
-	clusterFanout           prometheus.Histogram
-	clusterPeerCount        atomic.Int64
-	clusterPeerMu           sync.RWMutex
-	clusterPeerSource       func() int
-	jobExecutions           *prometheus.CounterVec
-	jobDuration             *prometheus.HistogramVec
-	jobsActive              *prometheus.GaugeVec
-	jobActivities           *prometheus.CounterVec
-	jobActivityDuration     *prometheus.HistogramVec
-	jobQueueLatency         *prometheus.HistogramVec
-	executionHostOperations *prometheus.CounterVec
-	executionHostDuration   *prometheus.HistogramVec
-	executionHostState      *prometheus.GaugeVec
-	executionHostSlots      *prometheus.GaugeVec
-	executionStreams        *prometheus.CounterVec
-	executionStreamBytes    *prometheus.CounterVec
-	vfsOperations           *prometheus.CounterVec
-	vfsDuration             *prometheus.HistogramVec
-	vfsBytes                *prometheus.CounterVec
-	vfsObjectSize           *prometheus.HistogramVec
-	vfsListEntries          *prometheus.HistogramVec
-	vfsStreams              *prometheus.CounterVec
-	cacheOperations         *prometheus.CounterVec
-	cacheDuration           *prometheus.HistogramVec
-	cacheBytes              *prometheus.CounterVec
-	redisOperations         *prometheus.CounterVec
-	redisDuration           *prometheus.HistogramVec
-	smtpOperations          *prometheus.CounterVec
-	smtpDuration            *prometheus.HistogramVec
-	smtpMessages            *prometheus.CounterVec
-	smtpRecipients          *prometheus.CounterVec
-	smtpBytes               *prometheus.CounterVec
-	mailDeliveries          *prometheus.CounterVec
-	mailAttempts            *prometheus.CounterVec
-	mailProcessingLatency   *prometheus.HistogramVec
-	mailQueueCount          *prometheus.GaugeVec
-	mailQueueOldest         *prometheus.GaugeVec
-	mailQueueTruncated      prometheus.Gauge
-	mailHealth              *prometheus.GaugeVec
-	applicationEvents       *prometheus.CounterVec
+	httpRequests           *prometheus.CounterVec
+	httpDuration           *prometheus.HistogramVec
+	httpInFlight           prometheus.Gauge
+	workActive             *prometheus.GaugeVec
+	workRejected           *prometheus.CounterVec
+	workDuration           *prometheus.HistogramVec
+	httpRequestBytes       *prometheus.HistogramVec
+	httpResponseBytes      *prometheus.HistogramVec
+	storeDuration          *prometheus.HistogramVec
+	storeCache             *prometheus.CounterVec
+	storeRetries           *prometheus.CounterVec
+	websocketConnections   prometheus.Gauge
+	websocketTransitions   *prometheus.CounterVec
+	websocketBackpressure  prometheus.Counter
+	websocketMessages      *prometheus.CounterVec
+	websocketMessageBytes  *prometheus.CounterVec
+	websocketBroadcasts    *prometheus.CounterVec
+	websocketFanout        prometheus.Histogram
+	websocketReplays       *prometheus.CounterVec
+	websocketReplayEvents  prometheus.Histogram
+	websocketSubscriptions prometheus.Gauge
+	clusterOperations      *prometheus.CounterVec
+	clusterDuration        *prometheus.HistogramVec
+	clusterMessages        *prometheus.CounterVec
+	clusterMessageBytes    *prometheus.CounterVec
+	clusterMembership      *prometheus.CounterVec
+	clusterDiscovery       *prometheus.CounterVec
+	clusterAdmission       *prometheus.CounterVec
+	clusterFanout          prometheus.Histogram
+	clusterPeerCount       atomic.Int64
+	clusterPeerMu          sync.RWMutex
+	clusterPeerSource      func() int
+	jobExecutions          *prometheus.CounterVec
+	jobDuration            *prometheus.HistogramVec
+	jobsActive             *prometheus.GaugeVec
+	jobActivities          *prometheus.CounterVec
+	jobActivityDuration    *prometheus.HistogramVec
+	jobQueueLatency        *prometheus.HistogramVec
+	vfsOperations          *prometheus.CounterVec
+	vfsDuration            *prometheus.HistogramVec
+	vfsBytes               *prometheus.CounterVec
+	vfsObjectSize          *prometheus.HistogramVec
+	vfsListEntries         *prometheus.HistogramVec
+	vfsStreams             *prometheus.CounterVec
+	cacheOperations        *prometheus.CounterVec
+	cacheDuration          *prometheus.HistogramVec
+	cacheBytes             *prometheus.CounterVec
+	redisOperations        *prometheus.CounterVec
+	redisDuration          *prometheus.HistogramVec
+	smtpOperations         *prometheus.CounterVec
+	smtpDuration           *prometheus.HistogramVec
+	smtpMessages           *prometheus.CounterVec
+	smtpRecipients         *prometheus.CounterVec
+	smtpBytes              *prometheus.CounterVec
+	mailDeliveries         *prometheus.CounterVec
+	mailAttempts           *prometheus.CounterVec
+	mailProcessingLatency  *prometheus.HistogramVec
+	mailQueueCount         *prometheus.GaugeVec
+	mailQueueOldest        *prometheus.GaugeVec
+	mailQueueTruncated     prometheus.Gauge
+	mailHealth             *prometheus.GaugeVec
+	applicationEvents      *prometheus.CounterVec
 
 	mu        sync.Mutex
 	server    *http.Server
@@ -186,12 +180,6 @@ func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, er
 	module.jobActivities = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activities_total", Help: "Durable Job runtime, recurrence, and periodic-task activity."}, []string{"kind", "name", "operation", "outcome"})
 	module.jobActivityDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "activity_duration_seconds", Help: "Durable Job runtime, recurrence, and periodic-task duration.", Buckets: prometheus.DefBuckets}, []string{"kind", "name", "operation"})
 	module.jobQueueLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "jobs", Name: "queue_latency_seconds", Help: "Time a durable Job was available before being claimed.", Buckets: prometheus.ExponentialBuckets(0.25, 2, 16)}, []string{"type"})
-	module.executionHostOperations = operationCounter("execution_host", "Execution-host operations.", []string{"operation", "outcome"})
-	module.executionHostDuration = operationDuration("execution_host", "Execution-host operation duration.", []string{"operation"})
-	module.executionHostState = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "execution_host", Name: "hosts", Help: "Configured execution hosts by bounded state."}, []string{"state"})
-	module.executionHostSlots = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "execution_host", Name: "slots", Help: "Execution-host slots by bounded state."}, []string{"state"})
-	module.executionStreams = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "execution_host", Name: "stream_operations_total", Help: "Execution observation, file, and terminal stream operations."}, []string{"stream", "operation", "outcome"})
-	module.executionStreamBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "execution_host", Name: "stream_bytes_total", Help: "Bytes transferred through execution file and terminal streams."}, []string{"stream", "direction"})
 	module.vfsOperations = operationCounter("vfs", "VFS backend operations.", []string{"backend", "operation", "outcome"})
 	module.vfsDuration = operationDuration("vfs", "VFS backend operation duration.", []string{"backend", "operation"})
 	module.vfsBytes = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "vfs", Name: "bytes_total", Help: "VFS payload bytes transferred."}, []string{"backend", "direction"})
@@ -234,8 +222,6 @@ func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, er
 		module.clusterMembership, module.clusterDiscovery, module.clusterAdmission, module.clusterFanout,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "cluster", Name: "peers", Help: "Known peer nodes, excluding this node."}, module.currentClusterPeers),
 		module.jobExecutions, module.jobDuration, module.jobsActive, module.jobActivities, module.jobActivityDuration, module.jobQueueLatency,
-		module.executionHostOperations, module.executionHostDuration, module.executionHostState, module.executionHostSlots,
-		module.executionStreams, module.executionStreamBytes,
 		module.vfsOperations, module.vfsDuration, module.vfsBytes, module.vfsObjectSize, module.vfsListEntries, module.vfsStreams,
 		module.cacheOperations, module.cacheDuration, module.cacheBytes,
 		module.redisOperations, module.redisDuration,
@@ -569,34 +555,6 @@ func (m *Module) ObserveJobActivity(kind, name, operation, result string, durati
 	}
 	if kind == "job" && operation == "claim" && result == "success" && queueLatency >= 0 {
 		m.jobQueueLatency.WithLabelValues(name).Observe(queueLatency.Seconds())
-	}
-}
-func (m *Module) ObserveExecutionHost(operation string, err error, duration time.Duration) {
-	m.executionHostOperations.WithLabelValues(operation, outcome(err)).Inc()
-	m.executionHostDuration.WithLabelValues(operation).Observe(duration.Seconds())
-}
-func (m *Module) SetExecutionHostSnapshot(states map[string]int, slots map[string]int) {
-	if m == nil {
-		return
-	}
-	for _, state := range []string{"usable", "unusable", "isolated", "unisolated", "freeze_capable", "freeze_incapable"} {
-		m.executionHostState.WithLabelValues(state).Set(float64(max(states[state], 0)))
-	}
-	for _, state := range []string{"usable", "unusable"} {
-		m.executionHostSlots.WithLabelValues(state).Set(float64(max(slots[state], 0)))
-	}
-}
-func (m *Module) ObserveExecutionStream(stream, operation, result string, bytes int) {
-	if m == nil {
-		return
-	}
-	m.executionStreams.WithLabelValues(stream, operation, result).Inc()
-	direction := "read"
-	if operation == "write" {
-		direction = "write"
-	}
-	if bytes > 0 && (operation == "read" || operation == "write") {
-		m.executionStreamBytes.WithLabelValues(stream, direction).Add(float64(bytes))
 	}
 }
 func (m *Module) ObserveVFS(backend, operation string, err error, duration time.Duration) {

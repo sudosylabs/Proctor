@@ -137,28 +137,6 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 			attemptID, revisionID))
 }
 
-func TestWorkspaceMutationOriginIsExcludedFromVersionOneFingerprint(t *testing.T) {
-	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	attemptID := model.NewExamAttemptID()
-	semantic := struct {
-		Path string `json:"path"`
-	}{"src"}
-	candidate, err := prepareWorkspaceMutationIdempotency(call, "same-key", attemptID,
-		model.AttemptWorkspaceMutationCreateDirectory, semantic)
-	if err != nil {
-		t.Fatal(err)
-	}
-	executionHost, err := prepareWorkspaceMutationIdempotency(call, "same-key", attemptID,
-		model.AttemptWorkspaceMutationCreateDirectory, semantic)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if candidate.Fingerprint != executionHost.Fingerprint {
-		t.Fatal("transient origin changed the retained version-one Workspace fingerprint")
-	}
-}
-
 func TestIdempotencyOperationCompatibility(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{

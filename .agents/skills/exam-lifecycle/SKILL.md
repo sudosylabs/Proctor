@@ -18,8 +18,8 @@ description: Change Exam ownership, authoring, publication, Resources, Starter o
    for.
 3. Keep lifecycle policy in `app/exam` and its justified children; cross-model
    atomicity belongs in named Store operations. Completion: transport, Jobs,
-   VFS, execution hosts, and realtime adapters do not become lifecycle owners.
-4. Order durable commits and audit before cache, cluster, realtime, execution,
+   VFS, and realtime adapters do not become lifecycle owners.
+4. Order durable commits and audit before cache, cluster, realtime,
    mail, or other effects. Completion: replay and effect loss cannot repeat or
    erase a lifecycle transition.
 5. Update model, Store conformance, use-case, HTTP/OpenAPI, integration, and

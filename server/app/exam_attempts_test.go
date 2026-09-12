@@ -166,9 +166,6 @@ func TestWorkspaceMutationRawKeySurvivesReconnectWhileChildReceivesCurrentAccess
 		t.Fatal(err)
 	}
 	first := fake.workspaceDirectories[0].IdempotencyKey
-	if fake.workspaceDirectories[0].Origin != examattempt.WorkspaceMutationOriginCandidate {
-		t.Fatalf("candidate facade origin = %q", fake.workspaceDirectories[0].Origin)
-	}
 	principal.SessionID = model.NewSessionID()
 	command.Access.ConnectionID, command.Access.ParticipationID, command.Access.Generation = model.NewAttemptConnectionID(), model.NewAttemptParticipationID(), 2
 	command.Access.ContinuityCredential = model.NewCredentialToken()
@@ -448,23 +445,19 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), FlagID: flagID,
 			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
-	execution := &executionUseCasesStub{}
-	if err := (examAttemptRealtimeEffects{realtime: realtime, execution: execution}).FocusLossEvaluated(context.Background(), result); err != nil {
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
 		t.Fatal(err)
 	}
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	execution.mu.Lock()
-	released := append([]model.ExamAttemptID(nil), execution.released...)
-	execution.mu.Unlock()
 	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" ||
 		events[1].Name != "exam_attempt_integrity_flagged" || events[2].Name != "exam_attempt_suspended" ||
 		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() ||
 		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "candidate.exam_activity.changed" ||
-		len(released) != 1 || released[0] != result.AttemptID || len(unbound) != 1 || unbound[0] != result.Connection.ID {
-		t.Fatalf("events=%#v released=%#v unbound=%#v", events, released, unbound)
+		len(unbound) != 1 || unbound[0] != result.Connection.ID {
+		t.Fatalf("events=%#v unbound=%#v", events, unbound)
 	}
 	if encoded := string(events[3].Data); !strings.Contains(encoded, `"reason_code":"focus_policy_review_required"`) {
 		t.Fatalf("candidate suspension lacks neutral reason: %s", encoded)

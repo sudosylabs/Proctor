@@ -14,7 +14,6 @@ import (
 	"time"
 
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -269,7 +268,6 @@ func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id, code 
 
 type examSittingRealtimeEffects struct {
 	realtime    *realtimeService
-	execution   *appexecution.Service
 	collections examCollectionInvalidationEffects
 }
 
@@ -333,24 +331,11 @@ func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	var executionErr error
-	if effects.execution != nil {
-		switch transition {
-		case store.ExamSittingTransitionManagerPaused:
-			executionErr = effects.execution.FreezeSitting(ctx, sittingID, revision)
-		case store.ExamSittingTransitionManagerResumed:
-			executionErr = effects.execution.ThawSitting(ctx, sittingID, revision)
-		case store.ExamSittingTransitionManagerClosed, store.ExamSittingTransitionScheduledEndReached,
-			store.ExamSittingTransitionClosedNoAttempts, store.ExamSittingTransitionSealingCompleted:
-			executionErr = effects.execution.ReleaseSitting(ctx, sittingID)
-		}
-	}
 	return errors.Join(
 		effects.realtime.Publish(ctx, managerEvent),
 		effects.realtime.Publish(ctx, candidateEvent),
 		effects.publishBoardInvalidation(ctx, examID, sittingID),
 		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
-		executionErr,
 	)
 }
 

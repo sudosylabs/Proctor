@@ -313,8 +313,6 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/sudosylabs/execenv v0.3.1 h1:RmFNVN6q5xXFzDQtcED2K/k7RkXNgWpwQHrSFlAqWOM=
-github.com/sudosylabs/execenv v0.3.1/go.mod h1:nk2rfGHHsFzO8npvlJAOVphi8Zrm9D5VMh5QUfvZgQw=
 github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0 h1:WObnw9TGKAFqCiwXHYZEMVKH4ecEOHF9/bR6yRW+PmU=
 github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0/go.mod h1:az6ExK0hTfrkbSmQzKtx2AyHJFtgWz5i7MqaemygVlU=
 github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132 h1:bNuUs6Fmum/g79jdrm1yxASpyO6Po59LEOLOstNXLJQ=

@@ -33,7 +33,7 @@ deduplicated hints; PostgreSQL state and the recovery scan remain authority.
 | --- | --- | --- |
 | reschedule | Scheduled | changes Revision, Class, or time window under the Sitting revision fence |
 | cancel | Scheduled | terminally prevents opening; creates no Attempts or Submissions |
-| pause | Open | retains presentation and integrity monitoring but blocks new Attempts, writes, execution, and submission |
+| pause | Open | retains presentation and integrity monitoring but blocks new Attempts, writes, and submission |
 | resume | Paused | restores eligible delivery; it does not add the paused duration to the deadline |
 | extend | Open or Paused | moves only the scheduled end later; cannot shorten or rewrite the start |
 | close early | Open or Paused | enters Closing and seals every unfinished created Attempt |

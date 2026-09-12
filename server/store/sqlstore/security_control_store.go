@@ -9,7 +9,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
@@ -71,7 +70,6 @@ type nativeControlOwnerRow struct {
 	LatestCoverage []byte `db:"latest_report_canonical"`
 	Ledger         []byte `db:"control_ledger_canonical"`
 	Allowed        bool   `db:"security_interaction_allowed"`
-	FreezeRequired bool   `db:"freeze_required"`
 	Allocated      int64  `db:"allocated_through_sequence"`
 	Acknowledged   int64  `db:"acknowledged_through_sequence"`
 	SummaryOnly    bool   `db:"summary_only"`
@@ -96,7 +94,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		return zero, err
 	}
 	var owner nativeControlOwnerRow
-	if err := tx.Get(ctx, &owner, `SELECT binding_canonical,latest_report_canonical,control_ledger_canonical,security_interaction_allowed,freeze_required,allocated_through_sequence,acknowledged_through_sequence,summary_only FROM exam_attempt_security_owners WHERE participation_id=? AND exam_attempt_id=? AND session_id=? AND registration_id=? AND key_thumbprint=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint); err != nil {
+	if err = tx.Get(ctx, &owner, `SELECT binding_canonical,latest_report_canonical,control_ledger_canonical,security_interaction_allowed,allocated_through_sequence,acknowledged_through_sequence,summary_only FROM exam_attempt_security_owners WHERE participation_id=? AND exam_attempt_id=? AND session_id=? AND registration_id=? AND key_thumbprint=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint); err != nil {
 		return zero, translateError("security_owner", input.ParticipationID.String(), err)
 	}
 	var binding admittedSecurityBinding
@@ -180,7 +178,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		return zero, store.NewErrConflict("security_control", "control_conflict", nil)
 	}
 	if processed {
-		return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, receipt, owner.Allowed, owner.FreezeRequired, sittingOpen)
+		return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, receipt, owner.Allowed, sittingOpen)
 	}
 	heads, err := decodeNativeCoverageSnapshot(owner.LatestCoverage)
 	if err != nil {
@@ -285,26 +283,6 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 		}
 	}
 	owner.Allowed = continuity.Result == "accepted" && len(reasons) == 0
-	var grants struct {
-		Exists bool `db:"exists"`
-		Fenced bool `db:"fenced"`
-	}
-	if err := tx.Get(ctx, &grants, `SELECT EXISTS(SELECT 1 FROM execution_grants WHERE exam_attempt_id=$1 AND state IN ('reserved','ready') AND revoked_at IS NULL) AS exists,
- EXISTS(SELECT 1 FROM execution_grants WHERE exam_attempt_id=$1 AND state IN ('reserved','ready') AND revoked_at IS NULL AND environment_epoch<>'') AS fenced`, input.AttemptID.String()); err != nil {
-		return zero, err
-	}
-	// The fenced protocol can recover the original occupancy. Native readiness
-	// remains independent of the host acknowledgement; execution input additionally
-	// requires its current confirmed control. Legacy guests retain protective release.
-	if grants.Fenced && owner.Allowed {
-		owner.FreezeRequired = false
-	}
-	if !owner.Allowed && grants.Exists {
-		owner.FreezeRequired = true
-	}
-	if owner.FreezeRequired {
-		owner.Allowed = false
-	}
 	if continuity.Result == "accepted" {
 		owner.LatestCoverage, err = canonicalPreflightValue(nativeCoverageSnapshot{Sources: control.Sources, Coverage: control.Coverage})
 		if err != nil || len(owner.LatestCoverage) > model.SecurityControlMaxBytes {
@@ -323,10 +301,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	if err != nil {
 		return zero, err
 	}
-	// Record the processed boundary only when effective execution gates change.
-	// This preserves fault/recovery ordering even if no host worker observes the
-	// intermediate fault, without invalidating healthy captures on every renewal.
-	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET execution_gate_sequence=CASE WHEN security_interaction_allowed<>? OR freeze_required<>? THEN ? ELSE execution_gate_sequence END,latest_report_canonical=?,control_ledger_canonical=?,control_body_canonical=?,security_interaction_allowed=?,freeze_required=?,allocated_through_sequence=?,summary_only=?,stop_reason=CASE WHEN ? THEN COALESCE(stop_reason,'positions') ELSE stop_reason END,terminal_missing_through_sequence=CASE WHEN ? THEN ? ELSE terminal_missing_through_sequence END WHERE participation_id=?`, owner.Allowed, owner.FreezeRequired, control.ControlSequence, owner.LatestCoverage, ledgerRaw, raw, owner.Allowed, owner.FreezeRequired, owner.Allocated, owner.SummaryOnly, owner.SummaryOnly, owner.SummaryOnly || budget.SummaryOnly, owner.Allocated, input.ParticipationID.String()); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_security_owners SET latest_report_canonical=?,control_ledger_canonical=?,control_body_canonical=?,security_interaction_allowed=?,allocated_through_sequence=?,summary_only=?,stop_reason=CASE WHEN ? THEN COALESCE(stop_reason,'positions') ELSE stop_reason END,terminal_missing_through_sequence=CASE WHEN ? THEN ? ELSE terminal_missing_through_sequence END WHERE participation_id=?`, owner.LatestCoverage, ledgerRaw, raw, owner.Allowed, owner.Allocated, owner.SummaryOnly, owner.SummaryOnly, owner.SummaryOnly || budget.SummaryOnly, owner.Allocated, input.ParticipationID.String()); err != nil {
 		return zero, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=?,native_allocated_positions=?,native_summary_only=?,native_stop_reason=CASE WHEN ? THEN COALESCE(native_stop_reason,'positions') ELSE native_stop_reason END WHERE exam_attempt_id=?`, budget.Metadata, budget.Positions, budget.SummaryOnly, budget.SummaryOnly, input.AttemptID.String()); err != nil {
@@ -337,50 +312,10 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 			return zero, err
 		}
 	}
-	return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, &outcome, owner.Allowed, owner.FreezeRequired, sittingOpen)
+	return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, &outcome, owner.Allowed, sittingOpen)
 }
-func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, ledger model.NativeControlLedger, receipt *model.SecurityControlReceipt, allowed, freezeRequired, sittingOpen bool) (model.SecurityCoverageResult, error) {
-	result := model.SecurityCoverageResult{ProcessedControlSequence: ledger.ProcessedSequence, ProcessedControlDigest: ledger.ProcessedDigest, CoverageResult: "stale_control", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: allowed && sittingOpen, ExecutionState: "not_allocated", DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
-	var grantRow executionGrantRow
-	grantErr := tx.Get(ctx, &grantRow, `SELECT `+executionGrantColumns+` FROM execution_grants
-  WHERE exam_attempt_id=? AND state IN ('reserved','ready') AND revoked_at IS NULL`, attemptID.String())
-	if grantErr != nil && !errors.Is(grantErr, sql.ErrNoRows) {
-		return result, grantErr
-	}
-	if grantErr == nil {
-		grant, err := executionGrantModel(grantRow)
-		if err != nil {
-			return result, err
-		}
-		result.ExecutionState = "unavailable"
-		if grant.EnvironmentEpoch == "" {
-			// v0.2.0 remains on the existing protective release path.
-			if freezeRequired {
-				result.ExecutionState = "freeze_pending"
-			} else if grant.State == model.ExecutionGrantReady && !grant.LifecyclePending {
-				result.ExecutionState = "ready"
-			}
-		} else {
-			authority, err := readExecutionControlAuthority(ctx, tx, attemptID)
-			if err != nil {
-				return result, err
-			}
-			desired := authority.desired(grant)
-			confirmed := grant.ControlAcknowledgedRevision == grant.ControlRevision && grant.DesiredControlState == desired && grant.ControlAuthorityDigest == authority.digest()
-			switch desired {
-			case model.ExecutionControlFrozen:
-				result.ExecutionState = "freeze_pending"
-				if confirmed {
-					result.ExecutionState = "frozen"
-				}
-			case model.ExecutionControlRunning:
-				result.ExecutionState = "thaw_pending"
-				if confirmed && grant.State == model.ExecutionGrantReady && !grant.WorkspacePending && !grant.LifecyclePending {
-					result.ExecutionState = "ready"
-				}
-			}
-		}
-	}
+func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, ledger model.NativeControlLedger, receipt *model.SecurityControlReceipt, allowed, sittingOpen bool) (model.SecurityCoverageResult, error) {
+	result := model.SecurityCoverageResult{ProcessedControlSequence: ledger.ProcessedSequence, ProcessedControlDigest: ledger.ProcessedDigest, CoverageResult: "stale_control", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: allowed && sittingOpen, DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
 	if receipt != nil {
 		result.CoverageResult = receipt.Result
 		for _, id := range receipt.ResetIDs {
@@ -425,7 +360,7 @@ func (s *sqlExamAttemptStore) UpdateSecurityCoverage(ctx context.Context, input 
 
 func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, sittingOpen bool) (*store.SecurityPolicyRecovery, error) {
 	var owner nativeControlOwnerRow
-	if err := tx.Get(ctx, &owner, `SELECT latest_report_canonical,control_ledger_canonical,security_interaction_allowed,freeze_required FROM exam_attempt_security_owners WHERE participation_id=? FOR SHARE`, participationID.String()); err != nil {
+	if err := tx.Get(ctx, &owner, `SELECT latest_report_canonical,control_ledger_canonical,security_interaction_allowed FROM exam_attempt_security_owners WHERE participation_id=? FOR SHARE`, participationID.String()); err != nil {
 		return nil, err
 	}
 	heads, err := decodeNativeCoverageSnapshot(owner.LatestCoverage)
@@ -441,7 +376,7 @@ func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mode
 		value := ledger.Receipts[len(ledger.Receipts)-1]
 		latest = &value
 	}
-	result, err := projectSecurityControl(ctx, tx, attemptID, participationID, streamID, ledger, latest, owner.Allowed, owner.FreezeRequired, sittingOpen)
+	result, err := projectSecurityControl(ctx, tx, attemptID, participationID, streamID, ledger, latest, owner.Allowed, sittingOpen)
 	if err != nil {
 		return nil, err
 	}
@@ -472,11 +407,11 @@ func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mode
 	return recovery, nil
 }
 
-// lockSecurityInteraction is called only by mutation/execution owners, after
+// lockSecurityInteraction is called only by mutation owners, after
 // their Attempt lock. Recovery, monitoring, and renewal never use this gate.
 func lockSecurityInteraction(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID) error {
 	var allowed bool
-	err := tx.Get(ctx, &allowed, `SELECT o.security_interaction_allowed AND NOT o.freeze_required AND p.lease_expires_at>clock_timestamp() AS allowed FROM exam_attempt_security_owners o JOIN exam_attempt_participations p ON p.id=o.participation_id WHERE o.exam_attempt_id=? AND p.state='active' FOR SHARE OF o,p`, attemptID.String())
+	err := tx.Get(ctx, &allowed, `SELECT o.security_interaction_allowed AND p.lease_expires_at>clock_timestamp() AS allowed FROM exam_attempt_security_owners o JOIN exam_attempt_participations p ON p.id=o.participation_id WHERE o.exam_attempt_id=? AND p.state='active' FOR SHARE OF o,p`, attemptID.String())
 	if err != nil {
 		return translateError("security_owner", attemptID.String(), err)
 	}

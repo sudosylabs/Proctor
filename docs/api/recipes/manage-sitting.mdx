@@ -61,7 +61,7 @@ with an Attempt. No-show is not represented by a fabricated Attempt.
 
 - <Link to="/api/reference/pause-exam-sitting">Pause</Link> retains read-only
   presentation and integrity monitoring but blocks admission, writes,
-  execution, and submission.
+  and submission.
 - <Link to="/api/reference/resume-exam-sitting">Resume</Link> restores eligible
   delivery; paused time does not extend the deadline.
 - <Link to="/api/reference/extend-exam-sitting">Extend</Link> moves only the end
@@ -102,7 +102,7 @@ with:
 An item without a stage retains base bytes, a ready stage selects new bytes,
 and omission removes the Resource. The transition creates an immutable live-
 correction Revision and retargets only this Sitting. It fails if Exam Policy,
-Starter Workspace, Execution Profile, eligibility, schedule, or protected
+Starter Workspace, eligibility, schedule, or protected
 digests would change.
 
 ## 5. Track Required Acknowledgement
@@ -112,7 +112,7 @@ acknowledgement state. Required notices are acknowledged oldest-first through
 the exact Revision route and the candidate's current DPoP, Participation,
 continuity, Session, and Connection fences.
 
-Pending acknowledgement blocks candidate mutation, terminal, governed Browser,
+Pending acknowledgement blocks candidate mutation, governed Browser,
 and voluntary submission capability. It does not block protected reads,
 renewal, Browser Activity or Focus Loss reporting, or the acknowledgement
 operation. Authorized closure can still seal and records the missing

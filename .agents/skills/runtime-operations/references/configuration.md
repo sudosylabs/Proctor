@@ -4,7 +4,7 @@ Deployment configuration is operator-owned; institution application settings
 are durable application data changed through authorized use cases.
 
 Deployment configuration includes listeners/public URL, PostgreSQL, cache,
-cluster, VFS, SMTP, execution hosts, external identity providers, logging,
+cluster, VFS, SMTP, external identity providers, logging,
 secrets, and process limits. `Localization.DefaultLocale` selects the installed catalog fallback
 and is validated against the embedded catalogs during root composition.
 Application settings include institution presentation, branding,
@@ -93,8 +93,8 @@ bundles carry `config/config.example.json`; operators copy it to the active
 path and edit it. That canonical file renders every deployment field with its
 built-in default, including empty secret fields, so the supported schema is
 discoverable without reading Go types. Empty structured lists stay empty in
-the canonical file; complete validated entry objects for execution hosts and
-CAS/OIDC providers ship under `config/examples/`. Configuration serialization
+the canonical file; complete validated entry objects for CAS/OIDC providers
+ship under `config/examples/`. Configuration serialization
 never omits zero-valued fields, and tests fail when the schema, defaults, or
 examples drift. Deployment JSON field names are PascalCase. Value precedence
 is built-in field defaults, the required typed file, then `PROCTOR_`
@@ -147,21 +147,8 @@ request cancellation cannot stop an Argon or codec call already in progress.
 
 Runtime reconfiguration is capability-specific. Logging and the external
 provider registry reconfigure dynamically; listener addresses, HTTP limits,
-cluster backend, node identity, and the execution-host catalog require restart. Structural validation and
+cluster backend and node identity require restart. Structural validation and
 external connectivity diagnostics remain separate.
-
-`Execution.Enabled` activates the bounded outbound execenv host directory.
-Each entry under `Execution.Hosts` has a stable `ID`, a TCP `Address`, and
-either production `tls` security or loopback-only `insecure_local` security.
-TLS requires a verified `ServerName` and either a token or client certificate;
-an optional CA file extends the system roots. Client certificate and key files
-must be configured together. Cleartext development requires a token and
-rejects all non-loopback addresses. Host tokens are redacted. Dial and
-operation timeouts have environment overrides
-`PROCTOR_EXECUTION_DIAL_TIMEOUT` and
-`PROCTOR_EXECUTION_OPERATION_TIMEOUT`; enablement has
-`PROCTOR_EXECUTION_ENABLED`. The host list itself remains structured file
-configuration so credentials and stable identities are reviewed together.
 
 Logging configuration bounds the engine and per-target queues, enqueue/flush/
 shutdown deadlines, field size, target level/format, and file rotation. A

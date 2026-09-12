@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -44,9 +43,6 @@ type connectionRuntime struct {
 	transportCloseOnce sync.Once
 	attemptClose       sync.Once
 	attempt            *examAttemptBinding
-	terminalID         string
-	terminal           app.CandidateExamTerminal
-	terminalReaders    sync.WaitGroup
 
 	activityMu sync.Mutex
 	activities sync.WaitGroup
@@ -139,7 +135,6 @@ func (c *connectionRuntime) run(ctx context.Context) {
 	c.closeTransport()
 	pumps.Wait()
 	c.finalizeExamAttempt(ctx)
-	c.terminalReaders.Wait()
 }
 
 // beginShutdown stops new connection work while retaining the shared deadline

@@ -24,13 +24,12 @@ func TestRecursiveWorkspaceDeletionRequiresCandidateSnapshot(t *testing.T) {
 		{"missing cursor", func(c *DeleteWorkspaceEntryCommand) { c.ExpectedWorkspaceCursor = nil }},
 		{"negative cursor", func(c *DeleteWorkspaceEntryCommand) { value := int64(-1); c.ExpectedWorkspaceCursor = &value }},
 		{"content version", func(c *DeleteWorkspaceEntryCommand) { c.ExpectedContentVersion = model.NewWorkspaceContentVersion() }},
-		{"execution host", func(c *DeleteWorkspaceEntryCommand) { c.Origin = WorkspaceMutationOriginExecutionHost }},
 		{"cursor without recursive", func(c *DeleteWorkspaceEntryCommand) { c.Recursive = false }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newFixture(t)
 			cursor := int64(0)
-			command := DeleteWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+			command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: model.NewAttemptWorkspaceEntryID(), ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
 			test.configure(&command)
 			if _, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, command); err == nil || f.workspace.mutation != nil {
@@ -51,7 +50,7 @@ func TestRecursiveWorkspaceDeletionCarriesSnapshotAndSemanticIdentity(t *testing
 	f.workspace.mutationResult.Entry = nil
 	f.workspace.mutationResult.Change.Recursive = true
 	cursor := int64(0)
-	command := DeleteWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+	command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
 	result, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, command)
 	if err != nil || !result.Change.Recursive || f.workspace.mutation == nil || !f.workspace.mutation.Recursive ||

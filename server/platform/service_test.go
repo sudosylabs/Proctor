@@ -42,7 +42,6 @@ func (unavailableMailer) Test(context.Context) error {
 func (testStore) File() store.FileStore                                   { return nil }
 func (testStore) Job() store.JobStore                                     { return nil }
 func (testStore) Mail() store.MailStore                                   { return nil }
-func (testStore) ExecutionGrant() store.ExecutionGrantStore               { return nil }
 func (testStore) BrowserAuthentication() store.BrowserAuthenticationStore { return nil }
 func (testStore) DesktopRegistration() store.DesktopRegistrationStore     { return nil }
 func (testStore) Invitation() store.InvitationStore                       { return nil }
@@ -235,7 +234,6 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 		"database ready",
 		"application cache ready",
 		"filesystem ready",
-		"execution hosts ready",
 		"external authentication ready",
 		"platform initialized",
 		"cluster transport started",

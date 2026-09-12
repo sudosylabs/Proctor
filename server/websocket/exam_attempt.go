@@ -27,13 +27,6 @@ const (
 	examAttemptFocusLossAction      = "exam_attempt.focus_loss"
 	examAttemptBrowserStartAction   = "exam_attempt.browser_activity.start"
 	examAttemptBrowserAppendAction  = "exam_attempt.browser_activity.append"
-	examAttemptTerminalOpenAction   = "exam_attempt.terminal.open"
-	examAttemptTerminalInputAction  = "exam_attempt.terminal.input"
-	examAttemptTerminalResizeAction = "exam_attempt.terminal.resize"
-	examAttemptTerminalCloseAction  = "exam_attempt.terminal.close"
-	examAttemptTerminalOutputEvent  = "exam_attempt.terminal.output"
-	examAttemptTerminalClosedEvent  = "exam_attempt.terminal.closed"
-	examAttemptTerminalChunkMaximum = 32 * 1024
 )
 
 type examAttemptApplication interface {
@@ -42,53 +35,8 @@ type examAttemptApplication interface {
 	RenewExamAttemptParticipation(context.Context, app.Invocation, app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error)
 	EvaluateExamAttemptFocusLoss(context.Context, app.Invocation, app.EvaluateExamAttemptFocusLossCommand) (app.ExamAttemptFocusLossEvaluation, error)
 	CloseExamAttemptConnection(context.Context, app.Invocation, app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error)
-	OpenCandidateExamTerminal(context.Context, app.Invocation, app.OpenCandidateExamTerminalCommand) (app.CandidateExamTerminal, error)
 	StartExamAttemptBrowserActivity(context.Context, app.Invocation, app.StartBrowserActivityCommand) (model.BrowserSourceStatus, error)
 	AppendExamAttemptBrowserActivity(context.Context, app.Invocation, app.AppendBrowserActivityCommand) (app.BrowserActivityAcknowledgement, error)
-}
-
-type examAttemptTerminalOpenRequest struct {
-	ExpectedWorkspaceCursor *int64 `json:"expected_workspace_cursor"`
-	Generation              int64  `json:"generation"`
-	ContinuityCredential    string `json:"continuity_credential"`
-	Cols                    uint16 `json:"cols"`
-	Rows                    uint16 `json:"rows"`
-}
-
-type examAttemptTerminalOpenResponse struct {
-	EnvironmentEpoch       string `json:"environment_epoch"`
-	AppliedWorkspaceCursor int64  `json:"applied_workspace_cursor"`
-	ProjectionState        string `json:"projection_state"`
-	Opened                 bool   `json:"opened"`
-	TerminalID             string `json:"terminal_id"`
-}
-
-type examAttemptTerminalCloseRequest struct {
-	TerminalID string `json:"terminal_id"`
-}
-type examAttemptTerminalActionResponse struct {
-	TerminalID string `json:"terminal_id"`
-}
-
-type examAttemptTerminalInputRequest struct {
-	TerminalID string `json:"terminal_id"`
-	Data       string `json:"data"`
-}
-
-type examAttemptTerminalResizeRequest struct {
-	TerminalID string `json:"terminal_id"`
-	Cols       uint16 `json:"cols"`
-	Rows       uint16 `json:"rows"`
-}
-
-type examAttemptTerminalOutput struct {
-	TerminalID string `json:"terminal_id"`
-	Data       string `json:"data"`
-}
-
-type examAttemptTerminalClosed struct {
-	TerminalID string `json:"terminal_id"`
-	Reason     string `json:"reason"`
 }
 
 type examAttemptConnectRequest struct {
@@ -158,7 +106,6 @@ type candidateRuntimeCapabilitiesResponse struct {
 	PendingCorrectionCapabilities []model.CandidateCapability           `json:"pending_correction_capabilities"`
 	WorkspaceMutationAllowed      bool                                  `json:"workspace_mutation_allowed"`
 	SubmissionAllowed             bool                                  `json:"submission_allowed"`
-	Terminal                      candidateTerminalCapabilityResponse   `json:"terminal"`
 	Browser                       candidateBrowserCapabilityResponse    `json:"browser"`
 	ExamRevision                  candidateExamRevisionResponse         `json:"exam_revision"`
 	Departure                     candidateDepartureResponse            `json:"departure"`
@@ -172,12 +119,6 @@ type candidateAttemptConfigurationResponse struct {
 	Digest              string                                 `json:"digest"`
 }
 
-type candidateTerminalCapabilityResponse struct {
-	State                  string  `json:"state"`
-	EnvironmentEpoch       *string `json:"environment_epoch"`
-	AppliedWorkspaceCursor int64   `json:"applied_workspace_cursor"`
-	ProjectionState        string  `json:"projection_state"`
-}
 type candidateBrowserCapabilityResponse struct {
 	State            string `json:"state"`
 	PolicyRevisionID string `json:"policy_revision_id,omitempty"`
@@ -351,9 +292,7 @@ func candidateRuntimeCapabilitiesWire(value app.CandidateRuntimeCapabilities) ca
 		FocusLossCollectionEnabled:    value.FocusLossCollectionEnabled,
 		PendingCorrectionCapabilities: append([]model.CandidateCapability{}, value.PendingCorrectionCapabilities...),
 		WorkspaceMutationAllowed:      value.WorkspaceMutationAllowed, SubmissionAllowed: value.SubmissionAllowed,
-		Terminal: candidateTerminalCapabilityResponse{State: string(value.Terminal.State),
-			EnvironmentEpoch: value.Terminal.EnvironmentEpoch, AppliedWorkspaceCursor: value.Terminal.AppliedWorkspaceCursor,
-			ProjectionState: string(value.Terminal.ProjectionState)}, Browser: browser,
+		Browser: browser,
 		ExamRevision: candidateExamRevisionResponse{AdmissionRevisionID: value.ExamRevision.AdmissionRevisionID.String(),
 			CurrentRevisionID: value.ExamRevision.CurrentRevisionID.String(), AcknowledgementRequired: value.ExamRevision.AcknowledgementRequired},
 		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}

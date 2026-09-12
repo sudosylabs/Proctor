@@ -194,13 +194,6 @@ func runLayerConformance(
 			storetest.TestExamAttemptStore(t, decorated)
 		}},
 		{"BrowserActivity", storetest.TestBrowserActivityStore},
-		{"ExecutionGrant", storetest.TestExecutionGrantStore},
-		{"ExecutionControl", storetest.TestExecutionControlStore},
-		{"ExecutionObservation", func(t *testing.T, decorated store.Store) { storetest.TestExecutionObservationStore(t, decorated) }},
-		{"ExecutionProjectionEffects", func(t *testing.T, decorated store.Store) { storetest.TestExecutionProjectionEffectsStore(t, decorated) }},
-		{"ExecutionProjection", func(t *testing.T, decorated store.Store) {
-			storetest.TestExecutionProjectionStore(t, decorated, executionProjectionSQLProbe(sqlStore))
-		}},
 		{"ExamAttemptWorkspace", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamAttemptWorkspaceStore(t, decorated, decorated.ExamAttemptWorkspace(),
 				examAttemptWorkspaceSQLProbe(t, sqlStore))
@@ -443,10 +436,6 @@ func TestExamAttemptStore(t *testing.T) {
 
 func TestBrowserActivityStore(t *testing.T) {
 	StoreTest(t, storetest.TestBrowserActivityStore)
-}
-
-func TestExecutionGrantStore(t *testing.T) {
-	StoreTest(t, storetest.TestExecutionGrantStore)
 }
 
 func TestExamAttemptWorkspaceStore(t *testing.T) {
@@ -1337,8 +1326,8 @@ func assertExamRevisionSealCompleteness(t *testing.T, ctx context.Context, persi
 			t.Fatal(err)
 		}
 		revisionID := model.NewExamRevisionID()
-		_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,execution_profile_document,execution_profile_canonical,execution_profile_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
-			SELECT $1,exam_id,number+$2,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,execution_profile_document,execution_profile_canonical,execution_profile_digest,starter_workspace_digest,content_digest,$3,0,0,published_by_user_id,published_at,NULL,publication_kind,$4 FROM exam_revisions WHERE id=$5`, revisionID.String(), test.number, test.count, test.sealed, fixture.RevisionID.String())
+		_, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
+			SELECT $1,exam_id,number+$2,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,$3,0,0,published_by_user_id,published_at,NULL,publication_kind,$4 FROM exam_revisions WHERE id=$5`, revisionID.String(), test.number, test.count, test.sealed, fixture.RevisionID.String())
 		if err != nil {
 			_ = tx.Rollback()
 			t.Fatal(err)
@@ -1360,8 +1349,8 @@ func assertExamRevisionResourceOwnershipConstraint(t *testing.T, ctx context.Con
 	}
 	defer func() { _ = tx.Rollback() }()
 	unsealedRevisionID := model.NewExamRevisionID()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,execution_profile_document,execution_profile_canonical,execution_profile_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
-		SELECT $1,exam_id,number+1000,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,execution_profile_document,execution_profile_canonical,execution_profile_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,NULL,publication_kind,FALSE FROM exam_revisions WHERE id=$2`, unsealedRevisionID.String(), fixture.RevisionID.String()); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,base_revision_id,publication_kind,sealed)
+		SELECT $1,exam_id,number+1000,snapshot_schema_version,source_draft_revision,title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,browser_policy_document,browser_policy_canonical,browser_policy_digest,starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,published_by_user_id,published_at,NULL,publication_kind,FALSE FROM exam_revisions WHERE id=$2`, unsealedRevisionID.String(), fixture.RevisionID.String()); err != nil {
 		t.Fatal(err)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO exam_revision_resources (exam_revision_id,exam_id,resource_id,file_entry_id,file_revision_id,rendition_id,display_name,description_markdown,position,media_type,size_bytes,sha256) VALUES ($1,$2,$3,$4,$5,$6,'Mismatched','',0,'text/plain',1,$7)`,
@@ -1847,45 +1836,6 @@ func TestNativeDeliveryAppendStore(t *testing.T) {
 			t.Fatalf("invalid retained accounting/provenance: %#v", row)
 		}
 	})
-}
-
-func TestExecutionControlStore(t *testing.T) { StoreTest(t, storetest.TestExecutionControlStore) }
-
-func TestExecutionProjectionStore(t *testing.T) {
-	persistence := openTestStore(t)
-	resetTestStore(t, persistence)
-	storetest.TestExecutionProjectionStore(t, persistence, executionProjectionSQLProbe(persistence))
-}
-func executionProjectionSQLProbe(persistence *SQLStore) storetest.ExecutionProjectionSQLProbe {
-	return storetest.ExecutionProjectionSQLProbe{
-		ExpireObjectProtection: func(t *testing.T, ctx context.Context, id model.ExamAttemptWorkspaceID) {
-			t.Helper()
-			// Workspace commands are Attempt-scoped; remove only those protecting the
-			// fixture Workspace's own objects, emulating completed outcome retirement.
-			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM command_outcomes outcome WHERE operation=$1 AND EXISTS(SELECT 1 FROM exam_attempt_workspace_objects o WHERE o.workspace_id=$2 AND jsonb_exists(outcome.outcome->'o',o.id))`, store.ExamAttemptWorkspaceMutationOperation, id.String()); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_attempt_workspace_objects SET reclaim_after=statement_timestamp()-INTERVAL '1 microsecond',updated_at=GREATEST(updated_at,statement_timestamp()) WHERE workspace_id=$1 AND state='reclaimable'`, id.String()); err != nil {
-				t.Fatal(err)
-			}
-		},
-		RemoveJournalPosition: func(t *testing.T, ctx context.Context, id model.ExamAttemptWorkspaceID, cursor int64) {
-			t.Helper()
-			if _, err := persistence.GetMaster().Exec(ctx, `DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=$1 AND cursor=$2`, id.String(), cursor); err != nil {
-				t.Fatal(err)
-			}
-		},
-	}
-}
-
-func TestExecutionProjectionEffectsStore(t *testing.T) {
-	persistence := openTestStore(t)
-	resetTestStore(t, persistence)
-	storetest.TestExecutionProjectionEffectsStore(t, persistence)
-}
-
-func TestExecutionObservationStore(t *testing.T) {
-	StoreTest(t, storetest.TestExecutionObservationStore)
 }
 
 func TestNativeMaximumRecordStore(t *testing.T) {

@@ -45,13 +45,6 @@ type configureExamDraftFocusLossRequest struct {
 	Outcome                     string `json:"outcome"`
 }
 
-type configureExamDraftExecutionProfileRequest struct {
-	ExpectedDraftRevision int64  `json:"expected_draft_revision"`
-	Enabled               bool   `json:"enabled"`
-	Image                 string `json:"image"`
-	Network               string `json:"network"`
-}
-
 type configureExamDraftBrowserPolicyRequest struct {
 	ExpectedDraftRevision int64                 `json:"expected_draft_revision"`
 	BrowserPolicy         browserPolicyDocument `json:"browser_policy"`
@@ -160,29 +153,6 @@ func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDoc
 			BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome), InstitutionHTTPException: rule.InstitutionHTTPException}
 	}
 	return document
-}
-
-func (r *configureExamDraftExecutionProfileRequest) UnmarshalJSON(data []byte) error {
-	if err := rejectDuplicateJSONObjectMembers(data, "execution profile"); err != nil {
-		return err
-	}
-	type wire configureExamDraftExecutionProfileRequest
-	var decoded wire
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
-		return err
-	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(data, &members); err != nil {
-		return err
-	}
-	enabled, ok := members["enabled"]
-	if !ok || bytes.Equal(bytes.TrimSpace(enabled), []byte("null")) {
-		return errors.New("enabled must be provided and non-null")
-	}
-	*r = configureExamDraftExecutionProfileRequest(decoded)
-	return nil
 }
 
 type archiveExamRequest struct {
@@ -344,7 +314,6 @@ type examDraftResponse struct {
 	Title                string                     `json:"title"`
 	InstructionsMarkdown string                     `json:"instructions_markdown"`
 	Policy               examPolicyResponse         `json:"policy"`
-	ExecutionProfile     executionProfileResponse   `json:"execution_profile"`
 	BrowserPolicy        browserPolicyDocument      `json:"browser_policy"`
 	Capacity             examCapacityPolicyResponse `json:"capacity"`
 	BaseRevisionID       string                     `json:"base_revision_id,omitempty"`
@@ -352,21 +321,6 @@ type examDraftResponse struct {
 	Revision             int64                      `json:"revision"`
 	ResourceCount        int                        `json:"resource_count"`
 	HasStarterWorkspace  bool                       `json:"has_starter_workspace"`
-}
-
-type executionProfileResponse struct {
-	Enabled bool   `json:"enabled"`
-	Image   string `json:"image"`
-	Network string `json:"network"`
-}
-
-type executionImageResponse struct {
-	ID       string   `json:"id"`
-	Networks []string `json:"networks"`
-}
-
-type executionImageListResponse struct {
-	Items []executionImageResponse `json:"items"`
 }
 
 type examPolicyResponse struct {
@@ -396,9 +350,7 @@ func examResource(exams ExamApplication) resource {
 	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
 	nativePolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("native"))
 	focusLossPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("focus-loss"))
-	executionProfile := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("execution-profile"))
 	browserPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("browser-policy"))
-	executionImages := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("execution-images"))
 	archive := apiPath(literal("exams"), canonicalID("exam_id"), literal("archive"))
 	managers := apiPath(literal("exams"), canonicalID("exam_id"), literal("managers"))
 	manager := apiPath(literal("exams"), canonicalID("exam_id"), literal("managers"), canonicalID("user_id"))
@@ -426,17 +378,11 @@ func examResource(exams ExamApplication) resource {
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.configureDraftNativePolicy),
-		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, executionProfile, academicMutationErrorCodes(
-			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
-			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
-			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
-		), module.configureDraftExecutionProfile),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, browserPolicy, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.configureDraftBrowserPolicy),
-		principalRoute(http.MethodGet, executionImages, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.unavailable"), module.listExecutionImages),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, archive, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
@@ -592,36 +538,6 @@ func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (o
 	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
 }
 
-func (m examResourceModule) configureDraftExecutionProfile(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
-	if err != nil {
-		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
-	}
-	var body configureExamDraftExecutionProfileRequest
-	if err := request.decodeJSON(&body, "configureExamDraftExecutionProfile"); err != nil {
-		return operationResult{}, err
-	}
-	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
-	}
-	profile := model.ExecutionProfile{Enabled: body.Enabled, Image: body.Image, Network: model.ExecutionNetwork(body.Network)}
-	if err := profile.Validate(); err != nil {
-		return operationResult{}, invalidRequestError("execution_profile", err)
-	}
-	view, err := m.exams.ConfigureExamDraftExecutionProfile(request.context, request.invocation(), application.ConfigureExamDraftExecutionProfileCommand{
-		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Enabled: body.Enabled,
-		Image: body.Image, Network: model.ExecutionNetwork(body.Network), IdempotencyKey: request.idempotencyKey,
-	})
-	if err != nil {
-		return operationResult{}, err
-	}
-	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
-}
-
 func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest) (operationResult, error) {
 	raw, err := request.params.RequireExamId()
 	if err != nil {
@@ -677,29 +593,6 @@ func (m examResourceModule) configureDraftNativePolicy(request operationRequest)
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
-}
-
-func (m examResourceModule) listExecutionImages(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
-	if err != nil {
-		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
-	}
-	images, err := m.exams.ListExamExecutionImages(request.context, request.invocation(), application.GetExamQuery{ExamID: examID})
-	if err != nil {
-		return operationResult{}, err
-	}
-	response := executionImageListResponse{Items: make([]executionImageResponse, len(images))}
-	for index, image := range images {
-		response.Items[index] = executionImageResponse{ID: image.ID, Networks: make([]string, len(image.Networks))}
-		for networkIndex, network := range image.Networks {
-			response.Items[index].Networks[networkIndex] = string(network)
-		}
-	}
-	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m examResourceModule) archive(request operationRequest) (operationResult, error) {
@@ -1048,8 +941,6 @@ func examResponseFromView(view application.ExamView) examResponse {
 					MinimumDurationMilliseconds: policy.FocusLoss.MinimumDuration.Milliseconds(), IncidentCount: policy.FocusLoss.IncidentCount,
 					WindowMilliseconds: policy.FocusLoss.Window.Milliseconds(), Outcome: string(policy.FocusLoss.Outcome)},
 			},
-			ExecutionProfile: executionProfileResponse{Enabled: view.Draft.ExecutionProfile.Enabled,
-				Image: view.Draft.ExecutionProfile.Image, Network: string(view.Draft.ExecutionProfile.Network)},
 			BrowserPolicy:  browserPolicyDocumentFromModel(browserPolicy),
 			Capacity:       examCapacityPolicyResponseFromModel(view.Capacity),
 			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.TimeUTC(view.Draft.UpdatedAt).Format(time.RFC3339Nano),

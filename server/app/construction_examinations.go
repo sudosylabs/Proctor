@@ -19,17 +19,12 @@ import (
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func constructExaminations(deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction) (examinationConstruction, error) {
-	execution, err := appexecution.New(deps.Store.ExecutionGrant(), deps.ExecutionHosts, deps.FileContent, time.Now, model.NewExecutionGrantID)
-	if err != nil {
-		return examinationConstruction{}, err
-	}
 	collectionEffects := examCollectionInvalidationEffects{
 		sittings: deps.Store.ExamSitting(),
 		realtime: foundation.realtime,
@@ -40,7 +35,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		foundation.mail,
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		deps.Store.CommandOutcome(), examExecutionProfileCatalog{execution: execution},
+		deps.Store.CommandOutcome(),
 		effects, effects, time.Now, model.NewExamID, deps.PublicURL,
 	)
 	if err != nil {
@@ -70,7 +65,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examSittingAuthorizationAdapter{authorization: access.authorization},
 		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		examSittingSystemAuditAdapter{audit: foundation.audit},
-		examSittingRealtimeEffects{realtime: foundation.realtime, execution: execution, collections: collectionEffects},
+		examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
 		examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
 		appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
 		sittingMailPreparation,
@@ -79,7 +74,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime, execution: execution}
+	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
 	submissionMail := examSubmissionMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
 	attempts, err := examattempt.New(examattempt.Dependencies{
@@ -99,11 +94,6 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewWorkspaceVersion: model.NewWorkspaceContentVersion,
 		NewSubmission:       model.NewSubmissionID,
 	})
-	if err != nil {
-		return examinationConstruction{}, err
-	}
-	attemptTerminals, err := newExamAttemptTerminalService(attempts, execution,
-		examAttemptTerminalAuditAdapter{audit: foundation.audit})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
@@ -135,8 +125,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		deps.Store.ExamCorrection(), deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examCorrectionAuthorizationAdapter{authorization: access.authorization},
 		examCorrectionAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects, execution: execution},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects, execution: execution},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
 		deps.FileContent, time.Now, model.NewExamCorrectionResourceStageID, model.NewExamResourceID,
 		model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID,
 		model.NewExamRevisionID, deps.PublicURL,
@@ -170,8 +160,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{execution: execution, authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
-		sittingMailPreparation: sittingMailPreparation, attempts: attempts, attemptTerminals: attemptTerminals, reviews: reviews,
+	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
+		sittingMailPreparation: sittingMailPreparation, attempts: attempts, reviews: reviews,
 		records: records, exports: exports, resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }
 

@@ -102,8 +102,8 @@ create a password or enable local login.
 
 The named reset atomically retires factor and recovery-code material, advances
 the User's durable recovery generation, requires reenrollment, revokes all
-Sessions and PATs, terminalizes unfinished access preparations and releases
-execution grants. It records secret-free pending host recovery evidence in
+Sessions and PATs, and terminalizes unfinished access preparations.
+It records secret-free pending host recovery evidence in
 the same transaction. The next normal startup must reconcile that evidence
 into `authentication.administrator_mfa_reset` audit before serving. The audit
 has system client provenance and no impersonated actor. Recovery still

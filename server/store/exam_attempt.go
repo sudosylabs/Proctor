@@ -533,9 +533,6 @@ type CandidateExamPresentation struct {
 	RuntimeCapabilities  CandidateRuntimeCapabilities
 	BrowserPolicy        *CandidateBrowserPolicy
 	LiveCorrections      []model.CandidateLiveCorrection
-	// ExecutionProfile is retained only for the server-side terminal use case;
-	// HTTP and WebSocket candidate serializers must never expose it.
-	ExecutionProfile model.ExecutionProfile
 }
 
 type CandidateInteractionState string
@@ -543,16 +540,6 @@ type CandidateInteractionState string
 const (
 	CandidateInteractionInteractive   CandidateInteractionState = "interactive"
 	CandidateInteractionSittingPaused CandidateInteractionState = "sitting_paused"
-)
-
-type CandidateTerminalCapabilityState string
-
-const (
-	CandidateTerminalDisabled                CandidateTerminalCapabilityState = "disabled"
-	CandidateTerminalAvailable               CandidateTerminalCapabilityState = "available"
-	CandidateTerminalSittingPaused           CandidateTerminalCapabilityState = "sitting_paused"
-	CandidateTerminalAcknowledgementRequired CandidateTerminalCapabilityState = "acknowledgement_required"
-	CandidateTerminalTemporarilyUnavailable  CandidateTerminalCapabilityState = "temporarily_unavailable"
 )
 
 type CandidateBrowserCapabilityState string
@@ -571,45 +558,6 @@ type CandidateAttemptConfiguration struct {
 	ApprovedCommands    []string
 	ApprovedKeybindings []string
 	Digest              string
-}
-
-type CandidateTerminalCapability struct {
-	State                  CandidateTerminalCapabilityState
-	EnvironmentEpoch       *string
-	AppliedWorkspaceCursor int64
-	ProjectionState        ExecutionProjectionState
-}
-
-// ExecutionProjectionState describes readiness of the retained host projection.
-type ExecutionProjectionState string
-
-const (
-	ExecutionProjectionSynchronizing ExecutionProjectionState = "synchronizing"
-	ExecutionProjectionReady         ExecutionProjectionState = "ready"
-	ExecutionProjectionConflict      ExecutionProjectionState = "conflict"
-	ExecutionProjectionUnavailable   ExecutionProjectionState = "unavailable"
-)
-
-func (terminal CandidateTerminalCapability) ValidateProjection() error {
-	if terminal.AppliedWorkspaceCursor < 0 || terminal.AppliedWorkspaceCursor > (1<<53)-1 {
-		return errors.New("candidate projection cursor is invalid")
-	}
-	switch terminal.ProjectionState {
-	case ExecutionProjectionSynchronizing, ExecutionProjectionReady, ExecutionProjectionConflict, ExecutionProjectionUnavailable:
-	default:
-		return errors.New("candidate projection state is invalid")
-	}
-	if terminal.EnvironmentEpoch == nil {
-		if terminal.AppliedWorkspaceCursor != 0 || terminal.ProjectionState != ExecutionProjectionUnavailable {
-			return errors.New("candidate projection has no environment")
-		}
-	} else if !model.ValidExecutionEnvironmentEpoch(*terminal.EnvironmentEpoch) {
-		return errors.New("candidate environment epoch is invalid")
-	}
-	if terminal.State == CandidateTerminalAvailable && terminal.ProjectionState != ExecutionProjectionReady {
-		return errors.New("candidate terminal is not projected")
-	}
-	return nil
 }
 
 type CandidateBrowserCapability struct {
@@ -651,7 +599,6 @@ type CandidateRuntimeCapabilities struct {
 	PendingCorrectionCapabilities []model.CandidateCapability
 	WorkspaceMutationAllowed      bool
 	SubmissionAllowed             bool
-	Terminal                      CandidateTerminalCapability
 	Browser                       CandidateBrowserCapability
 	ExamRevision                  CandidateExamRevisionCapability
 	Departure                     CandidateDepartureCapability
@@ -671,9 +618,6 @@ func (capabilities CandidateRuntimeCapabilities) Validate() error {
 		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
 		return errors.New("candidate runtime capabilities are invalid")
 	}
-	if err := capabilities.Terminal.ValidateProjection(); err != nil {
-		return err
-	}
 	// This minimized projection omits hash provenance. The full frozen document
 	// is validated before deriving it; its digest cannot be recomputed here.
 
@@ -682,20 +626,6 @@ func (capabilities CandidateRuntimeCapabilities) Validate() error {
 	submissionFenced := paused || slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilitySubmission)
 	if capabilities.WorkspaceMutationAllowed == workspaceFenced || capabilities.SubmissionAllowed == submissionFenced {
 		return errors.New("candidate mutation capabilities are inconsistent")
-	}
-	switch capabilities.Terminal.State {
-	case CandidateTerminalDisabled, CandidateTerminalAvailable, CandidateTerminalSittingPaused,
-		CandidateTerminalAcknowledgementRequired, CandidateTerminalTemporarilyUnavailable:
-	default:
-		return errors.New("candidate terminal capability is invalid")
-	}
-	if capabilities.Terminal.State != CandidateTerminalDisabled {
-		terminalPending := slices.Contains(capabilities.PendingCorrectionCapabilities, model.CandidateCapabilityTerminal)
-		if paused && capabilities.Terminal.State != CandidateTerminalSittingPaused ||
-			!paused && terminalPending && capabilities.Terminal.State != CandidateTerminalAcknowledgementRequired ||
-			!paused && !terminalPending && capabilities.Terminal.State != CandidateTerminalAvailable && capabilities.Terminal.State != CandidateTerminalTemporarilyUnavailable {
-			return errors.New("candidate terminal capability disagrees with current gates")
-		}
 	}
 	switch capabilities.Browser.State {
 	case CandidateBrowserDisabled:

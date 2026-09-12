@@ -52,7 +52,7 @@ the first failing boundary to a focused diagnosis without erasing local state.
 
 The [deep server-development manual](./server-workflow.mdx) now follows a
 change from package placement and domain policy through Store transactions,
-HTTP/OpenAPI, authorization and audit, Jobs, mail, files, execution, realtime,
+HTTP/OpenAPI, authorization and audit, Jobs, mail, files, realtime,
 clustering, runtime integration, and final review. Its
 [complete User Settings slice](./server/user-settings-slice.mdx) is the
 recommended first reading exercise for a new server contributor.
@@ -88,10 +88,10 @@ Do not solve drift by copying the same inventory into several documents.
 
 1. **Choose ownership before abstraction.** Add a package or interface only
    for a stable responsibility with a real consumer.
-2. **Keep policy inward.** HTTP, WebSocket, SQL, Redis, SMTP, VFS, Memberlist,
-   and execution-host adapters do not own business rules.
+2. **Keep policy inward.** HTTP, WebSocket, SQL, Redis, SMTP, VFS, and Memberlist
+   adapters do not own business rules.
 3. **Commit before effects.** Durable state commits before cache invalidation,
-   cluster fan-out, realtime publication, execution projection, or delivery.
+   cluster fan-out, realtime publication, or delivery.
 4. **Verify the smallest honest surface first.** A focused test gives fast
    feedback; the relevant module and product gates prove the complete boundary.
 

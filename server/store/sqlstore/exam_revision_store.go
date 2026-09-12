@@ -38,9 +38,6 @@ type examRevisionHeaderRow struct {
 	PolicyDocument                  jsonValue      `db:"policy_document"`
 	PolicyCanonical                 []byte         `db:"policy_canonical"`
 	PolicyDigest                    string         `db:"policy_digest"`
-	ExecutionProfileDocument        jsonValue      `db:"execution_profile_document"`
-	ExecutionProfileCanonical       []byte         `db:"execution_profile_canonical"`
-	ExecutionProfileDigest          string         `db:"execution_profile_digest"`
 	BrowserPolicyDocument           jsonValue      `db:"browser_policy_document"`
 	BrowserPolicyCanonical          []byte         `db:"browser_policy_canonical"`
 	BrowserPolicyDigest             string         `db:"browser_policy_digest"`
@@ -100,7 +97,6 @@ type examRevisionPublicationOutcomeRow struct {
 
 const examRevisionHeaderSelect = `SELECT id,exam_id,number,snapshot_schema_version,source_draft_revision,
 	title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
-	execution_profile_document,execution_profile_canonical,execution_profile_digest,
 	browser_policy_document,browser_policy_canonical,browser_policy_digest,
 	candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_affected_capabilities,candidate_correction_acknowledgement_required,
 	exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
@@ -177,7 +173,6 @@ type examRevisionDraftRow struct {
 	Title                string         `db:"title"`
 	InstructionsMarkdown string         `db:"instructions_markdown"`
 	Policy               jsonValue      `db:"policy"`
-	ExecutionProfile     jsonValue      `db:"execution_profile"`
 	BrowserPolicy        jsonValue      `db:"browser_policy"`
 	BaseRevisionID       sql.NullString `db:"base_revision_id"`
 	DraftRevision        int64          `db:"draft_revision"`
@@ -187,7 +182,7 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	var draft examRevisionDraftRow
 	if err := tx.Get(ctx, &draft, `SELECT e.academic_unit_id,e.archived_at,e.revision AS exam_revision,
 		EXISTS (SELECT 1 FROM exam_managers m WHERE m.exam_id=e.id AND m.user_id=?) AS actor_is_manager,
-		d.title,d.instructions_markdown,d.policy,d.execution_profile,d.browser_policy,d.base_revision_id,d.revision AS draft_revision
+		d.title,d.instructions_markdown,d.policy,d.browser_policy,d.base_revision_id,d.revision AS draft_revision
 		FROM exams e JOIN exam_drafts d ON d.exam_id=e.id WHERE e.id=? FOR UPDATE OF e,d`,
 		input.ActorUserID.String(), input.ExamID.String()); err != nil {
 		return examRevisionPublicationOutcomeRow{}, translateError("exam", input.ExamID.String(), err)
@@ -204,10 +199,6 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	policy, err := model.CanonicalizeExamRevisionPolicy([]byte(draft.Policy))
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_draft", "policy", err)
-	}
-	executionProfile, err := model.DecodeExecutionProfile([]byte(draft.ExecutionProfile))
-	if err != nil {
-		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_draft", "execution_profile", err)
 	}
 	browserPolicy, err := model.ParseBrowserPolicyDocument([]byte(draft.BrowserPolicy))
 	if err != nil {
@@ -275,7 +266,7 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: input.RevisionID, ExamID: input.ExamID,
 		Number: number, SourceDraftRevision: draft.DraftRevision, Title: draft.Title, InstructionsMarkdown: draft.InstructionsMarkdown,
-		Policy: policy, ExecutionProfile: executionProfile, BrowserPolicy: browserPolicy, Capacity: capacity, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
+		Policy: policy, BrowserPolicy: browserPolicy, Capacity: capacity, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
 		PublishedByUserID: input.ActorUserID, PublishedAt: input.PublishedAt, BaseRevisionID: baseRevisionID, Kind: input.Kind})
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_revision", "snapshot", err)
@@ -344,10 +335,6 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 	for _, entry := range revision.StarterWorkspace {
 		starterBytes += entry.SizeBytes
 	}
-	profile, err := model.EncodeExecutionProfile(revision.ExecutionProfile)
-	if err != nil {
-		return fmt.Errorf("encode Exam Revision execution profile: %w", err)
-	}
 	browserPolicy, err := model.EncodeBrowserPolicy(revision.BrowserPolicy)
 	if err != nil {
 		return fmt.Errorf("encode Exam Revision Browser Policy: %w", err)
@@ -365,7 +352,6 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,
 		title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
-		execution_profile_document,execution_profile_canonical,execution_profile_digest,
 		browser_policy_document,browser_policy_canonical,browser_policy_digest,
 		candidate_correction_summary,candidate_correction_changed_areas,candidate_correction_affected_capabilities,candidate_correction_acknowledgement_required,
 		exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
@@ -375,7 +361,6 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 			?,?,?,?,?,
 			?,?,?,?::jsonb,?,?,
 			?::jsonb,?,?,
-			?::jsonb,?,?,
 			?,?,?,?,
 			?,?,?,?,?,
 			?,?,?,?,?,
@@ -383,7 +368,6 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 		)`, revision.ID.String(), revision.ExamID.String(), revision.Number,
 		model.ExamRevisionSnapshotSchemaVersion, revision.SourceDraftRevision, revision.Title, revision.InstructionsMarkdown,
 		revision.Policy.SchemaVersion, string(revision.Policy.Bytes), revision.Policy.Bytes, revision.PolicyDigest,
-		string(profile), profile, revision.ExecutionProfileDigest,
 		string(browserPolicy), browserPolicy, revision.BrowserPolicyDigest,
 		correctionSummary, correctionAreas, correctionCapabilities, correctionAcknowledgement,
 		revision.Capacity.ResourceMaximumCount, revision.Capacity.ResourceMaximumBytes, revision.Capacity.WorkspaceMaximumEntries,
@@ -543,14 +527,6 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 	if err != nil || !bytes.Equal(documentPolicy.Bytes, policy.Bytes) {
 		return nil, invalidPersistedState("exam_revision", "policy_document", errors.New("canonical policy mismatch"))
 	}
-	profile, err := model.DecodeExecutionProfile(header.ExecutionProfileCanonical)
-	if err != nil {
-		return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
-	}
-	documentProfile, err := model.DecodeExecutionProfile([]byte(header.ExecutionProfileDocument))
-	if err != nil || documentProfile != profile {
-		return nil, invalidPersistedState("exam_revision", "execution_profile_document", errors.New("canonical execution profile mismatch"))
-	}
 	browserPolicy, err := model.DecodeBrowserPolicy(header.BrowserPolicyCanonical)
 	if err != nil {
 		return nil, invalidPersistedState("exam_revision", "browser_policy_canonical", err)
@@ -584,7 +560,7 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: id, ExamID: examID, Number: header.Number,
 		SourceDraftRevision: header.SourceDraftRevision, Title: header.Title, InstructionsMarkdown: header.InstructionsMarkdown,
-		Policy: policy, ExecutionProfile: profile, BrowserPolicy: browserPolicy, Capacity: model.ExamCapacityPolicy{
+		Policy: policy, BrowserPolicy: browserPolicy, Capacity: model.ExamCapacityPolicy{
 			ResourceMaximumCount: header.ResourceMaximumCount, ResourceMaximumBytes: header.ResourceMaximumBytes,
 			WorkspaceMaximumEntries: header.WorkspaceMaximumEntries, WorkspaceMaximumFileBytes: header.WorkspaceMaximumFileBytes,
 			WorkspaceMaximumTotalBytes: header.WorkspaceMaximumTotalBytes,
@@ -599,7 +575,7 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 		starterBytes += entry.SizeBytes
 	}
 	if !header.Sealed || header.SnapshotSchemaVersion != model.ExamRevisionSnapshotSchemaVersion || header.PolicySchemaVersion != policy.SchemaVersion ||
-		header.PolicyDigest != revision.PolicyDigest || header.ExecutionProfileDigest != revision.ExecutionProfileDigest || header.BrowserPolicyDigest != revision.BrowserPolicyDigest || header.StarterWorkspaceDigest != revision.StarterWorkspaceDigest || header.ContentDigest != revision.ContentDigest ||
+		header.PolicyDigest != revision.PolicyDigest || header.BrowserPolicyDigest != revision.BrowserPolicyDigest || header.StarterWorkspaceDigest != revision.StarterWorkspaceDigest || header.ContentDigest != revision.ContentDigest ||
 		header.ResourceCount != len(resources) || header.StarterEntryCount != len(workspace) || header.StarterTotalBytes != starterBytes {
 		return nil, invalidPersistedState("exam_revision", "header", errors.New("snapshot metadata mismatch"))
 	}
@@ -629,7 +605,7 @@ func (row examRevisionHeaderRow) summary() (*store.ExamRevisionSummary, error) {
 		return nil, invalidPersistedState("exam_revision", "summary", errors.New("invalid summary"))
 	}
 	return &store.ExamRevisionSummary{ID: id, ExamID: examID, Number: row.Number, SourceDraftRevision: row.SourceDraftRevision, Title: row.Title,
-		PolicySchemaVersion: row.PolicySchemaVersion, PolicyDigest: row.PolicyDigest, ExecutionProfileDigest: row.ExecutionProfileDigest,
+		PolicySchemaVersion: row.PolicySchemaVersion, PolicyDigest: row.PolicyDigest,
 		BrowserPolicyDigest: row.BrowserPolicyDigest, StarterWorkspaceDigest: row.StarterWorkspaceDigest,
 		Capacity: model.ExamCapacityPolicy{ResourceMaximumCount: row.ResourceMaximumCount, ResourceMaximumBytes: row.ResourceMaximumBytes,
 			WorkspaceMaximumEntries: row.WorkspaceMaximumEntries, WorkspaceMaximumFileBytes: row.WorkspaceMaximumFileBytes, WorkspaceMaximumTotalBytes: row.WorkspaceMaximumTotalBytes},

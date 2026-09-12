@@ -26,8 +26,8 @@ func (outboundTestLocalizer) Translate(locale, id string, _ any) (string, error)
 		switch id {
 		case "websocket.error.request.invalid":
 			return "Requête WebSocket invalide.", nil
-		case "websocket.error.exam_attempt.terminal.size_invalid":
-			return "Taille du terminal invalide.", nil
+		case "websocket.error.exam_attempt.focus_loss.signal_invalid":
+			return "Signal de perte de focus invalide.", nil
 		}
 	}
 	return "", errors.New("translation unavailable")
@@ -42,14 +42,14 @@ func TestConnectionRuntimeLocalizesErrorWithoutChangingCode(t *testing.T) {
 		send: make(chan outboundMessage, 2),
 	}
 	runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
-	runtime.enqueueError(9, "websocket.request.invalid", websocketErrorTerminalSizeInvalid)
+	runtime.enqueueError(9, "websocket.request.invalid", websocketErrorFocusLossSignalInvalid)
 
 	for _, want := range []struct {
 		sequence int64
 		message  string
 	}{
 		{sequence: 8, message: "Requête WebSocket invalide."},
-		{sequence: 9, message: "Taille du terminal invalide."},
+		{sequence: 9, message: "Signal de perte de focus invalide."},
 	} {
 		response := (<-runtime.send).response
 		if response.Sequence != want.sequence || response.Error.Code != "websocket.request.invalid" || response.Error.Message != want.message {
@@ -126,6 +126,7 @@ func TestConnectionRuntimeClosesOnOutboundQueueSaturation(t *testing.T) {
 			name: "error",
 			enqueue: func(runtime *connectionRuntime) {
 				runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
+				runtime.enqueueError(9, "websocket.request.invalid", websocketErrorFocusLossSignalInvalid)
 			},
 		},
 	}
@@ -175,6 +176,7 @@ func TestConnectionRuntimeWritesOutboundMessagesInQueueOrder(t *testing.T) {
 	})
 	runtime.enqueueResponse(7, json.RawMessage(`{"accepted":true}`))
 	runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
+	runtime.enqueueError(9, "websocket.request.invalid", websocketErrorFocusLossSignalInvalid)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

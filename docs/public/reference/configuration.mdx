@@ -1,6 +1,6 @@
 ---
 title: Configuration Reference
-description: Configure Proctor's listeners, dependencies, security policy, execution hosts, localization, and logging from one strict versioned JSON document.
+description: Configure Proctor's listeners, dependencies, security policy, localization, and logging from one strict versioned JSON document.
 audience: operator
 maturity: preview
 slug: /reference/configuration/
@@ -14,8 +14,7 @@ relationships that validation enforces.
 
 The defaults are a **local-development baseline**, not a production sizing or
 security recommendation. In particular, the example uses loopback listeners,
-development credentials, local storage, process-local cache, disabled mail,
-and disabled execution.
+development credentials, local storage, process-local cache, and disabled mail.
 
 ## Start from the complete example
 
@@ -64,7 +63,6 @@ field explicitly requires an HTTP or HTTPS URL.
 | [Server and metrics](./configuration/server-and-metrics.mdx) | Public HTTP/TLS serving, hosted webapp assets, shutdown, request bounds, and the Prometheus listener. |
 | [Data and cluster](./configuration/data-and-cluster.mdx) | PostgreSQL, disposable cache, and single-node or Memberlist coordination. |
 | [Mail and files](./configuration/mail-and-files.mdx) | SMTP delivery, mail secret sealing, opaque byte storage, and file-content work limits. |
-| [Execution](./configuration/execution.mdx) | The bounded catalog of trusted execution hosts and outbound request limits. |
 | [Authentication](./configuration/authentication.mdx) | Bootstrap, passwords, sessions, recovery, personal access tokens, MFA, CAS, and OIDC. |
 | [Localization and logging](./configuration/localization-and-logging.mdx) | Installation locale and dynamically reconfigurable log targets. |
 
@@ -85,18 +83,17 @@ must be readable only by the Proctor service account or its protected group.
 Logging and the external-authentication provider registry are the only
 configuration surfaces applied dynamically after a successful reload. Every
 other change requires a process restart so listeners, infrastructure clients,
-security policy, and the execution-host catalog remain coherent for the life
+and security policy remain coherent for the life
 of the process.
 
 Validate the intended effective configuration before reloading or restarting.
 Validation proves the shape and relationships of the values; it does not prove
-that PostgreSQL, Redis, SMTP, object storage, identity providers, or execution
-hosts are reachable.
+that PostgreSQL, Redis, SMTP, object storage, or identity providers are reachable.
 
 ## Secret separation
 
 Bootstrap credentials, MFA sealing keys, mail sealing keys, Memberlist keys,
-TLS private keys, metrics bearer tokens, execution-host credentials, database
+TLS private keys, metrics bearer tokens, database
 credentials, and object-storage credentials serve different trust boundaries.
 Do not reuse material between them.
 
@@ -110,7 +107,7 @@ mail, and Memberlist key purposes.
 
 The repository does not yet define tested production sizing profiles for
 connection pools, cache memory, request limits, file-content concurrency,
-execution concurrency, or log queues. Use the enforceable ranges in this
+or log queues. Use the enforceable ranges in this
 reference, then determine production values from the installation's workload,
 dependency capacity, and failure budget.
 

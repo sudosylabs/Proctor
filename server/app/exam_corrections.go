@@ -122,9 +122,6 @@ func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id, code string) e
 type examCorrectionRealtimeEffects struct {
 	realtime    *realtimeService
 	collections examCollectionInvalidationEffects
-	execution   interface {
-		ReleaseSitting(context.Context, model.ExamSittingID) error
-	}
 }
 
 func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result examcorrection.Result) error {
@@ -136,16 +133,11 @@ func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result exa
 	if err != nil {
 		return err
 	}
-	var executionErr error
-	if result.AcknowledgementRequired && slices.Contains(result.AffectedCapabilities, model.CandidateCapabilityTerminal) && e.execution != nil {
-		executionErr = e.execution.ReleaseSitting(ctx, result.SittingID)
-	}
 	return errors.Join(
 		e.realtime.Publish(ctx, managerEvent),
 		e.realtime.Publish(ctx, candidateEvent),
 		e.collections.SittingBoardChanged(ctx, result.ExamID, result.SittingID),
 		e.collections.CandidateActivityChangedForSitting(ctx, result.SittingID),
-		executionErr,
 	)
 }
 func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation string, err error) {

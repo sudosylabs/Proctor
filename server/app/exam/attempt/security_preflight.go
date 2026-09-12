@@ -10,7 +10,6 @@ package attempt
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -201,14 +200,5 @@ func (service *Service) UpdateSecurityCoverage(ctx context.Context, call Call, c
 	if result.Validate() != nil {
 		return model.SecurityCoverageResult{}, unavailable(errors.New("inconsistent security coverage result"))
 	}
-	service.securityCoverageChanged(ctx, selector.AttemptID)
 	return result, nil
-}
-
-func (service *Service) securityCoverageChanged(ctx context.Context, attemptID model.ExamAttemptID) {
-	effectContext, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := service.deps.Effects.SecurityCoverageChanged(effectContext, attemptID); err != nil {
-		service.deps.EffectFailures.Report(ctx, "exam_attempt_security_coverage_changed", err)
-	}
 }

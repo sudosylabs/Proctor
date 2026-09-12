@@ -49,7 +49,7 @@ node-local and uncoordinated.
 
 - a non-loopback metrics listener requires its own static TLS identity and
   bearer token;
-- PostgreSQL, Redis, S3, SMTP, providers, and execution hosts use their own
+- PostgreSQL, Redis, S3, SMTP, and providers use their own
   client/server trust configuration;
 - Memberlist uses gossip encryption, not public TLS; and
 - no TLS private key may substitute for MFA, mail, DPoP, or cluster key material.

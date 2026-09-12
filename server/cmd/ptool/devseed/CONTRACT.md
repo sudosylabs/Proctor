@@ -7,7 +7,7 @@ Store interfaces, SQL, VFS, or a second server composition path. The Cobra
 adapter owns command presentation; Make owns development infrastructure.
 
 The finite dataset contains no live candidate simulation, fabricated
-participation, Attempts, Submissions, Reviews, or execution hosts. Server
+participation, Attempts, Submissions, or Reviews. Server
 publication, authorization, file processing, account admission, and Jobs remain
 authoritative. Settings examples are portable source documents; their keys do
 not promise that an unbuilt Desktop registry recognizes them.

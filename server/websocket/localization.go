@@ -42,16 +42,6 @@ const (
 	websocketErrorSubscriptionFailed           websocketErrorPresentation = "subscription_failed"
 	websocketErrorSubscriptionInvalid          websocketErrorPresentation = "subscription_invalid"
 	websocketErrorSubscriptionLimit            websocketErrorPresentation = "subscription_limit"
-	websocketErrorTerminalAlreadyOpen          websocketErrorPresentation = "terminal_already_open"
-	websocketErrorTerminalCloseRequestInvalid  websocketErrorPresentation = "terminal_close_request_invalid"
-	websocketErrorTerminalInputFailed          websocketErrorPresentation = "terminal_input_failed"
-	websocketErrorTerminalInputInvalid         websocketErrorPresentation = "terminal_input_invalid"
-	websocketErrorTerminalNotOpen              websocketErrorPresentation = "terminal_not_open"
-	websocketErrorTerminalOpenFailed           websocketErrorPresentation = "terminal_open_failed"
-	websocketErrorTerminalOpenRequestInvalid   websocketErrorPresentation = "terminal_open_request_invalid"
-	websocketErrorTerminalResizeFailed         websocketErrorPresentation = "terminal_resize_failed"
-	websocketErrorTerminalSizeInvalid          websocketErrorPresentation = "terminal_size_invalid"
-	websocketErrorTerminalUnavailable          websocketErrorPresentation = "terminal_unavailable"
 )
 
 var websocketErrorMessages = map[websocketErrorPresentation]localizedMessage{
@@ -76,16 +66,6 @@ var websocketErrorMessages = map[websocketErrorPresentation]localizedMessage{
 	websocketErrorSubscriptionFailed:           {id: "websocket.error.subscription.failed", fallback: "WebSocket subscription failed."},
 	websocketErrorSubscriptionInvalid:          {id: "websocket.error.subscription.invalid", fallback: "Invalid subscription."},
 	websocketErrorSubscriptionLimit:            {id: "websocket.error.subscription.limit", fallback: "WebSocket subscription limit reached."},
-	websocketErrorTerminalAlreadyOpen:          {id: "websocket.error.exam_attempt.terminal.already_open", fallback: "A terminal is already open."},
-	websocketErrorTerminalCloseRequestInvalid:  {id: "websocket.error.exam_attempt.terminal.close_request_invalid", fallback: "Invalid terminal close request."},
-	websocketErrorTerminalInputFailed:          {id: "websocket.error.exam_attempt.terminal.input_failed", fallback: "Terminal input failed."},
-	websocketErrorTerminalInputInvalid:         {id: "websocket.error.exam_attempt.terminal.input_invalid", fallback: "Invalid terminal input."},
-	websocketErrorTerminalNotOpen:              {id: "websocket.error.exam_attempt.terminal.not_open", fallback: "Terminal is not open."},
-	websocketErrorTerminalOpenFailed:           {id: "websocket.error.exam_attempt.terminal.open_failed", fallback: "Terminal could not be opened."},
-	websocketErrorTerminalOpenRequestInvalid:   {id: "websocket.error.exam_attempt.terminal.open_request_invalid", fallback: "Invalid Exam Attempt terminal request."},
-	websocketErrorTerminalResizeFailed:         {id: "websocket.error.exam_attempt.terminal.resize_failed", fallback: "Terminal resize failed."},
-	websocketErrorTerminalSizeInvalid:          {id: "websocket.error.exam_attempt.terminal.size_invalid", fallback: "Invalid terminal size."},
-	websocketErrorTerminalUnavailable:          {id: "websocket.error.exam_attempt.terminal.unavailable", fallback: "Terminal is unavailable."},
 }
 
 var websocketCloseMessages = map[string]localizedMessage{

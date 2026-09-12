@@ -138,7 +138,6 @@ type ExamRevisionSpecification struct {
 	Title                string
 	InstructionsMarkdown string
 	Policy               ExamRevisionPolicy
-	ExecutionProfile     ExecutionProfile
 	BrowserPolicy        BrowserPolicy
 	Capacity             ExamCapacityPolicy
 	Resources            []ExamRevisionResource
@@ -162,8 +161,6 @@ type ExamRevision struct {
 	InstructionsMarkdown   string
 	Policy                 ExamRevisionPolicy
 	PolicyDigest           string
-	ExecutionProfile       ExecutionProfile
-	ExecutionProfileDigest string
 	BrowserPolicy          BrowserPolicy
 	BrowserPolicyDigest    string
 	Capacity               ExamCapacityPolicy
@@ -179,15 +176,10 @@ type ExamRevision struct {
 }
 
 func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
-	profile := spec.ExecutionProfile
-	if !profile.Enabled && profile.Image == "" && profile.Network == "" {
-		profile = DefaultExecutionProfile()
-	}
 	revision := &ExamRevision{
 		ID: spec.ID, ExamID: spec.ExamID, Number: spec.Number, SourceDraftRevision: spec.SourceDraftRevision,
 		Title: spec.Title, InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy: cloneExamRevisionPolicy(spec.Policy), PolicyDigest: spec.Policy.SHA256,
-		ExecutionProfile:  profile,
 		BrowserPolicy:     spec.BrowserPolicy.Clone(),
 		Capacity:          spec.Capacity,
 		Resources:         append([]ExamRevisionResource(nil), spec.Resources...),
@@ -203,10 +195,6 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 		return strings.Compare(left.EntryID.String(), right.EntryID.String())
 	})
 	var err error
-	revision.ExecutionProfileDigest, err = ExecutionProfileDigest(revision.ExecutionProfile)
-	if err != nil {
-		return nil, err
-	}
 	if revision.BrowserPolicy.SchemaVersion == 0 {
 		revision.BrowserPolicy = DisabledBrowserPolicy()
 	}
@@ -270,7 +258,6 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRe
 		Title:                base.Title,
 		InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy:               cloneExamRevisionPolicy(base.Policy),
-		ExecutionProfile:     base.ExecutionProfile,
 		BrowserPolicy:        browserPolicy,
 		Capacity:             base.Capacity,
 		Resources:            append([]ExamRevisionResource(nil), spec.Resources...),
@@ -319,7 +306,7 @@ func (revision *ExamRevision) Validate() error {
 		return errors.New("model: standard Revision cannot contain Candidate Correction Notice")
 	}
 	draft := &ExamDraft{ExamID: revision.ExamID, Title: revision.Title, InstructionsMarkdown: revision.InstructionsMarkdown,
-		Policy: DefaultExamPolicySet(), ExecutionProfile: revision.ExecutionProfile, BrowserPolicy: revision.BrowserPolicy.Clone(),
+		Policy: DefaultExamPolicySet(), BrowserPolicy: revision.BrowserPolicy.Clone(),
 		UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
 	if err := draft.Validate(); err != nil {
 		return fmt.Errorf("model: invalid Exam Revision authored text: %w", err)
@@ -329,10 +316,6 @@ func (revision *ExamRevision) Validate() error {
 	}
 	if err := revision.Capacity.Validate(); err != nil {
 		return errors.New("model: invalid Exam Revision capacity policy")
-	}
-	profileDigest, err := ExecutionProfileDigest(revision.ExecutionProfile)
-	if err != nil || revision.ExecutionProfileDigest != profileDigest {
-		return errors.New("model: invalid Exam Revision Execution Profile")
 	}
 	browserDigest, err := BrowserPolicyDigest(revision.BrowserPolicy)
 	if err != nil || revision.BrowserPolicyDigest != browserDigest {
@@ -499,10 +482,6 @@ type candidateCorrectionNoticeWire struct {
 }
 
 func (revision *ExamRevision) computeDigests() (string, string, error) {
-	profile, err := EncodeExecutionProfile(revision.ExecutionProfile)
-	if err != nil {
-		return "", "", err
-	}
 	browserPolicy, err := EncodeBrowserPolicy(revision.BrowserPolicy)
 	if err != nil {
 		return "", "", err
@@ -530,8 +509,6 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 		InstructionsMarkdown   string                         `json:"instructions_markdown"`
 		PolicySchemaVersion    int                            `json:"policy_schema_version"`
 		Policy                 json.RawMessage                `json:"policy"`
-		ExecutionProfile       json.RawMessage                `json:"execution_profile"`
-		ExecutionProfileDigest string                         `json:"execution_profile_digest"`
 		BrowserPolicy          json.RawMessage                `json:"browser_policy"`
 		BrowserPolicyDigest    string                         `json:"browser_policy_digest"`
 		Capacity               ExamCapacityPolicy             `json:"capacity"`
@@ -540,7 +517,7 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 		StarterWorkspace       []examRevisionWorkspaceWire    `json:"starter_workspace"`
 		CandidateCorrection    *candidateCorrectionNoticeWire `json:"candidate_correction"`
 	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion,
-		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest,
+		json.RawMessage(revision.Policy.Bytes),
 		json.RawMessage(browserPolicy), revision.BrowserPolicyDigest, revision.Capacity,
 		resources, workspaceDigest, workspace, candidateCorrectionNoticeWireFromModel(revision.CandidateCorrection)})
 	if err != nil {

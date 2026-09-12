@@ -9,7 +9,6 @@ internal/canonicaljson ← model ← store ← app/job
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
-{model, store} ← app/execution ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
 localization ← {httpapi, websocket}
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
@@ -27,7 +26,6 @@ model ← filecontent
 packages/vfs ← filecontent
 app ← filecontent
 {app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor/commands ← cmd/proctor
-execenv ← executionhost ← server
 {model, internal/canonicaljson} ← desktoprelease ← server
 internal/autocert ← server
 ~~~
@@ -51,7 +49,6 @@ inside `app/` are application-owned modules, not transports.
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
-| `app/execution` | `model`, the bounded Execution Grant store, standard library, and consumer-owned host/content ports | parent `app`, execenv, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
 | `app/exam/manageraccess` | `model`, bounded Store access projection, narrow membership port, standard library | parent `app` or `app/exam`, sibling use cases, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
@@ -65,7 +62,6 @@ inside `app/` are application-owned modules, not transports.
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
 | `websocket` | `app`, `app/realtime`, `model`, `localization`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
-| `executionhost` | `app/execution` ports, their `model`/`store` value contracts, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
 | `desktoprelease` | `model`, `internal/canonicaljson`, standard-library signature and artifact validation | persistence, transports, application eligibility, process/filesystem selection |
 | `internal/autocert` | Standard library, `x/crypto/acme`, and `x/net/idna` | Product policy, application, persistence, transports, unrelated third-party libraries |
 | `internal/openapidoc` | Caller-supplied filesystems, OpenAPI/YAML parsing and validation, standard-library encoding | Process filesystem selection, runtime policy, application, persistence, transports |
@@ -126,14 +122,7 @@ product meaning and policy:
   recoverable server application secrets. It has no persistence or
   configuration dependency and is used directly as an in-process module, not
   hidden behind a replaceable cryptography port.
-- [`github.com/sudosylabs/execenv`](https://github.com/sudosylabs/execenv)
-  owns the exam-blind execution-host contract: readiness, ensure and revoke,
-  tree projection, one PTY, freeze, capacity, and typed errors. The server
-  owns the Execution Profile, placement, workspace acknowledgement, the
-  Attempt Terminal bridge, and when a grant may exist. The Execution Host
-  binary lives in the execenv repository and serves that contract.
-  Isolation machinery stays there. This monorepo requires the module; it
-  does not vendor Firecracker.
+
 
 Identity, authorization, examinations, WebSockets, clustering, and MFA
 remain server concerns until they have coherent Proctor-independent
@@ -148,9 +137,3 @@ policies.
   `store.Store` family is grouped deliberately for shared conformance testing.
 - Import tests make inward dependency direction enforceable instead of relying
   on prose or review memory.
-- The Attempt Terminal workflow remains a focused unexported service in parent
-  `app` because it coordinates two sibling modules: Attempt owns authorized
-  Workspace mutation and lifecycle semantics, while Execution owns placement,
-  projection, observation, PTY attachment, and grant release. Moving the bridge
-  into either child would reverse the dependency graph or give one sibling the
-  other's policy.

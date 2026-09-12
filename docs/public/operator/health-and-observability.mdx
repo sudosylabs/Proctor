@@ -35,7 +35,7 @@ threshold recommendations.
 Metrics use a separate node-local listener, default `127.0.0.1:8067`, exposing
 only `GET /metrics`. Scrape every node; Memberlist does not aggregate metrics.
 The `proctor_` families cover readiness, HTTP, stores, caches, WebSocket,
-cluster, Jobs, execution, VFS, mail, and selected domain outcomes.
+cluster, Jobs, VFS, mail, and selected domain outcomes.
 
 When binding beyond loopback, configuration requires static TLS and a random
 32–512-byte bearer token. Keep the token in protected secret input. Do not put

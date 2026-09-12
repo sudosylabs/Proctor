@@ -98,7 +98,6 @@ type SystemAuditor interface {
 }
 
 type Effects interface {
-	SecurityCoverageChanged(context.Context, model.ExamAttemptID) error
 	ConnectionOpened(context.Context, ConnectionResult) error
 	ConnectionClosed(context.Context, ConnectionClosedResult) error
 	ParticipationRenewed(context.Context, ParticipationRenewal) error
@@ -803,9 +802,6 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 		AcceptedSequence: stored.AcceptedSequence, DatabaseTime: model.TimeUTC(stored.DatabaseTime),
 		LeaseExpiresAt: model.TimeUTC(stored.LeaseExpiresAt), Duplicate: stored.Duplicate,
 	}
-	// A response-loss retry must still repair a missed containment/recovery
-	// effect. Lease renewal replay and control ordering are independent.
-	service.securityCoverageChanged(ctx, result.AttemptID)
 	if !result.Duplicate {
 		if effectErr := service.deps.Effects.ParticipationRenewed(ctx, result); effectErr != nil {
 			service.deps.EffectFailures.Report(ctx, "exam_attempt_participation_renewed", effectErr)
@@ -978,7 +974,6 @@ type Presentation struct {
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 	BrowserPolicy        *store.CandidateBrowserPolicy
 	LiveCorrections      []model.CandidateLiveCorrection
-	ExecutionProfile     model.ExecutionProfile
 	Resources            []Resource
 }
 
@@ -1010,8 +1005,8 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID, ClassID: stored.ClassID,
 		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown), Capacity: stored.Capacity,
 		RuntimeCapabilities: stored.RuntimeCapabilities, BrowserPolicy: cloneCandidateBrowserPolicy(stored.BrowserPolicy),
-		LiveCorrections: model.CloneCandidateLiveCorrections(stored.LiveCorrections), ExecutionProfile: stored.ExecutionProfile,
-		Resources: make([]Resource, len(stored.Resources))}
+		LiveCorrections: model.CloneCandidateLiveCorrections(stored.LiveCorrections),
+		Resources:       make([]Resource, len(stored.Resources))}
 	for index, item := range stored.Resources {
 		result.Resources[index] = Resource{ResourceID: item.ResourceID, DisplayName: item.DisplayName,
 			DescriptionMarkdown: safemarkdown.Sanitize(item.DescriptionMarkdown), Position: item.Position, MediaType: item.MediaType,

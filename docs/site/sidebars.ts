@@ -80,7 +80,6 @@ const sidebars: SidebarsConfig = {
       items: [
         {type: 'doc', id: 'exam-manager/author-and-publish', label: 'Author and Publish'},
         {type: 'doc', id: 'exam-manager/resources-and-workspace', label: 'Resources and Starter Workspace'},
-        {type: 'doc', id: 'exam-manager/execution-profile', label: 'Execution Profile'},
         {type: 'doc', id: 'exam-manager/sitting-operations', label: 'Sitting Operations'},
         {type: 'doc', id: 'exam-manager/corrections-and-attempt-control', label: 'Corrections and Attempt Control'},
         {type: 'doc', id: 'exam-manager/submission-and-integrity-review', label: 'Submission and Integrity Review'},
@@ -100,7 +99,7 @@ const sidebars: SidebarsConfig = {
         {type: 'doc', id: 'security/credentials-authorization', label: 'Credentials and Authorization'},
         {type: 'doc', id: 'security/data-privacy', label: 'Data and Privacy'},
         {type: 'doc', id: 'security/keys-network', label: 'Keys, Certificates, and Network'},
-        {type: 'doc', id: 'security/content-execution', label: 'Content and Execution'},
+        {type: 'doc', id: 'security/content-workspace', label: 'Content and Workspace'},
         {type: 'doc', id: 'security/errors-limits-compatibility', label: 'Errors, Limits, and Compatibility'},
       ],
     },
@@ -190,8 +189,8 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
-              id: 'developers/server/files-execution',
-              label: 'Files, Workspaces, and Execution',
+              id: 'developers/server/files-workspaces',
+              label: 'Files and Workspaces',
             },
             {
               type: 'doc',
@@ -373,11 +372,6 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'reference/configuration/mail-and-files',
               label: 'Mail and Files',
-            },
-            {
-              type: 'doc',
-              id: 'reference/configuration/execution',
-              label: 'Execution',
             },
             {
               type: 'doc',

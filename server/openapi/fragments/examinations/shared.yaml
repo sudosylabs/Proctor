@@ -119,7 +119,6 @@ components:
         - title
         - instructions_markdown
         - policy
-        - execution_profile
         - browser_policy
         - capacity
         - updated_at
@@ -136,8 +135,6 @@ components:
           description: Authored Markdown encoded as UTF-8 and limited to 65536 bytes.
         policy:
           $ref: '#/components/schemas/ExamPolicySet'
-        execution_profile:
-          $ref: '#/components/schemas/ExecutionProfile'
         browser_policy:
           $ref: '#/components/schemas/BrowserPolicy'
         capacity:
@@ -156,23 +153,6 @@ components:
           minimum: 0
         has_starter_workspace:
           type: boolean
-    ExecutionProfile:
-      type: object
-      additionalProperties: false
-      required:
-        - enabled
-        - image
-        - network
-      properties:
-        enabled:
-          type: boolean
-        image:
-          type: string
-        network:
-          type: string
-          enum:
-            - none
-            - allowlist
     BrowserPolicy:
       type: object
       description: >-

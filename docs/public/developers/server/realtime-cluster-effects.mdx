@@ -37,7 +37,7 @@ needs to refetch or invalidate.
 Never include:
 
 - credentials, Session tokens, or continuity secrets;
-- Exam answers, Workspace content, paths, or PTY bytes;
+- Exam answers, Workspace content, or paths;
 - mail bodies or recipient addresses;
 - private rationale or provider claims;
 - mutable domain records; or
@@ -129,10 +129,6 @@ and requires authoritative HTTP resynchronization.
 Do not transfer replay queues between nodes or claim cluster messages form a
 durable event log. A client must already know how to rebuild each subscribed
 view from its HTTP authority.
-
-PTY output is deliberately non-replayable. It belongs to the current protected
-Attempt Connection and execution stream, not the ordinary realtime event
-history.
 
 ## Bound Backpressure
 

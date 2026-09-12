@@ -896,20 +896,6 @@ Publication returns `exam.revision.capacity_exceeded` as a conflict when the
 current Institution policy was lowered below retained Draft content; managers
 must remove or repair that content before retrying.
 
-`PUT /api/v1/exams/{exam_id}/draft/execution-profile` replaces the complete
-Draft execution choice under the normal manager authorization, Draft revision
-fence, audit, and required idempotency contract. Its strict JSON body contains
-`expected_draft_revision`, `enabled`, `image`, and `network`. Disabled profiles
-carry an empty image and `none`; enabled profiles require a bounded catalog
-image identifier and either `none` or `allowlist`. Publication freezes the
-exact profile and digest into the immutable Exam Revision. Live correction
-cannot change it.
-
-`GET /api/v1/exams/{exam_id}/draft/execution-images` applies the same Exam
-authoring authorization and returns only sorted, deduplicated image ids and
-their supported `none`/`allowlist` modes. Host ids, addresses, credentials,
-release versions, and capacity are not public API fields.
-
 ## Exam Sitting schedule
 
 An Exam Sitting delivers one immutable Exam Revision to one exact Class over a
@@ -1175,7 +1161,7 @@ Correction acknowledgement uses strict JSON containing the current
 `participation_id`, `generation`, and `expected_current_revision_id`. The path
 Revision must be the oldest pending required correction. Each pending required
 notice blocks only its selected capabilities. Browser Policy changes require
-`browser`; instructions/resources require `submission`, `terminal`, and
+`browser`; instructions/resources require `submission` and
 `workspace`, with deliberate supersets permitted. Empty or omitted selections
 are invalid, including notice-only corrections. Candidate notices carry the
 immutable selection; runtime state carries `pending_correction_capabilities`.
@@ -1255,29 +1241,6 @@ responses and are excluded from ordinary audit values and realtime events.
 Mutation JSON is strict, duplicate-free, closed, and requires
 `Idempotency-Key`.
 
-The existing authenticated Attempt WebSocket carries the terminal; there is no
-candidate-to-host endpoint. After `exam_attempt.connect`, the client may send
-`exam_attempt.terminal.open` with the current generation, continuity
-credential, non-zero window, and required safe-integer `expected_workspace_cursor`.
-A future cursor is invalid. Temporary projection lag returns
-`execution.projection_pending`; successful attachment requires an acknowledged
-projection through the requested cursor and returns `environment_epoch`,
-`applied_workspace_cursor`, and `projection_state: ready`. Candidate terminal
-capabilities always include these projection fields; `environment_epoch` is
-`null` until creation, with cursor zero and state `unavailable` before projection.
-The open response assigns an opaque `terminal_id`, required on every subsequent
-input, resize, close, output, and closed frame. Frames and callbacks from a
-replaced PTY cannot affect its successor. Clients send bounded base64
-`exam_attempt.terminal.input`, `exam_attempt.terminal.resize`, and
-`exam_attempt.terminal.close` actions. An input or resize denied by a temporary
-execution gate returns `exam.attempt.terminal_unavailable` without a closed frame
-or a new terminal identity; the same PTY can resume after current authority allows
-interaction. Actual terminal failures still close the original handle.
-The server emits bounded base64
-`exam_attempt.terminal.output` and a terminal `exam_attempt.terminal.closed`
-event. PTY events are deliberately excluded from replay history and terminal
-bytes, credentials, host identities, and paths are never logged or audited.
-
 The candidate result route is concealed until explicit release. Its response
 contains only Review, Submission, and Attempt identities, sanitized approved
 student-facing Markdown, and release time. It never contains private manager
@@ -1294,7 +1257,7 @@ current Revision. It also returns the immutable Attempt Configuration, a
 bounded derived runtime-capability projection, the current governed Browser
 Policy when enabled, and the ordered live-correction notices with their
 Attempt-owned acknowledgement states. Runtime capability fields explain
-whether Workspace mutation, Submission, terminal, and Browser interaction are
+whether Workspace mutation, Submission, and Browser interaction are
 currently available; they do not replace authorization at each operation.
 The presentation's single Focus Loss field is the required
 `focus_loss_collection_enabled` boolean telling the trusted client whether to
@@ -1481,11 +1444,9 @@ source heads until a greater valid control establishes new continuity.
 
 Active security-policy recovery includes current sources, coverage, current-head
 reset receipts, and the latest processed control projection. Neither its receipt
-nor a healthy historical outcome grants interaction. Workspace mutation, voluntary
-Submission, execution reservation, and execution access recheck current durable
-security state in addition to their existing lifecycle and correction gates.
-Recording `freeze_pending` is only durable intent; it does not attest that guest
-execution has stopped. Source reset facts have separately charged immutable
+nor a healthy historical outcome grants interaction. Workspace mutation and voluntary
+Submission recheck current durable security state in addition to their existing
+lifecycle and correction gates. Source reset facts have separately charged immutable
 receipts; processing and current coverage occupy distinct reserved bounded slots.
 
 

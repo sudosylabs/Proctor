@@ -35,11 +35,6 @@ func prepareIdempotency(call Call, operation, key string, semantic any) (*store.
 func prepareWorkspaceMutationIdempotency(call Call, key string, attemptID model.ExamAttemptID,
 	operation model.AttemptWorkspaceMutationKind, semantic any,
 ) (*store.CommandIdempotency, error) {
-	// Origin deliberately remains outside the version-1 durable fingerprint.
-	// Candidate and execution-host mutations commit the same Workspace change,
-	// and post-commit effects are not repeated on replay. Keeping the historical
-	// document also preserves retries across rolling deployments and terminals
-	// that were already observing an event.
 	return prepareIdempotency(call, store.ExamAttemptWorkspaceMutationOperation, key, struct {
 		AttemptID string `json:"exam_attempt_id"`
 		Operation string `json:"operation"`

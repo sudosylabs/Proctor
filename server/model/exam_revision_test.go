@@ -155,7 +155,7 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	replacement.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixed")))
 	corrected, err := NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 4,
 		InstructionsMarkdown: "Fixed **instructions**", Resources: []ExamRevisionResource{replacement},
-		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
+		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T)
 		t.Fatal(err)
 	}
 	if _, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
-		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityTerminal, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
+		AffectedCapabilities: []CandidateCapability{CandidateCapabilityBrowser, CandidateCapabilitySubmission, CandidateCapabilityWorkspace}, CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
 		t.Fatal("non-increasing Revision number was accepted")
 	}
 }
