@@ -1442,7 +1442,7 @@ export interface paths {
         };
         /**
          * Get the protected current presentation for one candidate Attempt
-         * @description Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included.
+         * @description Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included. Capacity is frozen to the original admission Revision and does not change with Institution policy updates or live corrections. Instructions and resources follow the current Sitting Revision.
          */
         get: operations["getCandidateExamPresentation"];
         put?: never;
@@ -6168,6 +6168,8 @@ export interface components {
             attempt_id: components["schemas"]["ID"];
             browser_policy: components["schemas"]["CandidateBrowserPolicy"] | null;
             candidate_runtime_capabilities: components["schemas"]["CandidateRuntimeCapabilities"];
+            /** @description Exam Capacity Policy frozen to the original admission Revision, including the enforced Workspace entry, per-file, and total-byte limits. */
+            capacity: components["schemas"]["ExamCapacityPolicy"];
             exam_sitting_id: components["schemas"]["ID"];
             /** @description Current Sitting Revision instructions as bounded authored Markdown. */
             instructions_markdown: string;

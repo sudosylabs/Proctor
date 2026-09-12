@@ -997,7 +997,21 @@ func newExamAttemptFixtureWithPolicies(t *testing.T, ctx context.Context, ss sto
 	browser *model.BrowserPolicy,
 ) examAttemptFixture {
 	t.Helper()
+	return newExamAttemptFixtureWithCapacity(t, ctx, ss, focus, browser, model.ExamCapacityPolicy{})
+}
+
+func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss store.Store, focus *model.FocusLossPolicy,
+	browser *model.BrowserPolicy, capacity model.ExamCapacityPolicy,
+) examAttemptFixture {
+	t.Helper()
 	unit, programme := saveProgrammeParents(t, ctx, ss, "attempt-unit")
+	if !capacity.IsZero() {
+		institution, err := ss.Institution().GetSingleton(ctx)
+		requireNoError(t, err)
+		institution.ExamCapacity = capacity
+		_, err = ss.Institution().Update(ctx, institution)
+		requireNoError(t, err)
+	}
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "attempt-level")
 	now := model.NowUTC()
 	period := saveAcademicPeriod(t, ctx, ss, unit.InstitutionID.String(), "attempt-period", model.MillisFromTime(now.Add(-time.Hour)))

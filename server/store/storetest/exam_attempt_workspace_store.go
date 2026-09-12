@@ -34,7 +34,11 @@ type ExamAttemptWorkspaceSQLProbe struct {
 func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store.ExamAttemptWorkspaceStore, probes ...ExamAttemptWorkspaceSQLProbe) {
 	t.Helper()
 	ctx := context.Background()
-	fixture := newExamAttemptFixture(t, ctx, ss)
+	admittedCapacity := model.DefaultExamCapacityPolicy()
+	admittedCapacity.WorkspaceMaximumEntries = 420
+	admittedCapacity.WorkspaceMaximumFileBytes = 8 << 20
+	admittedCapacity.WorkspaceMaximumTotalBytes = 5 * admittedCapacity.WorkspaceMaximumFileBytes
+	fixture := newExamAttemptFixtureWithCapacity(t, ctx, ss, nil, nil, admittedCapacity)
 	// Admission and later Workspace growth use the policy frozen into the
 	// published Revision, not a subsequently lowered Institution policy.
 	institution, err := ss.Institution().GetSingleton(ctx)
@@ -63,6 +67,15 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
+	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, store.CandidateAttemptAccess{
+		AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID,
+		DesktopRegistrationID: access.DesktopRegistrationID, DPoPKeyThumbprint: access.DPoPKeyThumbprint,
+		ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash,
+	})
+	requireNoError(t, err)
+	if presentation.Capacity != admittedCapacity || presentation.Capacity == lowered {
+		t.Fatalf("candidate capacity did not retain admission limits: %#v", presentation.Capacity)
+	}
 	reservation := &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: model.NewAttemptWorkspaceObjectID()}
 	reserved, err := workspace.ReserveObject(ctx, reservation)
 	requireNoError(t, err)
@@ -406,7 +419,7 @@ writesComplete:
 		requireNoError(t, reserveErr)
 		large, reserveErr = workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
 			ObjectID: large.ID, ContentVersion: model.NewWorkspaceContentVersion(), Content: model.AttemptWorkspaceContent{
-				MediaType: "application/octet-stream", SizeBytes: model.ExamWorkspaceDefaultMaximumFileBytes, SHA256: strings.Repeat("d", 64)}})
+				MediaType: "application/octet-stream", SizeBytes: admittedCapacity.WorkspaceMaximumFileBytes, SHA256: strings.Repeat("d", 64)}})
 		requireNoError(t, reserveErr)
 		_, reserveErr = apply(model.AttemptWorkspaceMutationCreateFile, "size-quota-"+string(rune('a'+index)), func(input *store.ExamAttemptWorkspaceMutation) {
 			input.DestinationPath, input.ObjectID = "large-"+string(rune('a'+index)), large.ID

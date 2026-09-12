@@ -8756,6 +8756,10 @@
           "candidate_runtime_capabilities": {
             "$ref": "#/components/schemas/CandidateRuntimeCapabilities"
           },
+          "capacity": {
+            "$ref": "#/components/schemas/ExamCapacityPolicy",
+            "description": "Exam Capacity Policy frozen to the original admission Revision, including the enforced Workspace entry, per-file, and total-byte limits."
+          },
           "exam_sitting_id": {
             "$ref": "#/components/schemas/ID"
           },
@@ -8788,6 +8792,7 @@
           "exam_sitting_id",
           "title",
           "instructions_markdown",
+          "capacity",
           "candidate_runtime_capabilities",
           "browser_policy",
           "live_corrections",
@@ -29395,7 +29400,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/presentation": {
       "get": {
-        "description": "Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included.",
+        "description": "Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included. Capacity is frozen to the original admission Revision and does not change with Institution policy updates or live corrections. Instructions and resources follow the current Sitting Revision.",
         "operationId": "getCandidateExamPresentation",
         "parameters": [
           {

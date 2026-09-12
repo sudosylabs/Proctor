@@ -519,7 +519,8 @@ type CandidateExamResource struct {
 }
 
 // CandidateExamPresentation is the bounded protected projection resolved from
-// the Sitting's current Revision. AdmissionRevisionID remains provenance only.
+// the Sitting's current Revision, except Capacity, which remains frozen to the
+// original admission Revision.
 // The projection deliberately omits policy JSON and object selectors.
 type CandidateExamPresentation struct {
 	AttemptID            model.ExamAttemptID
@@ -527,6 +528,7 @@ type CandidateExamPresentation struct {
 	ClassID              model.ClassID
 	Title                string
 	InstructionsMarkdown string
+	Capacity             model.ExamCapacityPolicy
 	Resources            []CandidateExamResource
 	RuntimeCapabilities  CandidateRuntimeCapabilities
 	BrowserPolicy        *CandidateBrowserPolicy

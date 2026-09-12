@@ -48,8 +48,12 @@ func TestCandidateExamPresentationRequiresBoundHeadersAndNeverEchoesSecrets(t *t
 	}
 	var payload map[string]json.RawMessage
 	var capabilities candidateRuntimeCapabilitiesResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 {
+	var capacity examCapacityPolicyResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 9 {
 		t.Fatalf("presentation shape = %v, %v", payload, err)
+	}
+	if err := json.Unmarshal(payload["capacity"], &capacity); err != nil || capacity != examCapacityPolicyResponseFromModel(fake.presentation.Capacity) {
+		t.Fatalf("presentation capacity = %#v, %v", capacity, err)
 	}
 	if err := json.Unmarshal(payload["candidate_runtime_capabilities"], &capabilities); err != nil ||
 		!capabilities.FocusLossCollectionEnabled || capabilities.SchemaVersion != 1 ||
@@ -901,6 +905,7 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		connection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at},
 		credential: model.NewCredentialToken(), resourceID: resourceID,
 		presentation: application.CandidateExamPresentation{AttemptID: attempt.ID, SittingID: attempt.SittingID,
+			Capacity:            model.ExamCapacityPolicy{ResourceMaximumCount: 7, ResourceMaximumBytes: 4096, WorkspaceMaximumEntries: 42, WorkspaceMaximumFileBytes: 1024, WorkspaceMaximumTotalBytes: 8192},
 			RuntimeCapabilities: candidateTestRuntimeCapabilities(t, at, attempt), Title: "Algorithms",
 			InstructionsMarkdown: "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
 				DescriptionMarkdown: "Read this.", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 9, SHA256: strings.Repeat("b", 64)}}},

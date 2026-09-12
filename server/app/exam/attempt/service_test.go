@@ -80,6 +80,7 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 		AcknowledgedAt: f.at,
 	}
 	f.persistence.presentation = &store.CandidateExamPresentation{
+		Capacity:  model.DefaultExamCapacityPolicy(),
 		AttemptID: f.attemptID, SittingID: f.sitting.ID,
 		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentRevisionID),
 		Title: "Algorithms", Resources: []store.CandidateExamResource{},
@@ -148,6 +149,7 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		AcknowledgedAt: f.at.Add(-time.Minute), Replayed: true,
 	}
 	f.persistence.presentation = &store.CandidateExamPresentation{
+		Capacity:  model.DefaultExamCapacityPolicy(),
 		AttemptID: f.attemptID, SittingID: f.sitting.ID,
 		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentRevisionID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentRevisionID),
 		Title: "Algorithms", Resources: []store.CandidateExamResource{},
@@ -933,6 +935,7 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	credential := model.NewCredentialToken()
 	currentID := model.NewExamRevisionID()
 	f.persistence.presentation = &store.CandidateExamPresentation{
+		Capacity:  model.DefaultExamCapacityPolicy(),
 		AttemptID: f.attemptID, SittingID: f.sitting.ID,
 		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(currentID),
 		Title: "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
@@ -945,7 +948,8 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != f.revision.ID ||
+	if result.Capacity != f.persistence.presentation.Capacity ||
+		result.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != f.revision.ID ||
 		result.RuntimeCapabilities.ExamRevision.CurrentRevisionID != currentID ||
 		!result.RuntimeCapabilities.FocusLossCollectionEnabled ||
 		!strings.Contains(result.InstructionsMarkdown, "# Rules") || !strings.Contains(result.InstructionsMarkdown, "**Go**") ||
@@ -961,6 +965,30 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	if f.persistence.candidateAccess.ContinuityCredentialHash != model.HashToken(credential) ||
 		f.persistence.candidateAccess.CandidateUserID != f.userID || f.persistence.candidateAccess.SessionID != f.call.Principal().SessionID {
 		t.Fatalf("candidate selector = %#v", f.persistence.candidateAccess)
+	}
+}
+
+func TestProtectedPresentationRejectsInvalidFrozenCapacity(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name     string
+		capacity model.ExamCapacityPolicy
+	}{
+		{name: "missing"},
+		{name: "total below file limit", capacity: model.ExamCapacityPolicy{ResourceMaximumCount: 1, ResourceMaximumBytes: 1, WorkspaceMaximumEntries: 1, WorkspaceMaximumFileBytes: 2, WorkspaceMaximumTotalBytes: 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.persistence.presentation = &store.CandidateExamPresentation{
+				AttemptID: f.attemptID, SittingID: f.sitting.ID, Capacity: test.capacity,
+				RuntimeCapabilities: runtimeCapabilitiesFixture(f, f.revision.ID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(f.revision.ID),
+			}
+			_, err := f.service.GetPresentation(context.Background(), f.call, CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()})
+			var fault *Fault
+			if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" {
+				t.Fatalf("invalid capacity was not rejected: %v", err)
+			}
+		})
 	}
 }
 

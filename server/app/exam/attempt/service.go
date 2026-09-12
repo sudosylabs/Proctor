@@ -974,6 +974,7 @@ type Presentation struct {
 	ClassID              model.ClassID
 	Title                string
 	InstructionsMarkdown string
+	Capacity             model.ExamCapacityPolicy
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 	BrowserPolicy        *store.CandidateBrowserPolicy
 	LiveCorrections      []model.CandidateLiveCorrection
@@ -1000,14 +1001,14 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	if err != nil {
 		return Presentation{}, mapStore(err)
 	}
-	if stored == nil || stored.RuntimeCapabilities.Validate() != nil || !validCandidateBrowserPolicy(stored.RuntimeCapabilities, stored.BrowserPolicy) ||
+	if stored == nil || stored.Capacity.Validate() != nil || stored.RuntimeCapabilities.Validate() != nil || !validCandidateBrowserPolicy(stored.RuntimeCapabilities, stored.BrowserPolicy) ||
 		!validCandidateLiveCorrections(stored.RuntimeCapabilities, stored.LiveCorrections) ||
 		stored.RuntimeCapabilities.ExamRevision.AdmissionRevisionID.IsZero() ||
 		stored.RuntimeCapabilities.ExamRevision.CurrentRevisionID.IsZero() {
 		return Presentation{}, unavailable(errors.New("missing candidate presentation"))
 	}
 	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID, ClassID: stored.ClassID,
-		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown),
+		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown), Capacity: stored.Capacity,
 		RuntimeCapabilities: stored.RuntimeCapabilities, BrowserPolicy: cloneCandidateBrowserPolicy(stored.BrowserPolicy),
 		LiveCorrections: model.CloneCandidateLiveCorrections(stored.LiveCorrections), ExecutionProfile: stored.ExecutionProfile,
 		Resources: make([]Resource, len(stored.Resources))}

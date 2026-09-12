@@ -2199,6 +2199,7 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, err
 		}
 		var header struct {
+			examCapacityPolicyRow
 			Title                string    `db:"title"`
 			Instructions         string    `db:"instructions_markdown"`
 			Policy               []byte    `db:"policy_canonical"`
@@ -2215,6 +2216,8 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		}
 		if err = tx.Get(ctx, &header, `SELECT r.title,r.instructions_markdown,r.policy_canonical,r.execution_profile_canonical,
 			r.browser_policy_canonical,r.browser_policy_digest,r.number AS policy_revision_number,
+			admitted.exam_resource_max_count,admitted.exam_resource_max_bytes,
+			admitted.exam_workspace_max_entries,admitted.exam_workspace_max_file_bytes,admitted.exam_workspace_max_total_bytes,
  EXISTS(SELECT 1 FROM exam_attempt_security_owners bo JOIN exam_attempt_participations bp ON bp.id=bo.participation_id WHERE bo.exam_attempt_id=a.id AND bp.state='active' AND bo.browser_source_unavailable) AS browser_unavailable,
 			a.attempt_configuration_canonical,a.attempt_configuration_digest,s.state AS sitting_state,
 			statement_timestamp() AS database_now,
@@ -2222,8 +2225,13 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 				AND grant_record.state='ready' AND grant_record.lifecycle_pending=false) AS terminal_available
 			FROM exam_revisions r JOIN exam_sittings s ON s.exam_revision_id=r.id
 			JOIN exam_attempts a ON a.id=? AND a.exam_sitting_id=s.id
+			JOIN exam_revisions admitted ON admitted.id=a.admission_revision_id AND admitted.sealed=true
 			WHERE r.id=? AND r.sealed=true FOR SHARE OF r,s,a`, guard.AttemptID, guard.RevisionID); err != nil {
 			return nil, translateError("exam_revision", guard.RevisionID, err)
+		}
+		capacity, err := header.examCapacityPolicyRow.policy()
+		if err != nil {
+			return nil, err
 		}
 		configuration, err := model.DecodeAttemptConfiguration(header.Configuration, header.ConfigurationDigest)
 		if err != nil {
@@ -2279,7 +2287,7 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, invalidPersistedState("exam_sitting", "class_id", parseErr)
 		}
 		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
-			Title: header.Title, InstructionsMarkdown: header.Instructions,
+			Title: header.Title, InstructionsMarkdown: header.Instructions, Capacity: capacity,
 			RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, ExecutionProfile: executionProfile,
 			Resources: make([]store.CandidateExamResource, 0, len(rows))}
 		for _, row := range rows {

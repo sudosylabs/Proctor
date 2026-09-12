@@ -30,6 +30,8 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			fixture, connected, access := newBrowserActivityFixture(t, ctx, ss, "correction-capabilities-connect")
+			before, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
+			requireNoError(t, err)
 			command := &store.ExamCorrectionApplication{
 				RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 				CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: fixture.sitting.Revision,
@@ -55,6 +57,11 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 			}
 			presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 			requireNoError(t, err)
+			if presentation.Capacity != before.Capacity || presentation.Capacity.Validate() != nil ||
+				presentation.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != fixture.revisionID ||
+				presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID != corrected.Revision.ID {
+				t.Fatalf("correction changed admission capacity or lost current presentation: %#v", presentation)
+			}
 			blocked := func(capability model.CandidateCapability) bool {
 				return test.required && slices.Contains(test.selected, capability)
 			}

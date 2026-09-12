@@ -437,6 +437,7 @@ type examAttemptReallowResponse struct {
 }
 
 type candidateExamPresentationResponse struct {
+	Capacity                     examCapacityPolicyResponse           `json:"capacity"`
 	AttemptID                    string                               `json:"attempt_id"`
 	SittingID                    string                               `json:"exam_sitting_id"`
 	Title                        string                               `json:"title"`
@@ -1110,6 +1111,7 @@ func (module examAttemptHTTPModule) presentation(request operationRequest) (oper
 	}
 	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(), Title: view.Title,
 		InstructionsMarkdown:         view.InstructionsMarkdown,
+		Capacity:                     examCapacityPolicyResponseFromModel(view.Capacity),
 		CandidateRuntimeCapabilities: candidateRuntimeCapabilitiesFromStore(view.RuntimeCapabilities),
 		BrowserPolicy:                candidateBrowserPolicyFromStore(view.BrowserPolicy),
 		LiveCorrections:              candidateLiveCorrectionsFromModel(view.LiveCorrections),
