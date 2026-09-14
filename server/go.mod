@@ -7,12 +7,12 @@
 
 module github.com/sudosylabs/proctor/server
 
-go 1.25.13
+go 1.26.0
 
 require (
 	github.com/HugoSmits86/nativewebp v1.3.0
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/gorilla/mux v1.8.1
@@ -30,11 +30,11 @@ require (
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260811012629-fe3dc2e7fe5b
-	golang.org/x/crypto v0.55.0
-	golang.org/x/image v0.45.0
-	golang.org/x/net v0.58.0
-	golang.org/x/oauth2 v0.36.0
-	golang.org/x/text v0.41.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/image v0.46.0
+	golang.org/x/net v0.59.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/text v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -97,10 +97,10 @@ require (
 	github.com/wiggin77/srslog v1.0.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/mod v0.38.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/tools v0.48.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
