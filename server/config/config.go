@@ -66,6 +66,10 @@ type Server struct {
 	ShutdownTimeout   Duration  `json:"ShutdownTimeout"`
 	MaxHeaderBytes    int       `json:"MaxHeaderBytes"`
 	MaxBodyBytes      int64     `json:"MaxBodyBytes"`
+	// TrustedProxies lists the reverse proxies, as IP addresses or CIDR
+	// prefixes, whose X-Forwarded-For and X-Request-ID headers the server
+	// accepts. Empty trusts no proxy: the connection address is the client.
+	TrustedProxies []string `json:"TrustedProxies"`
 }
 
 // ServerTLS configures the client-facing listener. Mode is one of disabled,
@@ -366,6 +370,7 @@ func Default() Config {
 			ShutdownTimeout:   Duration{Duration: 15 * time.Second},
 			MaxHeaderBytes:    1 << 20,
 			MaxBodyBytes:      1 << 20,
+			TrustedProxies:    []string{},
 		},
 		Metrics: Metrics{
 			ListenAddress:            "127.0.0.1:8067",
@@ -506,6 +511,7 @@ func Default() Config {
 func (c Config) Clone() Config {
 	cloned := c
 	cloned.Log.Targets = cloneSlice(c.Log.Targets)
+	cloned.Server.TrustedProxies = cloneSlice(c.Server.TrustedProxies)
 	cloned.Cache.Redis.Addresses = cloneSlice(c.Cache.Redis.Addresses)
 	cloned.Cluster.Memberlist.SeedAddresses = cloneSlice(c.Cluster.Memberlist.SeedAddresses)
 	cloned.Cluster.Memberlist.DecryptionKeys = cloneSlice(c.Cluster.Memberlist.DecryptionKeys)
@@ -670,6 +676,9 @@ func (c Config) Validate() error {
 	}
 	if c.Server.MaxBodyBytes < 1024 || c.Server.MaxBodyBytes > 100<<20 {
 		add("server.max_body_bytes", "must be between 1024 and 104857600")
+	}
+	if _, err := ParseTrustedProxies(c.Server.TrustedProxies); err != nil {
+		add("server.trusted_proxies", err.Error())
 	}
 
 	validateDatabase(c.Database, add)

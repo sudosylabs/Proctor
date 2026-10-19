@@ -21,6 +21,14 @@ balancer terminates public TLS. Restrict the application listener to the proxy
 network. Forward HTTP and WebSocket traffic without changing the public origin,
 request method, path, query, or upgrade semantics.
 
+List every proxy or load-balancer address that connects to the application
+in `Server.TrustedProxies`. Only those peers may supply the client address
+through `X-Forwarded-For` and a correlation ID through `X-Request-ID`; the
+server takes the rightmost forwarded hop that is not itself a trusted proxy.
+Configure each proxy to append the connecting address to `X-Forwarded-For`.
+The `Forwarded` header is ignored. Without this setting, audit records and
+login rate limits attribute every request to the proxy.
+
 For active-active deployments, external termination and HTTP-to-HTTPS
 forwarding belong at the redundant load balancer. Use readiness for backend
 selection. Static TLS may still protect the proxy-to-node hop.
@@ -68,7 +76,8 @@ node-local and uncoordinated.
 - do not cache authenticated, no-store, or candidate delivery responses;
 - preserve request size/time bounds rather than adding an unbounded buffer;
 - pass a stable request correlation mechanism without trusting client identity
-  headers as authentication;
+  headers as authentication; a proxy-supplied `X-Request-ID` is honored only
+  from a trusted proxy;
 - remove unready nodes before drain and allow the configured shutdown window;
 - restrict application and cluster listeners to intended networks; and
 - test public discovery, login cookies, DPoP target URI, redirects, upload,

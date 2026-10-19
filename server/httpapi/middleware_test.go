@@ -20,7 +20,7 @@ func TestPanicRecoveryReturnsSafeProblemAndRetainsDiagnostic(t *testing.T) {
 	logger, logs := newTestLogger(t)
 	handler := withMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("secret panic detail")
-	}), logger)
+	}), logger, middlewarePolicy{})
 
 	request := httptest.NewRequest(http.MethodGet, "/panic", nil)
 	response := httptest.NewRecorder()

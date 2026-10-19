@@ -108,7 +108,7 @@ func (module browserInvitationResourceModule) start(request operationRequest) (o
 	started, err := module.application.StartBrowserInvitation(
 		request.context,
 		request.invocation(),
-		application.StartBrowserInvitationCommand{Claim: body.Claim, Source: request.request.RemoteAddr},
+		application.StartBrowserInvitationCommand{Claim: body.Claim, Source: request.metadata.IPAddress},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -138,7 +138,7 @@ func (module browserInvitationResourceModule) accept(request operationRequest) (
 		application.BrowserInvitationAcceptanceCommand{
 			Handle: body.Handle, BrowserProof: proof, Password: body.Password, Username: body.Username,
 			DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName,
-			Locale: body.Locale, Timezone: body.Timezone, Source: request.request.RemoteAddr,
+			Locale: body.Locale, Timezone: body.Timezone, Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {
@@ -160,7 +160,7 @@ func (module browserInvitationResourceModule) acceptWithSession(request operatio
 		request.context,
 		request.invocation(),
 		application.BrowserInvitationSessionAcceptanceCommand{
-			Handle: body.Handle, BrowserProof: proof, Source: request.request.RemoteAddr,
+			Handle: body.Handle, BrowserProof: proof, Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {

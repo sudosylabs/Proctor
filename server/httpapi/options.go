@@ -10,6 +10,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"time"
 
@@ -149,8 +150,11 @@ type Options struct {
 	// deadlines. Streaming upload and binary download routes extend them by
 	// the time their declared size takes at the minimum admitted throughput.
 	// Zero leaves the corresponding deadline unchanged.
-	ReadTimeout             time.Duration
-	WriteTimeout            time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	// TrustedProxies lists reverse-proxy peers whose X-Forwarded-For and
+	// X-Request-ID headers are accepted. Empty trusts no peer.
+	TrustedProxies          []netip.Prefix
 	RecentAuthenticationTTL time.Duration
 	NodeID                  string
 	// WebSocket is the sibling transport constructed at composition root.

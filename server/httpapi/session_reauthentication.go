@@ -52,7 +52,7 @@ func (module sessionReauthenticationResourceModule) password(request operationRe
 		return operationResult{}, err
 	}
 	session, err := module.authentication.ReauthenticatePassword(request.context, request.invocation(), application.ReauthenticatePasswordCommand{
-		Password: input.Password, Source: request.request.RemoteAddr,
+		Password: input.Password, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -65,7 +65,7 @@ func (module sessionReauthenticationResourceModule) external(request operationRe
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
-	start, err := module.authentication.BeginExternalReauthentication(request.context, request.invocation(), application.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.request.RemoteAddr})
+	start, err := module.authentication.BeginExternalReauthentication(request.context, request.invocation(), application.BeginExternalReauthenticationCommand{Task: input.Task, Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}

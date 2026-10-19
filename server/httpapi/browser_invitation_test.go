@@ -82,7 +82,7 @@ func TestBrowserInvitationHTTPKeepsSecondProofInHttpOnlyCookie(t *testing.T) {
 	if len(cleared) != 1 || cleared[0].Name != BrowserInvitationProofCookieName || cleared[0].MaxAge >= 0 {
 		t.Fatalf("cleared cookies = %#v", cleared)
 	}
-	if applicationFake.start.Source != "192.0.2.1:1234" || applicationFake.local.BrowserProof != proofCookies[0].Value || applicationFake.local.Username != "student" {
+	if applicationFake.start.Source != "192.0.2.1" || applicationFake.local.BrowserProof != proofCookies[0].Value || applicationFake.local.Username != "student" {
 		t.Fatalf("mapped commands = %#v %#v", applicationFake.start, applicationFake.local)
 	}
 }

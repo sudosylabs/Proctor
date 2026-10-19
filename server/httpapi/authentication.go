@@ -320,7 +320,7 @@ func (module authenticationResourceModule) register(request operationRequest) (o
 		application.RegisterLocalUserCommand{
 			Username: input.Username, Email: input.Email, FirstName: input.FirstName,
 			LastName: input.LastName, Password: input.Password,
-			Source: request.request.RemoteAddr,
+			Source: request.metadata.IPAddress,
 		},
 	); err != nil {
 		return operationResult{}, err
@@ -366,7 +366,7 @@ func (module authenticationResourceModule) login(request operationRequest) (oper
 		application.LoginCommand{
 			LoginID: input.LoginID, Password: input.Password, ClientType: input.ClientType,
 			DeviceID: input.DeviceID, DeviceName: input.DeviceName, MFACode: input.MFACode,
-			Source: request.request.RemoteAddr,
+			Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {
@@ -449,7 +449,7 @@ func (module authenticationResourceModule) logout(request operationRequest) (ope
 func (module authenticationResourceModule) requestEmailVerification(request operationRequest) (operationResult, error) {
 	err := module.authentication.RequestEmailVerification(
 		request.context, request.invocation(),
-		application.RequestEmailVerificationCommand{Source: request.request.RemoteAddr},
+		application.RequestEmailVerificationCommand{Source: request.metadata.IPAddress},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -465,7 +465,7 @@ func (module authenticationResourceModule) completeEmailVerification(request ope
 	_, err := module.authentication.CompleteEmailVerification(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
-		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.request.RemoteAddr},
+		application.CompleteEmailVerificationCommand{Token: input.Token, Source: request.metadata.IPAddress},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -481,7 +481,7 @@ func (module authenticationResourceModule) requestPasswordReset(request operatio
 	if err := module.authentication.RequestPasswordReset(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
-		application.RequestPasswordResetCommand{Email: input.Email, Source: request.request.RemoteAddr},
+		application.RequestPasswordResetCommand{Email: input.Email, Source: request.metadata.IPAddress},
 	); err != nil {
 		return operationResult{}, err
 	}
@@ -497,7 +497,7 @@ func (module authenticationResourceModule) completePasswordReset(request operati
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompletePasswordResetCommand{
-			Token: input.Token, Password: input.Password, Source: request.request.RemoteAddr,
+			Token: input.Token, Password: input.Password, Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {

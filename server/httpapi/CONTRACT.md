@@ -197,6 +197,19 @@ remain available for safe navigation; existing CAS and OIDC GET callbacks
 retain their one-use state and browser-binding checks. A future cross-site
 provider POST requires an explicit protocol design rather than a global bypass.
 
+## Client address and request correlation
+
+The recorded client address is the connection peer. When that peer is listed
+in `Server.TrustedProxies`, it is instead the rightmost `X-Forwarded-For` hop
+that is not itself a trusted proxy; a malformed hop stops the walk at the last
+trusted address. The `Forwarded` header is not consulted, because a proxy that
+maintains only `X-Forwarded-For` would pass a forged one through.
+
+Every response carries `X-Request-ID`, which is also the Problem Details
+`request_id` and the audit correlation. The server generates it unless a
+trusted proxy supplied one of at most 128 URL-safe characters. A client cannot
+choose the correlation recorded for its own requests.
+
 ## Bounded transfer deadlines
 
 `Server.ReadTimeout` and `Server.WriteTimeout` bound ordinary requests. Each

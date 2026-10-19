@@ -322,6 +322,13 @@ func composeConsumers(
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
 		httpMetrics = capabilities.metrics
 	}
+	trustedProxies, err := config.ParseTrustedProxies(snapshot.Server.TrustedProxies)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("parse trusted proxies: %w", err),
+			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
+		)
+	}
 	httpTransport, httpAPI, err := constructors.http(httpapi.Options{
 		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
 		Metrics:     httpMetrics,
@@ -339,6 +346,7 @@ func composeConsumers(
 		Mail:      application,
 		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
 		ReadTimeout: snapshot.Server.ReadTimeout.Duration, WriteTimeout: snapshot.Server.WriteTimeout.Duration,
+		TrustedProxies:          trustedProxies,
 		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,
 		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,
 	})

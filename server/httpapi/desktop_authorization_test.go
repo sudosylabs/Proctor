@@ -126,7 +126,7 @@ func TestDesktopAuthorizationHTTPMapsPublicClientProtocolAndDisablesCaching(t *t
 			t.Fatalf("%s = %d cache=%q body=%s", test.path, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
 		}
 	}
-	if applicationFake.start.Source != "192.0.2.1:1234" || applicationFake.exchange.Source != "192.0.2.1:1234" ||
+	if applicationFake.start.Source != "192.0.2.1" || applicationFake.exchange.Source != "192.0.2.1" ||
 		applicationFake.approve.Binding != "binding" || applicationFake.cancel.Binding != "binding" ||
 		applicationFake.exchange.CodeVerifier != "verifier" {
 		t.Fatalf("mapped commands = %#v %#v %#v %#v", applicationFake.start, applicationFake.approve, applicationFake.cancel, applicationFake.exchange)

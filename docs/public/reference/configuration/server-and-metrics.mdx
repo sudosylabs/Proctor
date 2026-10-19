@@ -34,10 +34,15 @@ Defaults shown here are the values compiled into Proctor and represented in the
 | `Server.ShutdownTimeout`<br />Default: `15s` | Grace period for the public server and owned infrastructure during shutdown. Must be greater than zero. |
 | `Server.MaxHeaderBytes`<br />Default: `1048576` (1 MiB) | Maximum request-header size. Must be between `1024` and `16777216` bytes. |
 | `Server.MaxBodyBytes`<br />Default: `1048576` (1 MiB) | Global HTTP request-body ceiling before narrower route limits. Must be between `1024` and `104857600` bytes. |
+| `Server.TrustedProxies[]`<br />Default: empty list | Reverse-proxy peers, as IP addresses or CIDR prefixes, whose `X-Forwarded-For` and `X-Request-ID` headers are accepted. At most 256 entries. Empty trusts no proxy: the connection address is the client and every request ID is server-generated. |
 
 `PublicURL` describes the URL clients use; it does not decide the bind address.
 When a reverse proxy terminates TLS, keep the public URL on `https`, bind the
 server on the protected upstream network, and leave built-in TLS disabled.
+List the proxy addresses in `Server.TrustedProxies` so audit records and
+login rate limits see the original client rather than the proxy. The server
+uses the rightmost `X-Forwarded-For` hop that is not itself a trusted proxy and
+ignores the `Forwarded` header.
 
 ## Built-in TLS
 

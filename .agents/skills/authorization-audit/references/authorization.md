@@ -262,9 +262,11 @@ authority, separate audit operations, no-op outcomes, and notice exclusion are
 defined in the [Session contract](../../identity-and-access/references/identity.md#sessions-browser-transport-and-desktop-handoff).
 
 Audit parameters and prior/result projections are each bounded to 16 KiB and
-exclude secrets, credentials, exam answers, and unbounded user content. Direct
-peer addresses may be recorded; forwarded client addresses remain untrusted
-until trusted-proxy configuration exists.
+exclude secrets, credentials, exam answers, and unbounded user content. The
+recorded IP address is the direct peer unless that peer is listed in
+`Server.TrustedProxies`; then it is the rightmost `X-Forwarded-For` hop that is
+not itself trusted. Audit request IDs are server-generated or supplied by a
+trusted proxy, never chosen by the client.
 
 Audit and minimal retirement receipts follow the current approved Institution
 Retention Policy's audit period. Zero preserves them indefinitely. An audit's

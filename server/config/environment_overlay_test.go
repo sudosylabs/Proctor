@@ -17,8 +17,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 123 {
-		t.Fatalf("environment override definitions = %d, want 123", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 124 {
+		t.Fatalf("environment override definitions = %d, want 124", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -185,6 +185,7 @@ func validEnvironmentValue(
 		"debug",
 		"json",
 		"127.0.0.1:6379,127.0.0.2:6379",
+		"10.0.0.0/8,192.0.2.1",
 		"1s",
 		"5s",
 		"10s",

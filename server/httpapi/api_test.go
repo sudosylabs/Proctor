@@ -43,8 +43,9 @@ func TestHealthVersionAndCommonHeaders(t *testing.T) {
 	if liveness.Code != http.StatusOK {
 		t.Fatalf("liveness status = %d: %s", liveness.Code, liveness.Body.String())
 	}
-	if liveness.Header().Get(httpapi.RequestIDHeader) != "desktop-client-1" {
-		t.Errorf("request ID = %q", liveness.Header().Get(httpapi.RequestIDHeader))
+	// A client-supplied request ID never becomes server correlation.
+	if requestID := liveness.Header().Get(httpapi.RequestIDHeader); requestID == "" || requestID == "desktop-client-1" {
+		t.Errorf("request ID = %q", requestID)
 	}
 	if liveness.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Error("security headers were not applied")
@@ -128,7 +129,8 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 			problem.Detail != test.detail ||
 			problem.Instance != test.path ||
 			problem.Code != test.code ||
-			problem.RequestID != "compatibility-request" {
+			problem.RequestID == "" || problem.RequestID == "compatibility-request" ||
+			problem.RequestID != response.Header().Get(httpapi.RequestIDHeader) {
 			t.Errorf("problem = %#v", problem)
 		}
 	}
@@ -221,7 +223,8 @@ func TestAuthenticationBoundaryRejectsMissingAmbiguousAndURLCredentials(t *testi
 				problem.Status != http.StatusUnauthorized ||
 				problem.Detail != "Authentication is required." ||
 				problem.Instance != request.URL.Path ||
-				problem.RequestID != "compatibility-request" {
+				problem.RequestID == "" || problem.RequestID == "compatibility-request" ||
+				problem.RequestID != response.Header().Get(httpapi.RequestIDHeader) {
 				t.Fatalf("authentication problem contract = %#v", problem)
 			}
 		})

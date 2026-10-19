@@ -543,7 +543,7 @@ func (m invitationResourceModule) acceptAcademicUnitRole(request operationReques
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptAcademicUnitRoleInvitation(request.context, request.invocation(), application.AcceptAcademicUnitRoleInvitationCommand{
-		Claim: body.Claim, Source: request.request.RemoteAddr,
+		Claim: body.Claim, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -557,7 +557,7 @@ func (m invitationResourceModule) acceptInstitutionRole(request operationRequest
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptInstitutionRoleInvitation(request.context, request.invocation(), application.AcceptInstitutionRoleInvitationCommand{
-		Claim: body.Claim, Source: request.request.RemoteAddr,
+		Claim: body.Claim, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -592,7 +592,7 @@ func (m invitationResourceModule) acceptTeacherAcademicUnit(request operationReq
 	}
 	accepted, err := m.invitations.AcceptTeacherAcademicUnitInvitation(request.context, request.invocation(), application.AcceptTeacherAcademicUnitInvitationCommand{
 		Claim: body.Claim, Password: body.Password, Username: body.Username, DisplayName: body.DisplayName,
-		FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone, Source: request.request.RemoteAddr,
+		FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -628,7 +628,7 @@ func (m invitationResourceModule) acceptStudentClass(request operationRequest) (
 	accepted, err := m.invitations.AcceptStudentClassInvitation(request.context, request.invocation(), application.AcceptStudentClassInvitationCommand{
 		Claim: body.Claim, Password: body.Password, Username: body.Username, DisplayName: body.DisplayName,
 		FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone,
-		Source: request.request.RemoteAddr,
+		Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err

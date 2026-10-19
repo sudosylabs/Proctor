@@ -31,7 +31,8 @@ history or issue. Use only synthetic local credentials and redact the request
 before sharing it.
 
 The `X-Request-ID` response header and body `request_id` correlate the response
-with structured server records. For the default local file log, search for one
+with structured server records. The server generates the ID; a client-supplied
+`X-Request-ID` is ignored unless it comes from a configured trusted proxy. For the default local file log, search for one
 known identifier rather than publishing the entire file:
 
 ```sh

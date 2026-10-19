@@ -129,7 +129,8 @@ func TestWebSocketResourceRunsNamedUpgradeThroughRoutingKernel(t *testing.T) {
 		t.Fatalf("upgrade status = %d: %s", response.Code, response.Body.String())
 	}
 	if transport.acceptCalls != 1 || transport.principal.UserID != principal.UserID ||
-		transport.metadata.RequestID != "websocket-request" ||
+		transport.metadata.RequestID == "websocket-request" ||
+		transport.metadata.RequestID != response.Header().Get(RequestIDHeader) ||
 		transport.connectionID != connectionID || transport.sequence != 7 ||
 		!transport.allowMissingOrigin {
 		t.Fatalf("upgrade invocation = %#v", transport)

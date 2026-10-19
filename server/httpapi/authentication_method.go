@@ -109,7 +109,7 @@ func (m authenticationMethodResourceModule) connect(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	start, err := m.application.BeginProviderConnection(request.context, request.invocation(), application.BeginProviderConnectionCommand{ProviderID: providerID, ReturnTo: body.ReturnTo, Source: request.request.RemoteAddr})
+	start, err := m.application.BeginProviderConnection(request.context, request.invocation(), application.BeginProviderConnectionCommand{ProviderID: providerID, ReturnTo: body.ReturnTo, Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}

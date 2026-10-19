@@ -305,6 +305,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringListEnvironmentOverride("PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS", func(cfg *Config) *[]string {
 		return &cfg.Authentication.MFA.DecryptionKeys
 	}),
+	stringListEnvironmentOverride("PROCTOR_SERVER_TRUSTED_PROXIES", func(cfg *Config) *[]string {
+		return &cfg.Server.TrustedProxies
+	}),
 	durationEnvironmentOverride("PROCTOR_SERVER_READ_HEADER_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Server.ReadHeaderTimeout
 	}),

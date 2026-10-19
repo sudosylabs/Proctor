@@ -125,7 +125,7 @@ func (m desktopAuthorizationResourceModule) authenticateExternal(request operati
 	}
 	state := request.request.URL.Query().Get("state")
 	start, err := m.application.BeginDesktopExternalAuthentication(request.context, request.invocation(), application.BeginDesktopExternalAuthenticationCommand{
-		ProviderID: provider, Binding: binding, State: state, Source: request.request.RemoteAddr,
+		ProviderID: provider, Binding: binding, State: state, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return protocolResult{}, err
@@ -147,7 +147,7 @@ func (m desktopAuthorizationResourceModule) start(request operationRequest) (ope
 		DeviceID: input.DeviceID, DeviceName: input.DeviceName, PublicJWK: input.PublicJWK,
 		DesktopRelease: input.DesktopRelease, DesktopBuildID: input.DesktopBuildID,
 		Platform: input.Platform, Architecture: input.Architecture, RealtimeProtocol: input.RealtimeProtocol,
-		Source: request.request.RemoteAddr})
+		Source: request.metadata.IPAddress})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -207,7 +207,7 @@ func (m desktopAuthorizationResourceModule) authenticateLocal(request operationR
 		return operationResult{}, err
 	}
 	result, err := m.application.AuthenticateDesktopAuthorizationLocally(request.context, request.invocation(), application.AuthenticateDesktopAuthorizationLocallyCommand{
-		Binding: binding, LoginID: input.LoginID, Password: input.Password, MFACode: input.MFACode, Source: request.request.RemoteAddr,
+		Binding: binding, LoginID: input.LoginID, Password: input.Password, MFACode: input.MFACode, Source: request.metadata.IPAddress,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -294,7 +294,7 @@ func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (
 		return operationResult{}, proofErr
 	}
 	result, err := m.application.ExchangeDesktopAuthorization(request.context, request.invocation(), application.ExchangeDesktopAuthorizationCommand{
-		Code: input.Code, State: input.State, CodeVerifier: input.CodeVerifier, Source: request.request.RemoteAddr,
+		Code: input.Code, State: input.State, CodeVerifier: input.CodeVerifier, Source: request.metadata.IPAddress,
 		DPoPProof: proof, PublicJWK: input.PublicJWK, DesktopRelease: input.DesktopRelease,
 		DesktopBuildID: input.DesktopBuildID, Platform: input.Platform, Architecture: input.Architecture,
 		RealtimeProtocol: input.RealtimeProtocol,

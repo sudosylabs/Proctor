@@ -20,28 +20,40 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func withMiddleware(next http.Handler, logger Logger) http.Handler {
+// middlewarePolicy carries the deployment-owned inputs of the common
+// middleware chain.
+type middlewarePolicy struct {
+	trustedProxies trustedProxies
+}
+
+func withMiddleware(next http.Handler, logger Logger, policy middlewarePolicy) http.Handler {
 	handler := next
 	handler = recoverPanics(handler, logger)
 	handler = logRequests(handler, logger)
 	handler = securityHeaders(handler)
-	handler = attachRequestMetadata(handler)
-	handler = assignRequestID(handler)
+	handler = attachRequestIdentity(handler, policy.trustedProxies)
 	return handler
 }
 
-func attachRequestMetadata(next http.Handler) http.Handler {
+// attachRequestIdentity assigns the request ID and the request metadata
+// recorded by audit. The server generates every request ID unless the
+// connection peer is a trusted proxy that supplied a well-formed one, so a
+// client cannot choose the audit correlation of its own requests.
+func attachRequestIdentity(next http.Handler, proxies trustedProxies) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		ipAddress := request.RemoteAddr
-		if host, _, err := net.SplitHostPort(request.RemoteAddr); err == nil {
-			ipAddress = host
+		peer := proxies.peer(request)
+		requestID := newRequestID()
+		if peer.trusted {
+			requestID = requestIDFromTrustedProxy(request.Header.Get(RequestIDHeader))
 		}
+		writer.Header().Set(RequestIDHeader, requestID)
+		ctx := context.WithValue(request.Context(), requestIDContextKey{}, requestID)
 		metadata := model.RequestMetadata{
-			RequestID: RequestID(request.Context()),
-			IPAddress: ipAddress,
+			RequestID: requestID,
+			IPAddress: proxies.clientAddress(request, peer),
 			UserAgent: request.UserAgent(),
 		}
-		ctx := context.WithValue(request.Context(), requestMetadataContextKey{}, metadata)
+		ctx = context.WithValue(ctx, requestMetadataContextKey{}, metadata)
 		next.ServeHTTP(writer, request.WithContext(ctx))
 	})
 }
@@ -51,15 +63,6 @@ type requestMetadataContextKey struct{}
 func RequestMetadata(ctx context.Context) model.RequestMetadata {
 	metadata, _ := ctx.Value(requestMetadataContextKey{}).(model.RequestMetadata)
 	return metadata
-}
-
-func assignRequestID(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requestID := requestIDFromHeader(request.Header.Get(RequestIDHeader))
-		writer.Header().Set(RequestIDHeader, requestID)
-		ctx := context.WithValue(request.Context(), requestIDContextKey{}, requestID)
-		next.ServeHTTP(writer, request.WithContext(ctx))
-	})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

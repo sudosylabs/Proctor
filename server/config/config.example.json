@@ -22,7 +22,8 @@
     "IdleTimeout": "2m",
     "ShutdownTimeout": "15s",
     "MaxHeaderBytes": 1048576,
-    "MaxBodyBytes": 1048576
+    "MaxBodyBytes": 1048576,
+    "TrustedProxies": []
   },
   "Metrics": {
     "Enabled": false,

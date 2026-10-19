@@ -129,7 +129,7 @@ func (module externalAuthenticationResourceModule) beginFromBody(request operati
 		application.NewInvocation(model.Principal{}, request.metadata), application.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, InvitationClaim: body.InvitationClaim, ReturnTo: body.ReturnTo,
 			ClientType: model.SessionClientWeb, DeviceID: body.DeviceID, DeviceName: body.DeviceName,
-			Source: request.request.RemoteAddr,
+			Source: request.metadata.IPAddress,
 		})
 	if err != nil {
 		return protocolResult{}, err
@@ -168,7 +168,7 @@ func (module externalAuthenticationResourceModule) begin(
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.BeginExternalAuthenticationCommand{
 			ProviderID: providerID, ReturnTo: request.params.ReturnTo, ClientType: clientType,
-			DeviceID: request.params.DeviceId, DeviceName: request.params.DeviceName, Source: request.request.RemoteAddr,
+			DeviceID: request.params.DeviceId, DeviceName: request.params.DeviceName, Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {
@@ -205,7 +205,7 @@ func (module externalAuthenticationResourceModule) complete(
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.CompleteExternalAuthenticationCommand{
 			ProviderID: providerID, Binding: binding, Callback: callback,
-			Source: request.request.RemoteAddr,
+			Source: request.metadata.IPAddress,
 		},
 	)
 	if err != nil {

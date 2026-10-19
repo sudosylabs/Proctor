@@ -22,13 +22,20 @@ func RequestID(ctx context.Context) string {
 	return value
 }
 
-func requestIDFromHeader(value string) string {
+func newRequestID() string {
+	return rand.Text()
+}
+
+// requestIDFromTrustedProxy accepts a request ID supplied by a trusted
+// reverse proxy when it is short and uses only URL-safe characters; any
+// other value is replaced by a server-generated ID.
+func requestIDFromTrustedProxy(value string) string {
 	if value == "" || len(value) > 128 {
-		return rand.Text()
+		return newRequestID()
 	}
 	for _, character := range value {
 		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.", character) {
-			return rand.Text()
+			return newRequestID()
 		}
 	}
 	return value

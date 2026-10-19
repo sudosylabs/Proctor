@@ -70,7 +70,7 @@ func (a *API) buildRoutingKernel(apiPrefix string, maxBodyBytes int64, collect f
 		a.catalog = nil
 		return err
 	}
-	a.handler = withMiddleware(http.HandlerFunc(a.serveRoutes), a.logger)
+	a.handler = withMiddleware(http.HandlerFunc(a.serveRoutes), a.logger, a.middleware)
 	return nil
 }
 

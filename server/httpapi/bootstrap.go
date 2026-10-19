@@ -186,7 +186,7 @@ func (module bootstrapResourceModule) install(request operationRequest) (operati
 			AdministratorTimezone:    input.Administrator.Timezone,
 			Password:                 input.Password,
 			BootstrapSecret:          input.BootstrapSecret,
-			Source:                   request.request.RemoteAddr,
+			Source:                   request.metadata.IPAddress,
 		},
 	)
 	if err != nil {

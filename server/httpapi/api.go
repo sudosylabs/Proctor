@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ type API struct {
 	webSocket               WebSocketTransport
 	maxBodyBytes            int64
 	transferDeadlines       transferDeadlines
+	middleware              middlewarePolicy
 }
 
 func New(options Options) (*API, error) {
@@ -96,6 +98,7 @@ func New(options Options) (*API, error) {
 		webSocket:               options.WebSocket,
 		maxBodyBytes:            options.MaxBodyBytes,
 		transferDeadlines:       newTransferDeadlines(options.ReadTimeout, options.WriteTimeout),
+		middleware:              middlewarePolicy{trustedProxies: trustedProxies(slices.Clone(options.TrustedProxies))},
 	}
 	resources := productionResources(applications, options.Health, options.BuildInfo, cookies, api.webSocket)
 	if err := api.buildRoutingKernel(

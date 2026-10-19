@@ -167,15 +167,14 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		model.SessionClientCLI, "administrator-cli",
 	)
 	strengthenRoleAdministratorSession(t, handler, administratorLogin.Tokens.AccessToken)
-	authorizedRoleListRequestID := "authorized-role-list-test"
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/roles", nil)
 	listRequest.Header.Set(
 		"Authorization",
 		"Bearer "+administratorLogin.Tokens.AccessToken,
 	)
-	listRequest.Header.Set("X-Request-ID", authorizedRoleListRequestID)
 	listResponse := httptest.NewRecorder()
 	handler.ServeHTTP(listResponse, listRequest)
+	authorizedRoleListRequestID := listResponse.Header().Get("X-Request-ID")
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf(
 			"authorized role list status = %d: %s",
