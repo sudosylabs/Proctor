@@ -329,6 +329,11 @@ CREATE TABLE users (
 );
 
 CREATE UNIQUE INDEX users_username_key ON users (username) WHERE archived_at IS NULL;
+-- Managed-file purge proves a profile picture is unreferenced before removal.
+CREATE INDEX users_default_profile_picture_file_id_idx
+    ON users (default_profile_picture_file_id) WHERE default_profile_picture_file_id IS NOT NULL;
+CREATE INDEX users_custom_profile_picture_file_id_idx
+    ON users (custom_profile_picture_file_id) WHERE custom_profile_picture_file_id IS NOT NULL;
 CREATE UNIQUE INDEX users_email_key ON users (email) WHERE archived_at IS NULL;
 CREATE INDEX users_directory_search_idx
     ON users USING gin (
@@ -816,6 +821,10 @@ CREATE UNIQUE INDEX academic_unit_members_academic_unit_id_user_id_key
     WHERE archived_at IS NULL AND end_at IS NULL;
 CREATE INDEX academic_unit_members_current_exam_visibility_idx
     ON academic_unit_members (academic_unit_id, user_id, start_at, end_at)
+    WHERE archived_at IS NULL;
+-- Per-User membership listing feeds authorization resolution.
+CREATE INDEX academic_unit_members_user_id_start_at_idx
+    ON academic_unit_members (user_id, start_at DESC, id)
     WHERE archived_at IS NULL;
 
 -- ---------------------------------------------------------------------------
@@ -1625,8 +1634,10 @@ CREATE TABLE sessions (
 	)
 );
 
-CREATE INDEX sessions_user_id_last_activity_at_idx
-    ON sessions (user_id) WHERE archived_at IS NULL AND revoked_at IS NULL;
+-- Serves ListByUser ordering and, through the user_id prefix, every
+-- per-user active-session lookup and revocation.
+CREATE INDEX sessions_user_id_created_at_idx
+    ON sessions (user_id, created_at DESC, id) WHERE archived_at IS NULL;
 CREATE INDEX sessions_expires_at_idx
 	ON sessions (expires_at) WHERE archived_at IS NULL AND revoked_at IS NULL;
 CREATE INDEX sessions_authentication_provider_id_idx
@@ -2966,6 +2977,8 @@ CREATE UNIQUE INDEX session_credentials_token_hash_key ON session_credentials (t
 CREATE INDEX session_credentials_family_id_kind_idx
     ON session_credentials (family_id)
     WHERE family_id IS NOT NULL AND archived_at IS NULL;
+-- Credential revocation and rotation address every credential of one Session.
+CREATE INDEX session_credentials_session_id_idx ON session_credentials (session_id);
 
 CREATE TABLE personal_access_tokens (
     id varchar(26) PRIMARY KEY,
@@ -5156,3 +5169,89 @@ ALTER TABLE browser_activity_sources
     CHECK (policy_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT browser_activity_sources_registration_id_canonical_check
     CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+-- Referencing-side indexes. A foreign key whose referenced rows are deleted
+-- needs a leading index on the referencing columns, or every parent delete
+-- scans the child table; lookups by these columns need the same index.
+-- Foreign keys left without one have no such delete or lookup path.
+
+-- File purge removes revisions, renditions, and resource identities.
+CREATE INDEX file_revisions_file_entry_id_idx ON file_revisions (file_entry_id);
+CREATE INDEX exam_revision_resources_resource_idx
+    ON exam_revision_resources (exam_id, resource_id, file_entry_id);
+CREATE INDEX exam_revision_resources_file_revision_idx
+    ON exam_revision_resources (file_revision_id, file_entry_id);
+CREATE INDEX exam_revision_resources_rendition_idx
+    ON exam_revision_resources (rendition_id, file_revision_id);
+CREATE INDEX exam_correction_resource_stages_identity_idx
+    ON exam_correction_resource_stages (exam_id, resource_id, file_entry_id);
+
+-- Starter and Attempt Workspace objects and entries are removed by workspace
+-- mutation, reclamation, and Record Retirement.
+CREATE INDEX exam_revision_starter_workspace_entries_object_idx
+    ON exam_revision_starter_workspace_entries (exam_id, object_id) WHERE object_id IS NOT NULL;
+CREATE INDEX exam_submission_manifest_entries_workspace_entry_idx
+    ON exam_submission_manifest_entries (workspace_id, entry_id, workspace_object_id);
+CREATE INDEX exam_submission_manifest_entries_starter_object_idx
+    ON exam_submission_manifest_entries (starter_object_id) WHERE starter_object_id IS NOT NULL;
+
+-- Audit expiry probes every hard audit reference and deletes the event.
+CREATE INDEX external_login_states_audit_event_id_idx
+    ON external_login_states (audit_event_id) WHERE audit_event_id IS NOT NULL;
+CREATE INDEX exam_starter_workspace_objects_retired_by_audit_event_id_idx
+    ON exam_starter_workspace_objects (retired_by_audit_event_id) WHERE retired_by_audit_event_id IS NOT NULL;
+CREATE INDEX exam_attempt_workspace_objects_retired_by_audit_event_id_idx
+    ON exam_attempt_workspace_objects (retired_by_audit_event_id) WHERE retired_by_audit_event_id IS NOT NULL;
+CREATE INDEX submission_review_waivers_audit_event_id_idx ON submission_review_waivers (audit_event_id);
+CREATE INDEX retention_holds_creation_audit_event_id_idx ON retention_holds (creation_audit_event_id);
+CREATE INDEX retention_holds_release_audit_event_id_idx
+    ON retention_holds (release_audit_event_id) WHERE release_audit_event_id IS NOT NULL;
+
+-- Invitation and browser-authentication maintenance purge parents in bulk.
+CREATE INDEX browser_authentication_transactions_invitation_id_idx
+    ON browser_authentication_transactions (invitation_id) WHERE invitation_id IS NOT NULL;
+CREATE INDEX external_login_states_invitation_id_idx
+    ON external_login_states (invitation_id) WHERE invitation_id IS NOT NULL;
+CREATE INDEX external_login_states_browser_authentication_transaction_id_idx
+    ON external_login_states (browser_authentication_transaction_id)
+    WHERE browser_authentication_transaction_id IS NOT NULL;
+CREATE INDEX onboarding_import_rows_invitation_id_idx
+    ON onboarding_import_rows (invitation_id) WHERE invitation_id IS NOT NULL;
+
+-- Delivery and integrity Record Retirement remove sources, Flags, evidence,
+-- and discrepancies; inventory staleness is marked by Flag.
+CREATE INDEX browser_activity_sources_predecessor_id_idx
+    ON browser_activity_sources (predecessor_id) WHERE predecessor_id IS NOT NULL;
+CREATE INDEX integrity_discrepancies_browser_activity_source_session_id_idx
+    ON integrity_discrepancies (browser_activity_source_session_id)
+    WHERE browser_activity_source_session_id IS NOT NULL;
+CREATE INDEX integrity_review_decisions_integrity_flag_id_idx
+    ON integrity_review_decisions (integrity_flag_id, exam_attempt_id);
+CREATE INDEX submission_review_inventory_flags_flag_idx
+    ON submission_review_inventory_flags (integrity_flag_id, exam_attempt_id);
+CREATE INDEX submission_review_inventory_evidence_evidence_idx
+    ON submission_review_inventory_evidence (integrity_evidence_id, integrity_flag_id, exam_attempt_id);
+CREATE INDEX submission_review_inventory_discrepancies_discrepancy_idx
+    ON submission_review_inventory_discrepancies (integrity_discrepancy_id, submission_id, exam_attempt_id);
+CREATE INDEX submission_review_release_preparations_submission_id_idx
+    ON submission_review_release_preparations (submission_id);
+
+-- Mail maintenance deletes deliveries and occurrences; projections address them.
+CREATE INDEX exam_sitting_mail_recipients_desired_delivery_id_idx
+    ON exam_sitting_mail_recipients (desired_delivery_id) WHERE desired_delivery_id IS NOT NULL;
+CREATE INDEX exam_sitting_mail_recipients_desired_occurrence_id_idx
+    ON exam_sitting_mail_recipients (desired_occurrence_id) WHERE desired_occurrence_id IS NOT NULL;
+CREATE INDEX retention_notices_mail_delivery_id_idx
+    ON retention_notices (mail_delivery_id) WHERE mail_delivery_id IS NOT NULL;
+
+-- Lookups by an otherwise unindexed referencing column.
+CREATE INDEX external_identities_user_id_provider_idx
+    ON external_identities (user_id, provider) WHERE archived_at IS NULL;
+CREATE INDEX class_members_user_id_academic_period_id_idx
+    ON class_members (user_id, academic_period_id) WHERE archived_at IS NULL;
+CREATE INDEX role_bindings_role_id_idx ON role_bindings (role_id) WHERE archived_at IS NULL;
+CREATE INDEX role_bindings_origin_academic_unit_member_id_idx
+    ON role_bindings (origin_academic_unit_member_id) WHERE origin_academic_unit_member_id IS NOT NULL;
+CREATE INDEX exam_sittings_class_id_idx ON exam_sittings (class_id);
+CREATE INDEX retention_retirements_sitting_grace_idx
+    ON retention_retirements (exam_sitting_id) WHERE state = 'grace';
