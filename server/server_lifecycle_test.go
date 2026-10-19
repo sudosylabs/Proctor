@@ -213,6 +213,7 @@ type lifecycleHTTP struct {
 	beforeAccept     <-chan struct{}
 	afterShutdown    func()
 	keepServing      bool
+	stoppedErr       error
 	once             sync.Once
 }
 
@@ -233,6 +234,9 @@ func (s *lifecycleHTTP) Serve(_ net.Listener, accept func() bool) error {
 		return s.serveErr
 	}
 	<-s.stopped
+	if s.stoppedErr != nil {
+		return s.stoppedErr
+	}
 	return http.ErrServerClosed
 }
 

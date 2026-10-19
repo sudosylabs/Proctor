@@ -574,7 +574,9 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 	// that rejects the listener reports that error instead of acknowledging it.
 	select {
 	case serveErr := <-serveErrors:
-		if !s.httpServing() && runCtx.Err() != nil && errors.Is(serveErr, net.ErrClosed) {
+		// Close marks the node stopping before it cancels runCtx, so a
+		// refused handoff can surface the closed listener first.
+		if s.handoffRefusedForShutdown(runCtx, serveErr) {
 			return nil
 		}
 		var shutdownErr error
@@ -675,7 +677,9 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 	defer shutdownTimer.Stop()
 	select {
 	case serveErr := <-serveErrors:
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		// HTTP was just stopped by this lifecycle, so a closed listener is
+		// the expected result of that stop, not a serving failure.
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
 			err := fmt.Errorf("serve HTTP during shutdown: %w", serveErr)
 			s.retainHTTPShutdownError(err)
 			return errors.Join(runtimeErr, err)
@@ -883,6 +887,22 @@ func (s *Server) recordStarted(record func(*lifecycleMilestones)) {
 	s.lifecycleMu.Lock()
 	record(&s.milestones)
 	s.lifecycleMu.Unlock()
+}
+
+// handoffRefusedForShutdown reports a serve result that only reflects the
+// listener handoff being refused because shutdown was requested: by
+// cancellation, or by a Close that has marked the node stopping but has not
+// yet canceled the run context.
+func (s *Server) handoffRefusedForShutdown(runCtx context.Context, serveErr error) bool {
+	if !errors.Is(serveErr, net.ErrClosed) {
+		return false
+	}
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.milestones.httpServing {
+		return false
+	}
+	return runCtx.Err() != nil || s.state == nodeStopping || s.state == nodeClosed
 }
 
 func (s *Server) httpServing() bool {
