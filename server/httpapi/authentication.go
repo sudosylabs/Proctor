@@ -334,7 +334,7 @@ func authenticationLoginErrorCodes() []string {
 		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code",
 		"authentication.mfa.unavailable",
 		"authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited",
-		"authentication.rate_limit_unavailable", "authentication.internal",
+		"authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable",
 	}
 }
 

@@ -26232,7 +26232,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong. Requires Content-Type application/json, optionally with charset=utf-8. Cross-origin browser requests and invalid media types return request.invalid before credential verification or cookie issuance; native clients may omit browser origin headers.",
+        "description": "Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong. Every rate-limit-admitted success or failure is durably audited; if that audit cannot be recorded the login fails with audit.unavailable and issues no usable Session. Requires Content-Type application/json, optionally with charset=utf-8. Cross-origin browser requests and invalid media types return request.invalid before credential verification or cookie issuance; native clients may omit browser origin headers.",
         "operationId": "login",
         "requestBody": {
           "$ref": "#/components/requestBodies/Login"
@@ -26285,7 +26285,8 @@
           "authentication.desktop_authorization.account_session_locked",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
-          "authentication.internal"
+          "authentication.internal",
+          "audit.unavailable"
         ],
         "x-proctor-idempotency": "none"
       }

@@ -58,6 +58,7 @@ func constructIdentity(
 		foundation.attempts,
 		foundation.realtime,
 		mutationAuditAdapter{audit: foundation.audit},
+		localLoginAuditAdapter{audit: foundation.audit},
 		foundation.hasher,
 		mfaApplication,
 		patResolver,

@@ -63,6 +63,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		sessionCredentials store.SessionCredentialStore
 		attempts           *authenticationAttemptAccounting
 		audit              mutationAuditor
+		loginAudit         localLoginAuditor
 		effects            authenticationSecurityEffects
 		mfa                authenticationMFAVerifier
 		personalTokens     authenticationPATResolver
@@ -72,9 +73,9 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		users: persistence.User(), passwords: persistence.PasswordCredential(),
 		sessions: persistence.Session(), sessionCredentials: persistence.SessionCredential(),
 		attempts: mustAuthenticationAttemptAccounting(t, cache),
-		audit:    &mutationAttemptAuditorFake{},
-		effects:  discardAuthenticationSecurityEffects{},
-		mfa:      discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
+		audit:    &mutationAttemptAuditorFake{}, loginAudit: &localLoginAuditorFake{},
+		effects: discardAuthenticationSecurityEffects{},
+		mfa:     discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
 		newCredential: model.NewCredentialToken,
 	}
 	desktop := testAuthenticationDesktopDependencies(t, cache)
@@ -89,6 +90,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 			deps.attempts,
 			deps.effects,
 			deps.audit,
+			deps.loginAudit,
 			hasher,
 			deps.mfa,
 			deps.personalTokens,
@@ -111,6 +113,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		{name: "session credentials", mutate: func(deps *dependencies) { deps.sessionCredentials = nil }},
 		{name: "attempt accounting", mutate: func(deps *dependencies) { deps.attempts = nil }},
 		{name: "audit", mutate: func(deps *dependencies) { deps.audit = nil }},
+		{name: "login audit", mutate: func(deps *dependencies) { deps.loginAudit = nil }},
 		{name: "effects", mutate: func(deps *dependencies) { deps.effects = nil }},
 		{name: "MFA verifier", mutate: func(deps *dependencies) { deps.mfa = nil }},
 		{name: "PAT resolver", mutate: func(deps *dependencies) { deps.personalTokens = nil }},

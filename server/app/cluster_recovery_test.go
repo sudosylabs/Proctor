@@ -314,7 +314,7 @@ func seedAuthenticatedSession(
 	if err != nil {
 		t.Fatalf("createLocalUser() error = %v", err)
 	}
-	result, err := service.login(context.Background(), LoginCommand{
+	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,

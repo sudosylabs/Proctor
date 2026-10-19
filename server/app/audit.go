@@ -178,6 +178,85 @@ func (s *auditService) BeginAuthentication(
 	return saved, nil
 }
 
+// localLoginAuditAction names every durable local-password login outcome.
+const localLoginAuditAction = "authentication.login"
+
+// BeginLocalLogin persists the attempt for a password login whose credential
+// and second factor were proved, before any Session is issued. The event is
+// completed with the Session projection or the issuance failure.
+func (s *auditService) BeginLocalLogin(
+	ctx context.Context,
+	userID model.UserID,
+	clientType model.SessionClientType,
+	metadata model.RequestMetadata,
+) (*model.AuditEvent, error) {
+	if !userID.IsValid() || !clientType.IsValid() {
+		return nil, NewError("audit.event.invalid")
+	}
+	if s.audits == nil {
+		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
+	}
+	institution, err := s.institutions.GetSingleton(ctx)
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	event := localLoginAuditEvent(s.nodeID, institution.ID.String(), clientType, metadata)
+	event.ActorID = userID
+	event.Resource = model.Resource{Type: model.ResourceUser, ID: userID.String()}
+	event.Status = model.AuditStatusAttempt
+	saved, err := s.audits.Save(ctx, event)
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	return saved, nil
+}
+
+// RecordLocalLoginFailure persists one terminal failed password login. The
+// failed caller never becomes an actor; a resolved account is recorded only as
+// the targeted resource so operators can see attacks against it without the
+// raw, user-controlled login identifier entering audit data.
+func (s *auditService) RecordLocalLoginFailure(
+	ctx context.Context,
+	target model.UserID,
+	clientType model.SessionClientType,
+	metadata model.RequestMetadata,
+	errorCode string,
+) error {
+	if errorCode == "" {
+		return NewError("audit.event.invalid")
+	}
+	if s.audits == nil {
+		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
+	}
+	institution, err := s.institutions.GetSingleton(ctx)
+	if err != nil {
+		return auditUnavailable(err)
+	}
+	event := localLoginAuditEvent(s.nodeID, institution.ID.String(), clientType, metadata)
+	event.Resource = model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
+	if target.IsValid() {
+		event.Resource = model.Resource{Type: model.ResourceUser, ID: target.String()}
+	}
+	event.Status = model.AuditStatusFail
+	event.ErrorCode = errorCode
+	if _, err := s.audits.Save(ctx, event); err != nil {
+		return auditUnavailable(err)
+	}
+	return nil
+}
+
+func localLoginAuditEvent(nodeID, institutionID string, clientType model.SessionClientType,
+	metadata model.RequestMetadata,
+) *model.AuditEvent {
+	return &model.AuditEvent{
+		Action:    localLoginAuditAction,
+		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
+		RequestID: metadata.RequestID, NodeID: nodeID,
+		ClientType: string(clientType), AuthMethod: "password",
+		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
+	}
+}
+
 func (s *auditService) RecordExternalAuthenticationFailure(
 	ctx context.Context,
 	providerID string,

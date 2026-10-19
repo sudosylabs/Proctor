@@ -473,7 +473,7 @@ func TestLoginMapsEitherCounterFailureToUnavailableWithoutRollback(t *testing.T)
 			service := newTestAuthenticationServiceWithCache(
 				t, newAuthenticationStoreFake(), cache,
 			)
-			_, err := service.login(context.Background(), LoginCommand{
+			_, err := service.login(context.Background(), Invocation{}, LoginCommand{
 				LoginID: "student@example.edu", Password: "wrong-password",
 				ClientType: model.SessionClientCLI, Source: "192.0.2.8:443",
 			})
@@ -513,7 +513,7 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.login(context.Background(), LoginCommand{
+	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Username, Password: "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI, Source: "192.0.2.9:443",
 	})

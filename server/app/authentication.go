@@ -97,6 +97,49 @@ type authenticationCache interface {
 	Add(context.Context, string, int64, time.Duration) (int64, error)
 }
 
+// localLoginAuditor durably records every admitted local-password login
+// outcome. Attempts rejected before rate-limit admission are not audited so an
+// unauthenticated flood cannot grow the audit table without bound.
+type localLoginAuditor interface {
+	BeginLocalLogin(context.Context, Invocation, model.UserID, model.SessionClientType) (string, error)
+	CompleteLocalLogin(context.Context, string, model.AuditStatus, string, any) error
+	RecordLocalLoginFailure(context.Context, Invocation, model.UserID, model.SessionClientType, string) error
+}
+
+type localLoginAuditAdapter struct{ audit *auditService }
+
+func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation Invocation, userID model.UserID,
+	clientType model.SessionClientType,
+) (string, error) {
+	if a.audit == nil {
+		return "", auditUnavailable(errors.New("local login audit service is unavailable"))
+	}
+	event, err := a.audit.BeginLocalLogin(ctx, userID, clientType, invocation.RequestMetadata())
+	if err != nil {
+		return "", err
+	}
+	return event.ID.String(), nil
+}
+
+func (a localLoginAuditAdapter) CompleteLocalLogin(ctx context.Context, auditID string, status model.AuditStatus,
+	errorCode string, result any,
+) error {
+	if a.audit == nil {
+		return auditUnavailable(errors.New("local login audit service is unavailable"))
+	}
+	_, err := a.audit.CompleteCriticalAction(ctx, auditID, status, errorCode, result)
+	return err
+}
+
+func (a localLoginAuditAdapter) RecordLocalLoginFailure(ctx context.Context, invocation Invocation, target model.UserID,
+	clientType model.SessionClientType, errorCode string,
+) error {
+	if a.audit == nil {
+		return auditUnavailable(errors.New("local login audit service is unavailable"))
+	}
+	return a.audit.RecordLocalLoginFailure(ctx, target, clientType, invocation.RequestMetadata(), errorCode)
+}
+
 type authenticationDiagnostics interface {
 	WarnContext(context.Context, string, error)
 }
@@ -113,6 +156,7 @@ type authenticationService struct {
 	attempts           *authenticationAttemptAccounting
 	securityEffects    authenticationSecurityEffects
 	audit              mutationAuditor
+	loginAudit         localLoginAuditor
 	hasher             *passwordHasher
 	mfa                authenticationMFAVerifier
 	personalTokens     authenticationPATResolver
@@ -206,6 +250,7 @@ func newAuthenticationService(
 	attempts *authenticationAttemptAccounting,
 	securityEffects authenticationSecurityEffects,
 	audit mutationAuditor,
+	loginAudit localLoginAuditor,
 	hasher *passwordHasher,
 	mfa authenticationMFAVerifier,
 	personalTokens authenticationPATResolver,
@@ -240,7 +285,7 @@ func newAuthenticationService(
 	if securityEffects == nil {
 		return nil, errors.New("authentication security effects are required")
 	}
-	if audit == nil {
+	if audit == nil || loginAudit == nil {
 		return nil, errors.New("authentication audit is required")
 	}
 	if hasher == nil {
@@ -267,7 +312,7 @@ func newAuthenticationService(
 	return &authenticationService{
 		users: users, passwords: passwords, sessions: sessions,
 		sessionCredentials: sessionCredentials, accessPolicy: accessPolicy, cache: cache, attempts: attempts,
-		securityEffects: securityEffects, audit: audit, hasher: hasher, mfa: mfa,
+		securityEffects: securityEffects, audit: audit, loginAudit: loginAudit, hasher: hasher, mfa: mfa,
 		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
 		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
 		newCredential: newCredential, now: now,
@@ -319,22 +364,34 @@ func (s *authenticationService) createLocalUser(
 
 func (a *App) Login(
 	ctx context.Context,
-	_ Invocation,
+	invocation Invocation,
 	command LoginCommand,
 ) (*LoginResult, error) {
-	result, err := a.authentication.login(ctx, command)
+	result, err := a.authentication.login(ctx, invocation, command)
 	a.recordOperational("authentication", "login", err)
 	return result, err
 }
 
 func (s *authenticationService) login(
 	ctx context.Context,
+	invocation Invocation,
 	command LoginCommand,
 ) (*LoginResult, error) {
 	if command.ClientType == model.SessionClientDesktop || !command.ClientType.IsValid() {
 		return nil, NewError("authentication.client_type.invalid").WithField("field", "client_type")
 	}
-	proof, err := s.authenticateLocal(ctx, command)
+	proof, subject, err := s.proveLocal(ctx, command)
+	if err != nil {
+		if !subject.admitted {
+			return nil, err
+		}
+		if auditErr := s.loginAudit.RecordLocalLoginFailure(ctx, invocation, subject.userID,
+			command.ClientType, appErrorCode(err)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, err
+	}
+	auditID, err := s.loginAudit.BeginLocalLogin(ctx, invocation, proof.User.ID, command.ClientType)
 	if err != nil {
 		return nil, err
 	}
@@ -349,10 +406,40 @@ func (s *authenticationService) login(
 		},
 	)
 	if sessionErr != nil {
+		if auditErr := s.loginAudit.CompleteLocalLogin(ctx, auditID, model.AuditStatusFail,
+			appErrorCode(sessionErr), nil); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, sessionErr
+	}
+	if auditErr := s.loginAudit.CompleteLocalLogin(ctx, auditID, model.AuditStatusSuccess, "",
+		savedSession.Auditable()); auditErr != nil {
+		s.revokeUnauditedSession(ctx, savedSession)
+		return nil, auditErr
 	}
 	s.resetLocalAuthenticationAttempts(ctx, proof.receipt)
 	return &LoginResult{User: proof.User, Session: savedSession, Tokens: tokens}, nil
+}
+
+// revokeUnauditedSession withdraws a Session whose successful login audit could
+// not be made durable, so no credential outlives a missing security record.
+func (s *authenticationService) revokeUnauditedSession(ctx context.Context, session *model.Session) {
+	revokeCtx := context.WithoutCancel(ctx)
+	hashes, err := s.sessions.Revoke(revokeCtx, session.ID.String(), session.UserID.String(),
+		model.MillisFromTime(s.now()), model.SessionRevocationAuthenticationAuditFailed)
+	if err != nil {
+		s.warn(ctx, "failed to revoke unaudited local session", err)
+		return
+	}
+	s.securityEffects.SessionsRevoked(revokeCtx, session.UserID.String(), []string{session.ID.String()}, hashes)
+}
+
+// localAuthenticationSubject reports how far a failed local authentication
+// progressed: whether it was admitted by rate limiting and, when known, which
+// account it targeted.
+type localAuthenticationSubject struct {
+	admitted bool
+	userID   model.UserID
 }
 
 // authenticateLocal proves a local identity without deciding which
@@ -361,10 +448,29 @@ func (s *authenticationService) authenticateLocal(
 	ctx context.Context,
 	command LoginCommand,
 ) (*localAuthenticationProof, error) {
+	proof, _, err := s.proveLocal(ctx, command)
+	return proof, err
+}
+
+func (s *authenticationService) proveLocal(
+	ctx context.Context,
+	command LoginCommand,
+) (*localAuthenticationProof, localAuthenticationSubject, error) {
+	var subject localAuthenticationSubject
+	proof, err := s.proveLocalSubject(ctx, command, &subject)
+	return proof, subject, err
+}
+
+func (s *authenticationService) proveLocalSubject(
+	ctx context.Context,
+	command LoginCommand,
+	subject *localAuthenticationSubject,
+) (*localAuthenticationProof, error) {
 	receipt, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
 	if err != nil {
 		return nil, err
 	}
+	subject.admitted = true
 	localLoginAllowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
@@ -384,6 +490,9 @@ func (s *authenticationService) authenticateLocal(
 		return nil, invalidCredentialsAppError()
 	}
 	user, err := s.findLoginUser(ctx, command.LoginID)
+	if err == nil && user != nil {
+		subject.userID = user.ID
+	}
 	if err != nil {
 		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
 			return nil, passwordWorkError(dummyErr, "authentication.internal")

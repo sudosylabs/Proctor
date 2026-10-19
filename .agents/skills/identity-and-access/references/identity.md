@@ -68,6 +68,16 @@ counter, while the source-wide counter remains. Raw identities, sources,
 operations, and provider qualifiers never appear in cache keys, errors, logs,
 or diagnostics.
 
+Local password login durably audits every outcome admitted by attempt
+accounting as `authentication.login`. A proved credential and second factor
+open an actor-bearing attempt that completes with the issued Session projection
+or the issuance failure; a credential, account, or MFA failure records one
+actor-less terminal failure that names a resolved account only as its resource,
+never the raw login identifier. Requests refused by rate limiting write no
+audit, so unauthenticated floods cannot grow the audit table. If the success
+audit cannot complete, the new Session is revoked before the audit failure is
+returned.
+
 Durable audit remains a cross-cutting application capability exposed through
 narrow consumer-owned ports. Critical success audit stays inside the named
 atomic store operation where required. Cache invalidation, realtime
