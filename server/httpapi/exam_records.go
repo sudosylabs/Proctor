@@ -184,7 +184,7 @@ func (m examRecordsHTTPModule) complete(request operationRequest) (operationResu
 		return operationResult{}, err
 	}
 	var body completeExamRecordsRequest
-	if err = request.decodeJSON(&body, "completeExamSittingRecords"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	revision, err := requiredRecordsInteger("expected_revision", body.ExpectedRevision, 1)
@@ -222,7 +222,7 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 		return operationResult{}, err
 	}
 	var body waiveSubmissionReviewRequest
-	if err = request.decodeJSON(&body, "waiveSubmissionReview"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	revision, err := requiredRecordsInteger("expected_revision", body.ExpectedRevision, 0)
@@ -238,7 +238,7 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 		return operationResult{}, err
 	}
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
-		return operationResult{}, invalidRequestError("reason", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var deliveryRevision int64
 	if body.ExpectedDeliveryInventoryRevision.IsSet() {
@@ -263,7 +263,7 @@ func (m examRecordsHTTPModule) createHold(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	var body createRetentionHoldRequest
-	if err = request.decodeJSON(&body, "createRetentionHold"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	scope, err := recordsOptionalScope(examID, body.SittingID, body.SubmissionID)
@@ -271,7 +271,7 @@ func (m examRecordsHTTPModule) createHold(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
-		return operationResult{}, invalidRequestError("reason", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	value, err := m.application.CreateRetentionHold(request.context, request.invocation(), application.CreateRetentionHoldCommand{Scope: scope,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
@@ -294,10 +294,10 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 	}
 	holdID, err := model.ParseRetentionHoldID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("retention_hold_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body releaseRetentionHoldRequest
-	if err = request.decodeJSON(&body, "releaseRetentionHold"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	scope, err := recordsOptionalScope(examID, body.SittingID, body.SubmissionID)
@@ -309,7 +309,7 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	if err = model.ValidateRecordsReason(body.ReasonCode, body.PrivateReason); err != nil {
-		return operationResult{}, invalidRequestError("reason", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	value, err := m.application.ReleaseRetentionHold(request.context, request.invocation(), application.ReleaseRetentionHoldCommand{Scope: scope, HoldID: holdID, ExpectedRevision: revision,
 		ReasonCode: body.ReasonCode, PrivateReason: body.PrivateReason, IdempotencyKey: request.idempotencyKey})
@@ -330,22 +330,22 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 	values := request.request.URL.Query()
 	for key, items := range values {
 		if len(items) != 1 {
-			return operationResult{}, invalidRequestError("query", nil)
+			return operationResult{}, invalidRequestError(nil)
 		}
 		switch key {
 		case "exam_sitting_id", "submission_id", "include_released", "limit", "cursor":
 		default:
-			return operationResult{}, invalidRequestError("query", nil)
+			return operationResult{}, invalidRequestError(nil)
 		}
 	}
 	scope := model.RetentionHoldScope{ExamID: examID, SittingID: model.ExamSittingID(values.Get("exam_sitting_id")), SubmissionID: model.SubmissionID(values.Get("submission_id"))}
 	if err = scope.Validate(); err != nil {
-		return operationResult{}, invalidRequestError("scope", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	includeReleased := false
 	if raw, exists := values["include_released"]; exists {
 		if raw[0] != "true" && raw[0] != "false" {
-			return operationResult{}, invalidRequestError("include_released", nil)
+			return operationResult{}, invalidRequestError(nil)
 		}
 		includeReleased = raw[0] == "true"
 	}
@@ -357,7 +357,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeOpaqueCursor(raw, recordsHoldCursorSpec(scope, includeReleased))
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.After = model.RetentionHoldID(cursor.AfterID)
 	}
@@ -385,7 +385,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 func requiredRecordsInteger(field string, value Optional[int64], minimum int64) (int64, error) {
 	p := value.ValuePointer()
 	if p == nil || *p < minimum {
-		return 0, invalidRequestError(field, nil)
+		return 0, invalidRequestError(nil)
 	}
 	return *p, nil
 }
@@ -400,7 +400,7 @@ func recordsSubmissionScope(request operationRequest) (model.RetentionHoldScope,
 	}
 	id, err := model.ParseSubmissionID(raw)
 	if err != nil {
-		return model.RetentionHoldScope{}, invalidRequestError("submission_id", err)
+		return model.RetentionHoldScope{}, invalidRequestError(err)
 	}
 	return model.RetentionHoldScope{ExamID: examID, SittingID: sittingID, SubmissionID: id}, nil
 }
@@ -408,20 +408,20 @@ func recordsOptionalScope(examID model.ExamID, sitting, submission Optional[stri
 	scope := model.RetentionHoldScope{ExamID: examID}
 	if sitting.IsSet() {
 		if p := sitting.ValuePointer(); p == nil || *p == "" {
-			return scope, invalidRequestError("exam_sitting_id", nil)
+			return scope, invalidRequestError(nil)
 		} else {
 			scope.SittingID = model.ExamSittingID(*p)
 		}
 	}
 	if submission.IsSet() {
 		if p := submission.ValuePointer(); p == nil || *p == "" {
-			return scope, invalidRequestError("submission_id", nil)
+			return scope, invalidRequestError(nil)
 		} else {
 			scope.SubmissionID = model.SubmissionID(*p)
 		}
 	}
 	if err := scope.Validate(); err != nil {
-		return scope, invalidRequestError("scope", err)
+		return scope, invalidRequestError(err)
 	}
 	return scope, nil
 }

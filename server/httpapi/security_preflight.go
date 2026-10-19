@@ -87,10 +87,10 @@ func (m examAttemptHTTPModule) prepareSecurityPreflight(request operationRequest
 	}
 	sittingID, err := model.ParseExamSittingID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_sitting_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body prepareSecurityPreflightRequest
-	if err := request.decodeJSON(&body, "prepareSecurityPreflight"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	prepared, err := m.application.PrepareExamSecurityPreflight(request.context, request.invocation(), application.PrepareSecurityPreflightCommand{SittingID: sittingID, AttemptID: model.ExamAttemptID(body.AttemptID), NativeRegistryDigest: body.NativeRegistryDigest, SourceManifestDigest: body.SourceManifestDigest, ConfigurationManifestFingerprint: body.ConfigurationManifestFingerprint, IdempotencyKey: request.idempotencyKey})
@@ -113,7 +113,7 @@ func (m examAttemptHTTPModule) reportSecurityPreflight(request operationRequest)
 		return operationResult{}, err
 	}
 	var report model.SecurityPreflightReport
-	if err := request.decodeJSON(&report, "reportSecurityPreflight"); err != nil {
+	if err = request.decodeJSON(&report); err != nil {
 		return operationResult{}, err
 	}
 	result, err := m.application.ReportExamSecurityPreflight(request.context, request.invocation(), application.ReportSecurityPreflightCommand{PreflightID: id, Report: report, IdempotencyKey: request.idempotencyKey})
@@ -141,7 +141,7 @@ func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("attempt_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	recovered, err := m.application.RecoverExamSecurityPolicy(request.context, request.invocation(), attemptID)
 	if err != nil {

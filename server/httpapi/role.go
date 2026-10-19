@@ -139,7 +139,7 @@ func (module roleResourceModule) get(request operationRequest) (operationResult,
 
 func (module roleResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleRequest
-	if err := request.decodeJSON(&input, "createRole"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.roles.CreateRole(
@@ -162,7 +162,7 @@ func (module roleResourceModule) patch(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	var input updateRoleRequest
-	if err := request.decodeJSON(&input, "patchRole"); err != nil {
+	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	updated, err := module.roles.UpdateRole(

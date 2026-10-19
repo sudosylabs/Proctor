@@ -56,7 +56,7 @@ func (s *accessControlService) authorizeResourcePreflight(
 	); err != nil {
 		return err
 	}
-	return authorizationDeniedError("accessControlService.authorizeResourcePreflight")
+	return authorizationDeniedError()
 }
 
 func (s *accessControlService) authorizeAcademicPeriodPreflight(
@@ -82,7 +82,7 @@ func (s *accessControlService) authorizeAcademicPeriodPreflight(
 	); err != nil {
 		return err
 	}
-	return authorizationDeniedError("accessControlService.authorizeAcademicPeriodPreflight")
+	return authorizationDeniedError()
 }
 
 func (s *accessControlService) academicPeriodCoarseAuthority(
@@ -138,7 +138,7 @@ func (s *accessControlService) authorizeAcademicPeriodList(
 		return store.AcademicPeriodVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.AcademicPeriodVisibilityScope{}, authorizationDeniedError("accessControlService.authorizeAcademicPeriodList")
+		return store.AcademicPeriodVisibilityScope{}, authorizationDeniedError()
 	}
 	return visibility, nil
 }
@@ -174,7 +174,7 @@ func (s *accessControlService) authorizeUserSearch(
 		return store.UserVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.UserVisibilityScope{}, authorizationDeniedError("accessControlService.authorizeUserSearch")
+		return store.UserVisibilityScope{}, authorizationDeniedError()
 	}
 	return visibility, nil
 }
@@ -226,7 +226,7 @@ func (s *accessControlService) authorizeRoleBindingPreflight(
 	); err != nil {
 		return err
 	}
-	return authorizationDeniedError("accessControlService.authorizeRoleBindingPreflight")
+	return authorizationDeniedError()
 }
 
 func (s *accessControlService) authorizeRoleBindingScope(
@@ -377,10 +377,10 @@ func (s *accessControlService) authorizedScopesAt(
 	}
 	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), model.TimeUTC(at))
 	if err != nil {
-		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bindings", err)
+		return constraint, authorizationUnavailableError(err)
 	}
 	if len(bindings) > 256 {
-		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bound", errors.New("active binding bound exceeded"))
+		return constraint, authorizationUnavailableError(errors.New("active binding bound exceeded"))
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seenRoles := map[string]struct{}{}
@@ -392,7 +392,7 @@ func (s *accessControlService) authorizedScopesAt(
 	}
 	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
-		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.roles", err)
+		return constraint, authorizationUnavailableError(err)
 	}
 	grants := map[string]bool{}
 	for _, role := range roles {
@@ -506,7 +506,7 @@ func newAccessScopeResolver(
 func (r *accessScopeResolver) userClasses(ctx context.Context, userID string, at int64) ([]model.Resource, error) {
 	memberships, err := r.classMembers.ListActiveByUser(ctx, userID, at)
 	if err != nil {
-		return nil, authorizationUnavailableError("accessScopeResolver.userClasses", err)
+		return nil, authorizationUnavailableError(err)
 	}
 	resources := make([]model.Resource, 0, len(memberships))
 	for _, membership := range memberships {
@@ -590,7 +590,7 @@ func (r *accessScopeResolver) resolve(
 		}
 	case model.ResourceProgramme:
 		if r.programmes == nil {
-			return resolved, authorizationUnavailableError("accessScopeResolver.programme", errors.New("Programme persistence is required"))
+			return resolved, authorizationUnavailableError(errors.New("Programme persistence is required"))
 		}
 		programme, err := r.programmes.Get(ctx, resource.ID)
 		if err != nil {
@@ -616,7 +616,7 @@ func (r *accessScopeResolver) resolve(
 		}
 	case model.ResourceProgrammeLevel:
 		if r.programmeLevels == nil || r.programmes == nil {
-			return resolved, authorizationUnavailableError("accessScopeResolver.programme_level", errors.New("Programme Level persistence is required"))
+			return resolved, authorizationUnavailableError(errors.New("Programme Level persistence is required"))
 		}
 		level, err := r.programmeLevels.Get(ctx, resource.ID)
 		if err != nil {
@@ -692,7 +692,7 @@ func (r *accessScopeResolver) resolve(
 		}
 	case model.ResourceExam:
 		if r.exams == nil {
-			return resolved, authorizationUnavailableError("accessScopeResolver.exam", errors.New("exam persistence is required"))
+			return resolved, authorizationUnavailableError(errors.New("exam persistence is required"))
 		}
 		exam, err := r.exams.Resolve(ctx, model.ExamID(resource.ID))
 		if err != nil {
@@ -719,7 +719,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("exam_sitting", err)
 		}
 		if snapshot == nil || snapshot.Sitting == nil {
-			return resolved, authorizationUnavailableError("accessScopeResolver.exam_sitting", errors.New("Exam Sitting persistence returned no projection"))
+			return resolved, authorizationUnavailableError(errors.New("Exam Sitting persistence returned no projection"))
 		}
 		exam, err := r.exams.Resolve(ctx, snapshot.Sitting.ExamID)
 		if err != nil {
@@ -751,7 +751,7 @@ func (r *accessScopeResolver) resolve(
 		}
 		if ownership == nil || ownership.SubmissionID != submissionID || !ownership.ExamID.IsValid() ||
 			!ownership.SittingID.IsValid() || !ownership.AttemptID.IsValid() || !ownership.AcademicUnitID.IsValid() {
-			return resolved, authorizationUnavailableError("accessScopeResolver.submission", errors.New("Submission persistence returned no ownership projection"))
+			return resolved, authorizationUnavailableError(errors.New("Submission persistence returned no ownership projection"))
 		}
 		units, err := r.academicUnits.ListAncestors(ctx, ownership.AcademicUnitID.String())
 		if err != nil {

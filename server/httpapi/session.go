@@ -66,7 +66,7 @@ func (module sessionResourceModule) list(request operationRequest) (operationRes
 
 func (module sessionResourceModule) revoke(request operationRequest) (operationResult, error) {
 	var input revokeSessionRequest
-	if err := request.decodeJSON(&input, "revokeSession"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	if err := module.sessions.RevokeSession(

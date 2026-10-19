@@ -108,7 +108,7 @@ func (module academicUnitMemberResourceModule) create(request operationRequest) 
 		return operationResult{}, err
 	}
 	var body createAcademicUnitMemberRequest
-	if err := request.decodeJSON(&body, "createAcademicUnitMember"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: body.StartAt})

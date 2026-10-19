@@ -36,7 +36,7 @@ func (module mfaAdministrationResourceModule) reset(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var body resetUserMFARequest
-	if err := request.decodeJSON(&body, "resetUserMFA"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := module.application.ResetUserMFA(request.context, request.invocation(), application.ResetUserMFACommand{UserID: userID, IdentityVerified: body.IdentityVerified, Reason: body.Reason, VerificationReference: body.VerificationReference}); err != nil {

@@ -139,7 +139,7 @@ func (m retentionHTTPModule) getControl(request operationRequest) (operationResu
 }
 func (m retentionHTTPModule) changeControl(request operationRequest) (operationResult, error) {
 	var body retentionControlRequest
-	if err := request.decodeJSON(&body, "changeRetentionControl"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	c, err := m.application.ChangeRetentionControl(request.context, request.invocation(), application.ChangeRetentionControlCommand{
@@ -152,7 +152,7 @@ func (m retentionHTTPModule) changeControl(request operationRequest) (operationR
 }
 func (m retentionHTTPModule) preview(request operationRequest) (operationResult, error) {
 	var body retentionPreviewRequest
-	if err := request.decodeJSON(&body, "createRetentionPreview"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	p, err := m.application.CreateRetentionPreview(request.context, request.invocation(), application.CreateRetentionPreviewCommand{ExpectedPolicyRevision: body.ExpectedPolicyRevision, IdempotencyKey: request.idempotencyKey})
@@ -164,7 +164,7 @@ func (m retentionHTTPModule) preview(request operationRequest) (operationResult,
 func (m retentionHTTPModule) getPreview(request operationRequest) (operationResult, error) {
 	id, err := model.ParseRetentionPreviewID(request.params.RetentionPreviewID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("retention_preview_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	p, err := m.application.GetRetentionPreview(request.context, request.invocation(), id)
 	if err != nil {
@@ -176,7 +176,7 @@ func (m retentionHTTPModule) records(request operationRequest) (operationResult,
 	values := request.request.URL.Query()
 	for key, items := range values {
 		if len(items) != 1 || (key != "limit" && key != "cursor") {
-			return operationResult{}, invalidRequestError("query", nil)
+			return operationResult{}, invalidRequestError(nil)
 		}
 	}
 	limit, err := request.queryLimit()
@@ -187,7 +187,7 @@ func (m retentionHTTPModule) records(request operationRequest) (operationResult,
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, err := decodeOpaqueCursor(raw, retentionCursorSpec())
 		if err != nil {
-			return operationResult{}, invalidRequestError("cursor", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 		after = model.SubmissionID(cursor.After)
 	}

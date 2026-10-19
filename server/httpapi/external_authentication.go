@@ -119,11 +119,11 @@ func (module externalAuthenticationResourceModule) beginFromBody(request operati
 		return protocolResult{}, appErr
 	}
 	var body externalAuthenticationStartRequest
-	if err := request.decodeJSON(&body, "begin_external_authentication"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return protocolResult{}, err
 	}
 	if !model.IsValidCredentialToken(body.InvitationClaim) {
-		return protocolResult{}, invalidRequestError("invitation_claim", errors.New("must be a valid Invitation claim"))
+		return protocolResult{}, invalidRequestError(errors.New("must be a valid Invitation claim"))
 	}
 	start, err := module.authentication.BeginExternalAuthentication(request.context,
 		application.NewInvocation(model.Principal{}, request.metadata), application.BeginExternalAuthenticationCommand{

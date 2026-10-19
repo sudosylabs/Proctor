@@ -323,7 +323,7 @@ func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocat
 		return store.UserVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.UserVisibilityScope{}, authorizationDeniedError("roleAuthorization.AuthorizeRoleBindingList")
+		return store.UserVisibilityScope{}, authorizationDeniedError()
 	}
 	return store.UserVisibilityScope{
 		InstitutionWide:     constraint.InstitutionWide,
@@ -358,7 +358,7 @@ func (a roleAuthorization) CanDelegateActionsAtScope(
 		return err
 	}
 	if !allowed {
-		return authorizationDeniedError("roleAuthorization.CanDelegateActionsAtScope")
+		return authorizationDeniedError()
 	}
 	return nil
 }

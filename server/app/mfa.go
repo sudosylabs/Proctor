@@ -179,9 +179,9 @@ func (s *mfaMechanics) consumeSecondFactor(
 	}
 	if err := mfaPersistence.ConsumeSecondFactor(ctx, userID, proof.step, proof.recoveryHash, now.UnixMilli()); err != nil {
 		if store.IsNotFound(err) {
-			return mfaInvalidCodeError("ConsumeMFASecondFactor")
+			return mfaInvalidCodeError()
 		}
-		return mfaStoreError("ConsumeMFASecondFactor.consume", err)
+		return mfaStoreError(err)
 	}
 	return nil
 }
@@ -198,12 +198,12 @@ func (s *mfaMechanics) verifySecondFactor(ctx context.Context, persistence store
 	credential, err := persistence.GetByUser(ctx, userID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+			return mfaFactorProof{}, mfaInvalidCodeError()
 		}
-		return mfaFactorProof{}, mfaStoreError("MFA.verify", err)
+		return mfaFactorProof{}, mfaStoreError(err)
 	}
 	if credential == nil || !credential.IsActive() {
-		return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+		return mfaFactorProof{}, mfaInvalidCodeError()
 	}
 	proof := mfaFactorProof{credentialID: credential.ID}
 	if len(strings.TrimSpace(code)) == 6 {
@@ -213,13 +213,13 @@ func (s *mfaMechanics) verifySecondFactor(ctx context.Context, persistence store
 		}
 		step, valid := verifyTOTP(secret, strings.TrimSpace(code), credential.LastUsedTimeStep, now)
 		if !valid {
-			return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+			return mfaFactorProof{}, mfaInvalidCodeError()
 		}
 		proof.step = step
 	} else if normalized := normalizeMFARecoveryCode(code); normalized != "" {
 		proof.recoveryHash = model.HashToken(normalized)
 	} else {
-		return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+		return mfaFactorProof{}, mfaInvalidCodeError()
 	}
 	return proof, nil
 }
@@ -405,17 +405,15 @@ func mfaProvisioningURI(issuer string, accountName string, secret string) string
 	return value.String()
 }
 
-func mfaInvalidCodeError(where string) error {
-	_ = where
+func mfaInvalidCodeError() error {
 	return NewError("authentication.mfa.invalid_code")
 }
 
 func mfaStoreFailure(err error) error {
-	return mfaStoreError("MFA", err)
+	return mfaStoreError(err)
 }
 
-func mfaStoreError(where string, err error) error {
-	_ = where
+func mfaStoreError(err error) error {
 	code := "authentication.mfa.unavailable"
 	if store.IsNotFound(err) {
 		code = "authentication.mfa.not_found"

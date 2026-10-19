@@ -121,7 +121,7 @@ func (module academicPeriodResourceModule) list(request operationRequest) (opera
 
 func (module academicPeriodResourceModule) create(request operationRequest) (operationResult, error) {
 	var body createAcademicPeriodRequest
-	if err := request.decodeJSON(&body, "createAcademicPeriod"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	period, err := module.academicPeriods.CreateAcademicPeriod(
@@ -160,7 +160,7 @@ func (module academicPeriodResourceModule) patch(request operationRequest) (oper
 		return operationResult{}, err
 	}
 	var body updateAcademicPeriodRequest
-	if err := request.decodeJSON(&body, "patchAcademicPeriod"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {

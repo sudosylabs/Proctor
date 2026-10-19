@@ -297,8 +297,8 @@ func invitationResource(invitations InvitationApplication) resource {
 
 func (m invitationResourceModule) batch(request operationRequest) (operationResult, error) {
 	var body invitationBatchRequest
-	if err := request.decodeJSON(&body, "runInvitationBatch"); err != nil {
-		return operationResult{}, invalidRequestError("invitationResourceModule.batch", err)
+	if err := request.decodeJSON(&body); err != nil {
+		return operationResult{}, invalidRequestError(err)
 	}
 	items := make([]application.InvitationBatchItemCommand, 0, len(body.Items))
 	for _, item := range body.Items {
@@ -381,11 +381,11 @@ func (m invitationResourceModule) mutate(request operationRequest, mutation func
 		return operationResult{}, err
 	}
 	var body invitationMutationRequest
-	if err = request.decodeJSON(&body, "mutateInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	view, err := mutation(id, body.ExpectedRevision)
 	if err != nil {
@@ -400,11 +400,11 @@ func (m invitationResourceModule) replace(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	var body replaceInvitationRequest
-	if err = request.decodeJSON(&body, "replaceInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	view, err := m.invitations.ReplaceInvitation(request.context, request.invocation(), application.ReplaceInvitationCommand{
 		ID: id, ExpectedRevision: body.ExpectedRevision, Purpose: body.Purpose, TargetEmail: body.Email,
@@ -507,7 +507,7 @@ func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest
 		return operationResult{}, err
 	}
 	var body issueScopedRoleInvitationRequest
-	if err = request.decodeJSON(&body, "issueAcademicUnitRoleInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueAcademicUnitRoleInvitation(request.context, request.invocation(), application.IssueAcademicUnitRoleInvitationCommand{
@@ -525,7 +525,7 @@ func (m invitationResourceModule) issueInstitutionRole(request operationRequest)
 		return operationResult{}, err
 	}
 	var body issueScopedRoleInvitationRequest
-	if err = request.decodeJSON(&body, "issueInstitutionRoleInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueInstitutionRoleInvitation(request.context, request.invocation(), application.IssueInstitutionRoleInvitationCommand{
@@ -539,7 +539,7 @@ func (m invitationResourceModule) issueInstitutionRole(request operationRequest)
 
 func (m invitationResourceModule) acceptAcademicUnitRole(request operationRequest) (operationResult, error) {
 	var body acceptScopedRoleInvitationRequest
-	if err := request.decodeJSON(&body, "acceptAcademicUnitRoleInvitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptAcademicUnitRoleInvitation(request.context, request.invocation(), application.AcceptAcademicUnitRoleInvitationCommand{
@@ -553,7 +553,7 @@ func (m invitationResourceModule) acceptAcademicUnitRole(request operationReques
 
 func (m invitationResourceModule) acceptInstitutionRole(request operationRequest) (operationResult, error) {
 	var body acceptScopedRoleInvitationRequest
-	if err := request.decodeJSON(&body, "acceptInstitutionRoleInvitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptInstitutionRoleInvitation(request.context, request.invocation(), application.AcceptInstitutionRoleInvitationCommand{
@@ -571,7 +571,7 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 		return operationResult{}, err
 	}
 	var body issueTeacherAcademicUnitInvitationRequest
-	if err = request.decodeJSON(&body, "issueTeacherAcademicUnitInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueTeacherAcademicUnitInvitation(request.context, request.invocation(), application.IssueTeacherAcademicUnitInvitationCommand{
@@ -587,7 +587,7 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 
 func (m invitationResourceModule) acceptTeacherAcademicUnit(request operationRequest) (operationResult, error) {
 	var body acceptTeacherAcademicUnitInvitationRequest
-	if err := request.decodeJSON(&body, "acceptTeacherAcademicUnitInvitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptTeacherAcademicUnitInvitation(request.context, request.invocation(), application.AcceptTeacherAcademicUnitInvitationCommand{
@@ -606,7 +606,7 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var body issueStudentClassInvitationRequest
-	if err = request.decodeJSON(&body, "issueStudentClassInvitation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueStudentClassInvitation(request.context, request.invocation(), application.IssueStudentClassInvitationCommand{
@@ -622,7 +622,7 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 
 func (m invitationResourceModule) acceptStudentClass(request operationRequest) (operationResult, error) {
 	var body acceptStudentClassInvitationRequest
-	if err := request.decodeJSON(&body, "acceptStudentClassInvitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	accepted, err := m.invitations.AcceptStudentClassInvitation(request.context, request.invocation(), application.AcceptStudentClassInvitationCommand{

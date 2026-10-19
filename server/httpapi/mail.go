@@ -168,7 +168,7 @@ func (m mailResourceModule) startRekey(request operationRequest) (operationResul
 		return operationResult{}, application.NewError("mail.unavailable")
 	}
 	var body mailRekeyRequest
-	if err := request.decodeJSON(&body, "mail_rekey"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	view, appErr := m.mail.StartMailRekey(request.context, request.invocation(), body.RetiringKeyID)

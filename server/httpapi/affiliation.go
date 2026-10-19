@@ -114,7 +114,7 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 		return operationResult{}, err
 	}
 	var body createAffiliationRequest
-	if err := request.decodeJSON(&body, "createAffiliation"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})

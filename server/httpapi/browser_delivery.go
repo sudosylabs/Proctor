@@ -46,22 +46,22 @@ func browserSourceQuery(request operationRequest, list bool) (application.Browse
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return application.BrowserSourceQuery{}, invalidRequestError("exam_attempt_id", err)
+		return application.BrowserSourceQuery{}, invalidRequestError(err)
 	}
 	query := application.BrowserSourceQuery{Access: application.CandidateExamAttemptAccess{AttemptID: attemptID}, SourceSessionID: model.BrowserSourceSessionID(request.params.BrowserSourceSessionID)}
 	if list {
 		values := request.request.URL.Query()["participation_id"]
 		if len(values) != 1 || !model.AttemptParticipationID(values[0]).IsValid() {
-			return query, invalidRequestError("participation_id", nil)
+			return query, invalidRequestError(nil)
 		}
 		query.ParticipationID = model.AttemptParticipationID(values[0])
 	} else if !query.SourceSessionID.IsValid() {
-		return query, invalidRequestError("source_session_id", nil)
+		return query, invalidRequestError(nil)
 	}
 	if len(request.request.Header.Values(candidateAttemptCredentialHeader)) > 0 || len(request.request.Header.Values(candidateAttemptConnectionHeader)) > 0 {
 		headers, err := candidateAttemptAccessHeaders(request.request)
 		if err != nil {
-			return query, invalidRequestError("candidate_attempt_headers", err)
+			return query, invalidRequestError(err)
 		}
 		query.Access.ConnectionID = headers.ConnectionID
 		query.Access.ContinuityCredential = headers.ContinuityCredential
@@ -113,15 +113,15 @@ func (m examAttemptHTTPModule) browserDeliveryReceipts(request operationRequest)
 	}
 	values := request.request.URL.Query()
 	if len(values["first_sequence"]) != 1 || len(values["limit"]) != 1 {
-		return operationResult{}, invalidRequestError("receipt_page", nil)
+		return operationResult{}, invalidRequestError(nil)
 	}
 	first, err := strconv.ParseInt(values.Get("first_sequence"), 10, 64)
 	if err != nil || strconv.FormatInt(first, 10) != values.Get("first_sequence") {
-		return operationResult{}, invalidRequestError("first_sequence", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	limit, err := strconv.Atoi(values.Get("limit"))
 	if err != nil || strconv.Itoa(limit) != values.Get("limit") {
-		return operationResult{}, invalidRequestError("limit", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	value, err := m.application.BrowserDeliveryReceipts(request.context, request.invocation(), query, first, limit)
 	if err != nil {
@@ -138,7 +138,7 @@ func (m examAttemptHTTPModule) declareBrowserDeliveryGaps(request operationReque
 		return operationResult{}, err
 	}
 	var body model.DeclareDeliveryGaps
-	if err := request.decodeJSON(&body, "declareDeliveryGaps"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.DeclareBrowserDeliveryGaps(request.context, request.invocation(), application.BrowserDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
@@ -156,7 +156,7 @@ func (m examAttemptHTTPModule) sealBrowserDelivery(request operationRequest) (op
 		return operationResult{}, err
 	}
 	var body model.FinalDeliveryDeclaration
-	if err := request.decodeJSON(&body, "finalDeliveryDeclaration"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.SealBrowserDelivery(request.context, request.invocation(), application.BrowserDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
@@ -174,7 +174,7 @@ func (m examAttemptHTTPModule) updateBrowserDeliverySummary(request operationReq
 		return operationResult{}, err
 	}
 	var body model.UnretainedDeliverySummary
-	if err := request.decodeJSON(&body, "unretainedDeliverySummary"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.UpdateBrowserDeliverySummary(request.context, request.invocation(), application.BrowserDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
@@ -192,10 +192,10 @@ func (m examAttemptHTTPModule) appendHistoricalBrowserDelivery(request operation
 		return operationResult{}, err
 	}
 	if query.Access.ConnectionID != "" || query.Access.ContinuityCredential != "" {
-		return operationResult{}, invalidRequestError("historical_browser_headers", nil)
+		return operationResult{}, invalidRequestError(nil)
 	}
 	var body model.BrowserActivityBatch
-	if err := request.decodeJSON(&body, "browserActivityBatch"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.AppendHistoricalBrowserDelivery(request.context, request.invocation(), application.BrowserDeliveryAppendCommand{Query: query, Batch: body, IdempotencyKey: request.idempotencyKey})

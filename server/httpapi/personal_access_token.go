@@ -139,7 +139,7 @@ func (module personalAccessTokenResourceModule) setDisabled(request operationReq
 
 func (module personalAccessTokenResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createPersonalAccessTokenRequest
-	if err := request.decodeJSON(&input, "createPersonalAccessToken"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	created, err := module.tokens.CreatePersonalAccessToken(

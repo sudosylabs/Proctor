@@ -646,7 +646,7 @@ func (s *authenticationService) createSession(
 	if saveErr != nil {
 		if errors.Is(saveErr, store.ErrAuthenticationMethodDisabled) || errors.Is(saveErr, store.ErrPasswordCredentialChanged) || errors.Is(saveErr, store.ErrAuthenticationGenerationChanged) || errors.Is(saveErr, store.ErrMFAReenrollmentRequired) {
 			if command.AuthenticationProviderID != "" {
-				return nil, nil, invalidExternalAuthenticationError("authentication.create_session.policy")
+				return nil, nil, invalidExternalAuthenticationError()
 			}
 			return nil, nil, invalidCredentialsAppError()
 		}
@@ -1019,17 +1019,6 @@ func (s *authenticationService) logout(ctx context.Context, invocation Invocatio
 		},
 		authenticationUnavailable,
 	)
-}
-
-func (a *App) GetUser(ctx context.Context, id string) (*model.User, error) {
-	user, err := a.authentication.users.Get(ctx, id)
-	if err != nil {
-		if store.IsNotFound(err) {
-			return nil, NewError("user.not_found")
-		}
-		return nil, authenticationUnavailable(err)
-	}
-	return user, nil
 }
 
 func (s *authenticationService) authenticationCacheInvalidated(

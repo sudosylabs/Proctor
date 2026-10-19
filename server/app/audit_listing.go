@@ -54,7 +54,7 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 		((visibility.AcademicInstitutionWide && len(visibility.AcademicUnitRootIDs) == 0) ||
 			(!visibility.AcademicInstitutionWide && len(visibility.AcademicUnitRootIDs) > 0))
 	if !visibility.InstitutionWide && !validAcademicVisibility {
-		return nil, authorizationDeniedError("auditListingService.List")
+		return nil, authorizationDeniedError()
 	}
 	if query.Limit == 0 {
 		query.Limit = 50
@@ -141,7 +141,7 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 		return store.AuditVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.AuditVisibilityScope{}, authorizationDeniedError("auditListingAuthorization.AuthorizeView")
+		return store.AuditVisibilityScope{}, authorizationDeniedError()
 	}
 	return store.AuditVisibilityScope{
 		AcademicInstitutionWide: academic.InstitutionWide,

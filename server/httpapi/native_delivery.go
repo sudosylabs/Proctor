@@ -45,7 +45,7 @@ func nativeDeliveryQuery(request operationRequest) (application.NativeDeliveryQu
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return application.NativeDeliveryQuery{}, invalidRequestError("exam_attempt_id", err)
+		return application.NativeDeliveryQuery{}, invalidRequestError(err)
 	}
 	streamID, err := requirePathId("stream_id", request.params.NativeStreamID)
 	if err != nil {
@@ -57,7 +57,7 @@ func nativeDeliveryQuery(request operationRequest) (application.NativeDeliveryQu
 	if len(request.request.Header.Values(candidateAttemptCredentialHeader)) > 0 || len(request.request.Header.Values(candidateAttemptConnectionHeader)) > 0 {
 		headers, err := candidateAttemptAccessHeaders(request.request)
 		if err != nil {
-			return query, invalidRequestError("candidate_attempt_headers", err)
+			return query, invalidRequestError(err)
 		}
 		query.Access.ConnectionID = headers.ConnectionID
 		query.Access.ContinuityCredential = headers.ContinuityCredential
@@ -82,7 +82,7 @@ func (m examAttemptHTTPModule) nativeDeliveryReceipt(request operationRequest) (
 	}
 	sequence, err := strconv.ParseInt(request.params.NativeBatchSequence, 10, 64)
 	if err != nil || sequence < 1 || sequence > model.NativeParticipationPositionLimit {
-		return operationResult{}, invalidRequestError("batch_sequence", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	value, err := m.application.NativeDeliveryReceipt(request.context, request.invocation(), query, sequence)
 	if err != nil {
@@ -99,7 +99,7 @@ func (m examAttemptHTTPModule) declareNativeDeliveryGaps(request operationReques
 		return operationResult{}, err
 	}
 	var body model.DeclareDeliveryGaps
-	if err := request.decodeJSON(&body, "nativeDeliveryGaps"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.DeclareNativeDeliveryGaps(request.context, request.invocation(), application.NativeDeliveryGapsCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
@@ -114,7 +114,7 @@ func (m examAttemptHTTPModule) sealNativeDelivery(request operationRequest) (ope
 		return operationResult{}, err
 	}
 	var body model.FinalDeliveryDeclaration
-	if err := request.decodeJSON(&body, "nativeDeliveryFinal"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.SealNativeDelivery(request.context, request.invocation(), application.NativeDeliveryFinalCommand{Query: query, Declaration: body, IdempotencyKey: request.idempotencyKey})
@@ -129,7 +129,7 @@ func (m examAttemptHTTPModule) updateNativeDeliverySummary(request operationRequ
 		return operationResult{}, err
 	}
 	var body model.UnretainedDeliverySummary
-	if err := request.decodeJSON(&body, "nativeDeliverySummary"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	value, err := m.application.UpdateNativeDeliverySummary(request.context, request.invocation(), application.NativeDeliverySummaryCommand{Query: query, Summary: body, IdempotencyKey: request.idempotencyKey})
@@ -150,7 +150,7 @@ func nativeDeliveryAppendErrorCodes() []string {
 }
 func (m examAttemptHTTPModule) appendNativeDelivery(request operationRequest) (operationResult, error) {
 	var body model.NativeSecurityBatch
-	if err := request.decodeJSON(&body, "nativeSecurityBatch"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	// The stream selector is in the closed batch envelope on this operation.

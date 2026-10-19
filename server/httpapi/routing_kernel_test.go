@@ -288,7 +288,7 @@ func TestRoutingKernelAppliesTypedHeadersProblemsAndNamedProtocolOperations(t *t
 				[]string{"request.invalid"},
 				func(request operationRequest) (protocolResult, error) {
 					if request.request.URL.Query().Get("fail") != "" {
-						return protocolResult{}, invalidRequestError("redirect", errors.New("invalid"))
+						return protocolResult{}, invalidRequestError(errors.New("invalid"))
 					}
 					return redirectProtocolResult("/destination"), nil
 				},

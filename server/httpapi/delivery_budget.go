@@ -40,18 +40,18 @@ func (m examAttemptHTTPModule) stopDeliveryDetails(request operationRequest) (op
 	}
 	attempt, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_attempt_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	headers, err := candidateAttemptAccessHeaders(request.request)
 	if err != nil {
-		return operationResult{}, invalidRequestError("candidate_attempt_headers", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body model.StopDeliveryDetails
-	if err := request.decodeJSON(&body, "stopDeliveryDetails"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.Validate() != nil {
-		return operationResult{}, invalidRequestError("stop_delivery_details", nil)
+		return operationResult{}, invalidRequestError(nil)
 	}
 	value, err := m.application.StopDeliveryDetails(request.context, request.invocation(), application.StopDeliveryDetailsCommand{Access: application.CandidateExamAttemptAccess{AttemptID: attempt, ConnectionID: headers.ConnectionID, ContinuityCredential: headers.ContinuityCredential}, Request: body, IdempotencyKey: request.idempotencyKey})
 	if err != nil {

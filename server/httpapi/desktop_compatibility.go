@@ -122,7 +122,7 @@ func (module desktopCompatibilityPolicyResourceModule) replace(
 	request operationRequest,
 ) (operationResult, error) {
 	var body desktopCompatibilityPolicyRequest
-	if err := request.decodeJSON(&body, "replaceDesktopCompatibilityPolicy"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	settings, err := requiredDesktopCompatibilityPolicySettings(body)

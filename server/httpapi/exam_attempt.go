@@ -778,11 +778,11 @@ func (module examAttemptHTTPModule) endByManager(request operationRequest) (oper
 		return operationResult{}, err
 	}
 	var body endExamAttemptByManagerRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "endExamAttemptByManager"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedAttemptRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_attempt_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	receipt, err := module.application.EndExamAttemptByManager(request.context, request.invocation(),
 		application.EndExamAttemptByManagerCommand{ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
@@ -809,10 +809,10 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 	}
 	correctionRevisionID, err := model.ParseExamRevisionID(rawRevisionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_revision_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body acknowledgeExamCorrectionRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "acknowledgeExamCorrection"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
@@ -822,7 +822,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 	}
 	currentRevisionID, err := model.ParseExamRevisionID(body.ExpectedCurrentRevisionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), application.AcknowledgeExamCorrectionCommand{
 		Access: mutationAccess, CorrectionRevisionID: correctionRevisionID, ExpectedCurrentRevisionID: currentRevisionID,
@@ -849,13 +849,13 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeOpaqueCursor(raw, sittingCandidateStatusCursorSpec())
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.AfterCandidateUserID = model.UserID(cursor.CandidateUserID)
 	}
@@ -945,12 +945,12 @@ func (module examAttemptHTTPModule) reallow(request operationRequest) (operation
 		return operationResult{}, err
 	}
 	var body reallowExamAttemptRequest
-	if err = request.decodeJSON(&body, "reallowExamAttempt"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	suspensionID, err := model.ParseAttemptSuspensionID(body.SuspensionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("suspension_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.ReallowExamAttempt(request.context, request.invocation(), application.ReallowExamAttemptCommand{
 		ExamID: examID, SittingID: sittingID, AttemptID: attemptID, SuspensionID: suspensionID,
@@ -994,7 +994,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	seenStates := make(map[model.ExamAttemptState]struct{})
@@ -1003,10 +1003,10 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 		switch state {
 		case model.ExamAttemptReady, model.ExamAttemptActive, model.ExamAttemptSuspended, model.ExamAttemptSubmitted:
 		default:
-			return operationResult{}, invalidRequestError("state", errors.New("is not supported"))
+			return operationResult{}, invalidRequestError(errors.New("is not supported"))
 		}
 		if _, duplicate := seenStates[state]; duplicate {
-			return operationResult{}, invalidRequestError("state", errors.New("must not contain duplicates"))
+			return operationResult{}, invalidRequestError(errors.New("must not contain duplicates"))
 		}
 		seenStates[state] = struct{}{}
 		query.States = append(query.States, state)
@@ -1014,7 +1014,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeExamAttemptManagerCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.BeforeCreatedAt, query.BeforeAttemptID = cursor.CreatedAt, cursor.ID
 	}
@@ -1053,13 +1053,13 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeBrowserActivityCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.AfterReceivedAt, query.AfterSourceID, query.AfterSequence = cursor.ReceivedAt, cursor.SourceSessionID, cursor.Sequence
 	}
@@ -1177,13 +1177,13 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeCandidateWorkspaceCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.ExpectedCursor, query.AfterEntryID = cursor.ExpectedCursor, cursor.ID
 	}
@@ -1225,13 +1225,13 @@ func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (
 	if raw := values.Get("after_cursor"); raw != "" {
 		query.AfterCursor, err = strconv.ParseInt(raw, 10, 64)
 		if err != nil || query.AfterCursor < 0 {
-			return operationResult{}, invalidRequestError("after_cursor", errors.New("must be nonnegative"))
+			return operationResult{}, invalidRequestError(errors.New("must be nonnegative"))
 		}
 	}
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	page, err := module.application.ListCandidateExamWorkspaceJournal(request.context, request.invocation(), query)
@@ -1256,7 +1256,7 @@ func (module examAttemptHTTPModule) createWorkspaceDirectory(request operationRe
 		return operationResult{}, err
 	}
 	var body createCandidateWorkspaceDirectoryRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "createCandidateExamWorkspaceDirectory"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
@@ -1278,15 +1278,15 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	var body submitExamAttemptRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "submitExamAttempt"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedWorkspaceCursor < 0 || body.FinalFocusLossSequence < 0 {
-		return operationResult{}, invalidRequestError("submission_sequence", errors.New("Workspace Cursor and Focus Loss sequence must be nonnegative"))
+		return operationResult{}, invalidRequestError(errors.New("Workspace Cursor and Focus Loss sequence must be nonnegative"))
 	}
 	revisionID, err := model.ParseExamRevisionID(body.ExpectedCurrentRevisionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
@@ -1345,13 +1345,13 @@ func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequ
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > model.ExamSubmissionManifestReadMaximum {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeSubmissionManifestCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.AfterEntryID = cursor.EntryID
 	}
@@ -1393,7 +1393,7 @@ func (module examAttemptHTTPModule) openSubmissionFile(request operationRequest)
 	}
 	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("attempt_workspace_entry_id", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenExamSubmissionFile(request.context, request.invocation(),
 		application.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
@@ -1414,7 +1414,7 @@ func managedSubmissionQuery(request operationRequest) (application.GetExamSubmis
 	}
 	submissionID, err := model.ParseSubmissionID(raw)
 	if err != nil {
-		return application.GetExamSubmissionQuery{}, invalidRequestError("submission_id", err)
+		return application.GetExamSubmissionQuery{}, invalidRequestError(err)
 	}
 	return application.GetExamSubmissionQuery{ExamID: examID, SittingID: sittingID,
 		AttemptID: attemptID, SubmissionID: submissionID}, nil
@@ -1428,7 +1428,7 @@ func (module examAttemptHTTPModule) createWorkspaceFile(request operationRequest
 	var metadata candidateWorkspaceFileUploadMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil || metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("valid metadata and size are required"))
+		return protocolResult{}, invalidRequestError(errors.New("valid metadata and size are required"))
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: metadata.ParticipationID, Generation: metadata.Generation})
 	if err != nil {
@@ -1449,7 +1449,7 @@ func (module examAttemptHTTPModule) moveWorkspaceEntry(request operationRequest)
 		return operationResult{}, err
 	}
 	var body moveCandidateWorkspaceEntryRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "moveCandidateExamWorkspaceEntry"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
@@ -1473,7 +1473,7 @@ func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationReques
 	var metadata replaceCandidateWorkspaceFileMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil || metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("valid metadata and size are required"))
+		return protocolResult{}, invalidRequestError(errors.New("valid metadata and size are required"))
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: metadata.ParticipationID, Generation: metadata.Generation})
 	if err != nil {
@@ -1481,7 +1481,7 @@ func (module examAttemptHTTPModule) replaceWorkspaceFile(request operationReques
 	}
 	version, err := model.ParseWorkspaceContentVersion(metadata.ExpectedContentVersion)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("expected_content_version", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.ReplaceCandidateExamWorkspaceFile(request.context, request.invocation(),
 		application.ReplaceCandidateExamWorkspaceFileCommand{Access: mutationAccess, EntryID: entryID,
@@ -1499,13 +1499,13 @@ func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationReques
 		return operationResult{}, err
 	}
 	var body deleteCandidateWorkspaceEntryRequest
-	if err = decodeCandidateWorkspaceJSON(request, &body, "deleteCandidateExamWorkspaceEntry"); err != nil {
+	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
 		return operationResult{}, err
 	}
 	cursor := body.ExpectedWorkspaceCursor.ValuePointer()
 	if body.ExpectedWorkspaceCursor.IsNull() || (body.Recursive && (cursor == nil || *cursor < 0 || body.ExpectedContentVersion != "")) ||
 		(!body.Recursive && cursor != nil) {
-		return operationResult{}, invalidRequestError("recursive_delete", errors.New("recursive directory deletion requires expected_workspace_cursor and no content version"))
+		return operationResult{}, invalidRequestError(errors.New("recursive directory deletion requires expected_workspace_cursor and no content version"))
 	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
 	if err != nil {
@@ -1515,7 +1515,7 @@ func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationReques
 	if body.ExpectedContentVersion != "" {
 		version, err = model.ParseWorkspaceContentVersion(body.ExpectedContentVersion)
 		if err != nil {
-			return operationResult{}, invalidRequestError("expected_content_version", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 	}
 	result, err := module.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
@@ -1533,31 +1533,31 @@ func candidateWorkspaceMutationAccess(access application.CandidateExamAttemptAcc
 ) (application.ExamAttemptWorkspaceMutationAccess, error) {
 	participationID, err := model.ParseAttemptParticipationID(wire.ParticipationID)
 	if err != nil || wire.Generation < 1 {
-		return application.ExamAttemptWorkspaceMutationAccess{}, invalidRequestError("participation", errors.New("valid participation_id and generation are required"))
+		return application.ExamAttemptWorkspaceMutationAccess{}, invalidRequestError(errors.New("valid participation_id and generation are required"))
 	}
 	return application.ExamAttemptWorkspaceMutationAccess{CandidateAccess: access, ParticipationID: participationID,
 		Generation: wire.Generation}, nil
 }
 
-func decodeCandidateWorkspaceJSON(request operationRequest, target any, where string) error {
+func decodeCandidateWorkspaceJSON(request operationRequest, target any) error {
 	if request.request == nil || request.request.Body == nil {
-		return invalidRequestError(where, errors.New("request body is required"))
+		return invalidRequestError(errors.New("request body is required"))
 	}
 	if err := requireJSONMediaType(request.request); err != nil {
-		return invalidRequestError(where, err)
+		return invalidRequestError(err)
 	}
 	raw, err := io.ReadAll(io.LimitReader(request.request.Body, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 || rejectDuplicateTopLevelJSONMembers(raw) != nil {
-		return invalidRequestError(where, errors.New("invalid strict JSON body"))
+		return invalidRequestError(errors.New("invalid strict JSON body"))
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err = decoder.Decode(target); err != nil {
-		return invalidRequestError(where, err)
+		return invalidRequestError(err)
 	}
 	var trailing any
 	if err = decoder.Decode(&trailing); err != io.EOF {
-		return invalidRequestError(where, errors.New("request body must contain one JSON value"))
+		return invalidRequestError(errors.New("request body must contain one JSON value"))
 	}
 	return nil
 }
@@ -1573,7 +1573,7 @@ func candidateWorkspaceEntryAccess(request operationRequest) (application.Candid
 	}
 	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, "", invalidRequestError("attempt_workspace_entry_id", err)
+		return application.CandidateExamAttemptAccess{}, "", invalidRequestError(err)
 	}
 	return access, entryID, nil
 }
@@ -1605,7 +1605,7 @@ func (module examAttemptHTTPModule) openResource(request operationRequest) (prot
 	}
 	resourceID, err := model.ParseExamResourceID(raw)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("exam_resource_id", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenCandidateExamResource(request.context, request.invocation(), application.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
 	if err != nil {
@@ -1625,7 +1625,7 @@ func (module examAttemptHTTPModule) openWorkspaceFile(request operationRequest) 
 	}
 	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("attempt_workspace_entry_id", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), application.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
 	if err != nil {
@@ -1655,11 +1655,11 @@ func candidateAccess(request operationRequest) (application.CandidateExamAttempt
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, invalidRequestError("exam_attempt_id", err)
+		return application.CandidateExamAttemptAccess{}, invalidRequestError(err)
 	}
 	headers, err := candidateAttemptAccessHeaders(request.request)
 	if err != nil {
-		return application.CandidateExamAttemptAccess{}, invalidRequestError("candidate_attempt_headers", err)
+		return application.CandidateExamAttemptAccess{}, invalidRequestError(err)
 	}
 	return application.CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: headers.ConnectionID,
 		ContinuityCredential: headers.ContinuityCredential}, nil
@@ -1676,11 +1676,11 @@ func managedExamAttemptScope(request operationRequest) (model.ExamID, model.Exam
 	}
 	examID, err := model.ParseExamID(rawExam)
 	if err != nil {
-		return "", "", invalidRequestError("exam_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	sittingID, err := model.ParseExamSittingID(rawSitting)
 	if err != nil {
-		return "", "", invalidRequestError("exam_sitting_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }
@@ -1696,7 +1696,7 @@ func managedExamAttemptIDs(request operationRequest) (model.ExamID, model.ExamSi
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return "", "", "", invalidRequestError("exam_attempt_id", err)
+		return "", "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, attemptID, nil
 }

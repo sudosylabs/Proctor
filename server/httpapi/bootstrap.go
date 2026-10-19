@@ -164,7 +164,7 @@ func (module bootstrapResourceModule) status(request operationRequest) (operatio
 
 func (module bootstrapResourceModule) install(request operationRequest) (operationResult, error) {
 	var input bootstrapRequest
-	if err := request.decodeJSON(&input, "body"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, application.NewError("request.invalid").WithField("field", "body").Wrap(err)
 	}
 	if input.Institution == nil || input.Administrator == nil {

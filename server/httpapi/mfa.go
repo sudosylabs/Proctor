@@ -118,7 +118,7 @@ func (module mfaResourceModule) setup(request operationRequest) (operationResult
 }
 
 func (module mfaResourceModule) activate(request operationRequest) (operationResult, error) {
-	code, err := mfaCode(request, "activateMFA")
+	code, err := mfaCode(request)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -136,7 +136,7 @@ func (module mfaResourceModule) activate(request operationRequest) (operationRes
 }
 
 func (module mfaResourceModule) challenge(request operationRequest) (operationResult, error) {
-	code, err := mfaCode(request, "challengeMFA")
+	code, err := mfaCode(request)
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -176,9 +176,9 @@ func (module mfaResourceModule) disable(request operationRequest) (operationResu
 	return noContentResult(), nil
 }
 
-func mfaCode(request operationRequest, where string) (string, error) {
+func mfaCode(request operationRequest) (string, error) {
 	var input mfaCodeRequest
-	if err := request.decodeJSON(&input, where); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return "", err
 	}
 	return input.Code, nil

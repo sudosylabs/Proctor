@@ -90,11 +90,11 @@ func (module examRevisionHTTPModule) publish(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	var body publishExamRevisionRequest
-	if err = request.decodeJSON(&body, "publishExamRevision"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	summary, err := module.application.PublishExamRevision(request.context, request.invocation(), application.PublishExamRevisionCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey,
@@ -127,13 +127,13 @@ func (module examRevisionHTTPModule) list(request operationRequest) (operationRe
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeExamRevisionCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.BeforeNumber = cursor.Number
 		query.BeforeRevisionID = model.ExamRevisionID(cursor.RevisionID)
@@ -166,7 +166,7 @@ func examRevisionExamID(request operationRequest) (model.ExamID, error) {
 	}
 	id, err := model.ParseExamID(raw)
 	if err != nil {
-		return "", invalidRequestError("exam_id", err)
+		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -182,7 +182,7 @@ func examRevisionIDs(request operationRequest) (model.ExamID, model.ExamRevision
 	}
 	revisionID, err := model.ParseExamRevisionID(raw)
 	if err != nil {
-		return "", "", invalidRequestError("exam_revision_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, revisionID, nil
 }

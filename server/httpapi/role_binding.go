@@ -97,7 +97,7 @@ func (module roleBindingResourceModule) list(request operationRequest) (operatio
 
 func (module roleBindingResourceModule) create(request operationRequest) (operationResult, error) {
 	var input createRoleBindingRequest
-	if err := request.decodeJSON(&input, "createRoleBinding"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.bindings.CreateRoleBinding(

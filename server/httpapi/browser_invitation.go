@@ -102,7 +102,7 @@ func browserInvitationResource(application BrowserInvitationApplication, cookies
 
 func (module browserInvitationResourceModule) start(request operationRequest) (operationResult, error) {
 	var body browserInvitationStartRequest
-	if err := request.decodeJSON(&body, "start_browser_invitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	started, err := module.application.StartBrowserInvitation(
@@ -125,7 +125,7 @@ func (module browserInvitationResourceModule) start(request operationRequest) (o
 
 func (module browserInvitationResourceModule) accept(request operationRequest) (operationResult, error) {
 	var body browserInvitationAcceptanceRequest
-	if err := request.decodeJSON(&body, "accept_browser_invitation"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	proof, err := module.proof(request.request)
@@ -149,7 +149,7 @@ func (module browserInvitationResourceModule) accept(request operationRequest) (
 
 func (module browserInvitationResourceModule) acceptWithSession(request operationRequest) (operationResult, error) {
 	var body browserInvitationSessionAcceptanceRequest
-	if err := request.decodeJSON(&body, "accept_browser_invitation_with_session"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	proof, err := module.proof(request.request)

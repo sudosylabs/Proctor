@@ -104,7 +104,7 @@ func (a *API) upgradeOperationHandler(
 		}
 		params, ok := RequestParams(request.Context())
 		if !ok {
-			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError("route_params", nil))
+			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError(nil))
 			return
 		}
 		err := definition.upgradeOperation(writer, operationRequest{
@@ -222,7 +222,7 @@ func (a *API) operationHandler(
 		if !ok {
 			writeRouteApplicationError(
 				writer, request, a.logger, errorPolicy,
-				invalidRequestError("route_params", nil),
+				invalidRequestError(nil),
 			)
 			return
 		}
@@ -304,7 +304,7 @@ func (a *API) protocolOperationHandler(
 		}
 		params, ok := RequestParams(request.Context())
 		if !ok {
-			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError("route_params", nil))
+			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError(nil))
 			return
 		}
 		result, err := definition.protocolOperation(operationRequest{
@@ -459,9 +459,9 @@ func (request operationRequest) invocation() application.Invocation {
 	return application.NewInvocation(request.principal, request.metadata)
 }
 
-func (request operationRequest) decodeJSON(target any, where string) error {
+func (request operationRequest) decodeJSON(target any) error {
 	if err := decodeRequestJSON(request.request, target); err != nil {
-		return invalidRequestError(where, err)
+		return invalidRequestError(err)
 	}
 	return nil
 }
@@ -473,7 +473,7 @@ func (request operationRequest) queryLimit() (int, error) {
 	}
 	limit, err := strconv.Atoi(value)
 	if err != nil || limit < 1 || limit > 200 {
-		return 0, invalidRequestError("limit", err)
+		return 0, invalidRequestError(err)
 	}
 	return limit, nil
 }

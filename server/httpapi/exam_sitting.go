@@ -246,13 +246,13 @@ func (module examSittingHTTPModule) listNoShows(request operationRequest) (opera
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		query.AfterCandidateUserID, err = decodeExamSittingNoShowCursor(raw)
 		if err != nil {
-			return operationResult{}, invalidRequestError("cursor", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 	}
 	page, err := module.application.ListExamSittingNoShows(request.context, request.invocation(), query)
@@ -349,16 +349,16 @@ func (module examSittingHTTPModule) schedule(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	var body scheduleExamSittingRequest
-	if err = request.decodeJSON(&body, "scheduleExamSitting"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	revisionID, err := model.ParseExamRevisionID(body.ExamRevisionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_revision_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	classID, err := model.ParseClassID(body.ClassID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("class_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	startAt, err := parseExamSittingTime("scheduled_start_at", body.ScheduledStartAt)
 	if err != nil {
@@ -369,7 +369,7 @@ func (module examSittingHTTPModule) schedule(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	if !startAt.Before(endAt) {
-		return operationResult{}, invalidRequestError("schedule", errors.New("must be a nonempty interval"))
+		return operationResult{}, invalidRequestError(errors.New("must be a nonempty interval"))
 	}
 	view, err := module.application.ScheduleExamSitting(request.context, request.invocation(), application.ScheduleExamSittingCommand{
 		ExamID: examID, ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
@@ -403,7 +403,7 @@ func (module examSittingHTTPModule) list(request operationRequest) (operationRes
 	if raw := values.Get("class_id"); raw != "" {
 		query.ClassID, err = model.ParseClassID(raw)
 		if err != nil {
-			return operationResult{}, invalidRequestError("class_id", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 	}
 	query.States, err = parseExamSittingStates(values["state"])
@@ -412,7 +412,7 @@ func (module examSittingHTTPModule) list(request operationRequest) (operationRes
 	}
 	endsAfter, startsBefore := values.Get("ends_after"), values.Get("starts_before")
 	if (endsAfter == "") != (startsBefore == "") {
-		return operationResult{}, invalidRequestError("overlap", errors.New("ends_after and starts_before must be paired"))
+		return operationResult{}, invalidRequestError(errors.New("ends_after and starts_before must be paired"))
 	}
 	if endsAfter != "" {
 		query.OverlapStartAt, err = parseExamSittingTime("ends_after", endsAfter)
@@ -424,19 +424,19 @@ func (module examSittingHTTPModule) list(request operationRequest) (operationRes
 			return operationResult{}, err
 		}
 		if !query.OverlapStartAt.Before(query.OverlapEndAt) {
-			return operationResult{}, invalidRequestError("overlap", errors.New("must be a nonempty interval"))
+			return operationResult{}, invalidRequestError(errors.New("must be a nonempty interval"))
 		}
 	}
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, cursorErr := decodeExamSittingCursor(raw)
 		if cursorErr != nil {
-			return operationResult{}, invalidRequestError("cursor", cursorErr)
+			return operationResult{}, invalidRequestError(cursorErr)
 		}
 		query.BeforeScheduledStartAt, query.BeforeSittingID = cursor.StartAt, cursor.ID
 	}
@@ -470,33 +470,33 @@ func (module examSittingHTTPModule) updateSchedule(request operationRequest) (op
 		return operationResult{}, err
 	}
 	var body updateExamSittingScheduleRequest
-	if err = request.decodeJSON(&body, "updateExamSittingSchedule"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	if noExamSittingScheduleChange(body) {
-		return operationResult{}, invalidRequestError("schedule", errors.New("at least one change is required"))
+		return operationResult{}, invalidRequestError(errors.New("at least one change is required"))
 	}
 	command := application.UpdateExamSittingScheduleCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, IdempotencyKey: request.idempotencyKey}
 	if body.ExamRevisionID.IsSet() {
 		if body.ExamRevisionID.IsNull() {
-			return operationResult{}, invalidRequestError("exam_revision_id", errors.New("must not be null"))
+			return operationResult{}, invalidRequestError(errors.New("must not be null"))
 		}
 		parsed, parseErr := model.ParseExamRevisionID(*body.ExamRevisionID.ValuePointer())
 		if parseErr != nil {
-			return operationResult{}, invalidRequestError("exam_revision_id", parseErr)
+			return operationResult{}, invalidRequestError(parseErr)
 		}
 		command.ExamRevisionID = &parsed
 	}
 	if body.ClassID.IsSet() {
 		if body.ClassID.IsNull() {
-			return operationResult{}, invalidRequestError("class_id", errors.New("must not be null"))
+			return operationResult{}, invalidRequestError(errors.New("must not be null"))
 		}
 		parsed, parseErr := model.ParseClassID(*body.ClassID.ValuePointer())
 		if parseErr != nil {
-			return operationResult{}, invalidRequestError("class_id", parseErr)
+			return operationResult{}, invalidRequestError(parseErr)
 		}
 		command.ClassID = &parsed
 	}
@@ -521,14 +521,14 @@ func (module examSittingHTTPModule) cancel(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	var body cancelExamSittingRequest
-	if err = request.decodeJSON(&body, "cancelExamSitting"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	if !validExamSittingManagerReason(body.Reason) {
-		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
+		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
 	view, err := module.application.CancelExamSitting(request.context, request.invocation(), application.CancelExamSittingCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
@@ -562,14 +562,14 @@ func (module examSittingHTTPModule) managerTransition(request operationRequest, 
 		return operationResult{}, err
 	}
 	var body examSittingManagerTransitionRequest
-	if err = request.decodeJSON(&body, operation); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	if !validExamSittingManagerReason(body.Reason) {
-		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
+		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
 	view, err := run(request.context, request.invocation(), application.PauseExamSittingCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision,
@@ -587,18 +587,18 @@ func (module examSittingHTTPModule) extend(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	var body extendExamSittingRequest
-	if err = request.decodeJSON(&body, "extendExamSitting"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	endAt, err := parseExamSittingTime("scheduled_end_at", body.ScheduledEndAt)
 	if err != nil {
 		return operationResult{}, err
 	}
 	if !validExamSittingManagerReason(body.Reason) {
-		return operationResult{}, invalidRequestError("reason", errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
+		return operationResult{}, invalidRequestError(errors.New("must be trimmed valid UTF-8 between 1 and 1000 characters and at most 4000 bytes"))
 	}
 	view, err := module.application.ExtendExamSitting(request.context, request.invocation(), application.ExtendExamSittingCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedRevision: body.ExpectedRevision, ScheduledEndAt: endAt,
@@ -622,7 +622,7 @@ func examSittingExamID(request operationRequest) (model.ExamID, error) {
 	}
 	id, err := model.ParseExamID(raw)
 	if err != nil {
-		return "", invalidRequestError("exam_id", err)
+		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -638,7 +638,7 @@ func examSittingIDs(request operationRequest) (model.ExamID, model.ExamSittingID
 	}
 	sittingID, err := model.ParseExamSittingID(raw)
 	if err != nil {
-		return "", "", invalidRequestError("exam_sitting_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }
@@ -652,7 +652,7 @@ func parseOptionalExamSittingTime(field string, value Optional[string]) (*time.T
 		return nil, nil
 	}
 	if value.IsNull() {
-		return nil, invalidRequestError(field, errors.New("must not be null"))
+		return nil, invalidRequestError(errors.New("must not be null"))
 	}
 	parsed, err := parseExamSittingTime(field, *value.ValuePointer())
 	if err != nil {
@@ -664,7 +664,7 @@ func parseOptionalExamSittingTime(field string, value Optional[string]) (*time.T
 func parseExamSittingTime(field, raw string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339Nano, raw)
 	if err != nil || parsed.IsZero() {
-		return time.Time{}, invalidRequestError(field, errors.New("must be an RFC 3339 instant"))
+		return time.Time{}, invalidRequestError(errors.New("must be an RFC 3339 instant"))
 	}
 	return model.TimeUTC(parsed), nil
 }
@@ -675,7 +675,7 @@ func parseExamSittingStates(raw []string) ([]model.ExamSittingState, error) {
 	for _, value := range raw {
 		state := model.ExamSittingState(value)
 		if !state.IsValid() {
-			return nil, invalidRequestError("state", errors.New("must be a valid Exam Sitting state"))
+			return nil, invalidRequestError(errors.New("must be a valid Exam Sitting state"))
 		}
 		if _, duplicate := seen[state]; duplicate {
 			continue
@@ -683,7 +683,7 @@ func parseExamSittingStates(raw []string) ([]model.ExamSittingState, error) {
 		seen[state] = struct{}{}
 		states = append(states, state)
 		if len(states) > 6 {
-			return nil, invalidRequestError("state", errors.New("must contain at most six values"))
+			return nil, invalidRequestError(errors.New("must contain at most six values"))
 		}
 	}
 	return states, nil

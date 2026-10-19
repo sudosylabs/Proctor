@@ -179,14 +179,14 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 	if raw := values.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit < 1 || limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 		query.Limit = limit
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, err := decodeOpaqueCursor(raw, candidateExamActivityCursorSpec())
 		if err != nil {
-			return operationResult{}, invalidRequestError("cursor", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 		query.BeforeScheduledStart, _ = time.Parse(time.RFC3339Nano, cursor.ScheduledStartAt)
 		query.BeforeSittingID = model.ExamSittingID(cursor.ExamSittingID)
@@ -295,7 +295,7 @@ func (module userProfileResourceModule) changeEmail(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var body changeUserEmailRequest
-	if err = request.decodeJSON(&body, "changeUserEmail"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	state, appErr := module.profiles.ChangeUserEmail(request.context, request.invocation(), application.ChangeUserEmailCommand{UserID: userID, Email: body.Email})
@@ -356,7 +356,7 @@ func (module userProfileResourceModule) uploadPicture(request operationRequest) 
 	}
 	expectedSHA256, err := profilePictureIfMatch(request.request.Header.Get("If-Match"), false)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("If-Match", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	user, err := module.profiles.UploadProfilePicture(request.context, request.invocation(), application.UploadProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256, Body: request.request.Body, Size: request.request.ContentLength})
 	if err != nil {
@@ -372,7 +372,7 @@ func (module userProfileResourceModule) removePicture(request operationRequest) 
 	}
 	expectedSHA256, err := profilePictureIfMatch(request.request.Header.Get("If-Match"), true)
 	if err != nil {
-		return operationResult{}, invalidRequestError("If-Match", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	user, appErr := module.profiles.RemoveProfilePicture(request.context, request.invocation(), application.RemoveProfilePictureCommand{UserID: userID, ExpectedSHA256: expectedSHA256})
 	if appErr != nil {
@@ -406,7 +406,7 @@ func (module userProfileResourceModule) downloadPicture(request operationRequest
 	}
 	size, err := strconv.Atoi(defaultQuery(request.request, "size", "256"))
 	if err != nil {
-		return protocolResult{}, invalidRequestError("size", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	content, appErr := module.profiles.GetProfilePicture(request.context, request.invocation(), application.GetProfilePictureQuery{UserID: userID, Size: size})
 	if appErr != nil {
@@ -442,7 +442,7 @@ func (module userProfileResourceModule) search(request operationRequest) (operat
 	}
 	includeDisabled, err := strconv.ParseBool(defaultQuery(request.request, "include_disabled", "false"))
 	if err != nil {
-		return operationResult{}, invalidRequestError("include_disabled", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	users, err := module.profiles.SearchUsers(request.context, request.invocation(), application.SearchUsersQuery{Query: request.request.URL.Query().Get("q"), AfterUsername: request.request.URL.Query().Get("after_username"), AfterID: request.request.URL.Query().Get("after_id"), Limit: limit, IncludeDisabled: includeDisabled})
 	if err != nil {
@@ -477,7 +477,7 @@ func (module userProfileResourceModule) update(request operationRequest) (operat
 		return operationResult{}, err
 	}
 	var body updateUserProfileRequest
-	if err := request.decodeJSON(&body, "updateUserProfile"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	user, err := module.profiles.UpdateUserProfile(request.context, request.invocation(), application.UpdateUserProfileCommand{ID: userID, Username: body.Username, DisplayName: body.DisplayName, FirstName: body.FirstName, LastName: body.LastName, Locale: body.Locale, Timezone: body.Timezone})

@@ -96,7 +96,7 @@ func (module academicUnitResourceModule) listRoot(request operationRequest) (ope
 
 func (module academicUnitResourceModule) createRoot(request operationRequest) (operationResult, error) {
 	var body createAcademicUnitRequest
-	if err := request.decodeJSON(&body, "createRootAcademicUnit"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.academicUnits.CreateAcademicUnit(
@@ -135,7 +135,7 @@ func (module academicUnitResourceModule) patch(request operationRequest) (operat
 		return operationResult{}, err
 	}
 	var body updateAcademicUnitRequest
-	if err := request.decodeJSON(&body, "patchAcademicUnit"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
@@ -197,7 +197,7 @@ func (module academicUnitResourceModule) createChild(request operationRequest) (
 		return operationResult{}, err
 	}
 	var body createAcademicUnitRequest
-	if err := request.decodeJSON(&body, "createAcademicUnitChild"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.academicUnits.CreateAcademicUnit(

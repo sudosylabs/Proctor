@@ -477,12 +477,12 @@ func (module examIntegrityReviewHTTPModule) saveDecision(request operationReques
 		return operationResult{}, err
 	}
 	var body saveExamIntegrityDecisionRequest
-	if err = request.decodeJSON(&body, "saveExamIntegrityDecision"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	reviewID, err := optionalSubmissionReviewID(body.ReviewID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("submission_review_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.SaveExamIntegrityDecision(request.context, request.invocation(),
 		application.SaveExamIntegrityDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID, FlagID: flagID,
@@ -501,12 +501,12 @@ func (module examIntegrityReviewHTTPModule) update(request operationRequest) (op
 		return operationResult{}, err
 	}
 	var body updateExamIntegrityReviewRequest
-	if err = request.decodeJSON(&body, "updateExamIntegrityReview"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	reviewID, err := optionalSubmissionReviewID(body.ReviewID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("submission_review_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.UpdateExamIntegrityReview(request.context, request.invocation(),
 		application.UpdateExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
@@ -537,19 +537,19 @@ func (module examIntegrityReviewHTTPModule) terminal(request operationRequest,
 	operation integrityReviewTerminalOperation,
 ) (operationResult, error) {
 	if operation != integrityReviewFinalize && operation != integrityReviewRelease {
-		return operationResult{}, invalidRequestError("operation", errors.New("unsupported Review terminal operation"))
+		return operationResult{}, invalidRequestError(errors.New("unsupported Review terminal operation"))
 	}
 	submissionID, err := reviewSubmissionID(request)
 	if err != nil {
 		return operationResult{}, err
 	}
 	var body terminalExamIntegrityReviewRequest
-	if err = request.decodeJSON(&body, "terminalExamIntegrityReview"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	reviewID, err := model.ParseSubmissionReviewID(body.ReviewID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("submission_review_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	command := application.FinalizeExamIntegrityReviewCommand{SubmissionID: submissionID, ReviewID: reviewID,
 		ExpectedReviewRevision: body.ExpectedReviewRevision, IdempotencyKey: request.idempotencyKey}
@@ -572,7 +572,7 @@ func (module examIntegrityReviewHTTPModule) studentResult(request operationReque
 	}
 	attemptID, err := model.ParseExamAttemptID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_attempt_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.GetStudentExamResult(request.context, request.invocation(), attemptID)
 	if err != nil {
@@ -653,7 +653,7 @@ func reviewSubmissionID(request operationRequest) (model.SubmissionID, error) {
 	}
 	id, err := model.ParseSubmissionID(raw)
 	if err != nil {
-		return "", invalidRequestError("submission_id", err)
+		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -665,7 +665,7 @@ func reviewFlagID(request operationRequest) (model.IntegrityFlagID, error) {
 	}
 	id, err := model.ParseIntegrityFlagID(raw)
 	if err != nil {
-		return "", invalidRequestError("integrity_flag_id", err)
+		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -682,17 +682,17 @@ func applyReviewPageQuery(request operationRequest, kind string, limit *int, set
 	if raw := values.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 || parsed > 200 {
-			return invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 		*limit = parsed
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		id, err := decodeExamIntegrityReviewCursor(raw, kind)
 		if err != nil {
-			return invalidRequestError("cursor", err)
+			return invalidRequestError(err)
 		}
 		if err = setCursor(id); err != nil {
-			return invalidRequestError("cursor", err)
+			return invalidRequestError(err)
 		}
 	}
 	return nil

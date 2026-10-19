@@ -342,14 +342,14 @@ func (s *externalAuthenticationService) beginForPurpose(
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
-		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
+		return nil, externalProviderNotFoundError()
 	}
 	admission, err := s.accessPolicy.ExternalProviderAdmission(ctx, providerID)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
 	if admission.Mode == "" {
-		return nil, externalProviderNotFoundError("BeginExternalAuthentication")
+		return nil, externalProviderNotFoundError()
 	}
 	if returnTo == "" {
 		returnTo = "/"
@@ -400,9 +400,9 @@ func (s *externalAuthenticationService) beginForPurpose(
 	)
 	if err != nil {
 		return nil, externalProviderOperationError(
-			"BeginExternalAuthentication.provider_url",
-			err,
-		)
+
+			err)
+
 	}
 	if challenge == nil || challenge.RedirectURL == "" {
 		return nil, authenticationUnavailable(errors.New("external provider returned an empty login challenge"))
@@ -472,23 +472,22 @@ func (s *externalAuthenticationService) complete(
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
-		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
+		return nil, externalProviderNotFoundError()
 	}
 	admission, err := s.accessPolicy.ExternalProviderAdmission(ctx, providerID)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
 	if admission.Mode == "" {
-		return nil, externalProviderNotFoundError("CompleteExternalAuthentication")
+		return nil, externalProviderNotFoundError()
 	}
 	method := provider.Descriptor().Type
 	stateToken, providerErr := provider.State(callback)
 	if providerErr != nil ||
 		!validRawCredential(stateToken) ||
 		!validRawCredential(bindingToken) {
-		return nil, invalidExternalAuthenticationError(
-			"CompleteExternalAuthentication.state",
-		)
+		return nil, invalidExternalAuthenticationError()
+
 	}
 	stateHash := model.HashToken(stateToken)
 	state, err := s.loginStates.GetByStateHash(ctx, stateHash)
@@ -497,9 +496,8 @@ func (s *externalAuthenticationService) complete(
 		if err != nil && !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)
 		}
-		return nil, invalidExternalAuthenticationError(
-			"CompleteExternalAuthentication.state",
-		)
+		return nil, invalidExternalAuthenticationError()
+
 	}
 	callbackURL, err := externalAuthenticationCallbackURL(
 		s.policy.PublicURL,
@@ -516,9 +514,8 @@ func (s *externalAuthenticationService) complete(
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return nil, invalidExternalAuthenticationError(
-				"CompleteExternalAuthentication.consume_state",
-			)
+			return nil, invalidExternalAuthenticationError()
+
 		}
 		return nil, authenticationUnavailable(err)
 	}
@@ -597,10 +594,10 @@ func (s *externalAuthenticationService) complete(
 				institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
 				return nil, auditErr
 			}
-			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation_policy")
+			return nil, invalidExternalAuthenticationError()
 		}
 		if !state.InvitationID.IsValid() || s.invitationAcceptor == nil {
-			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation")
+			return nil, invalidExternalAuthenticationError()
 		}
 		providerEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(assertion.Email)))
 		if !assertion.EmailVerified || !model.IsValidEmail(providerEmail) {
@@ -618,7 +615,7 @@ func (s *externalAuthenticationService) complete(
 					institution.ID.String(), "authentication.external.invalid"); auditErr != nil {
 					return nil, auditErr
 				}
-				return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.invitation_policy")
+				return nil, invalidExternalAuthenticationError()
 			}
 			var conflict *store.ErrConflict
 			if errors.As(acceptErr, &conflict) {
@@ -699,7 +696,7 @@ func (s *externalAuthenticationService) complete(
 		}
 		switch {
 		case errors.Is(err, store.ErrAuthenticationMethodDisabled):
-			return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.policy")
+			return nil, invalidExternalAuthenticationError()
 		case errors.As(err, &conflict):
 			return nil, NewError("authentication.external.account_conflict").Wrap(err)
 		case store.IsNotFound(err):
@@ -728,19 +725,18 @@ func (s *externalAuthenticationService) complete(
 		); appErr != nil {
 			return nil, appErr
 		}
-		return nil, invalidExternalAuthenticationError(
-			"CompleteExternalAuthentication.user",
-		)
+		return nil, invalidExternalAuthenticationError()
+
 	}
 	recovery, recoveryErr := s.authentication.recoveryState(ctx, resolution.User.ID)
 	if recoveryErr != nil {
 		return nil, recoveryErr
 	}
 	if recovery.ResetAt.Valid && state.CreatedAt.Before(recovery.ResetAt.Time) {
-		return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.recovery_generation")
+		return nil, invalidExternalAuthenticationError()
 	}
 	if state.Purpose == model.ExternalAuthenticationPurposeMFARecovery && (state.TargetUserID != resolution.User.ID || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli()) {
-		return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.recovery_identity")
+		return nil, invalidExternalAuthenticationError()
 	}
 	if recovery.ReenrollmentRequired && state.Purpose != model.ExternalAuthenticationPurposeMFARecovery {
 		start, startErr := s.beginForPurpose(ctx, providerID, "/account/security", model.SessionClientWeb, "", "", metadata.IPAddress, model.ExternalAuthenticationPurposeMFARecovery, resolution.User.ID, "", "", "", nil)
@@ -838,7 +834,7 @@ func (s *externalAuthenticationService) completeProviderConnection(
 ) (*model.ExternalAuthenticationCompletion, error) {
 	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeConnect ||
 		!state.TargetUserID.IsValid() || !state.ConsumedAt.Valid || assertion == nil {
-		return nil, invalidExternalAuthenticationError("CompleteProviderConnection.state")
+		return nil, invalidExternalAuthenticationError()
 	}
 	connectedAt := state.ConsumedAt.Time.Truncate(time.Millisecond)
 	result, err := s.identities.LinkWithAudit(ctx, &store.ExternalIdentityLink{
@@ -938,21 +934,15 @@ func externalAuthenticationCallbackURL(
 	return callback.String(), nil
 }
 
-func externalProviderNotFoundError(where string) error {
-	_ = where
+func externalProviderNotFoundError() error {
 	return NewError("authentication.external.provider_not_found")
 }
 
-func invalidExternalAuthenticationError(where string) error {
-	_ = where
+func invalidExternalAuthenticationError() error {
 	return NewError("authentication.external.invalid")
 }
 
-func externalProviderOperationError(
-	where string,
-	err error,
-) error {
-	_ = where
+func externalProviderOperationError(err error) error {
 	if errors.Is(err, ErrExternalAuthenticationRejected) {
 		return NewError("authentication.external.rejected").Wrap(err)
 	}

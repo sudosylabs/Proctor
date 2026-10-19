@@ -9,7 +9,6 @@ package httpapi
 
 import (
 	"net/http"
-	"strconv"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -140,7 +139,7 @@ func (module institutionResourceModule) get(request operationRequest) (operation
 
 func (module institutionResourceModule) patch(request operationRequest) (operationResult, error) {
 	var body updateInstitutionRequest
-	if err := request.decodeJSON(&body, "patchInstitution"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	var capacity *model.ExamCapacityPolicy
@@ -177,41 +176,4 @@ func institutionResponseFromModel(institution *model.Institution) institutionRes
 		Description:  institution.Description,
 		ExamCapacity: examCapacityPolicyResponseFromModel(institution.ExamCapacity),
 	}
-}
-
-// Legacy handlers use these helpers until their resource modules migrate to
-// operationRequest. Academic structure resources do not depend on them.
-func queryLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
-	value := r.URL.Query().Get("limit")
-	if value == "" {
-		return 100, true
-	}
-	limit, err := strconv.Atoi(value)
-	if err != nil || limit < 1 || limit > 200 {
-		WriteError(w, r, invalidRequestError("limit", err))
-		return 0, false
-	}
-	return limit, true
-}
-
-func requiredPrincipal(w http.ResponseWriter, r *http.Request) (model.Principal, bool) {
-	principal, ok := Principal(r.Context())
-	if !ok {
-		WriteError(w, r, authenticationRequiredError())
-	}
-	return principal, ok
-}
-
-type idRequirement func(Params) (string, error)
-
-func requiredResourceID(w http.ResponseWriter, r *http.Request, require idRequirement) (model.Principal, string, bool) {
-	return principalAndRequiredId(w, r, require)
-}
-
-func decodeJSON(w http.ResponseWriter, r *http.Request, target any, where string) bool {
-	if err := decodeRequestJSON(r, target); err != nil {
-		WriteError(w, r, invalidRequestError(where, err))
-		return false
-	}
-	return true
 }

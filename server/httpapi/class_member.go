@@ -115,7 +115,7 @@ func (module classMemberResourceModule) enroll(request operationRequest) (operat
 		return operationResult{}, err
 	}
 	var body enrollClassMemberRequest
-	if err := request.decodeJSON(&body, "enrollClassMember"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	enrollment, err := module.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: body.StartAt, EndAt: body.EndAt})

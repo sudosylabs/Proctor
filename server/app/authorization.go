@@ -125,7 +125,7 @@ func (s *accessControlService) evaluateResolved(
 		ctx, principal.UserID.String(), model.TimeUTC(s.now()),
 	)
 	if err != nil {
-		return false, authorizationUnavailableError("accessControlService.Can.bindings", err)
+		return false, authorizationUnavailableError(err)
 	}
 	roleIDs := make([]string, 0, len(bindings))
 	seen := make(map[string]struct{}, len(bindings))
@@ -138,7 +138,7 @@ func (s *accessControlService) evaluateResolved(
 	}
 	roles, err := s.roles.GetByIds(ctx, roleIDs)
 	if err != nil {
-		return false, authorizationUnavailableError("accessControlService.Can.roles", err)
+		return false, authorizationUnavailableError(err)
 	}
 	permissionByRole := make(map[string]map[string]struct{}, len(roles))
 	for _, role := range roles {
@@ -193,7 +193,7 @@ func (s *accessControlService) authorizeAcademicPeriodOwner(
 		return appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("accessControlService.authorizeAcademicPeriodOwner")
+		return authorizationDeniedError()
 	}
 	return nil
 }
@@ -302,7 +302,7 @@ func (s *accessControlService) authorizeUserAccountState(
 		return appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("accessControlService.authorizeUserAccountState")
+		return authorizationDeniedError()
 	}
 	return nil
 }
@@ -328,7 +328,7 @@ func (s *accessControlService) authorizeCurrentStateWithScope(
 		return "", "", appErr
 	}
 	if !allowed {
-		return "", "", authorizationDeniedError("accessControlService.Authorize")
+		return "", "", authorizationDeniedError()
 	}
 	return scopeType, scopeID, nil
 }
@@ -362,7 +362,7 @@ func (s *accessControlService) authorizeUserViewThroughClass(
 		return appErr
 	}
 	if !allowed {
-		return authorizationDeniedError("accessControlService.authorizeUserViewThroughClass")
+		return authorizationDeniedError()
 	}
 	return nil
 }
@@ -389,7 +389,7 @@ func (s *accessControlService) authorizeUserRead(
 		var err error
 		match, err = s.resolver.users.MatchVisibility(ctx, userID, visibility)
 		if err != nil {
-			return false, authorizationUnavailableError("accessControlService.authorizeUserRead.users", err)
+			return false, authorizationUnavailableError(err)
 		}
 		allowed = (match.ScopeType == model.RoleScopeAcademicUnit || match.ScopeType == model.RoleScopeClass) &&
 			model.IsValidId(match.ScopeID)
@@ -411,11 +411,10 @@ func (s *accessControlService) authorizeUserRead(
 	if allowed {
 		return false, nil
 	}
-	return false, authorizationDeniedError("accessControlService.authorizeUserRead")
+	return false, authorizationDeniedError()
 }
 
-func authorizationDeniedError(where string) error {
-	_ = where
+func authorizationDeniedError() error {
 	return NewError("authorization.denied")
 }
 
@@ -474,10 +473,9 @@ func authorizationResourceError(resource string, err error) error {
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").WithField("resource", resource).Wrap(err)
 	}
-	return authorizationUnavailableError("accessControlService.resolveResource", err)
+	return authorizationUnavailableError(err)
 }
 
-func authorizationUnavailableError(where string, err error) error {
-	_ = where
+func authorizationUnavailableError(err error) error {
 	return NewError("authorization.unavailable").Wrap(err)
 }

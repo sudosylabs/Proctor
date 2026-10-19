@@ -170,7 +170,7 @@ func (module classResourceModule) create(request operationRequest) (operationRes
 		return operationResult{}, err
 	}
 	var body createClassRequest
-	if err := request.decodeJSON(&body, "createClass"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	class, err := module.classes.CreateClass(
@@ -212,7 +212,7 @@ func (module classResourceModule) patch(request operationRequest) (operationResu
 		return operationResult{}, err
 	}
 	var body updateClassRequest
-	if err := request.decodeJSON(&body, "patchClass"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {

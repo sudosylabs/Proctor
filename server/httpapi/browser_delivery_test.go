@@ -37,7 +37,7 @@ func TestBrowserDeliveryHTTPDecodesExpandedUnicodeNavigation(t *testing.T) {
 	request := httptest.NewRequest("POST", "/", bytes.NewReader(raw))
 	request.Header.Set("Content-Type", "application/json")
 	var decoded model.BrowserActivityBatch
-	if err := (operationRequest{request: request}).decodeJSON(&decoded, "browserActivityBatch"); err != nil {
+	if err := (operationRequest{request: request}).decodeJSON(&decoded); err != nil {
 		t.Fatal(err)
 	}
 	if len(decoded.Events) != 1 || decoded.Events[0].Location.Path != location.Path {

@@ -141,7 +141,7 @@ func (m accessPolicyResourceModule) get(request operationRequest) (operationResu
 
 func (m accessPolicyResourceModule) preflight(request operationRequest) (operationResult, error) {
 	var body accessPolicySettingsRequest
-	if err := request.decodeJSON(&body, "preflightAccessPolicy"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	settings, revokeExistingSessions, err := requiredAccessPolicySettings(body)
@@ -163,7 +163,7 @@ func (m accessPolicyResourceModule) preflight(request operationRequest) (operati
 
 func (m accessPolicyResourceModule) replace(request operationRequest) (operationResult, error) {
 	var body accessPolicySettingsRequest
-	if err := request.decodeJSON(&body, "replaceAccessPolicy"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	settings, revokeExistingSessions, err := requiredAccessPolicySettings(body)

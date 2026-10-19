@@ -189,7 +189,7 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 		return store.ExamListVisibility{}, err
 	}
 	if !hasOrdinary && !hasOverride {
-		return store.ExamListVisibility{}, authorizationDeniedError("examAuthorizationAdapter.AuthorizeList")
+		return store.ExamListVisibility{}, authorizationDeniedError()
 	}
 	return store.ExamListVisibility{ActorUserID: principal.UserID,
 		OrdinaryMembershipAt:    decisionAt,

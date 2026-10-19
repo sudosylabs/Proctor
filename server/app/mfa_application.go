@@ -177,7 +177,7 @@ func (s *mfaApplicationService) Setup(
 	}
 	saved, err := s.credentials.SavePendingWithAudit(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: candidate, Lifetime: s.mechanics.settings.SetupTTL, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: model.AuditEventID(auditID)})
 	if err != nil {
-		return nil, s.failMutation(ctx, auditID, "MFA", err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
 	return &MFASetup{
 		Secret: secret,
@@ -209,7 +209,7 @@ func (s *mfaApplicationService) Activate(
 	}
 	now := model.TimeUTC(s.now())
 	if !credential.IsPendingAt(now) {
-		return nil, mfaInvalidCodeError("ActivateMFA")
+		return nil, mfaInvalidCodeError()
 	}
 	secret, err := s.mechanics.decrypt(principal.UserID.String(), credential)
 	if err != nil {
@@ -217,7 +217,7 @@ func (s *mfaApplicationService) Activate(
 	}
 	timeStep, valid := verifyTOTP(secret, command.Code, 0, now)
 	if !valid {
-		return nil, mfaInvalidCodeError("ActivateMFA")
+		return nil, mfaInvalidCodeError()
 	}
 	rawCodes, recoveryCodes, err := s.mechanics.newRecoveryCodes(
 		principal.UserID.String(), s.mechanics.settings.RecoveryCodeCount,
@@ -250,7 +250,7 @@ func (s *mfaApplicationService) Activate(
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
-		return nil, s.failMutation(ctx, auditID, "MFA", err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
 	s.effects.SessionsRevoked(
 		ctx, principal.UserID.String(), []string{principal.SessionID.String()},
@@ -300,9 +300,9 @@ func (s *mfaApplicationService) Challenge(
 			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.invalid_code", nil); auditErr != nil {
 				return nil, auditErr
 			}
-			return nil, mfaInvalidCodeError("ChallengeMFA")
+			return nil, mfaInvalidCodeError()
 		}
-		return nil, s.failMutation(ctx, auditID, "ChallengeMFA", err)
+		return nil, s.failMutation(ctx, auditID, err)
 	}
 	if result == nil || result.Session == nil {
 		return nil, authenticationUnavailable(errors.New("MFA challenge returned no Session"))
@@ -351,8 +351,8 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	}); err != nil {
 		return nil, s.failMutation(
-			ctx, auditID, "RegenerateMFARecoveryCodes.replace", err,
-		)
+			ctx, auditID, err)
+
 	}
 	return rawCodes, nil
 }
@@ -389,7 +389,7 @@ func (s *mfaApplicationService) Disable(
 		AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
-		return s.failMutation(ctx, auditID, "DisableMFA.disable", err)
+		return s.failMutation(ctx, auditID, err)
 	}
 	s.effects.SessionsRevoked(
 		ctx, principal.UserID.String(), nil, result.AccessTokenHashes,
@@ -495,7 +495,7 @@ func (s *mfaApplicationService) requireStrongRecentSession(principal model.Princ
 func (s *mfaApplicationService) auditResource(ctx context.Context) (model.Resource, error) {
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil {
-		return model.Resource{}, mfaStoreError("MFA.audit_resource", err)
+		return model.Resource{}, mfaStoreError(err)
 	}
 	return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 }
@@ -503,10 +503,9 @@ func (s *mfaApplicationService) auditResource(ctx context.Context) (model.Resour
 func (s *mfaApplicationService) failMutation(
 	ctx context.Context,
 	auditID string,
-	where string,
 	err error,
 ) error {
-	mapped := mfaStoreError(where, err)
+	mapped := mfaStoreError(err)
 	code := "authentication.mfa.unavailable"
 	if failure, ok := As(mapped); ok {
 		code = failure.Code()

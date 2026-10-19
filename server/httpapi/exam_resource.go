@@ -121,10 +121,10 @@ func (m examResourceHTTPModule) create(request operationRequest) (protocolResult
 	var metadata examResourceUploadMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("multipart", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	if metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("size is required"))
+		return protocolResult{}, invalidRequestError(errors.New("size is required"))
 	}
 	result, err := m.application.CreateExamResource(request.context, request.invocation(), application.CreateExamResourceCommand{ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, DisplayName: metadata.DisplayName, DescriptionMarkdown: metadata.DescriptionMarkdown, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -140,10 +140,10 @@ func (m examResourceHTTPModule) replaceContent(request operationRequest) (protoc
 	var metadata examResourceContentReplacementMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("multipart", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	if metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("size is required"))
+		return protocolResult{}, invalidRequestError(errors.New("size is required"))
 	}
 	result, err := m.application.ReplaceExamResourceContent(request.context, request.invocation(), application.ReplaceExamResourceContentCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, MediaType: model.ExamResourceMediaType(metadata.MediaType), Body: content, Size: *metadata.Size, ExpectedSHA256: metadata.SHA256, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -157,11 +157,11 @@ func (m examResourceHTTPModule) editMetadata(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	var body editExamResourceMetadataRequest
-	if err = request.decodeJSON(&body, "editExamResourceMetadata"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.DisplayName == nil && body.DescriptionMarkdown == nil {
-		return operationResult{}, invalidRequestError("metadata", errors.New("at least one metadata field is required"))
+		return operationResult{}, invalidRequestError(errors.New("at least one metadata field is required"))
 	}
 	result, err := m.application.EditExamResourceMetadata(request.context, request.invocation(), application.EditExamResourceMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, DisplayName: body.DisplayName, DescriptionMarkdown: body.DescriptionMarkdown, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
@@ -175,14 +175,14 @@ func (m examResourceHTTPModule) reorder(request operationRequest) (operationResu
 		return operationResult{}, err
 	}
 	var body reorderExamResourcesRequest
-	if err = request.decodeJSON(&body, "reorderExamResources"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	ids := make([]model.ExamResourceID, len(body.ResourceIDs))
 	for i, raw := range body.ResourceIDs {
 		id, parseErr := model.ParseExamResourceID(raw)
 		if parseErr != nil {
-			return operationResult{}, invalidRequestError("resource_ids", parseErr)
+			return operationResult{}, invalidRequestError(parseErr)
 		}
 		ids[i] = id
 	}
@@ -202,7 +202,7 @@ func (m examResourceHTTPModule) remove(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	var body removeExamResourceRequest
-	if err = request.decodeJSON(&body, "removeExamResource"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	_, err = m.application.RemoveExamResource(request.context, request.invocation(), application.RemoveExamResourceCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey})
@@ -239,7 +239,7 @@ func examResourceExamID(request operationRequest) (model.ExamID, error) {
 	}
 	id, err := model.ParseExamID(raw)
 	if err != nil {
-		return "", invalidRequestError("exam_id", err)
+		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -254,7 +254,7 @@ func examResourceIDs(request operationRequest) (model.ExamID, model.ExamResource
 	}
 	resourceID, err := model.ParseExamResourceID(raw)
 	if err != nil {
-		return "", "", invalidRequestError("exam_resource_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, resourceID, nil
 }

@@ -67,11 +67,11 @@ func parseWebSocketResume(params Params) (string, int64, error) {
 		return "", 0, nil
 	}
 	if !model.IsValidId(params.ConnectionId) || params.SequenceNumber == "" {
-		return "", 0, invalidRequestError("connection_id", nil)
+		return "", 0, invalidRequestError(nil)
 	}
 	sequence, err := strconv.ParseInt(params.SequenceNumber, 10, 64)
 	if err != nil || sequence < 0 {
-		return "", 0, invalidRequestError("sequence_number", err)
+		return "", 0, invalidRequestError(err)
 	}
 	return params.ConnectionId, sequence, nil
 }

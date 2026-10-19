@@ -59,12 +59,12 @@ func studentProgressionResource(progressions StudentProgressionApplication) reso
 
 func (m studentProgressionModule) dryRun(request operationRequest) (operationResult, error) {
 	var body studentProgressionDryRunRequest
-	if err := request.decodeJSON(&body, "dryRunStudentProgression"); err != nil {
-		return operationResult{}, invalidRequestError("studentProgressionModule.dryRun", err)
+	if err := request.decodeJSON(&body); err != nil {
+		return operationResult{}, invalidRequestError(err)
 	}
 	effectiveAt, err := time.Parse(time.RFC3339Nano, body.EffectiveAt)
 	if err != nil || effectiveAt.IsZero() {
-		return operationResult{}, invalidRequestError("studentProgressionModule.dryRun.effective_at", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.progressions.DryRunStudentProgression(request.context, request.invocation(), application.DryRunStudentProgressionCommand{
 		SourcePeriodID: body.SourcePeriodID, SourceClassID: body.SourceClassID, DestinationPeriodID: body.DestinationPeriodID,
@@ -94,8 +94,8 @@ func (m studentProgressionModule) commit(request operationRequest) (operationRes
 		return operationResult{}, err
 	}
 	var body studentProgressionCommitRequest
-	if err = request.decodeJSON(&body, "commitStudentProgression"); err != nil {
-		return operationResult{}, invalidRequestError("studentProgressionModule.commit", err)
+	if err = request.decodeJSON(&body); err != nil {
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.progressions.CommitStudentProgression(request.context, request.invocation(), application.CommitStudentProgressionCommand{
 		ID: id, ExpectedRevision: body.ExpectedRevision, PreviewDigest: body.PreviewDigest, IdempotencyKey: request.idempotencyKey,

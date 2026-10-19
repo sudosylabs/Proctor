@@ -11,10 +11,10 @@ import "strconv"
 
 func validateAcademicRevision(value Optional[int64]) error {
 	if value.IsNull() {
-		return invalidRequestError("expected_revision", nil)
+		return invalidRequestError(nil)
 	}
 	if revision := value.ValuePointer(); revision != nil && *revision <= 0 {
-		return invalidRequestError("expected_revision", nil)
+		return invalidRequestError(nil)
 	}
 	return nil
 }
@@ -25,11 +25,11 @@ func (request operationRequest) academicRevision() (*int64, error) {
 		return nil, nil
 	}
 	if len(values) != 1 {
-		return nil, invalidRequestError("expected_revision", nil)
+		return nil, invalidRequestError(nil)
 	}
 	revision, err := strconv.ParseInt(values[0], 10, 64)
 	if err != nil || revision <= 0 {
-		return nil, invalidRequestError("expected_revision", err)
+		return nil, invalidRequestError(err)
 	}
 	return &revision, nil
 }

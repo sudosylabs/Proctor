@@ -348,7 +348,7 @@ func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Co
 		return err
 	}
 	if !allowed {
-		return authorizationDeniedError("invitationAuthorizationAdapter.CanDelegateActionsAtScope")
+		return authorizationDeniedError()
 	}
 	return nil
 }
@@ -379,7 +379,7 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 		return store.InvitationVisibilityScope{}, err
 	}
 	if !allowed {
-		return store.InvitationVisibilityScope{}, authorizationDeniedError("invitationAuthorizationAdapter.Visibility")
+		return store.InvitationVisibilityScope{}, authorizationDeniedError()
 	}
 	return store.InvitationVisibilityScope{InstitutionWide: constraint.InstitutionWide,
 		AcademicUnitRootIDs: append([]string(nil), constraint.AcademicUnitRootIDs...), ClassIDs: append([]string(nil), constraint.ClassIDs...)}, nil

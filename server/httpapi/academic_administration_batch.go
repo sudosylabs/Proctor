@@ -72,8 +72,8 @@ func academicAdministrationBatchResource(batches AcademicAdministrationBatchAppl
 
 func (module academicAdministrationBatchResourceModule) run(request operationRequest) (operationResult, error) {
 	var body academicAdministrationBatchRequest
-	if err := request.decodeJSON(&body, "runAcademicAdministrationBatch"); err != nil {
-		return operationResult{}, invalidRequestError("academicAdministrationBatchResourceModule.run", err)
+	if err := request.decodeJSON(&body); err != nil {
+		return operationResult{}, invalidRequestError(err)
 	}
 	items := make([]application.AcademicAdministrationBatchItemCommand, 0, len(body.Items))
 	for _, item := range body.Items {

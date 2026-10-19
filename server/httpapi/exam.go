@@ -409,7 +409,7 @@ func examResource(exams ExamApplication) resource {
 func (m examResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := examListQuery(request.request)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_list", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	page, err := m.exams.ListExams(request.context, request.invocation(), query)
 	if err != nil {
@@ -431,12 +431,12 @@ func (m examResourceModule) list(request operationRequest) (operationResult, err
 
 func (m examResourceModule) create(request operationRequest) (operationResult, error) {
 	var body createExamRequest
-	if err := request.decodeJSON(&body, "createExam"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	unitID, err := model.ParseAcademicUnitID(body.AcademicUnitID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("academic_unit_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.exams.CreateExam(request.context, request.invocation(), application.CreateExamCommand{
 		AcademicUnitID: unitID, Title: body.Title, InstructionsMarkdown: body.InstructionsMarkdown,
@@ -455,7 +455,7 @@ func (m examResourceModule) get(request operationRequest) (operationResult, erro
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.exams.GetExam(request.context, request.invocation(), application.GetExamQuery{ExamID: examID})
 	if err != nil {
@@ -471,19 +471,19 @@ func (m examResourceModule) editDraftText(request operationRequest) (operationRe
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body editExamDraftTextRequest
-	if err := request.decodeJSON(&body, "editExamDraftText"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	title := body.Title.ValuePointer()
 	instructions := body.InstructionsMarkdown.ValuePointer()
 	if title == nil && instructions == nil {
-		return operationResult{}, invalidRequestError("fields", errors.New("at least one authored field is required"))
+		return operationResult{}, invalidRequestError(errors.New("at least one authored field is required"))
 	}
 	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	view, err := m.exams.EditExamDraftText(request.context, request.invocation(), application.EditExamDraftTextCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision,
@@ -502,29 +502,29 @@ func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (o
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftFocusLossRequest
-	if err := request.decodeJSON(&body, "configureExamDraftFocusLoss"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	if body.MinimumDurationMilliseconds < 500 || body.MinimumDurationMilliseconds > 300_000 {
-		return operationResult{}, invalidRequestError("minimum_duration_milliseconds", errors.New("must be between 500 and 300000"))
+		return operationResult{}, invalidRequestError(errors.New("must be between 500 and 300000"))
 	}
 	if body.IncidentCount < 1 || body.IncidentCount > 100 {
-		return operationResult{}, invalidRequestError("incident_count", errors.New("must be between 1 and 100"))
+		return operationResult{}, invalidRequestError(errors.New("must be between 1 and 100"))
 	}
 	if body.WindowMilliseconds < 10_000 || body.WindowMilliseconds > 14_400_000 || body.WindowMilliseconds < body.MinimumDurationMilliseconds {
-		return operationResult{}, invalidRequestError("window_milliseconds", errors.New("must be between 10000 and 14400000 and at least minimum_duration_milliseconds"))
+		return operationResult{}, invalidRequestError(errors.New("must be between 10000 and 14400000 and at least minimum_duration_milliseconds"))
 	}
 	outcome := model.IntegrityThresholdOutcome(body.Outcome)
 	switch outcome {
 	case model.IntegrityOutcomeFlag, model.IntegrityOutcomeFlagAndWarn, model.IntegrityOutcomeFlagAndSuspend:
 	default:
-		return operationResult{}, invalidRequestError("outcome", errors.New("is not supported"))
+		return operationResult{}, invalidRequestError(errors.New("is not supported"))
 	}
 	view, err := m.exams.ConfigureExamDraftFocusLoss(request.context, request.invocation(), application.ConfigureExamDraftFocusLossCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Enabled: body.Enabled,
@@ -545,18 +545,18 @@ func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftBrowserPolicyRequest
-	if err = request.decodeJSON(&body, "configureExamDraftBrowserPolicy"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	policy, err := body.BrowserPolicy.model()
 	if err != nil {
-		return operationResult{}, invalidRequestError("browser_policy", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.exams.ConfigureExamDraftBrowserPolicy(request.context, request.invocation(), application.ConfigureExamDraftBrowserPolicyCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Policy: policy, IdempotencyKey: request.idempotencyKey,
@@ -574,17 +574,17 @@ func (m examResourceModule) configureDraftNativePolicy(request operationRequest)
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftNativePolicyRequest
-	if err = request.decodeJSON(&body, "configureExamDraftNativePolicy"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedDraftRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	if err := body.Native.Validate(); err != nil {
-		return operationResult{}, invalidRequestError("native", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.exams.ConfigureExamDraftNativePolicy(request.context, request.invocation(), application.ConfigureExamDraftNativePolicyCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, NativePolicy: body.Native, IdempotencyKey: request.idempotencyKey,
@@ -602,14 +602,14 @@ func (m examResourceModule) archive(request operationRequest) (operationResult, 
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return operationResult{}, invalidRequestError("exam_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body archiveExamRequest
-	if err := request.decodeJSON(&body, "archiveExam"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedExamRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_exam_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	exam, err := m.exams.ArchiveExam(request.context, request.invocation(), application.ArchiveExamCommand{
 		ExamID: examID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
@@ -630,13 +630,13 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 	if raw := values.Get("limit"); raw != "" {
 		query.Limit, err = strconv.Atoi(raw)
 		if err != nil || query.Limit < 1 || query.Limit > 200 {
-			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+			return operationResult{}, invalidRequestError(errors.New("must be between 1 and 200"))
 		}
 	}
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, decodeErr := decodeExamManagerCursor(raw)
 		if decodeErr != nil {
-			return operationResult{}, invalidRequestError("cursor", decodeErr)
+			return operationResult{}, invalidRequestError(decodeErr)
 		}
 		query.BeforeGrantedAt, _ = time.Parse(time.RFC3339Nano, cursor.GrantedAt)
 		query.BeforeUserID = model.UserID(cursor.UserID)
@@ -665,7 +665,7 @@ func (m examResourceModule) addManager(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	var body addExamManagerRequest
-	if err := request.decodeJSON(&body, "addExamManager"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	userID, err := parseExamManagerRequest(body.UserID, body.ExpectedExamRevision)
@@ -692,14 +692,14 @@ func (m examResourceModule) removeManager(request operationRequest) (operationRe
 	}
 	userID, err := model.ParseUserID(rawUserID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("user_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	var body removeExamManagerRequest
-	if err := request.decodeJSON(&body, "removeExamManager"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedExamRevision < 1 {
-		return operationResult{}, invalidRequestError("expected_exam_revision", errors.New("must be positive"))
+		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
 	change, err := m.exams.RemoveExamManager(request.context, request.invocation(), application.RemoveExamManagerCommand{
 		ExamID: examID, UserID: userID, ExpectedExamRevision: body.ExpectedExamRevision, IdempotencyKey: request.idempotencyKey,
@@ -716,7 +716,7 @@ func (m examResourceModule) transferOwner(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	var body transferExamOwnershipRequest
-	if err := request.decodeJSON(&body, "transferExamOwnership"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	userID, err := parseExamManagerRequest(body.UserID, body.ExpectedExamRevision)
@@ -739,7 +739,7 @@ func examIDFromRequest(request operationRequest) (model.ExamID, error) {
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return "", invalidRequestError("exam_id", err)
+		return "", invalidRequestError(err)
 	}
 	return examID, nil
 }
@@ -747,10 +747,10 @@ func examIDFromRequest(request operationRequest) (model.ExamID, error) {
 func parseExamManagerRequest(rawUserID string, revision int64) (model.UserID, error) {
 	userID, err := model.ParseUserID(rawUserID)
 	if err != nil {
-		return "", invalidRequestError("user_id", err)
+		return "", invalidRequestError(err)
 	}
 	if revision < 1 {
-		return "", invalidRequestError("expected_exam_revision", errors.New("must be positive"))
+		return "", invalidRequestError(errors.New("must be positive"))
 	}
 	return userID, nil
 }

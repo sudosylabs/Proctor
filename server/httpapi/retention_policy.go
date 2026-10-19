@@ -107,7 +107,7 @@ func (module retentionPolicyResourceModule) replace(
 	request operationRequest,
 ) (operationResult, error) {
 	var body retentionPolicyRequest
-	if err := request.decodeJSON(&body, "replaceRetentionPolicy"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	settings, err := requiredRetentionPolicySettings(body)

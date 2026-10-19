@@ -145,7 +145,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 
 func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T) {
 	t.Parallel()
-	denied := authorizationDeniedError("test")
+	denied := authorizationDeniedError()
 
 	t.Run("create", func(t *testing.T) {
 		events := []string{}

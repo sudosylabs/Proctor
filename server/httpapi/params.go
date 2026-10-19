@@ -141,7 +141,7 @@ func (p Params) RequireStudentProgressionID() (string, error) {
 
 func (p Params) RequireProviderId() (string, error) {
 	if len(p.ProviderId) == 0 || len(p.ProviderId) > model.IdentityProviderMaxLength {
-		return "", invalidRequestError("provider_id", nil)
+		return "", invalidRequestError(nil)
 	}
 	return p.ProviderId, nil
 }
@@ -201,7 +201,7 @@ func (p Params) RequireDesktopRegistrationId() (model.DesktopRegistrationID, err
 	}
 	id := model.DesktopRegistrationID(value)
 	if !id.IsValid() {
-		return "", invalidRequestError("desktop_registration_id", nil)
+		return "", invalidRequestError(nil)
 	}
 	return id, nil
 }
@@ -277,32 +277,9 @@ func (p Params) RequireAttemptWorkspaceEntryId() (string, error) {
 
 func requirePathId(name, id string) (string, error) {
 	if !model.IsValidId(id) {
-		return "", invalidRequestError(name, nil)
+		return "", invalidRequestError(nil)
 	}
 	return id, nil
-}
-
-func principalAndRequiredId(
-	writer http.ResponseWriter,
-	request *http.Request,
-	require func(Params) (string, error),
-) (model.Principal, string, bool) {
-	principal, ok := Principal(request.Context())
-	if !ok {
-		WriteError(writer, request, authenticationRequiredError())
-		return model.Principal{}, "", false
-	}
-	params, ok := RequestParams(request.Context())
-	if !ok {
-		WriteError(writer, request, invalidRequestError("route_params", nil))
-		return model.Principal{}, "", false
-	}
-	id, appErr := require(params)
-	if appErr != nil {
-		WriteError(writer, request, appErr)
-		return model.Principal{}, "", false
-	}
-	return principal, id, true
 }
 
 func (p Params) RequireExamExportID() (string, error) {

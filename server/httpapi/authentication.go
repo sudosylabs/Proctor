@@ -311,7 +311,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 
 func (module authenticationResourceModule) register(request operationRequest) (operationResult, error) {
 	var input publicRegistrationRequest
-	if err := request.decodeJSON(&input, "register_local_user"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	if err := module.authentication.RegisterLocalUser(
@@ -357,7 +357,7 @@ func sessionAuthenticationMutationErrorCodes(extra ...string) []string {
 
 func (module authenticationResourceModule) login(request operationRequest) (operationResult, error) {
 	var input loginRequest
-	if err := request.decodeJSON(&input, "login"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	result, err := module.authentication.Login(
@@ -459,7 +459,7 @@ func (module authenticationResourceModule) requestEmailVerification(request oper
 
 func (module authenticationResourceModule) completeEmailVerification(request operationRequest) (operationResult, error) {
 	var input emailVerificationCompletion
-	if err := request.decodeJSON(&input, "complete_email_verification"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	_, err := module.authentication.CompleteEmailVerification(
@@ -475,7 +475,7 @@ func (module authenticationResourceModule) completeEmailVerification(request ope
 
 func (module authenticationResourceModule) requestPasswordReset(request operationRequest) (operationResult, error) {
 	var input passwordResetRequest
-	if err := request.decodeJSON(&input, "request_password_reset"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	if err := module.authentication.RequestPasswordReset(
@@ -490,7 +490,7 @@ func (module authenticationResourceModule) requestPasswordReset(request operatio
 
 func (module authenticationResourceModule) completePasswordReset(request operationRequest) (operationResult, error) {
 	var input passwordResetCompletion
-	if err := request.decodeJSON(&input, "complete_password_reset"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	_, err := module.authentication.CompletePasswordReset(
@@ -629,8 +629,7 @@ func decodeRequestJSON(request *http.Request, target any) error {
 	return nil
 }
 
-func invalidRequestError(where string, err error) error {
-	_ = where
+func invalidRequestError(err error) error {
 	out := application.NewError("request.invalid")
 	if err != nil {
 		out = out.Wrap(err)

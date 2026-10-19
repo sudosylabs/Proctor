@@ -51,7 +51,7 @@ func (m retentionHTTPModule) notices(request operationRequest) (operationResult,
 	values := request.request.URL.Query()
 	for key, items := range values {
 		if len(items) != 1 || (key != "limit" && key != "cursor") {
-			return operationResult{}, invalidRequestError("query", nil)
+			return operationResult{}, invalidRequestError(nil)
 		}
 	}
 	limit, err := request.queryLimit()
@@ -62,7 +62,7 @@ func (m retentionHTTPModule) notices(request operationRequest) (operationResult,
 	if raw := values.Get("cursor"); raw != "" {
 		cursor, err := decodeOpaqueCursor(raw, retentionNoticeCursorSpec())
 		if err != nil {
-			return operationResult{}, invalidRequestError("cursor", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 		after = model.RetentionRetirementID(cursor.After)
 	}

@@ -144,7 +144,7 @@ func (module examStarterWorkspaceHTTPModule) createDirectory(request operationRe
 		return operationResult{}, err
 	}
 	var body createExamStarterWorkspaceDirectoryRequest
-	if err = request.decodeJSON(&body, "createExamStarterWorkspaceDirectory"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	result, err := module.application.CreateExamStarterWorkspaceDirectory(request.context, request.invocation(), application.CreateExamStarterWorkspaceDirectoryCommand{
@@ -163,10 +163,10 @@ func (module examStarterWorkspaceHTTPModule) createFile(request operationRequest
 	var metadata examStarterWorkspaceFileUploadMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("multipart", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	if metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("metadata size is required"))
+		return protocolResult{}, invalidRequestError(errors.New("metadata size is required"))
 	}
 	result, err := module.application.CreateExamStarterWorkspaceFile(request.context, request.invocation(), application.CreateExamStarterWorkspaceFileCommand{
 		ExamID: examID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, Path: metadata.Path, MediaType: metadata.MediaType,
@@ -183,7 +183,7 @@ func (module examStarterWorkspaceHTTPModule) moveEntry(request operationRequest)
 		return operationResult{}, err
 	}
 	var body moveExamStarterWorkspaceEntryRequest
-	if err = request.decodeJSON(&body, "moveExamStarterWorkspaceEntry"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	result, err := module.application.MoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.MoveExamStarterWorkspaceEntryCommand{
@@ -202,14 +202,14 @@ func (module examStarterWorkspaceHTTPModule) replaceFile(request operationReques
 	var metadata examStarterWorkspaceFileReplacementMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("multipart", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	if metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("metadata size is required"))
+		return protocolResult{}, invalidRequestError(errors.New("metadata size is required"))
 	}
 	expectedContentVersion, err := model.ParseWorkspaceContentVersion(metadata.ExpectedContentVersion)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("expected_content_version", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.ReplaceExamStarterWorkspaceFile(request.context, request.invocation(), application.ReplaceExamStarterWorkspaceFileCommand{
 		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: metadata.ExpectedDraftRevision, ExpectedContentVersion: expectedContentVersion, MediaType: metadata.MediaType,
@@ -226,7 +226,7 @@ func (module examStarterWorkspaceHTTPModule) removeEntry(request operationReques
 		return operationResult{}, err
 	}
 	var body removeExamStarterWorkspaceEntryRequest
-	if err = request.decodeJSON(&body, "removeExamStarterWorkspaceEntry"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	_, err = module.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.RemoveExamStarterWorkspaceEntryCommand{
@@ -265,7 +265,7 @@ func examStarterWorkspaceExamID(request operationRequest) (model.ExamID, error) 
 	}
 	examID, err := model.ParseExamID(raw)
 	if err != nil {
-		return "", invalidRequestError("exam_id", err)
+		return "", invalidRequestError(err)
 	}
 	return examID, nil
 }
@@ -281,7 +281,7 @@ func examStarterWorkspaceIDs(request operationRequest) (model.ExamID, model.Star
 	}
 	entryID, err := model.ParseStarterWorkspaceEntryID(raw)
 	if err != nil {
-		return "", "", invalidRequestError("starter_workspace_entry_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, entryID, nil
 }

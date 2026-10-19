@@ -84,7 +84,7 @@ func (m authenticationMethodResourceModule) list(request operationRequest) (oper
 
 func (m authenticationMethodResourceModule) enrollPassword(request operationRequest) (operationResult, error) {
 	var body enrollPasswordRequest
-	if err := request.decodeJSON(&body, "enroll_password"); err != nil {
+	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := m.application.EnrollPassword(request.context, request.invocation(), body.Password); err != nil {
@@ -106,7 +106,7 @@ func (m authenticationMethodResourceModule) connect(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var body beginProviderConnectionRequest
-	if err = request.decodeJSON(&body, "connect_provider"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	start, err := m.application.BeginProviderConnection(request.context, request.invocation(), application.BeginProviderConnectionCommand{ProviderID: providerID, ReturnTo: body.ReturnTo, Source: request.request.RemoteAddr})
@@ -127,7 +127,7 @@ func (m authenticationMethodResourceModule) unlink(request operationRequest) (op
 	}
 	parsed, err := model.ParseExternalIdentityID(id)
 	if err != nil {
-		return operationResult{}, invalidRequestError("external_identity_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	if err = m.application.UnlinkExternalIdentity(request.context, request.invocation(), parsed); err != nil {
 		return operationResult{}, err

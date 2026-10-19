@@ -122,7 +122,7 @@ func (module programmeLevelResourceModule) create(request operationRequest) (ope
 		return operationResult{}, err
 	}
 	var body createProgrammeLevelRequest
-	if err := request.decodeJSON(&body, "createProgrammeLevel"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.programmeLevels.CreateProgrammeLevel(
@@ -161,7 +161,7 @@ func (module programmeLevelResourceModule) patch(request operationRequest) (oper
 		return operationResult{}, err
 	}
 	var body updateProgrammeLevelRequest
-	if err := request.decodeJSON(&body, "patchProgrammeLevel"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {

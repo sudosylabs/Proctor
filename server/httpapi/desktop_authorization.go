@@ -139,7 +139,7 @@ func (m desktopAuthorizationResourceModule) authenticateExternal(request operati
 
 func (m desktopAuthorizationResourceModule) start(request operationRequest) (operationResult, error) {
 	var input desktopAuthorizationStartRequest
-	if err := request.decodeJSON(&input, "desktop_authorization_start"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	result, err := m.application.StartDesktopAuthorization(request.context, request.invocation(), application.StartDesktopAuthorizationCommand{
@@ -157,7 +157,7 @@ func (m desktopAuthorizationResourceModule) start(request operationRequest) (ope
 
 func (m desktopAuthorizationResourceModule) bind(request operationRequest) (operationResult, error) {
 	var input desktopAuthorizationProofRequest
-	if err := request.decodeJSON(&input, "desktop_authorization_bind"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	result, err := m.application.BindDesktopAuthorization(request.context, request.invocation(), application.BindDesktopAuthorizationCommand{
@@ -203,7 +203,7 @@ func (m desktopAuthorizationResourceModule) authenticateLocal(request operationR
 		return operationResult{}, err
 	}
 	var input desktopAuthorizationLocalAuthenticationRequest
-	if err = request.decodeJSON(&input, "desktop_authorization_local_authentication"); err != nil {
+	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	result, err := m.application.AuthenticateDesktopAuthorizationLocally(request.context, request.invocation(), application.AuthenticateDesktopAuthorizationLocallyCommand{
@@ -232,7 +232,7 @@ func (m desktopAuthorizationResourceModule) approve(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var input desktopAuthorizationStateRequest
-	if err := request.decodeJSON(&input, "desktop_authorization_approve"); err != nil {
+	if err = request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	result, err := m.application.ApproveDesktopAuthorization(request.context, request.invocation(), application.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State})
@@ -250,7 +250,7 @@ func (m desktopAuthorizationResourceModule) cancel(request operationRequest) (op
 		return operationResult{}, err
 	}
 	var input desktopAuthorizationStateRequest
-	if err := request.decodeJSON(&input, "desktop_authorization_cancel"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	if err := m.application.CancelDesktopAuthorization(request.context, request.invocation(), application.ApproveDesktopAuthorizationCommand{Binding: binding, State: input.State}); err != nil {
@@ -286,7 +286,7 @@ func desktopAuthorizationContextResponseFromApplication(value *application.Deskt
 
 func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (operationResult, error) {
 	var input desktopAuthorizationExchangeRequest
-	if err := request.decodeJSON(&input, "desktop_authorization_exchange"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	proof, proofErr := requestDPoPProof(request.request)

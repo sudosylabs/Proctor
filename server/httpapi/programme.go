@@ -91,7 +91,7 @@ func (module programmeResourceModule) create(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	var body createProgrammeRequest
-	if err := request.decodeJSON(&body, "createProgramme"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	saved, err := module.programmes.CreateProgramme(
@@ -125,7 +125,7 @@ func (module programmeResourceModule) patch(request operationRequest) (operation
 		return operationResult{}, err
 	}
 	var body updateProgrammeRequest
-	if err := request.decodeJSON(&body, "patchProgramme"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {

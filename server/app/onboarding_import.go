@@ -300,7 +300,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 		return OnboardingImportView{}, err
 	}
 	if current.ActorUserID != invocation.Principal().UserID {
-		return OnboardingImportView{}, authorizationDeniedError("onboardingImportService.Commit")
+		return OnboardingImportView{}, authorizationDeniedError()
 	}
 	at := model.TimeUTC(s.now())
 	job, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)

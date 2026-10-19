@@ -193,32 +193,32 @@ func (module examSittingCorrectionHTTPModule) stage(request operationRequest) (p
 	var metadata examSittingCorrectionStageMetadata
 	content, err := decodeExamResourceMultipart(request.request, &metadata)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("multipart", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	if metadata.Size == nil {
-		return protocolResult{}, invalidRequestError("multipart", errors.New("size is required"))
+		return protocolResult{}, invalidRequestError(errors.New("size is required"))
 	}
 	baseRevisionID, err := model.ParseExamRevisionID(metadata.BaseRevisionID)
 	if err != nil {
-		return protocolResult{}, invalidRequestError("base_revision_id", err)
+		return protocolResult{}, invalidRequestError(err)
 	}
 	target := application.ExamSittingCorrectionResourceTarget(metadata.TargetKind)
 	var resourceID model.ExamResourceID
 	switch target {
 	case application.ExamSittingCorrectionResourceAddition:
 		if metadata.ReplacesResourceID != "" {
-			return protocolResult{}, invalidRequestError("replaces_resource_id", errors.New("must be omitted for an addition"))
+			return protocolResult{}, invalidRequestError(errors.New("must be omitted for an addition"))
 		}
 	case application.ExamSittingCorrectionResourceReplacement:
 		if metadata.ReplacesResourceID == "" {
-			return protocolResult{}, invalidRequestError("replaces_resource_id", errors.New("is required for a replacement"))
+			return protocolResult{}, invalidRequestError(errors.New("is required for a replacement"))
 		}
 		resourceID, err = model.ParseExamResourceID(metadata.ReplacesResourceID)
 		if err != nil {
-			return protocolResult{}, invalidRequestError("replaces_resource_id", err)
+			return protocolResult{}, invalidRequestError(err)
 		}
 	default:
-		return protocolResult{}, invalidRequestError("target_kind", errors.New("must be addition or replacement"))
+		return protocolResult{}, invalidRequestError(errors.New("must be addition or replacement"))
 	}
 	result, err := module.application.StageExamSittingCorrectionResourceContent(request.context, request.invocation(), application.StageExamSittingCorrectionResourceContentCommand{
 		ExamID: examID, SittingID: sittingID, BaseRevisionID: baseRevisionID, Target: target, ResourceID: resourceID,
@@ -241,15 +241,15 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 		return operationResult{}, err
 	}
 	var body applyExamSittingCorrectionRequest
-	if err = request.decodeJSON(&body, "applyExamSittingCorrection"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	if body.ExpectedSittingRevision < 1 || !validExamSittingCorrectionReason(body.Reason) {
-		return operationResult{}, invalidRequestError("correction", errors.New("expected revision and reason are invalid"))
+		return operationResult{}, invalidRequestError(errors.New("expected revision and reason are invalid"))
 	}
 	currentRevisionID, err := model.ParseExamRevisionID(body.ExpectedCurrentRevisionID)
 	if err != nil {
-		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	manifest := make([]application.ExamSittingCorrectionResourceManifestItem, len(body.Resources))
 	resourceIDs := make(map[model.ExamResourceID]struct{}, len(body.Resources))
@@ -257,20 +257,20 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 	for index, item := range body.Resources {
 		resourceID, parseErr := model.ParseExamResourceID(item.ResourceID)
 		if parseErr != nil {
-			return operationResult{}, invalidRequestError("resources", parseErr)
+			return operationResult{}, invalidRequestError(parseErr)
 		}
 		if _, exists := resourceIDs[resourceID]; exists {
-			return operationResult{}, invalidRequestError("resources", errors.New("resource_id values must be unique"))
+			return operationResult{}, invalidRequestError(errors.New("resource_id values must be unique"))
 		}
 		resourceIDs[resourceID] = struct{}{}
 		var stageID model.ExamCorrectionResourceStageID
 		if item.StageID != "" {
 			stageID, parseErr = model.ParseExamCorrectionResourceStageID(item.StageID)
 			if parseErr != nil {
-				return operationResult{}, invalidRequestError("resources", parseErr)
+				return operationResult{}, invalidRequestError(parseErr)
 			}
 			if _, exists := stageIDs[stageID]; exists {
-				return operationResult{}, invalidRequestError("resources", errors.New("stage_id values must be unique"))
+				return operationResult{}, invalidRequestError(errors.New("stage_id values must be unique"))
 			}
 			stageIDs[stageID] = struct{}{}
 		}
@@ -287,7 +287,7 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 	if document := body.BrowserPolicy.ValuePointer(); document != nil {
 		browserPolicy.Policy, err = document.model()
 		if err != nil {
-			return operationResult{}, invalidRequestError("browser_policy", err)
+			return operationResult{}, invalidRequestError(err)
 		}
 	}
 	result, err := module.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
@@ -320,7 +320,7 @@ func examSittingCorrectionIDs(request operationRequest) (model.ExamID, model.Exa
 	}
 	sittingID, err := model.ParseExamSittingID(rawSittingID)
 	if err != nil {
-		return "", "", invalidRequestError("exam_sitting_id", err)
+		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }

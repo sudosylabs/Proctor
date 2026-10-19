@@ -91,12 +91,12 @@ func (module userSettingsResourceModule) read(request operationRequest) (operati
 
 func (module userSettingsResourceModule) replace(request operationRequest) (operationResult, error) {
 	var input userSettingsReplaceRequest
-	if err := request.decodeJSON(&input, "user_settings"); err != nil {
+	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
 	expectedRevision, err := model.ParseUserSettingsRevision(input.ExpectedRevision)
 	if err != nil {
-		return operationResult{}, invalidRequestError("expected_revision", err)
+		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.settings.ReplaceOwnUserSettings(
 		request.context,

@@ -122,8 +122,8 @@ func (m onboardingImportModule) commit(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	var body onboardingImportCommitRequest
-	if err = request.decodeJSON(&body, "commitOnboardingImport"); err != nil {
-		return operationResult{}, invalidRequestError("onboardingImportModule.commit", err)
+	if err = request.decodeJSON(&body); err != nil {
+		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.imports.CommitOnboardingImport(request.context, request.invocation(), application.CommitOnboardingImportCommand{ID: id,
 		ExpectedRevision: body.ExpectedRevision, PreviewDigest: body.PreviewDigest, Policy: model.OnboardingImportCommitPolicy(body.Policy), IdempotencyKey: request.idempotencyKey})

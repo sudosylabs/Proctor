@@ -30,7 +30,7 @@ func parseActiveAt(r *http.Request) (int64, error) {
 	history := r.URL.Query().Get("history")
 	if history != "" {
 		if history != "true" && history != "false" {
-			return 0, invalidRequestError("history", nil)
+			return 0, invalidRequestError(nil)
 		}
 		if history == "true" {
 			return 0, nil
@@ -42,7 +42,7 @@ func parseActiveAt(r *http.Request) (int64, error) {
 	}
 	activeAt, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || activeAt <= 0 {
-		return 0, invalidRequestError("active_at", err)
+		return 0, invalidRequestError(err)
 	}
 	return activeAt, nil
 }
@@ -58,43 +58,43 @@ func membershipPageQuery(request *http.Request, scope model.Resource) (applicati
 	var cursor membershipPageCursor
 	for _, key := range []string{"limit", "cursor", "active_at", "history"} {
 		if entries, present := values[key]; present && (len(entries) != 1 || entries[0] == "") {
-			return query, cursor, invalidRequestError(key, nil)
+			return query, cursor, invalidRequestError(nil)
 		}
 	}
 	if values.Has("limit") {
 		limit, err := strconv.Atoi(values.Get("limit"))
 		if err != nil || limit < 1 || limit > 200 {
-			return query, cursor, invalidRequestError("limit", err)
+			return query, cursor, invalidRequestError(err)
 		}
 		query.Limit = limit
 	}
 	if values.Has("active_at") {
 		at, err := strconv.ParseInt(values.Get("active_at"), 10, 64)
 		if err != nil || at <= 0 {
-			return query, cursor, invalidRequestError("active_at", err)
+			return query, cursor, invalidRequestError(err)
 		}
 		query.ActiveAt = &at
 	}
 	if values.Has("history") {
 		value := values.Get("history")
 		if value != "true" && value != "false" {
-			return query, cursor, invalidRequestError("history", nil)
+			return query, cursor, invalidRequestError(nil)
 		}
 		history := value == "true"
 		query.History = &history
 	}
 	if query.History != nil && *query.History && query.ActiveAt != nil {
-		return query, cursor, invalidRequestError("history", nil)
+		return query, cursor, invalidRequestError(nil)
 	}
 	if values.Has("cursor") {
 		decoded, err := decodeOpaqueCursor(values.Get("cursor"), membershipPageCursorSpec())
 		if err != nil {
-			return query, cursor, invalidRequestError("cursor", err)
+			return query, cursor, invalidRequestError(err)
 		}
 		if decoded.ScopeType != scope.Type || decoded.ScopeID != scope.ID ||
 			(query.ActiveAt != nil && *query.ActiveAt != *decoded.ActiveAt) ||
 			(query.History != nil && *query.History != (*decoded.ActiveAt == 0)) {
-			return query, cursor, invalidRequestError("cursor", nil)
+			return query, cursor, invalidRequestError(nil)
 		}
 		cursor = decoded
 		history := *cursor.ActiveAt == 0

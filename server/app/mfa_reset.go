@@ -60,7 +60,7 @@ func (s *mfaApplicationService) ResetUser(ctx context.Context, invocation Invoca
 	}
 	result, err := s.credentials.ResetWithAudit(ctx, &store.MFAAssistedReset{Principal: principal, UserID: userID, IdentityVerified: true, Reason: reason, VerificationReference: reference, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: model.AuditEventID(auditID), Capabilities: accessDeploymentCapabilities(s.security.capabilities.Snapshot()), Notice: mfaSecurityNotice(prepared), NoticeAt: at})
 	if err != nil {
-		return s.failMutation(ctx, auditID, "ResetUserMFA", err)
+		return s.failMutation(ctx, auditID, err)
 	}
 	if result == nil || result.Recovery == nil {
 		return authenticationUnavailable(errors.New("MFA reset returned no recovery state"))

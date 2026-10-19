@@ -120,7 +120,7 @@ func (m examExportsHTTPModule) query(request operationRequest) (application.Exam
 	}
 	id, err := model.ParseExamExportID(raw)
 	if err != nil {
-		return application.ExamExportQuery{}, invalidRequestError("exam_export_id", err)
+		return application.ExamExportQuery{}, invalidRequestError(err)
 	}
 	return application.ExamExportQuery{Scope: scope, ExportID: id}, nil
 }
@@ -131,7 +131,7 @@ func (m examExportsHTTPModule) create(request operationRequest) (operationResult
 		return operationResult{}, err
 	}
 	var body createExamExportRequest
-	if err = request.decodeJSON(&body, "createExamExport"); err != nil {
+	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
 	categories := slices.Clone(body.Categories)
@@ -139,7 +139,7 @@ func (m examExportsHTTPModule) create(request operationRequest) (operationResult
 		categories[0], categories[1] = categories[1], categories[0]
 	}
 	if !model.ValidExamExportCategories(categories) {
-		return operationResult{}, invalidRequestError("categories", errors.New("select distinct work and/or integrity categories"))
+		return operationResult{}, invalidRequestError(errors.New("select distinct work and/or integrity categories"))
 	}
 	value, err := m.application.CreateExamExport(request.context, request.invocation(), application.CreateExamExportCommand{Scope: scope, Categories: categories, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
