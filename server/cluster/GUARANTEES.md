@@ -47,7 +47,15 @@ used by recovery tests.
    compatible live peers, and attempts a rotating batch of at most three
    seeds from a configured-first candidate set bounded at 64. Each
    operation may fail independently without changing readiness; failures are
-   diagnosed and later ticks continue.
+   diagnosed and later ticks continue. Discovery leases are stamped with the
+   advertising node's wall clock, unlike the PostgreSQL-clocked serving lease:
+   the transport depends only on the narrow `cluster.DiscoveryStore` contract,
+   whose caller-supplied instants keep adapters and conformance tests
+   deterministic, and a discovery row is only a seed hint. Skew therefore never
+   affects authority or Memberlist membership; skew approaching the discovery
+   TTL (30 seconds by default) can at worst hide a live peer from seed
+   selection, or let a peer's cleanup remove its row, until its next heartbeat
+   re-advertises. Nodes are expected to run synchronized clocks.
 9. **Protocol capability is compiled.** The current wire codec supports and
    advertises version 1 only. Deployment configuration cannot widen that range;
    the range expands only when another codec is implemented and tested.
