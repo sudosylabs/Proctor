@@ -99,6 +99,9 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		}
 		return nil, time.Time{}, fmt.Errorf("resolve Attempt Workspace enrollment fence: %w", err)
 	}
+	if err := lockAttemptCandidate(ctx, tx, access.CandidateUserID.String()); err != nil {
+		return nil, time.Time{}, err
+	}
 	if err := lockClassEnrollment(ctx, tx, access.CandidateUserID.String(), periodID); err != nil {
 		return nil, time.Time{}, err
 	}

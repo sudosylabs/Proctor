@@ -117,6 +117,9 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 		}
 		return zero, examSubmissionIntegrityTail{}, time.Time{}, fmt.Errorf("resolve Exam Submission enrollment fence: %w", err)
 	}
+	if err := lockAttemptCandidate(ctx, tx, access.CandidateUserID.String()); err != nil {
+		return zero, examSubmissionIntegrityTail{}, time.Time{}, err
+	}
 	if err := lockClassEnrollment(ctx, tx, access.CandidateUserID.String(), periodID); err != nil {
 		return zero, examSubmissionIntegrityTail{}, time.Time{}, err
 	}

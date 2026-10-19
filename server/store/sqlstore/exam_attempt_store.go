@@ -1105,11 +1105,14 @@ func validateExistingAttemptConfiguration(document []byte, digest string, input 
 }
 
 // lockExamAttemptEligibility serializes every admission for one candidate and
-// locks current membership before the Exam/Sitting lineage. allowPaused is
-// reserved for exact replay recovery; every fresh Connection still requires
-// Open.
+// locks the candidate User, then current membership, before the Exam/Sitting
+// lineage. allowPaused is reserved for exact replay recovery; every fresh
+// Connection still requires Open.
 func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, allowPaused bool) (examAttemptAdmissionGuard, error) {
 	var zero examAttemptAdmissionGuard
+	if err := lockAttemptCandidate(ctx, tx, input.CandidateUserID.String()); err != nil {
+		return zero, err
+	}
 	lockKey := "proctor:exam-attempt-admission:" + input.CandidateUserID.String()
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
 		return zero, fmt.Errorf("lock Exam Attempt admission: %w", err)

@@ -36,6 +36,18 @@ type DesktopCompatibilityPolicySerializationProbe func(
 	func() error,
 ) error
 
+// AttemptCandidateLockProbe runs operation while a concurrent transaction
+// takes Invitation acceptance's candidate lock sequence: the User row for
+// update, then the candidate's Class-enrollment fence for the period. It
+// returns the first error from either side.
+type AttemptCandidateLockProbe func(
+	t *testing.T,
+	ctx context.Context,
+	candidateID model.UserID,
+	periodID model.AcademicPeriodID,
+	operation func() error,
+) error
+
 // FocusLossPersistenceProbe exposes bounded persistence totals that cannot be
 // observed through the candidate seam. It is used only by SQL conformance to
 // prove the evidence cap, overflow summary, bucket consumption, and diagnostic
@@ -517,6 +529,39 @@ func TestExamAttemptCompatibilityPolicySerialization(
 	requireNoError(t, err)
 	if policy.Revision != input.DesktopCompatibilityPolicyRevision+1 {
 		t.Fatalf("serialized policy revision = %d, want %d", policy.Revision, input.DesktopCompatibilityPolicyRevision+1)
+	}
+}
+
+// TestExamAttemptConnectCandidateLockOrder verifies that Connect takes the
+// candidate User before its Class-enrollment fence, so it waits behind an
+// Invitation acceptance for the same candidate instead of deadlocking it.
+func TestExamAttemptConnectCandidateLockOrder(t *testing.T, ss store.Store, probe AttemptCandidateLockProbe) {
+	t.Helper()
+	if probe == nil {
+		t.Fatal("Attempt candidate lock probe is required")
+	}
+	ctx := context.Background()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	input := &store.ExamAttemptConnect{
+		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+	}
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	command := examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation,
+		"attempt-candidate-lock-order", "attempt-candidate-lock-order")
+	var connected *store.ExamAttemptConnectResult
+	err := probe(t, ctx, fixture.candidate.ID, fixture.class.AcademicPeriodID, func() error {
+		var connectErr error
+		connected, connectErr = ss.ExamAttempt().Connect(ctx, input, command)
+		return connectErr
+	})
+	requireNoError(t, err)
+	if connected == nil || connected.Attempt == nil || connected.Attempt.ID != input.AttemptID {
+		t.Fatalf("Connect() after Invitation acceptance locks = %#v", connected)
 	}
 }
 

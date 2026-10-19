@@ -177,6 +177,13 @@ oversized documents fail closed rather than being preserved as arbitrary
 authoritative JSON. Publication stores a canonical typed serialization and its
 SHA-256 digest; JSONB field ordering is never used as the digest contract.
 
+The candidate User row is locked before any candidate-scoped advisory fence
+(Attempt admission, per-period Class enrollment), and Attempt admission
+precedes Class enrollment. Class enrollment and Invitation acceptance lock the
+User first, so Attempt connection, workspace mutation, and Submission sealing
+lock the User row before either fence; a fence held while waiting for the row
+deadlocks against acceptance.
+
 Attempt Participation generations are retained under a unique Attempt and
 generation identity with a hashed continuity credential, authoritative lease,
 renewal sequence, start/end times, and end reason. PostgreSQL time decides
