@@ -251,12 +251,19 @@ func (h *Hub) Accept(
 		}
 		return app.NewError("websocket.origin.invalid")
 	}
+	// A handshake refused before the connection is hijacked leaves the
+	// response uncommitted, so the HTTP transport answers it with Problem
+	// Details instead of the upgrader's plain-text error.
+	refusedStatus := 0
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  MaxMessageBytes,
 		WriteBufferSize: MaxMessageBytes,
 		CheckOrigin: func(*http.Request) bool {
 			// Credential-aware origin decision was made immediately above.
 			return true
+		},
+		Error: func(_ http.ResponseWriter, _ *http.Request, status int, _ error) {
+			refusedStatus = status
 		},
 	}
 	socket, err := upgrader.Upgrade(writer, request, nil)
@@ -265,6 +272,12 @@ func (h *Hub) Accept(
 			h.recorder.ConnectionOpened("upgrade_error")
 		}
 		h.logger.WarnContext(request.Context(), "WebSocket upgrade failed", err)
+		switch {
+		case refusedStatus >= http.StatusBadRequest && refusedStatus < http.StatusInternalServerError:
+			return app.NewError("request.invalid").Wrap(err)
+		case refusedStatus != 0:
+			return app.NewError("websocket.unavailable").Wrap(err)
+		}
 		return nil
 	}
 	runtimeSocket := newGorillaConnectionSocket(socket)

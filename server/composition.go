@@ -356,10 +356,15 @@ func composeConsumers(
 			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
 		)
 	}
-	webappHandler, err := constructors.webapp(webui.Options{
+	webappOptions := webui.Options{
 		BuildVersion: buildInfo.Version,
 		BuildCommit:  buildInfo.Commit,
-	})
+	}
+	if problems, ok := httpAPI.(browserRouteProblems); ok {
+		webappOptions.NotFound = problems.NotFoundHandler()
+		webappOptions.MethodNotAllowed = problems.MethodNotAllowedHandler(http.MethodGet, http.MethodHead)
+	}
+	webappHandler, err := constructors.webapp(webappOptions)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct hosted webapp: %w", err),

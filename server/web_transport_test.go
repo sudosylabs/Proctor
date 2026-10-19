@@ -53,7 +53,7 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 		{path: "/api/v1/discovery", want: "api"},
 		{path: "/health/live", want: "api"},
 		{path: "/missing", want: "api"},
-		{path: "/", want: "api"},
+		{path: "/", want: "webapp"},
 		{path: "/login", want: "webapp"},
 		{path: "/assets/index-AbCdEf12.js", want: "webapp"},
 		{path: "/assets/index.js", want: "api"},
@@ -64,7 +64,7 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 			t.Fatalf("GET %s reached %q, want %q", tt.path, response.Body.String(), tt.want)
 		}
 	}
-	if api.seen != 6 || webapp.seen != 2 || owned.seen != 0 {
+	if api.seen != 5 || webapp.seen != 3 || owned.seen != 0 {
 		t.Fatalf("dispatch counts api=%d webapp=%d owned=%d", api.seen, webapp.seen, owned.seen)
 	}
 }

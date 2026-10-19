@@ -200,6 +200,27 @@ remain available for safe navigation; existing CAS and OIDC GET callbacks
 retain their one-use state and browser-binding checks. A future cross-site
 provider POST requires an explicit protocol design rather than a global bypass.
 
+## Routing-kernel problems
+
+Some failures belong to the routing kernel rather than to any operation's
+declared application errors, so they are not repeated in each operation's
+`x-proctor-error-codes`:
+
+- an unknown path returns `404` with code `not_found`;
+- an unsupported method on a known path returns `405` with code
+  `method_not_allowed` and an `Allow` header;
+- a request body over the route's effective limit returns `413` with code
+  `request.too_large` and `Connection: close`, either before the operation
+  runs when `Content-Length` exceeds the limit or when a streamed body first
+  reads past it, whatever error the operation maps that read to.
+
+The hosted browser module answers its own unknown assets and non-GET/HEAD
+methods with the same Problem Details. `GET /` and `HEAD /` redirect with
+`302 Found` to the hosted `/login` page. A WebSocket handshake the upgrader
+refuses before taking over the connection returns `request.invalid` (or
+`websocket.unavailable` for a server-side refusal) Problem Details rather than
+a plain-text body.
+
 ## Client address and request correlation
 
 The recorded client address is the connection peer. When that peer is listed

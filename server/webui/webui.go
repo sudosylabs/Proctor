@@ -39,10 +39,18 @@ var hostedRoutesJSON []byte
 
 var hostedRoutes = mustHostedRoutes(hostedRoutesJSON)
 
+// LoginPath is the hosted sign-in page that the installation root redirects
+// to.
+const LoginPath = "/login"
+
 // HandlesPath reports whether path belongs to the packaged browser module.
 // Root transport uses this exact ownership predicate so unknown server paths
 // retain the API's Problem Details response instead of becoming an SPA fallback.
+// The installation root belongs to the browser module only to redirect.
 func HandlesPath(requestPath string) bool {
+	if requestPath == "/" {
+		return true
+	}
 	if strings.HasPrefix(requestPath, "/assets/") {
 		name := strings.TrimPrefix(requestPath, "/")
 		return fs.ValidPath(name) && path.Clean(name) == name &&
@@ -55,6 +63,12 @@ func HandlesPath(requestPath string) bool {
 type Options struct {
 	BuildVersion string
 	BuildCommit  string
+	// NotFound and MethodNotAllowed answer refused browser-module requests.
+	// Composition supplies the API's Problem Details handlers; nil keeps a
+	// plain-text response for standalone use. MethodNotAllowed receives the
+	// request with Allow already set.
+	NotFound         http.Handler
+	MethodNotAllowed http.Handler
 }
 
 type buildManifest struct {
@@ -64,9 +78,11 @@ type buildManifest struct {
 }
 
 type handler struct {
-	files      fs.FS
-	index      []byte
-	fileServer http.Handler
+	files            fs.FS
+	index            []byte
+	fileServer       http.Handler
+	notFound         http.Handler
+	methodNotAllowed http.Handler
 }
 
 // New validates and constructs the complete immutable webapp handler. Files
@@ -114,7 +130,20 @@ func New(files fs.FS, options Options) (http.Handler, error) {
 		return nil, errors.New("webapp index is empty")
 	}
 
-	return &handler{files: files, index: index, fileServer: http.FileServer(http.FS(files))}, nil
+	notFound := options.NotFound
+	if notFound == nil {
+		notFound = http.NotFoundHandler()
+	}
+	methodNotAllowed := options.MethodNotAllowed
+	if methodNotAllowed == nil {
+		methodNotAllowed = http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		})
+	}
+	return &handler{
+		files: files, index: index, fileServer: http.FileServer(http.FS(files)),
+		notFound: notFound, methodNotAllowed: methodNotAllowed,
+	}, nil
 }
 
 func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -123,16 +152,20 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		writer.Header().Set("Allow", "GET, HEAD")
-		http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		h.methodNotAllowed.ServeHTTP(writer, request)
 		return
 	}
 
+	if request.URL.Path == "/" {
+		http.Redirect(writer, request, LoginPath, http.StatusFound)
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/assets/") {
 		h.serveAsset(writer, request)
 		return
 	}
 	if !HandlesPath(request.URL.Path) {
-		http.NotFound(writer, request)
+		h.notFound.ServeHTTP(writer, request)
 		return
 	}
 
@@ -147,13 +180,13 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 func (h *handler) serveAsset(writer http.ResponseWriter, request *http.Request) {
 	if !HandlesPath(request.URL.Path) {
-		http.NotFound(writer, request)
+		h.notFound.ServeHTTP(writer, request)
 		return
 	}
 	name := strings.TrimPrefix(request.URL.Path, "/")
 	info, err := fs.Stat(h.files, name)
 	if err != nil || info.IsDir() {
-		http.NotFound(writer, request)
+		h.notFound.ServeHTTP(writer, request)
 		return
 	}
 	writer.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

@@ -75,15 +75,6 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func limitRequestBody(next http.Handler, maxBodyBytes int64) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Body != nil {
-			request.Body = http.MaxBytesReader(writer, request.Body, maxBodyBytes)
-		}
-		next.ServeHTTP(writer, request)
-	})
-}
-
 func recoverPanics(next http.Handler, logger Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		defer func() {

@@ -1644,6 +1644,14 @@
     "translation": "Conflict"
   },
   {
+    "id": "problem.content_too_large.detail",
+    "translation": "The request body exceeds the limit for this operation."
+  },
+  {
+    "id": "problem.content_too_large.title",
+    "translation": "Request too large"
+  },
+  {
     "id": "problem.forbidden.detail",
     "translation": "You are not allowed to perform this action."
   },

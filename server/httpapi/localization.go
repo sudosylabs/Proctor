@@ -25,6 +25,7 @@ var problemPresentationNames = []string{
 	"bad_request",
 	"client_error",
 	"conflict",
+	"content_too_large",
 	"forbidden",
 	"internal",
 	"method_not_allowed",

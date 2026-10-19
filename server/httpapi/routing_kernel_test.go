@@ -210,12 +210,25 @@ func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing
 		t.Fatalf("large upload = %d %s", largeResponse.Code, largeResponse.Body.String())
 	}
 
+	// A declared Content-Length over the limit is refused before the
+	// operation runs.
 	defaultLimited := httptest.NewRequest(http.MethodPost, "/api/v1/default", strings.NewReader("12345"))
 	defaultLimited.Header.Set("Authorization", "Bearer test")
 	defaultResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(defaultResponse, defaultLimited)
-	if defaultResponse.Code != http.StatusCreated || !strings.Contains(defaultResponse.Body.String(), `"read":false`) {
+	if defaultResponse.Code != http.StatusRequestEntityTooLarge || !strings.Contains(defaultResponse.Body.String(), `"code":"request.too_large"`) ||
+		defaultResponse.Header().Get("Content-Type") != "application/problem+json" {
 		t.Fatalf("default upload = %d %s", defaultResponse.Code, defaultResponse.Body.String())
+	}
+
+	// A body of unknown length still stops at the limit while streaming.
+	streamed := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/default", io.MultiReader(strings.NewReader("12345")))
+	streamed.ContentLength = -1
+	streamed.Header.Set("Authorization", "Bearer test")
+	streamedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(streamedResponse, streamed)
+	if streamedResponse.Code != http.StatusCreated || !strings.Contains(streamedResponse.Body.String(), `"read":false`) {
+		t.Fatalf("streamed default upload = %d %s", streamedResponse.Code, streamedResponse.Body.String())
 	}
 }
 

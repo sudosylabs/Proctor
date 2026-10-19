@@ -41,7 +41,7 @@ func TestHandlerServesOnlyDeclaredPagesAndAssets(t *testing.T) {
 		t.Fatalf("asset Cache-Control = %q", got)
 	}
 
-	for _, missing := range []string{"/", "/api/v1/discovery", "/unknown", "/assets/missing.js", "/assets/unversioned-logo.svg", "/assets/"} {
+	for _, missing := range []string{"/api/v1/discovery", "/unknown", "/assets/missing.js", "/assets/unversioned-logo.svg", "/assets/"} {
 		response := perform(t, handler, http.MethodGet, missing)
 		if response.Code != http.StatusNotFound {
 			t.Fatalf("GET %s = %d, want 404", missing, response.Code)
@@ -63,6 +63,51 @@ func TestHandlerImplementsHEADAndRejectsMutations(t *testing.T) {
 	mutation := perform(t, handler, http.MethodPost, "/login")
 	if mutation.Code != http.StatusMethodNotAllowed || mutation.Header().Get("Allow") != "GET, HEAD" {
 		t.Fatalf("POST /login = %d Allow=%q", mutation.Code, mutation.Header().Get("Allow"))
+	}
+}
+
+func TestHandlerRedirectsRootToHostedLogin(t *testing.T) {
+	t.Parallel()
+	if !webui.HandlesPath(webui.LoginPath) || !webui.HandlesPath("/") {
+		t.Fatal("browser module does not own the root and login paths")
+	}
+	handler := newHandler(t)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		response := perform(t, handler, method, "/")
+		if response.Code != http.StatusFound || response.Header().Get("Location") != webui.LoginPath {
+			t.Fatalf("%s / = %d Location=%q", method, response.Code, response.Header().Get("Location"))
+		}
+	}
+}
+
+func TestHandlerDelegatesRefusalsToConfiguredProblemHandlers(t *testing.T) {
+	t.Parallel()
+	var refusals []string
+	record := func(name string) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			refusals = append(refusals, name+" "+request.Method+" "+request.URL.Path+" allow="+writer.Header().Get("Allow"))
+			writer.WriteHeader(http.StatusTeapot)
+		})
+	}
+	handler, err := webui.New(testFiles("1.2.3", "abc"), webui.Options{
+		BuildVersion: "1.2.3", BuildCommit: "abc",
+		NotFound: record("not-found"), MethodNotAllowed: record("method-not-allowed"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	perform(t, handler, http.MethodPost, "/login")
+	perform(t, handler, http.MethodPost, "/")
+	perform(t, handler, http.MethodGet, "/assets/missing-AbCdEf12.js")
+	perform(t, handler, http.MethodGet, "/assets/unversioned-logo.svg")
+	want := []string{
+		"method-not-allowed POST /login allow=GET, HEAD",
+		"method-not-allowed POST / allow=GET, HEAD",
+		"not-found GET /assets/missing-AbCdEf12.js allow=",
+		"not-found GET /assets/unversioned-logo.svg allow=",
+	}
+	if strings.Join(refusals, "|") != strings.Join(want, "|") {
+		t.Fatalf("refusals = %q, want %q", refusals, want)
 	}
 }
 

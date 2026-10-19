@@ -112,13 +112,41 @@ func New(options Options) (*API, error) {
 }
 
 func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if a.localizer != nil {
-		request = request.WithContext(withRequestLocalization(
-			request.Context(), a.localizer,
-			localization.PreferredLocale(request.Header.Get("Accept-Language"), a.localizer.SupportedLocales()),
-		))
+	a.handler.ServeHTTP(writer, a.localize(request))
+}
+
+func (a *API) localize(request *http.Request) *http.Request {
+	if a.localizer == nil {
+		return request
 	}
-	a.handler.ServeHTTP(writer, request)
+	return request.WithContext(withRequestLocalization(
+		request.Context(), a.localizer,
+		localization.PreferredLocale(request.Header.Get("Accept-Language"), a.localizer.SupportedLocales()),
+	))
+}
+
+// NotFoundHandler answers a path that a sibling browser module owns but
+// cannot serve with the API's not_found Problem Details, request correlation,
+// security headers, and request logging.
+func (a *API) NotFoundHandler() http.Handler {
+	handler := withMiddleware(http.HandlerFunc(a.handleNotFound), a.logger, a.middleware)
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		handler.ServeHTTP(writer, a.localize(request))
+	})
+}
+
+// MethodNotAllowedHandler answers an unsupported method on a sibling browser
+// module's path with method_not_allowed Problem Details and the given Allow
+// methods.
+func (a *API) MethodNotAllowedHandler(allowed ...string) http.Handler {
+	allow := strings.Join(allowed, ", ")
+	handler := withMiddleware(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Allow", allow)
+		a.writeMethodNotAllowed(writer, request)
+	}), a.logger, a.middleware)
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		handler.ServeHTTP(writer, a.localize(request))
+	})
 }
 
 func (a *API) Routes() []Route {
@@ -203,6 +231,10 @@ func (a *API) handleMethodNotAllowed(writer http.ResponseWriter, request *http.R
 	if methods := a.allowedMethods(request); len(methods) != 0 {
 		writer.Header().Set("Allow", strings.Join(methods, ", "))
 	}
+	a.writeMethodNotAllowed(writer, request)
+}
+
+func (a *API) writeMethodNotAllowed(writer http.ResponseWriter, request *http.Request) {
 	title, detail := localizedNamedProblemPresentation(request, "method_not_allowed")
 	WriteProblem(writer, Problem{
 		Type:      "https://proctor.sudosylabs.com/problems/method-not-allowed",

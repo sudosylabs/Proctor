@@ -138,6 +138,34 @@ func TestHubAcceptRequiresStart(t *testing.T) {
 	}
 }
 
+// TestHubAcceptReturnsRefusedHandshakeUncommitted keeps a malformed upgrade
+// request on the HTTP Problem Details path instead of the upgrader's
+// plain-text error body.
+func TestHubAcceptReturnsRefusedHandshakeUncommitted(t *testing.T) {
+	t.Parallel()
+
+	hub := newTestHub(t)
+	t.Cleanup(func() { _ = hub.Close() })
+	if err := hub.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "https://proctor.example/api/v1/websocket", nil)
+	request.Header.Set("Origin", "https://proctor.example")
+	recorder := httptest.NewRecorder()
+	err := hub.Accept(recorder, request, model.Principal{
+		UserID:         model.NewUserID(),
+		SessionID:      model.NewSessionID(),
+		CredentialID:   model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess,
+	}, model.RequestMetadata{}, "", 0, false)
+	if !app.Is(err, "request.invalid") {
+		t.Fatalf("Accept() without upgrade headers error = %v, want request.invalid", err)
+	}
+	if recorder.Body.Len() != 0 || recorder.Code != http.StatusOK || recorder.Flushed {
+		t.Fatalf("refused handshake committed a response: %d %q", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHubOriginAllowed(t *testing.T) {
 	t.Parallel()
 

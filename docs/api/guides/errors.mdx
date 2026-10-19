@@ -50,9 +50,15 @@ When `fields` is present, its keys identify invalid request fields and its
 values explain the constraint. The object is optional: a client must still be
 able to handle validation failure without field-level details.
 
-Unknown JSON fields, multiple JSON values, malformed input, and inputs that
-exceed the route's bounded body size are failures. Fix the request rather than
-retrying it unchanged.
+Unknown JSON fields, multiple JSON values, and malformed input are failures.
+A body larger than the route's limit returns status `413` with code
+`request.too_large`, whichever operation received it. Fix the request rather
+than retrying it unchanged.
+
+Every operation may also return `404` with code `not_found` for an unknown
+path and `405` with code `method_not_allowed`, with an `Allow` header, for an
+unsupported method. These routing failures are not repeated in each
+endpoint's list of stable codes.
 
 ## Retries
 

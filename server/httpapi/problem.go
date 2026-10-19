@@ -63,6 +63,10 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 // applicationFailure interface. Unexpected errors become a generic correlated
 // internal response with no internal detail.
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
+	if requestBodyTooLarge(err) {
+		writeRequestTooLarge(writer, request)
+		return
+	}
 	var failure applicationFailure
 	if errors.As(err, &failure) {
 		if failure.Code() == "service.busy" || failure.Code() == "exam.delivery.control_rate_limited" || failure.Code() == "exam.delivery.summary_rate_limited" || failure.Code() == "exam.delivery.append_rate_limited" || failure.Code() == "exam.delivery.pending_capacity" {
@@ -136,6 +140,8 @@ func problemPresentationName(status int) string {
 		return "not_found"
 	case http.StatusConflict:
 		return "conflict"
+	case http.StatusRequestEntityTooLarge:
+		return "content_too_large"
 	case http.StatusTooManyRequests:
 		return "too_many_requests"
 	case http.StatusServiceUnavailable:

@@ -138,7 +138,13 @@ func TestNativeDeliveryAppendClosedBodyAndBounds(t *testing.T) {
 			if response.Code != 200 || f.calls != before+1 || f.query.StreamID != batch.StreamID || response.Header().Get("Cache-Control") != "no-store" {
 				t.Fatalf("append: %d %s", response.Code, response.Body.String())
 			}
-		} else if response.Code != 400 || f.calls != before {
+			continue
+		}
+		want := http.StatusBadRequest
+		if len(body) > 256*1024 {
+			want = http.StatusRequestEntityTooLarge
+		}
+		if response.Code != want || f.calls != before {
 			t.Fatalf("invalid append reached application: %d %s", response.Code, response.Body.String())
 		}
 	}

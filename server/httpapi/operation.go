@@ -433,7 +433,7 @@ func writeRouteApplicationError(
 }
 
 func routeErrorAllowed(policy routeErrorPolicy, err error) bool {
-	if policy == nil {
+	if policy == nil || requestBodyTooLarge(err) {
 		return true
 	}
 	_, allowed := policy[applicationErrorCode(err)]

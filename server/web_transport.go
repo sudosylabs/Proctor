@@ -14,6 +14,13 @@ import (
 	"github.com/sudosylabs/proctor/server/webui"
 )
 
+// browserRouteProblems is the API surface that answers refused browser-module
+// requests with the installation's Problem Details.
+type browserRouteProblems interface {
+	NotFoundHandler() http.Handler
+	MethodNotAllowedHandler(allowed ...string) http.Handler
+}
+
 // rootHTTPTransport owns the API transport lifecycle while dispatching the
 // installation's API and browser modules through one listener. The API and
 // webapp handlers remain siblings; neither can turn an unknown route into a
