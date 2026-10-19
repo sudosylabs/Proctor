@@ -265,7 +265,12 @@ finalization context even after the transport request is canceled.
 Operational logging and telemetry follow
 the [`authorization-audit` security reference](../../authorization-audit/references/security.md#logging-and-observability). Liveness says
 the process is functioning; readiness says it can safely receive traffic;
-detailed dependency diagnostics are authorized/operator-only.
+detailed dependency diagnostics are authorized/operator-only. Readiness is the
+lifecycle flag combined with a bounded probe of the mandatory platform
+dependencies (PostgreSQL, cache, cluster, VFS): at most one probe per second,
+each bounded to two seconds, with concurrent callers observing the previous
+result rather than queueing. A failed probe reports not ready without changing
+lifecycle state, and the public response never names the failed dependency.
 
 The `metrics` module owns one private Prometheus registry and one optional,
 node-local scrape listener. It starts after shared infrastructure and before

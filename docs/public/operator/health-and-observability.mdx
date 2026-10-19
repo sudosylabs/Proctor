@@ -22,13 +22,20 @@ pool.
 
 Readiness remains false until platform dependencies, metrics, serving lease,
 startup reconciliation, Jobs, WebSocket, listener, and HTTP handoff succeed. It
-becomes false before drain. A serving-lease renewal or required metrics-listener
-failure is terminal: Proctor removes readiness and stops serving rather than
+becomes false before drain. While serving, readiness also probes PostgreSQL,
+the cache, the cluster transport, and VFS at most once per second, each probe
+bounded to 2 seconds; a failed probe reports not ready until a later probe
+succeeds, without stopping the process. A required metrics-listener failure, a
+rejected serving lease, or a lease renewal that keeps failing past its retry
+slack is terminal: Proctor removes readiness and stops serving rather than
 risk operating without its durable node proof.
 
 The serving lease lasts 30 seconds, renews every 5 seconds, and bounds each
-operation to 5 seconds. These are current implementation timings, not alert
-threshold recommendations.
+operation to 5 seconds. A transient renewal failure is retried every second
+while an attempt can still finish at least 5 seconds before the last renewed
+lease expires, so a PostgreSQL interruption of roughly 15 seconds does not stop
+the node. These are current implementation timings, not alert threshold
+recommendations.
 
 ## Metrics
 

@@ -277,7 +277,16 @@ func composeConsumers(
 		return nil, errors.Join(fmt.Errorf("attach realtime cluster fan-out: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
 	}
 
-	readiness := &app.Health{}
+	// Readiness requires both the lifecycle flag and a live, bounded probe of
+	// the mandatory platform dependencies (PostgreSQL, cache, cluster, VFS).
+	var dependencyProbe app.DependencyProbe
+	if checker, ok := applicationPlatform.(interface{ CheckDependencies(context.Context) error }); ok {
+		dependencyProbe = checker.CheckDependencies
+	}
+	readiness, err := app.NewHealth(dependencyProbe, app.DefaultReadinessProbeTimeout, app.DefaultReadinessProbeInterval)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("construct readiness: %w", err), closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
+	}
 	buildInfo := input.overrides.BuildInfo
 	if buildInfo == (httpapi.BuildInfo{}) {
 		current := app.CurrentBuildInfo()

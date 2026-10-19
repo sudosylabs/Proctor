@@ -10,6 +10,8 @@ package app_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -156,6 +158,60 @@ func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close returned without stopping Run")
 	}
+}
+
+type pingToggleCluster struct {
+	failingStartCluster
+	unavailable atomic.Bool
+}
+
+func (c *pingToggleCluster) Start(context.Context) error { return nil }
+
+func (c *pingToggleCluster) Ping(context.Context) error {
+	if c.unavailable.Load() {
+		return errors.New("cluster unavailable")
+	}
+	return nil
+}
+
+func TestReadinessProbesMandatoryDependenciesWhileServing(t *testing.T) {
+	t.Parallel()
+
+	dependency := &pingToggleCluster{}
+	helper := testlib.Setup(t, testlib.WithCluster(dependency), testlib.WithConfig(func(cfg *config.Config) {
+		cfg.Server.ListenAddress = "127.0.0.1:0"
+		cfg.Server.ShutdownTimeout.Duration = time.Second
+	}))
+	done := make(chan error, 1)
+	go func() { done <- helper.Server.Run(context.Background()) }()
+	t.Cleanup(func() {
+		_ = helper.Server.Close()
+		<-done
+	})
+	readyStatus := func() int {
+		recorder := httptest.NewRecorder()
+		helper.Handler().ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil))
+		return recorder.Code
+	}
+	waitFor := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for readyStatus() != want {
+			if time.Now().After(deadline) {
+				t.Fatalf("/health/ready status = %d, want %d", readyStatus(), want)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	waitFor(http.StatusOK)
+	dependency.unavailable.Store(true)
+	waitFor(http.StatusServiceUnavailable)
+	if helper.Server.Ready() {
+		t.Fatal("server reported ready during a mandatory dependency outage")
+	}
+	dependency.unavailable.Store(false)
+	waitFor(http.StatusOK)
 }
 
 func TestClosedServerCannotBeRun(t *testing.T) {
