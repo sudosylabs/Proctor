@@ -320,18 +320,6 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 	if err != nil {
 		return Result{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
-	var releasePreparation *store.ExamIntegrityReviewReleasePreparation
-	if kind == terminalRelease {
-		releasePreparation, err = service.deps.Persistence.PrepareRelease(ctx, submissionID, reviewID, expectedRevision)
-		if err != nil {
-			return Result{}, mapStore(err)
-		}
-		if releasePreparation == nil || releasePreparation.ReleaseAt.IsZero() {
-			return Result{}, unavailable(errors.New("invalid result release preparation"))
-		}
-		at = model.TimeUTC(releasePreparation.ReleaseAt)
-	}
 	action := model.ActionSubmissionReview
 	if kind == terminalRelease {
 		action = model.ActionSubmissionRelease
@@ -342,6 +330,20 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 		map[string]any{"submission_id": submissionID.String(), "submission_review_id": reviewID.String(), "expected_review_revision": expectedRevision})
 	if err != nil {
 		return Result{}, err
+	}
+	at := model.TimeUTC(service.deps.Now())
+	var releasePreparation *store.ExamIntegrityReviewReleasePreparation
+	if kind == terminalRelease {
+		// The release-time reservation is durable, so it follows the audit
+		// attempt like every other examination write.
+		releasePreparation, err = service.deps.Persistence.PrepareRelease(ctx, submissionID, reviewID, expectedRevision)
+		if err != nil {
+			return Result{}, service.failAudit(ctx, auditID, err)
+		}
+		if releasePreparation == nil || releasePreparation.ReleaseAt.IsZero() {
+			return Result{}, service.failAudit(ctx, auditID, unavailable(errors.New("invalid result release preparation")))
+		}
+		at = model.TimeUTC(releasePreparation.ReleaseAt)
 	}
 	var stored *store.ExamIntegrityReviewMutationResult
 	if kind == terminalRelease {

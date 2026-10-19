@@ -113,6 +113,24 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	}
 }
 
+func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
+	t.Parallel()
+	f := newReviewFixture(t)
+	f.persistence.mode = "release"
+	f.persistence.prepareErr = store.NewErrConflict("submission_review", "integrity_review_state", nil)
+	_, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
+		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.integrity_review.state_conflict" {
+		t.Fatalf("Release() error = %v", err)
+	}
+	// The release-time reservation is a durable write, so its attempt must be
+	// audited before it runs and completed as failed when it is refused.
+	if f.auditor.begun != 1 || f.auditor.failedCode != fault.Code || f.mail.calls != 0 || f.persistence.release != nil {
+		t.Fatalf("audit=%#v mail=%d release=%#v", f.auditor, f.mail.calls, f.persistence.release)
+	}
+}
+
 func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
@@ -199,11 +217,15 @@ type reviewStoreFake struct {
 	release     *store.ExamIntegrityReviewRelease
 	draft       *store.ExamIntegrityReviewDraftMutation
 	idempotency *store.CommandIdempotency
+	prepareErr  error
 }
 
 func (fake *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
 	int64,
 ) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	if fake.prepareErr != nil {
+		return nil, fake.prepareErr
+	}
 	return &store.ExamIntegrityReviewReleasePreparation{Replayed: fake.replayed, ReleaseAt: fake.f.at.Add(time.Minute)}, nil
 }
 
@@ -282,13 +304,21 @@ func (fake *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ Call, _ 
 	return false, nil
 }
 
-type reviewAuditorFake struct{ value map[string]any }
+type reviewAuditorFake struct {
+	value      map[string]any
+	begun      int
+	failedCode string
+}
 
 func (fake *reviewAuditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (string, error) {
 	fake.value = value
+	fake.begun++
 	return model.NewAuditEventID().String(), nil
 }
-func (*reviewAuditorFake) Fail(context.Context, string, string) error { return nil }
+func (fake *reviewAuditorFake) Fail(_ context.Context, _ string, code string) error {
+	fake.failedCode = code
+	return nil
+}
 
 type reviewEffectsFake struct{ changed, finalized, released int }
 
