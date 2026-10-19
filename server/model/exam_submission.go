@@ -276,11 +276,19 @@ func SubmitExamAttempt(attempt *ExamAttempt, participation *AttemptParticipation
 		attempt.State != ExamAttemptActive || participation.State != AttemptParticipationActive || connection.State != AttemptConnectionOpen {
 		return errors.New("model: invalid Exam Submission lifecycle aggregate")
 	}
-	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
 	at = TimeUTC(at)
+	// The voluntary seal time is read from PostgreSQL before the sealing
+	// transaction and truncated to milliseconds, so a renewal committed in
+	// between can leave live records updated after it. That is not a reason
+	// to refuse the candidate's Submission, but the terminal transition must
+	// neither precede the episode it ends nor move an updated_at backwards.
+	if at.IsZero() || at.Before(participation.StartedAt) || at.Before(connection.OpenedAt) {
+		return errors.New("model: invalid Exam Submission time")
+	}
+	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
 	attemptCandidate.State = ExamAttemptSubmitted
 	attemptCandidate.SubmittedAt = OptionalTimeFrom(at)
-	attemptCandidate.UpdatedAt = at
+	attemptCandidate.UpdatedAt = laterTime(attempt.UpdatedAt, at)
 	attemptCandidate.Revision++
 	if err := attemptCandidate.Validate(); err != nil {
 		return err
@@ -288,11 +296,22 @@ func SubmitExamAttempt(attempt *ExamAttempt, participation *AttemptParticipation
 	if err := participationCandidate.End(AttemptParticipationEndSubmitted, at); err != nil {
 		return err
 	}
+	participationCandidate.UpdatedAt = laterTime(participation.UpdatedAt, at)
+	if err := participationCandidate.Validate(); err != nil {
+		return err
+	}
 	if err := connectionCandidate.Close(AttemptConnectionCloseSubmitted, at); err != nil {
 		return err
 	}
 	*attempt, *participation, *connection = attemptCandidate, participationCandidate, connectionCandidate
 	return nil
+}
+
+func laterTime(current, candidate time.Time) time.Time {
+	if current.After(candidate) {
+		return current
+	}
+	return candidate
 }
 
 // SealExamAttemptForSittingClose applies the coordinated terminal lifecycle

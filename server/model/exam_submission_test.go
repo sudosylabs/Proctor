@@ -201,6 +201,47 @@ func TestExamSubmissionManifestRejectsMutationAndAmbiguousOrigin(t *testing.T) {
 	}
 }
 
+func TestSubmitExamAttemptKeepsLifecycleTimesMonotonic(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Unix(100, 0).UTC()
+	fixture := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
+		t.Helper()
+		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, NewSessionID(), startedAt.Add(time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return attempt, participation, connection
+	}
+
+	attempt, participation, connection := fixture(t)
+	if err := SubmitExamAttempt(attempt, participation, connection, startedAt.Add(500*time.Millisecond)); err == nil ||
+		attempt.State == ExamAttemptSubmitted || participation.State != AttemptParticipationActive {
+		t.Fatalf("seal before the open Connection = %v, %#v", err, attempt)
+	}
+
+	// A renewal committed after the seal time was read must not be rewound.
+	attempt, participation, connection = fixture(t)
+	renewedAt := startedAt.Add(3 * time.Second)
+	participation.UpdatedAt = renewedAt
+	sealAt := startedAt.Add(2 * time.Second)
+	if err := SubmitExamAttempt(attempt, participation, connection, sealAt); err != nil {
+		t.Fatal(err)
+	}
+	if !participation.UpdatedAt.Equal(renewedAt) || !participation.EndedAt.Time.Equal(sealAt) ||
+		!attempt.SubmittedAt.Time.Equal(sealAt) || attempt.UpdatedAt.Before(sealAt) || !connection.ClosedAt.Time.Equal(sealAt) {
+		t.Fatalf("submitted times = attempt %#v participation %#v connection %#v", attempt, participation, connection)
+	}
+}
+
 func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
 	t.Parallel()
 
