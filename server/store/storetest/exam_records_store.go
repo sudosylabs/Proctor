@@ -145,6 +145,9 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if stale.Completion.IsCurrent() || stale.Completion.EvidenceRevision != 2 || stale.PendingReviews != 1 {
 		t.Fatalf("late data failed to stale: %#v", stale)
 	}
+	if current, found, findErr := records.FindReviewWaiver(ctx, submissionScope); findErr != nil || !found || !current.InventoryInvalidated {
+		t.Fatalf("late Focus Loss discrepancy left the waiver presented as current: %#v %v %v", current, found, findErr)
+	}
 	duplicate := *late
 	duplicate.DiscrepancyID = model.NewIntegrityDiscrepancyID()
 	duplicate.SignalID = model.NewFocusLossSignalID()
@@ -164,8 +167,11 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	waiver.ExpectedRevision = waived.Waiver.Revision
 	waiver.ExpectedDiscrepancyCount = 1
 	waiver.ExamRecordsMutation = mutation(submissionScope, principal, model.ActionExamRecordsComplete)
-	_, err = records.WaiveReview(ctx, waiver, examCommand(f.manager.ID, store.ExamRecordsWaiveReviewOperation, "records-late-waiver", "records-late-waiver"))
+	lateWaiver, err := records.WaiveReview(ctx, waiver, examCommand(f.manager.ID, store.ExamRecordsWaiveReviewOperation, "records-late-waiver", "records-late-waiver"))
 	requireNoError(t, err)
+	if lateWaiver.Waiver.InventoryInvalidated || lateWaiver.Waiver.DiscrepancyCount != 1 {
+		t.Fatalf("renewed waiver over the late discrepancy = %#v", lateWaiver.Waiver)
+	}
 	complete.AcknowledgedEvidenceRevision = stale.Completion.EvidenceRevision
 	complete.ExamRecordsMutation = mutation(scope, principal, model.ActionExamRecordsComplete)
 	_, err = records.CompleteRecords(ctx, complete, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "records-late-complete", "records-late-complete"))

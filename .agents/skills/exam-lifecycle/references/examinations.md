@@ -761,7 +761,8 @@ semantics. Exact replay returns the retained row; changed or stale sequence
 conflicts. Finalization and discrepancy insertion serialize on the Submission:
 rows committed before finalization enter its frozen inventory, while later
 rows remain manager-readable discrepancies and never alter a finalized or
-released Review.
+released Review. A later row does invalidate a current Submission Review
+Waiver, because the waiver bound the previously accepted discrepancy count.
 
 ## Records completion and preservation
 

@@ -165,6 +165,13 @@ func (s *sqlExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 			if err != nil {
 				return nil, fmt.Errorf("insert Integrity Discrepancy: %w", translateError("integrity_discrepancy", value.ID.String(), err))
 			}
+			// A waiver binds the accepted discrepancy count, so a new late row
+			// invalidates it exactly as late Browser or native delivery does.
+			// Finalized and released Reviews stay unchanged by contract.
+			if _, err = tx.Exec(ctx, `UPDATE submission_review_waivers SET inventory_invalidated=true WHERE submission_id=?`,
+				target.SubmissionID.String()); err != nil {
+				return nil, fmt.Errorf("invalidate Submission Review waiver: %w", err)
+			}
 			if err = invalidateSittingRecordsForIntegrity(ctx, tx, target.SittingID, access.DatabaseNow); err != nil {
 				return nil, err
 			}
