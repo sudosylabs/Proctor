@@ -554,7 +554,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
 		OpenJob: openJob, DeadlineJob: deadlineJob,
-		ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
@@ -611,7 +611,7 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 	result, err := service.persistence.Cancel(ctx, &store.ExamSittingCancellation{
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, CanceledAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
+		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)

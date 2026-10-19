@@ -494,8 +494,8 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: suspended.Attempt.ID, SuspensionID: suspended.Suspension.ID, ActorUserID: fixture.manager.ID,
 			ExpectedAttemptRevision: suspended.Attempt.Revision, PrivateReason: "resume exact retained generation",
-			ChangedAt: model.NowUTC(), AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(),
-			AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(),
+			AuditAt:      model.GetMillis()}
 		_, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow, examCommand(fixture.manager.ID,
 			store.ExamAttemptReallowOperation, "review-automatic-selector-reallow", "review-automatic-selector-reallow"))
 		requireNoError(t, err)

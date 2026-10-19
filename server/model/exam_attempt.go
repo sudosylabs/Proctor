@@ -560,6 +560,12 @@ func (suspension *AttemptSuspension) Reallow(actorID UserID, privateReason strin
 	return nil
 }
 
+// IsValidAttemptSuspensionPrivateReason reports whether a manager's private
+// suspension or re-allow reason is trimmed, valid UTF-8, and bounded.
+func IsValidAttemptSuspensionPrivateReason(reason string) bool {
+	return validAttemptSuspensionPrivateReason(reason)
+}
+
 func validAttemptSuspensionPrivateReason(reason string) bool {
 	return utf8.ValidString(reason) && reason == strings.TrimSpace(reason) && utf8.RuneCountInString(reason) >= 1 &&
 		utf8.RuneCountInString(reason) <= AttemptSuspensionPrivateReasonMaximumRunes && len(reason) <= 4000

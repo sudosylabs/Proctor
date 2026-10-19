@@ -1054,8 +1054,8 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: crossed.Suspension.ID,
 		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
-		PrivateReason: "verify Submission retains uncertainty across Participation generations", ChangedAt: model.NowUTC(),
-		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()},
+		PrivateReason: "verify Submission retains uncertainty across Participation generations",
+		AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "submission-history-reallow", "submission-history-reallow"))
 	requireNoError(t, err)
 	if reallowed.Attempt.State != model.ExamAttemptReady || !reallowed.FocusLossWindowReset {

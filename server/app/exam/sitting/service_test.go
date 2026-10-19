@@ -292,7 +292,7 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
 	}
 	input := fixture.persistence.update
-	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || input.ChangedAt != changedAt || fixture.persistence.command == nil {
+	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || fixture.persistence.command == nil {
 		t.Fatalf("store update = %#v, command=%#v", input, fixture.persistence.command)
 	}
 	wantIdempotency, err := prepareScheduleUpdateIdempotency(fixture.call, command)

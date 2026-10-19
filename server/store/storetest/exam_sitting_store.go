@@ -198,7 +198,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	updated, err := ss.ExamSitting().UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{ExamID: fixture.examID, SittingID: sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, ExamRevisionID: fixture.revisionID, ClassID: fixture.class.ID,
 		ScheduledStartAt: newStart, ScheduledEndAt: newEnd, OpenJob: updatedOpen, DeadlineJob: updatedDeadline,
-		ChangedAt: model.NowUTC(), AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-update", "sitting-update-command"))
 	requireNoError(t, err)
@@ -209,7 +209,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	cancelAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	cancelCommand := examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel", "sitting-cancel-command")
 	canceled, err := ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID,
-		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "Room unavailable", CanceledAt: model.NowUTC(),
+		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "Room unavailable",
 		AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)}, cancelCommand)
 	requireNoError(t, err)
@@ -233,7 +233,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 
 	staleAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID, ActorUserID: fixture.actor.ID,
-		ExpectedRevision: 2, PrivateReason: "stale", CanceledAt: model.NowUTC(), AuditEventID: staleAudit.ID.String(), AuditAt: model.GetMillis(),
+		ExpectedRevision: 2, PrivateReason: "stale", AuditEventID: staleAudit.ID.String(), AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel-stale", "sitting-cancel-stale-command"))
 	requireExamSittingConflict(t, err, "exam_sitting_revision")
@@ -1668,7 +1668,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		fixture.period.StartsAt.Add(9*time.Hour), fixture.period.StartsAt.Add(10*time.Hour))
 	requireNoError(t, err)
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: precedence.Value.Sitting.ID,
-		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, PrivateReason: "precedence", CanceledAt: model.NowUTC(),
+		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, PrivateReason: "precedence",
 		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
 		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-precedence-cancel", "sitting-precedence-cancel-command"))
@@ -1679,7 +1679,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		_, updateErr := ss.ExamSitting().UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{ExamID: fixture.examID,
 			SittingID: precedence.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: expected,
 			ExamRevisionID: fixture.revisionID, ClassID: foreignClass.ID, ScheduledStartAt: fixture.period.StartsAt.Add(11 * time.Hour),
-			ScheduledEndAt: fixture.period.StartsAt.Add(12 * time.Hour), OpenJob: openJob, DeadlineJob: deadlineJob, ChangedAt: model.NowUTC(),
+			ScheduledEndAt: fixture.period.StartsAt.Add(12 * time.Hour), OpenJob: openJob, DeadlineJob: deadlineJob,
 			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", key, key+"-command"))
@@ -1705,7 +1705,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		_, updateErr = ss.ExamSitting().UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{ExamID: fixture.examID,
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
 			ExamRevisionID: fixture.revisionID, ClassID: fixture.class.ID, ScheduledStartAt: fixture.period.StartsAt.Add(15 * time.Hour),
-			ScheduledEndAt: fixture.period.StartsAt.Add(16 * time.Hour), OpenJob: raceOpenJob, DeadlineJob: raceDeadlineJob, ChangedAt: model.NowUTC(),
+			ScheduledEndAt: fixture.period.StartsAt.Add(16 * time.Hour), OpenJob: raceOpenJob, DeadlineJob: raceDeadlineJob,
 			AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-race-update", "sitting-race-update-command"))
@@ -1714,7 +1714,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		defer wait.Done()
 		_, cancelErr = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID,
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
-			PrivateReason: "race", CanceledAt: model.NowUTC(), AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis(),
+			PrivateReason: "race", AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis(),
 			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 			examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-race-cancel", "sitting-race-cancel-command"))
 	}()

@@ -246,8 +246,8 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: crossed.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
-			PrivateReason: "reviewed the focus policy episode", ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			PrivateReason: "reviewed the focus policy episode",
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "focus-reallow", "focus-reallow"))
 		requireNoError(t, err)
@@ -342,8 +342,8 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		requireNoError(t, err)
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: expired.Attempt.Revision,
-			PrivateReason: "connectivity was restored", ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			PrivateReason: "connectivity was restored",
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "connection-loss-reallow-focus", "connection-loss-reallow-focus"))
 		requireNoError(t, err)

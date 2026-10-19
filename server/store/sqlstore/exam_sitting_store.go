@@ -404,7 +404,7 @@ func prepareExamSittingUpdate(input *store.ExamSittingScheduleUpdate) error {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.OpenJob == nil || input.DeadlineJob == nil || input.Mail == nil ||
 		!input.ExamRevisionID.IsValid() || !input.ClassID.IsValid() || input.ExpectedRevision < 1 ||
 		input.ScheduledStartAt.IsZero() || input.ScheduledEndAt.IsZero() || !input.ScheduledStartAt.Before(input.ScheduledEndAt) ||
-		input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_sitting", "schedule_update", nil)
 	}
 	resultingRevision := input.ExpectedRevision + 1
@@ -457,7 +457,7 @@ func (s sqlExamSittingStore) Cancel(ctx context.Context, input *store.ExamSittin
 
 func prepareExamSittingCancellation(input *store.ExamSittingCancellation) error {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.Mail == nil ||
-		input.ExpectedRevision < 1 || input.CanceledAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.ExpectedRevision < 1 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		!utf8.ValidString(input.PrivateReason) || input.PrivateReason != strings.TrimSpace(input.PrivateReason) ||
 		utf8.RuneCountInString(input.PrivateReason) < 1 || utf8.RuneCountInString(input.PrivateReason) > 1000 {
 		return store.NewErrInvalidInput("exam_sitting", "cancellation", nil)
@@ -567,7 +567,11 @@ func updateExamSittingSchedule(ctx context.Context, tx *sqlxTxWrapper, input *st
 		input.ScheduledStartAt, input.ScheduledEndAt); err != nil {
 		return nil, err
 	}
-	changed, err := current.ApplySchedule(input.ExamRevisionID, input.ClassID, input.ScheduledStartAt, input.ScheduledEndAt, input.ChangedAt)
+	changedAt, err := examSittingStatementTime(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := current.ApplySchedule(input.ExamRevisionID, input.ClassID, input.ScheduledStartAt, input.ScheduledEndAt, changedAt)
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_sitting", "schedule", nil).Wrap(err)
 	}
@@ -620,7 +624,11 @@ func cancelExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 	if current.State != model.ExamSittingScheduled {
 		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
-	if err := current.Cancel(model.ExamSittingReasonManagerCanceled, input.CanceledAt); err != nil {
+	canceledAt, err := examSittingStatementTime(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err = current.Cancel(model.ExamSittingReasonManagerCanceled, canceledAt); err != nil {
 		return nil, store.NewErrInvalidInput("exam_sitting", "cancellation", nil).Wrap(err)
 	}
 	result, err := tx.Exec(ctx, `UPDATE exam_sittings SET state=?,updated_at=?,canceled_at=?,reason_code=?,
@@ -1596,4 +1604,15 @@ func encodeExamSittingAudit(sitting *model.ExamSitting, replayed bool, originalA
 		data["original_audit_event_id"] = originalAuditID
 	}
 	return model.EncodeAuditData(data)
+}
+
+// examSittingStatementTime is the authoritative time for manager schedule
+// and cancellation decisions, matching the system lifecycle transitions so
+// an application node's clock never stamps durable Sitting state.
+func examSittingStatementTime(ctx context.Context, tx *sqlxTxWrapper) (time.Time, error) {
+	var now time.Time
+	if err := tx.Get(ctx, &now, `SELECT statement_timestamp()`); err != nil {
+		return time.Time{}, fmt.Errorf("read Exam Sitting decision time: %w", err)
+	}
+	return model.TimeUTC(now), nil
 }

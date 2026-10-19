@@ -604,12 +604,17 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 		ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 		SuspensionID: statuses.Items[0].Suspension.ID, ActorUserID: fixture.manager.ID,
 		ExpectedAttemptRevision: statuses.Items[0].Attempt.Revision,
-		PrivateReason:           "verified Session revocation recovery", ChangedAt: model.NowUTC(),
-		AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis(),
+		PrivateReason:           "verified Session revocation recovery",
+		AuditEventID:            reallowAudit.ID.String(), AuditAt: model.GetMillis(),
 	}, examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "session-fence-reallow", "session-fence-reallow"))
 	requireNoError(t, err)
 	if reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Suspension.State != model.AttemptSuspensionClosed {
 		t.Fatalf("Session revocation reallow = %#v", reallowed)
+	}
+	// PostgreSQL time decides the re-allow; the caller supplies no clock.
+	if !reallowed.Suspension.EndedAt.Valid || reallowed.Suspension.EndedAt.Time.Before(reallowed.Suspension.StartedAt) ||
+		!reallowed.Attempt.UpdatedAt.Equal(reallowed.Suspension.EndedAt.Time) {
+		t.Fatalf("re-allow time = suspension %#v attempt %#v", reallowed.Suspension, reallowed.Attempt)
 	}
 }
 
@@ -818,7 +823,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	reallowInput := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 		AttemptID: expired.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID,
 		ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
-		ChangedAt: model.NowUTC(), AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis()}
 	selfReallow := *reallowInput
 	selfReallow.ActorUserID = expired.CandidateUserID
 	selfReallow.ManagerOverride = true

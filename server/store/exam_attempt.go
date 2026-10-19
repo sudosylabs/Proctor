@@ -335,6 +335,7 @@ type ExamAttemptParticipationExpiryResult struct {
 // ExamAttemptReallow is one exact, revision-fenced manager decision. The
 // private trimmed UTF-8 reason is retained only with Suspension provenance; it
 // must not enter ordinary audit data, command outcomes, logs, or realtime.
+// PostgreSQL statement time stamps the closed episode and resumed Attempt.
 type ExamAttemptReallow struct {
 	ExamID                  model.ExamID
 	SittingID               model.ExamSittingID
@@ -344,7 +345,6 @@ type ExamAttemptReallow struct {
 	ManagerOverride         bool
 	ExpectedAttemptRevision int64
 	PrivateReason           string
-	ChangedAt               time.Time
 	AuditEventID            string
 	AuditAt                 int64
 }

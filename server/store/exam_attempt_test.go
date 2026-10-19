@@ -98,7 +98,7 @@ func TestExamAttemptReallowContractIsRevisionFencedAndPrivateReasonSafe(t *testi
 	t.Parallel()
 	input := ExamAttemptReallow{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), AttemptID: model.NewExamAttemptID(),
 		SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: model.NewUserID(), ManagerOverride: true,
-		ExpectedAttemptRevision: 7, PrivateReason: "manager verified secure continuity", ChangedAt: model.NowUTC(),
+		ExpectedAttemptRevision: 7, PrivateReason: "manager verified secure continuity",
 		AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
 	result := ExamAttemptReallowResult{ExamID: input.ExamID, SittingID: input.SittingID, ClassID: model.NewClassID(),
 		CandidateUserID: model.NewUserID(), Replayed: true}

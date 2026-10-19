@@ -605,7 +605,7 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 	stored, err := service.deps.Persistence.ReallowAttempt(ctx, &store.ExamAttemptReallow{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
-		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		PrivateReason: command.PrivateReason, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
 		return ReallowResult{}, service.failAudit(ctx, auditID, err)

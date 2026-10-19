@@ -748,7 +748,7 @@ func (s *sqlExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 ) (*store.ExamAttemptReallowResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.OutcomeVersion != 1 ||
 		command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
-		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 || input.ChangedAt.IsZero() ||
+		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
 	}
@@ -896,10 +896,21 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err = suspension.Validate(); err != nil {
 		return zero, invalidPersistedState("attempt_suspension", "value", err)
 	}
-	if err = suspension.Reallow(input.ActorUserID, input.PrivateReason, input.ChangedAt); err != nil {
+	if !model.IsValidAttemptSuspensionPrivateReason(input.PrivateReason) {
 		return zero, store.NewErrInvalidInput("attempt_suspension", "private_reason", nil)
 	}
-	if err = attempt.Reallow(input.ChangedAt); err != nil {
+	// Database time decides the transition, matching the system expiry and
+	// suspension paths, so a skewed application clock cannot reject a valid
+	// decision or stamp it before the episode began.
+	var changedAt time.Time
+	if err = tx.Get(ctx, &changedAt, `SELECT statement_timestamp()`); err != nil {
+		return zero, fmt.Errorf("read Exam Attempt re-allow time: %w", err)
+	}
+	changedAt = model.TimeUTC(changedAt)
+	if err = suspension.Reallow(input.ActorUserID, input.PrivateReason, changedAt); err != nil {
+		return zero, fmt.Errorf("close Attempt Suspension: %w", err)
+	}
+	if err = attempt.Reallow(changedAt); err != nil {
 		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE exam_attempt_suspensions SET state='closed',ended_at=?,reallowed_by_user_id=?,private_reason=? WHERE id=? AND state='active'`,

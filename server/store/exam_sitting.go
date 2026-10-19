@@ -61,7 +61,8 @@ type ExamSittingSchedule struct {
 }
 
 // ExamSittingScheduleUpdate replaces the complete Scheduled-only selection
-// behind one optimistic Sitting revision fence.
+// behind one optimistic Sitting revision fence. PostgreSQL statement time
+// stamps the change.
 type ExamSittingScheduleUpdate struct {
 	ExamID           model.ExamID
 	SittingID        model.ExamSittingID
@@ -74,7 +75,6 @@ type ExamSittingScheduleUpdate struct {
 	ScheduledEndAt   time.Time
 	OpenJob          *model.Job
 	DeadlineJob      *model.Job
-	ChangedAt        time.Time
 	AuditEventID     string
 	AuditAt          int64
 	Mail             *ExamSittingMailFanout
@@ -176,6 +176,7 @@ type ExamSittingNoShow struct {
 // normalized, bounded manager-only material retained in dedicated private
 // persistence/provenance. It must never enter ordinary audit fields. The
 // returned Sitting contains only model.ExamSittingReasonManagerCanceled.
+// PostgreSQL statement time is the cancellation time.
 type ExamSittingCancellation struct {
 	ExamID           model.ExamID
 	SittingID        model.ExamSittingID
@@ -183,7 +184,6 @@ type ExamSittingCancellation struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	PrivateReason    string
-	CanceledAt       time.Time
 	AuditEventID     string
 	AuditAt          int64
 	Mail             *ExamSittingMailFanout
