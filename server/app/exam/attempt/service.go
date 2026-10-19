@@ -210,7 +210,7 @@ func New(deps Dependencies) (*Service, error) {
 		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewDiscrepancy == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil || deps.NewSubmission == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")
 	}
-	return &Service{deps: deps}, nil
+	return &Service{deps: deps, liveControls: controlAdmission{lane: liveControlLane}}, nil
 }
 
 type GetManagedAttemptQuery struct {

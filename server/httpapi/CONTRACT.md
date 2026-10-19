@@ -1612,11 +1612,20 @@ receipt or renewed authority. Existing Hub connection limits and outbound
 backpressure bound the aggregate transport queues.
 
 Candidate control abuse protection is per node and per authenticated User across
-Sessions. Live renewal/security updates and delivery recovery/status/declarations
-(including preflight prepare/report) each have their own 32 concurrent workers and 20 requests/second allowance with a
-burst of 40. Each lane retains at most 4,096 User allowances, reclaiming idle slots
-after a minute. Saturation returns `exam.delivery.control_rate_limited`, HTTP 429
-or a WebSocket error with one-second retry advice, before domain work or recovery
-reads. The limits are load protection, not a lease or authorization decision;
+Sessions; every bound below is per process, so N nodes admit N times the
+concurrency and track each User's allowance independently. Live renewal/security
+updates and delivery recovery/status/declarations (including preflight
+prepare/report) each have their own 32 concurrent workers and 20 requests/second
+allowance with a burst of 40. Each lane retains at most 4,096 User allowances,
+reclaiming idle slots after a minute. A refused renewal is indistinguishable from
+a lost client, so the live lane never refuses for worker saturation alone: up to
+4,096 live requests queue for at most one renewal interval (5 seconds, or the
+request deadline when sooner), and a new User is admitted untracked rather than
+refused when the allowance table is full of recently active Users. The recovery
+lane refuses immediately at either bound. Saturation, an exhausted User
+allowance, a full live queue, or an expired live wait returns
+`exam.delivery.control_rate_limited`, HTTP 429 or a WebSocket error with
+one-second retry advice, before domain work or recovery reads; a request that
+never reached a worker does not spend the User allowance. The limits are load protection, not a lease or authorization decision;
 ordinary current authority checks still run for admitted work. Detail quotas,
 append rate buckets and historical work cannot spend the live-control allowance.

@@ -127,3 +127,121 @@ func TestControlWorkerAndIdentityStorageBounds(t *testing.T) {
 		t.Fatal("idle reclamation changed hard bound")
 	}
 }
+
+func TestLiveRenewalsBeyondWorkerCapQueueInsteadOfRefusing(t *testing.T) {
+	f := newFixture(t)
+	live := &f.service.liveControls
+	const renewals = 4 * controlWorkers
+	at := time.Now()
+	var (
+		mu      sync.Mutex
+		active  int
+		peak    int
+		refused []error
+		wg      sync.WaitGroup
+	)
+	start := make(chan struct{})
+	for range renewals {
+		wg.Go(func() {
+			<-start
+			release, err := live.enter(context.Background(), model.NewUserID(), at)
+			if err != nil {
+				mu.Lock()
+				refused = append(refused, err)
+				mu.Unlock()
+				return
+			}
+			mu.Lock()
+			active++
+			peak = max(peak, active)
+			mu.Unlock()
+			time.Sleep(5 * time.Millisecond)
+			mu.Lock()
+			active--
+			mu.Unlock()
+			release()
+		})
+	}
+	close(start)
+	wg.Wait()
+	if len(refused) != 0 {
+		t.Fatalf("%d of %d concurrent renewals refused: %v", len(refused), renewals, refused[0])
+	}
+	if peak > controlWorkers {
+		t.Fatalf("peak concurrent renewal work = %d, want at most %d", peak, controlWorkers)
+	}
+}
+
+func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
+	allowance := controlAdmission{lane: controlLane{workers: 1, waiters: 1, wait: 20 * time.Millisecond, admitUntracked: true}}
+	at := time.Now()
+	holder, err := allowance.enter(context.Background(), model.NewUserID(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := model.NewUserID()
+	waited := make(chan error, 1)
+	go func() {
+		_, waitErr := allowance.enter(context.Background(), user, at)
+		waited <- waitErr
+	}()
+	for {
+		allowance.mu.Lock()
+		waiting := allowance.waiting
+		allowance.mu.Unlock()
+		if waiting == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var fault *Fault
+	if _, err = allowance.enter(context.Background(), model.NewUserID(), at); !errors.As(err, &fault) ||
+		fault.Code != "exam.delivery.control_rate_limited" {
+		t.Fatal("queue length is unbounded", err)
+	}
+	if err = <-waited; !errors.As(err, &fault) || fault.Code != "exam.delivery.control_rate_limited" {
+		t.Fatal("queued work waited past its deadline", err)
+	}
+	allowance.mu.Lock()
+	tokens := allowance.users[user].tokens
+	allowance.mu.Unlock()
+	if tokens != controlBurst {
+		t.Fatalf("timed-out wait consumed allowance: %d", tokens)
+	}
+	holder()
+	release, err := allowance.enter(context.Background(), user, at)
+	if err != nil {
+		t.Fatal("released worker was not reusable", err)
+	}
+	release()
+	release()
+	if len(allowance.slots) != 0 {
+		t.Fatal("repeated release freed an extra worker")
+	}
+}
+
+func TestLiveControlAdmitsNewUsersWhenIdentityTableIsFull(t *testing.T) {
+	live := controlAdmission{lane: liveControlLane}
+	delivery := controlAdmission{}
+	at := time.Now()
+	for _, allowance := range []*controlAdmission{&live, &delivery} {
+		for range controlUsers {
+			release, err := allowance.enter(context.Background(), model.NewUserID(), at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+		}
+	}
+	release, err := live.enter(context.Background(), model.NewUserID(), at)
+	if err != nil {
+		t.Fatal("renewal refused only because other Users renewed recently", err)
+	}
+	release()
+	if len(live.users) != controlUsers {
+		t.Fatal("untracked admission grew the identity table")
+	}
+	if _, err = delivery.enter(context.Background(), model.NewUserID(), at); err == nil {
+		t.Fatal("recovery lane stopped bounding identities")
+	}
+}
