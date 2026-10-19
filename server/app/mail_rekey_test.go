@@ -184,7 +184,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 		{name: "persistence unavailable", storeErr: errors.New("database unavailable"),
 			wantCode: "mail.unavailable", failCode: "mail.unavailable"},
 		{name: "audit completion unavailable", storeErr: errors.New("database unavailable"),
-			failErr: NewError("audit.unavailable"), wantCode: "audit.unavailable", failCode: "mail.unavailable"},
+			failErr: NewError("audit.unavailable"), wantCode: "mail.unavailable", failCode: "mail.unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

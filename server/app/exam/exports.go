@@ -198,7 +198,7 @@ func (s *Exports) Create(ctx context.Context, call Call, command CreateExportCom
 			code = f.Code
 		}
 		if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
-			return nil, auditErr
+			return nil, errors.Join(mapped, auditErr)
 		}
 		return nil, mapped
 	}

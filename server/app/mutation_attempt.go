@@ -100,7 +100,7 @@ func runAuditedMutation[T any](
 		failure, _ = As(mapped)
 	}
 	if auditErr := auditor.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-		return zero, auditErr
+		return zero, errors.Join(mapped, auditErr)
 	}
 	return zero, mapped
 }

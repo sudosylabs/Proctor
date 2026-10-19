@@ -290,7 +290,7 @@ func (s *mfaApplicationService) Challenge(
 			code = failure.Code()
 		}
 		if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, code, nil); auditErr != nil {
-			return nil, auditErr
+			return nil, errors.Join(err, auditErr)
 		}
 		return nil, err
 	}
@@ -298,7 +298,7 @@ func (s *mfaApplicationService) Challenge(
 	if err != nil {
 		if store.IsNotFound(err) {
 			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.invalid_code", nil); auditErr != nil {
-				return nil, auditErr
+				return nil, errors.Join(mfaInvalidCodeError(), auditErr)
 			}
 			return nil, mfaInvalidCodeError()
 		}
@@ -513,7 +513,7 @@ func (s *mfaApplicationService) failMutation(
 	if auditErr := s.audit.Complete(
 		ctx, auditID, model.AuditStatusFail, code, nil,
 	); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }

@@ -632,7 +632,7 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 		code = fault.Code
 	}
 	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }

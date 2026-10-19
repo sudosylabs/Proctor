@@ -377,7 +377,7 @@ func (service *Service) runMutation(ctx context.Context, call Call, authorizatio
 	if err != nil {
 		mapped := mapStoreError(err)
 		if failErr := service.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); failErr != nil {
-			return Result{}, failErr
+			return Result{}, errors.Join(mapped, failErr)
 		}
 		return Result{}, mapped
 	}

@@ -694,7 +694,7 @@ func (service *Service) expireParticipation(ctx context.Context, due store.ExamA
 			code = fault.Code
 		}
 		if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
-			return ParticipationExpiry{}, auditErr
+			return ParticipationExpiry{}, errors.Join(mapped, auditErr)
 		}
 		return ParticipationExpiry{}, mapped
 	}
@@ -1239,7 +1239,7 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 		code = fault.Code
 	}
 	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }

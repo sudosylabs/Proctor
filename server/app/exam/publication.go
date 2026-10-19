@@ -110,7 +110,7 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := p.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return store.ExamRevisionSummary{}, auditErr
+			return store.ExamRevisionSummary{}, errors.Join(mapped, auditErr)
 		}
 		return store.ExamRevisionSummary{}, mapped
 	}

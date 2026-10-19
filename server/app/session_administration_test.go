@@ -350,9 +350,10 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			})
 			wantCode := ""
 			switch outcome {
-			case "attempt unavailable", "failure audit unavailable":
+			case "attempt unavailable":
 				wantCode = "audit.unavailable"
-			case "commit unavailable":
+			case "commit unavailable", "failure audit unavailable":
+				// A failed failure-audit completion joins, never replaces, the commit failure.
 				wantCode = "administration.unavailable"
 			}
 			if (wantCode == "" && err != nil) || (wantCode != "" && !Is(err, wantCode)) {

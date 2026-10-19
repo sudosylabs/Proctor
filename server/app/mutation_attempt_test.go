@@ -204,7 +204,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 	}
 }
 
-func TestMutationAttemptFailureCompletionErrorWins(t *testing.T) {
+func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
@@ -226,8 +226,11 @@ func TestMutationAttemptFailureCompletionErrorWins(t *testing.T) {
 		},
 		func(err error) error { return NewError("programme.conflict").Wrap(err) },
 	)
-	if err != auditErr {
-		t.Fatalf("runAuditedMutation() error = %v, want audit error", err)
+	// The audit failure must stay observable without replacing the original
+	// classification that callers and transport mapping resolve first.
+	appErr, ok := As(err)
+	if !ok || appErr.Code() != "programme.conflict" || !errors.Is(err, storeErr) || !errors.Is(err, auditErr) {
+		t.Fatalf("runAuditedMutation() error = %v, want original conflict joined with audit error", err)
 	}
 }
 

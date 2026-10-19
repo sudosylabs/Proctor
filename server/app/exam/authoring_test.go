@@ -118,6 +118,20 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	}
 }
 
+func TestCreateFailedAuditCompletionPreservesStoreFailure(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
+	auditErr := errors.New("audit completion unavailable")
+	fixture.auditor.failErr = auditErr
+	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.conflict" || !errors.Is(err, auditErr) {
+		t.Fatalf("error = %v, want store conflict joined with audit completion failure", err)
+	}
+}
+
 func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
@@ -604,6 +618,7 @@ type auditorFake struct {
 	scopeType  model.RoleScopeType
 	scopeID    string
 	err        error
+	failErr    error
 }
 
 func (f *auditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value map[string]any, _ map[string]any) (string, error) {
@@ -615,6 +630,9 @@ func (f *auditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.R
 func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
 	*f.order = append(*f.order, "audit.fail")
 	f.failedCode = code
+	if f.failErr != nil {
+		return f.failErr
+	}
 	return f.err
 }
 

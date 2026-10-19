@@ -185,7 +185,7 @@ func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, 
 		fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 	}
 	if auditErr := r.auditor.Fail(ctx, mutation.AuditEventID, fault.Code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }

@@ -141,7 +141,7 @@ func (service *Service) failSystemAudit(ctx context.Context, auditID string, err
 		code = fault.Code
 	}
 	if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(err, auditErr)
 	}
 	return err
 }

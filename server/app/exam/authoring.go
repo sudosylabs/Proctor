@@ -231,7 +231,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return View{}, auditErr
+			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
 	}
@@ -377,7 +377,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return View{}, auditErr
+			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
 	}
@@ -473,7 +473,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return View{}, auditErr
+			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
 	}
@@ -564,7 +564,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return View{}, auditErr
+			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
 	}
@@ -733,7 +733,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return View{}, auditErr
+			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
 	}

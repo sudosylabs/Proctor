@@ -550,7 +550,7 @@ func (s *Service) failAudit(ctx context.Context, auditID string, err error) erro
 		code = fault.Code
 	}
 	if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }

@@ -127,7 +127,7 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
 		}
 		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
-			return model.Exam{}, auditErr
+			return model.Exam{}, errors.Join(mapped, auditErr)
 		}
 		return model.Exam{}, mapped
 	}

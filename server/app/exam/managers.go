@@ -162,7 +162,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if err != nil {
 		mapped := unavailable(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {
-			return ManagerChange{}, auditErr
+			return ManagerChange{}, errors.Join(mapped, auditErr)
 		}
 		return ManagerChange{}, mapped
 	}
@@ -174,7 +174,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if err != nil {
 		mapped := mapStoreError(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {
-			return ManagerChange{}, auditErr
+			return ManagerChange{}, errors.Join(mapped, auditErr)
 		}
 		return ManagerChange{}, mapped
 	}

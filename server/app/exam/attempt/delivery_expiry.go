@@ -8,6 +8,7 @@ package attempt
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -36,7 +37,7 @@ func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (E
 		changed, err := service.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())})
 		if err != nil {
 			if auditErr := service.deps.SystemAuditor.Fail(ctx, audit, "exam.attempt.unavailable"); auditErr != nil {
-				return result, auditErr
+				return result, errors.Join(mapStore(err), auditErr)
 			}
 			return result, mapStore(err)
 		}

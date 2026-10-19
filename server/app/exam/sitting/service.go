@@ -947,7 +947,7 @@ func (service *Service) failSystemAudit(ctx context.Context, auditID string, err
 		code = fault.Code
 	}
 	if auditErr := service.systemAudit.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }
@@ -1069,7 +1069,7 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 		code = fault.Code
 	}
 	if auditErr := service.auditor.Fail(ctx, auditID, code); auditErr != nil {
-		return auditErr
+		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }
