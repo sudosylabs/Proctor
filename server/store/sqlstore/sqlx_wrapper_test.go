@@ -14,35 +14,45 @@ import (
 )
 
 func TestSQLXDBWrapperQueryContext(t *testing.T) {
-	wrapper := &sqlxDBWrapper{queryTimeout: time.Second}
-
-	ctx, cancel := wrapper.queryContext(context.Background())
-	defer cancel()
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		t.Fatal("query context has no deadline")
-	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 || remaining > time.Second {
-		t.Fatalf("query deadline remaining = %v", remaining)
-	}
-
-	parentDeadline := time.Now().Add(2 * time.Second)
-	parent, parentCancel := context.WithDeadline(context.Background(), parentDeadline)
-	defer parentCancel()
-	got, gotCancel := wrapper.queryContext(parent)
-	defer gotCancel()
-	gotDeadline, ok := got.Deadline()
-	if !ok || !gotDeadline.Equal(parentDeadline) {
-		t.Fatalf("existing deadline = %v, want %v", gotDeadline, parentDeadline)
-	}
+	assertQueryContextBoundsEveryStatement(t, (&sqlxDBWrapper{queryTimeout: time.Second}).queryContext)
 }
 
 func TestSQLXTxWrapperQueryContext(t *testing.T) {
-	wrapper := &sqlxTxWrapper{queryTimeout: time.Second}
-	ctx, cancel := wrapper.queryContext(context.Background())
+	assertQueryContextBoundsEveryStatement(t, (&sqlxTxWrapper{queryTimeout: time.Second}).queryContext)
+}
+
+func assertQueryContextBoundsEveryStatement(
+	t *testing.T,
+	queryContext func(context.Context) (context.Context, context.CancelFunc),
+) {
+	t.Helper()
+	assertRemaining := func(name string, ctx context.Context, upper time.Duration) {
+		t.Helper()
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatalf("%s: query context has no deadline", name)
+		}
+		if remaining := time.Until(deadline); remaining <= 0 || remaining > upper {
+			t.Fatalf("%s: query deadline remaining = %v, want (0, %v]", name, remaining, upper)
+		}
+	}
+
+	ctx, cancel := queryContext(context.Background())
 	defer cancel()
-	if _, ok := ctx.Deadline(); !ok {
-		t.Fatal("transaction query context has no deadline")
+	assertRemaining("no caller deadline", ctx, time.Second)
+
+	later, laterCancel := context.WithTimeout(context.Background(), time.Hour)
+	defer laterCancel()
+	ctx, cancel = queryContext(later)
+	defer cancel()
+	assertRemaining("later caller deadline", ctx, time.Second)
+
+	earlierDeadline := time.Now().Add(100 * time.Millisecond)
+	earlier, earlierCancel := context.WithDeadline(context.Background(), earlierDeadline)
+	defer earlierCancel()
+	ctx, cancel = queryContext(earlier)
+	defer cancel()
+	if deadline, ok := ctx.Deadline(); !ok || !deadline.Equal(earlierDeadline) {
+		t.Fatalf("earlier caller deadline = %v, want %v", deadline, earlierDeadline)
 	}
 }

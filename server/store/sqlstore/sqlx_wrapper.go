@@ -126,13 +126,17 @@ func (w *sqlxDBWrapper) Begin(ctx context.Context) (*sqlxTxWrapper, error) {
 }
 
 func (w *sqlxDBWrapper) queryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return boundedQueryContext(ctx, w.queryTimeout)
+}
+
+// boundedQueryContext applies the configured per-statement timeout to every
+// operation. A caller deadline earlier than the timeout still wins; a later
+// caller deadline never extends one statement beyond the timeout.
+func boundedQueryContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if _, ok := ctx.Deadline(); ok {
-		return ctx, func() {}
-	}
-	return context.WithTimeout(ctx, w.queryTimeout)
+	return context.WithTimeout(ctx, timeout)
 }
 
 type sqlxTxWrapper struct {
@@ -198,13 +202,7 @@ func (w *sqlxTxWrapper) Rollback() error {
 }
 
 func (w *sqlxTxWrapper) queryContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if _, ok := ctx.Deadline(); ok {
-		return ctx, func() {}
-	}
-	return context.WithTimeout(ctx, w.queryTimeout)
+	return boundedQueryContext(ctx, w.queryTimeout)
 }
 
 var (
