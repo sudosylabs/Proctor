@@ -50,6 +50,15 @@ type DesktopAuthorizationExchangeProof struct {
 	DesktopRealtimeProtocol int
 }
 
+// DesktopAuthorizationExchangeTarget identifies the still-live authorization
+// an exchange proof resolves to and the User whose account approved it. The
+// User of an issued code is fixed by IssueCode and cannot change before the
+// atomic Exchange consumes it.
+type DesktopAuthorizationExchangeTarget struct {
+	ID     model.BrowserAuthenticationTransactionID
+	UserID model.UserID
+}
+
 type DesktopAuthorizationCodeIssued struct {
 	CallbackURL   string
 	CodeExpiresAt time.Time

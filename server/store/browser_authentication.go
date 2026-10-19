@@ -157,7 +157,7 @@ type BrowserAuthenticationStore interface {
 	ResolveInvitation(context.Context, string, string) (*BrowserInvitationResolution, error)
 	IssueCode(context.Context, *DesktopAuthorizationCodeIssue) (*DesktopAuthorizationCodeIssued, error)
 	Cancel(context.Context, *DesktopAuthorizationCancellation) error
-	ResolveDesktopAuthorizationExchange(context.Context, *DesktopAuthorizationExchangeProof) (model.BrowserAuthenticationTransactionID, error)
+	ResolveDesktopAuthorizationExchange(context.Context, *DesktopAuthorizationExchangeProof) (*DesktopAuthorizationExchangeTarget, error)
 	Exchange(context.Context, *DesktopAuthorizationExchange) (*DesktopAuthorizationExchangeResult, error)
 	Maintain(context.Context, int) (*BrowserAuthenticationMaintenanceResult, error)
 }

@@ -416,6 +416,52 @@ func (s *auditService) BeginSystemCriticalActionAtScope(
 	return saved, nil
 }
 
+// accountAuditActor is the proved account behind an authentication handoff
+// whose request carries no Principal yet, such as Desktop approval or code
+// exchange. It is never fabricated from user-controlled input.
+type accountAuditActor struct {
+	userID     model.UserID
+	sessionID  model.SessionID
+	clientType model.SessionClientType
+}
+
+// BeginAccountActionAtScope persists a critical attempt performed for a proved
+// account outside an authenticated Principal, retaining the request identity.
+func (s *auditService) BeginAccountActionAtScope(
+	ctx context.Context,
+	actor accountAuditActor,
+	action model.Action,
+	resource model.Resource,
+	scopeType model.RoleScopeType,
+	scopeID string,
+	metadata model.RequestMetadata,
+	parameters any,
+) (*model.AuditEvent, error) {
+	if !actor.userID.IsValid() || !actor.clientType.IsValid() {
+		return nil, NewError("audit.event.invalid")
+	}
+	if s.audits == nil {
+		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
+	}
+	encodedParameters, err := model.EncodeAuditData(parameters)
+	if err != nil {
+		return nil, domainInvalid("audit.event.invalid", err)
+	}
+	saved, err := s.audits.Save(ctx, &model.AuditEvent{
+		ActorID: actor.userID, SessionID: actor.sessionID,
+		Action: string(action), Resource: resource,
+		ScopeType: scopeType, ScopeID: scopeID,
+		Status: model.AuditStatusAttempt, RequestID: metadata.RequestID,
+		NodeID: s.nodeID, ClientType: string(actor.clientType),
+		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent,
+		Parameters: encodedParameters,
+	})
+	if err != nil {
+		return nil, auditUnavailable(err)
+	}
+	return saved, nil
+}
+
 func (s *auditService) beginCriticalActionAtScope(
 	ctx context.Context,
 	principal model.Principal,

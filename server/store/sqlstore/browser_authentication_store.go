@@ -831,16 +831,19 @@ func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *stor
 
 func (s SQLBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(ctx context.Context,
 	input *store.DesktopAuthorizationExchangeProof,
-) (model.BrowserAuthenticationTransactionID, error) {
+) (*store.DesktopAuthorizationExchangeTarget, error) {
 	if input == nil || !model.IsValidTokenHash(input.CodeHash) || !model.IsValidTokenHash(input.StateHash) ||
 		!model.IsValidCredentialToken(input.CodeChallenge) || input.Issuer == "" ||
 		!model.IsValidDPoPKeyThumbprint(input.ExpectedKeyThumbprint) ||
 		!model.IsValidDesktopRelease(input.DesktopRelease) || !model.IsValidDesktopBuildID(input.DesktopBuildID) ||
 		!input.DesktopPlatform.IsValid() || !input.DesktopArchitecture.IsValid() || input.DesktopRealtimeProtocol < 1 {
-		return "", store.NewErrInvalidInput("browser_authentication_transaction", "exchange_proof", nil)
+		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "exchange_proof", nil)
 	}
-	var rawID string
-	err := s.GetMaster().Get(ctx, &rawID, `SELECT id FROM browser_authentication_transactions
+	var row struct {
+		ID     string `db:"id"`
+		UserID string `db:"user_id"`
+	}
+	err := s.GetMaster().Get(ctx, &row, `SELECT id,user_id FROM browser_authentication_transactions
 		WHERE code_hash=? AND state_hash=? AND code_challenge=? AND issuer=?
 		AND proposed_key_thumbprint=? AND desktop_release=? AND desktop_build_id=?
 		AND desktop_platform=? AND desktop_architecture=? AND desktop_realtime_protocol=?
@@ -849,13 +852,17 @@ func (s SQLBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(ctx c
 		input.ExpectedKeyThumbprint, input.DesktopRelease, input.DesktopBuildID, input.DesktopPlatform,
 		input.DesktopArchitecture, input.DesktopRealtimeProtocol)
 	if err != nil {
-		return "", translateError("browser_authentication_transaction", "desktop_exchange", err)
+		return nil, translateError("browser_authentication_transaction", "desktop_exchange", err)
 	}
-	id, err := model.ParseBrowserAuthenticationTransactionID(rawID)
+	id, err := model.ParseBrowserAuthenticationTransactionID(row.ID)
 	if err != nil {
-		return "", invalidPersistedState("browser_authentication_transaction", "id", err)
+		return nil, invalidPersistedState("browser_authentication_transaction", "id", err)
 	}
-	return id, nil
+	userID, err := model.ParseUserID(row.UserID)
+	if err != nil {
+		return nil, invalidPersistedState("browser_authentication_transaction", "user_id", err)
+	}
+	return &store.DesktopAuthorizationExchangeTarget{ID: id, UserID: userID}, nil
 }
 
 // The caller holds the per-User Session lock through the terminal transition.

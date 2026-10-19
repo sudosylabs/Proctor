@@ -477,6 +477,11 @@ transaction to method selection.
 
 Approval and cancellation require the binding cookie and exact pinned state.
 Approval issues the one-use code and cancellation destroys all live proofs.
+Approval rejects a presented Principal for any account other than the one bound
+to the transaction. Its audit names that approving account as the actor with
+the browser request's session, IP address, and user agent; the code exchange
+audit names the same account with the Desktop request's network identity.
+Neither is an actor-less system event.
 `POST /api/v1/auth/desktop/token` performs the PKCE/state exchange. Account
 resolution and exchange both acquire the per-User Session lock and reject an
 active Attempt; ordinary Session issuance and Attempt activation use that same

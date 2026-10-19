@@ -255,6 +255,17 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 
 	exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "exchange")
 	exchange := desktopAuthorizationExchange(now, code, state, verifier, exchangeAudit)
+	resolved, err := ss.BrowserAuthentication().ResolveDesktopAuthorizationExchange(ctx, &store.DesktopAuthorizationExchangeProof{
+		CodeHash: exchange.CodeHash, StateHash: exchange.StateHash, CodeChallenge: exchange.CodeChallenge,
+		Issuer: exchange.Issuer, ExpectedKeyThumbprint: exchange.ExpectedKeyThumbprint,
+		DesktopRelease: exchange.DesktopRelease, DesktopBuildID: exchange.DesktopBuildID,
+		DesktopPlatform: exchange.DesktopPlatform, DesktopArchitecture: exchange.DesktopArchitecture,
+		DesktopRealtimeProtocol: exchange.DesktopRealtimeProtocol,
+	})
+	requireNoError(t, err)
+	if resolved == nil || !resolved.ID.IsValid() || resolved.UserID != user.ID {
+		t.Fatalf("ResolveDesktopAuthorizationExchange() = %#v, want approving User %s", resolved, user.ID)
+	}
 	stalePolicyExchange := *exchange
 	stalePolicyExchange.DesktopCompatibilityPolicyRevision++
 	if _, staleErr := ss.BrowserAuthentication().Exchange(ctx, &stalePolicyExchange); staleErr == nil {

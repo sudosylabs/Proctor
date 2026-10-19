@@ -956,8 +956,8 @@ func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *sto
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (model.BrowserAuthenticationTransactionID, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (model.BrowserAuthenticationTransactionID, error) {
+func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (*store.DesktopAuthorizationExchangeTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (*store.DesktopAuthorizationExchangeTarget, error) {
 		return s.next.ResolveDesktopAuthorizationExchange(arg0, arg1)
 	})
 }

@@ -27,7 +27,7 @@ type desktopAuthorizationStore interface {
 	ResetDesktopAuthorizationAccount(context.Context, *store.DesktopAuthorizationAccountReset) error
 	IssueCode(context.Context, *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error)
 	Cancel(context.Context, *store.DesktopAuthorizationCancellation) error
-	ResolveDesktopAuthorizationExchange(context.Context, *store.DesktopAuthorizationExchangeProof) (model.BrowserAuthenticationTransactionID, error)
+	ResolveDesktopAuthorizationExchange(context.Context, *store.DesktopAuthorizationExchangeProof) (*store.DesktopAuthorizationExchangeTarget, error)
 	Exchange(context.Context, *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error)
 }
 
@@ -48,8 +48,8 @@ type DesktopAuthorizationPolicy struct {
 }
 
 type desktopAuthorizationAuditor interface {
-	PrepareIssue(context.Context, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
-	PrepareExchange(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error)
+	PrepareIssue(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
+	PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
 	Fail(context.Context, string, string) error
 }
 
@@ -431,7 +431,11 @@ func (s *desktopAuthorizationService) ResetAccount(ctx context.Context, binding 
 	return nil
 }
 
-func (s *desktopAuthorizationService) Approve(ctx context.Context, _ Invocation, command ApproveDesktopAuthorizationCommand) (*DesktopAuthorizationApproval, error) {
+// Approve issues the one-use code for the account bound to the browser
+// transaction. The binding cookie and pinned state are the approval proof; a
+// caller that also presents a Principal must be that same account, so one
+// signed-in User can never approve a transaction authenticated as another.
+func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation Invocation, command ApproveDesktopAuthorizationCommand) (*DesktopAuthorizationApproval, error) {
 	if !model.IsValidCredentialToken(command.Binding) || !model.IsValidCredentialToken(command.State) {
 		return nil, NewError("authentication.desktop_authorization.invalid")
 	}
@@ -439,11 +443,14 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, _ Invocation,
 	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateAuthenticated || !current.UserID.IsValid() {
 		return nil, desktopAuthorizationStoreError(err)
 	}
+	if caller := invocation.Principal(); caller.UserID != "" && caller.UserID != current.UserID {
+		return nil, NewError("authentication.desktop_authorization.rejected")
+	}
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
-	audit, err := s.audit.PrepareIssue(ctx, current.UserID, institution.ID)
+	audit, err := s.audit.PrepareIssue(ctx, invocation, current.UserID, institution.ID)
 	if err != nil || audit == nil || !audit.ID.IsValid() {
 		return nil, NewError("audit.unavailable").Wrap(err)
 	}
@@ -507,7 +514,7 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 	if err = s.attempts.Check(ctx, desktopAuthorizationAttemptExchange, codeHash, command.Source); err != nil {
 		return nil, err
 	}
-	authorizationID, err := s.transactions.ResolveDesktopAuthorizationExchange(ctx, &store.DesktopAuthorizationExchangeProof{
+	resolved, err := s.transactions.ResolveDesktopAuthorizationExchange(ctx, &store.DesktopAuthorizationExchangeProof{
 		CodeHash: codeHash, StateHash: model.HashToken(command.State), CodeChallenge: model.PKCES256Challenge(command.CodeVerifier),
 		Issuer: strings.TrimSuffix(s.policy.Issuer, "/"), ExpectedKeyThumbprint: thumbprint,
 		DesktopRelease: command.DesktopRelease, DesktopBuildID: command.DesktopBuildID, DesktopPlatform: command.Platform,
@@ -516,7 +523,10 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 	if err != nil {
 		return nil, desktopAuthorizationStoreError(err)
 	}
-	binding := dpopBinding{Kind: dpopBindingAuthorization, AuthorizationID: authorizationID,
+	if resolved == nil || !resolved.ID.IsValid() || !resolved.UserID.IsValid() {
+		return nil, NewError("authentication.desktop_authorization.unavailable")
+	}
+	binding := dpopBinding{Kind: dpopBindingAuthorization, AuthorizationID: resolved.ID,
 		KeyThumbprint: thumbprint, Origin: s.dpop.policy.Origin}
 	target, targetErr := canonicalDPoPTarget(s.dpop.policy.Origin + "/api/v1/auth/desktop/token")
 	if targetErr != nil {
@@ -542,7 +552,7 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
-	audit, err := s.audit.PrepareExchange(ctx, invocation, institution.ID)
+	audit, err := s.audit.PrepareExchange(ctx, invocation, resolved.UserID, institution.ID)
 	if err != nil || audit == nil || !audit.ID.IsValid() {
 		return nil, NewError("audit.unavailable").Wrap(err)
 	}
@@ -691,22 +701,33 @@ func (a *App) ExchangeDesktopAuthorization(ctx context.Context, invocation Invoc
 
 type desktopAuthorizationAuditAdapter struct{ audit *auditService }
 
-func (a desktopAuthorizationAuditAdapter) PrepareIssue(ctx context.Context, userID model.UserID, institutionID model.InstitutionID) (*model.AuditEvent, error) {
+// PrepareIssue records the approval attempt with the approving account as the
+// actor and the browser request's identity, never as an actor-less system event.
+func (a desktopAuthorizationAuditAdapter) PrepareIssue(ctx context.Context, invocation Invocation, userID model.UserID,
+	institutionID model.InstitutionID,
+) (*model.AuditEvent, error) {
 	if a.audit == nil || !userID.IsValid() || !institutionID.IsValid() {
 		return nil, NewError("audit.unavailable")
 	}
-	return a.audit.BeginSystemCriticalActionAtScope(ctx, model.Action("authentication.desktop_authorization"),
-		model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, model.RoleScopeInstitution,
-		institutionID.String(), map[string]any{"operation": "issue_code", "user_id": userID.String()})
+	return a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: userID,
+		sessionID: invocation.Principal().SessionID, clientType: model.SessionClientWeb},
+		model.Action("authentication.desktop_authorization"),
+		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
+		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "issue_code"})
 }
 
-func (a desktopAuthorizationAuditAdapter) PrepareExchange(ctx context.Context, _ Invocation, institutionID model.InstitutionID) (*model.AuditEvent, error) {
-	if a.audit == nil || !institutionID.IsValid() {
+// PrepareExchange records the Desktop Session issuance attempt for the account
+// that approved the code, with the Desktop request's network identity.
+func (a desktopAuthorizationAuditAdapter) PrepareExchange(ctx context.Context, invocation Invocation, userID model.UserID,
+	institutionID model.InstitutionID,
+) (*model.AuditEvent, error) {
+	if a.audit == nil || !userID.IsValid() || !institutionID.IsValid() {
 		return nil, NewError("audit.unavailable")
 	}
-	return a.audit.BeginSystemCriticalActionAtScope(ctx, model.Action("authentication.desktop_session_issue"),
-		model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, model.RoleScopeInstitution,
-		institutionID.String(), map[string]any{"operation": "exchange"})
+	return a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: userID, clientType: model.SessionClientDesktop},
+		model.Action("authentication.desktop_session_issue"),
+		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
+		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "exchange"})
 }
 
 func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {

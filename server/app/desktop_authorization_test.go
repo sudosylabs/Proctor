@@ -252,6 +252,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: at.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(at)}
 	persistence.issueResult = &store.DesktopAuthorizationCodeIssued{CallbackURL: callback, CodeExpiresAt: at.Add(time.Minute)}
+	persistence.contextUserID = principal.UserID
 	approved, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: binding, State: state})
 	if err != nil {
@@ -308,6 +309,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
+	persistence.contextUserID = principal.UserID
 	_, err = service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	if !Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
@@ -431,7 +433,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		auditor := &recordingDesktopAuthorizationAuditor{}
 		service := newService(&desktopAuthorizationStoreFake{issueResult: &store.DesktopAuthorizationCodeIssued{
 			CallbackURL: "https://not-loopback.example/", CodeExpiresAt: at.Add(time.Minute),
-		}}, auditor)
+		}, contextUserID: principal.UserID}, auditor)
 		_, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 		if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
@@ -553,6 +555,8 @@ type desktopAuthorizationStoreFake struct {
 	contextBinding  string
 	contextCalls    int
 	authorizationID model.BrowserAuthenticationTransactionID
+	contextUserID   model.UserID
+	exchangeUserID  model.UserID
 }
 
 func (s *desktopAuthorizationStoreFake) CreateDesktopAuthorization(
@@ -587,8 +591,12 @@ func (s *desktopAuthorizationStoreFake) GetDesktopAuthorizationContext(_ context
 	if s.contextResult != nil {
 		return s.contextResult, nil
 	}
+	userID := s.contextUserID
+	if !userID.IsValid() {
+		userID = model.NewUserID()
+	}
 	return &store.DesktopAuthorizationContext{ID: model.NewBrowserAuthenticationTransactionID(),
-		State: model.BrowserAuthenticationStateAuthenticated, UserID: model.NewUserID(), ExpiresAt: time.Now().Add(time.Minute)}, nil
+		State: model.BrowserAuthenticationStateAuthenticated, UserID: userID, ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 
 func (s *desktopAuthorizationStoreFake) AuthenticateDesktopAuthorization(_ context.Context, input *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
@@ -609,11 +617,14 @@ func (s *desktopAuthorizationStoreFake) Cancel(context.Context, *store.DesktopAu
 }
 func (s *desktopAuthorizationStoreFake) ResolveDesktopAuthorizationExchange(context.Context,
 	*store.DesktopAuthorizationExchangeProof,
-) (model.BrowserAuthenticationTransactionID, error) {
+) (*store.DesktopAuthorizationExchangeTarget, error) {
 	if s.authorizationID.IsZero() {
 		s.authorizationID = model.NewBrowserAuthenticationTransactionID()
 	}
-	return s.authorizationID, nil
+	if !s.exchangeUserID.IsValid() {
+		s.exchangeUserID = model.NewUserID()
+	}
+	return &store.DesktopAuthorizationExchangeTarget{ID: s.authorizationID, UserID: s.exchangeUserID}, nil
 }
 func (s *desktopAuthorizationStoreFake) Exchange(_ context.Context, input *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
 	s.exchanged = input
@@ -644,10 +655,10 @@ func (p desktopAuthorizationAccessPolicyFake) AllowsLocalLogin(context.Context) 
 
 type desktopAuthorizationAuditorFake struct{}
 
-func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
-func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 func (desktopAuthorizationAuditorFake) Fail(context.Context, string, string) error { return nil }
@@ -657,15 +668,19 @@ type recordingDesktopAuthorizationAuditor struct {
 	auditID                       string
 	failureCode                   string
 	prepareIssue, prepareExchange int
+	issueActor, exchangeActor     model.UserID
+	issueRequest, exchangeRequest model.RequestMetadata
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(context.Context, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
+func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(_ context.Context, invocation Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
 	a.prepareIssue++
+	a.issueActor, a.issueRequest = userID, invocation.RequestMetadata()
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareExchange(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error) {
+func (a *recordingDesktopAuthorizationAuditor) PrepareExchange(_ context.Context, invocation Invocation, userID model.UserID, _ model.InstitutionID) (*model.AuditEvent, error) {
 	a.prepareExchange++
+	a.exchangeActor, a.exchangeRequest = userID, invocation.RequestMetadata()
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 
@@ -772,7 +787,7 @@ func testDesktopAuthorizationExchangeCommand(
 		t.Fatal(err)
 	}
 	binding := dpopBinding{
-		Kind: dpopBindingAuthorization, AuthorizationID: authorizationID,
+		Kind: dpopBindingAuthorization, AuthorizationID: authorizationID.ID,
 		KeyThumbprint: thumbprint, Origin: service.dpop.policy.Origin,
 	}
 	nonce, err := service.dpop.IssueNonce(context.Background(), binding)
