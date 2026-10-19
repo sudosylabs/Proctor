@@ -733,6 +733,29 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
 }
 
+func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	useManagerCall(f)
+	suspensionID := model.NewAttemptSuspensionID()
+	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
+	f.persistence.reallowResult = reallowResultFixtureWithReason(t, f, suspensionID, false,
+		model.AttemptSuspensionCandidateReasonFocusLossPolicy)
+	result, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
+		ExpectedAttemptRevision: 2, PrivateReason: "manager reviewed the focus loss", IdempotencyKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("Reallow() error = %v, want committed focus-loss re-allow to succeed", err)
+	}
+	if result.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonFocusLossPolicy {
+		t.Fatalf("Reallow() suspension reason = %q", result.Suspension.CandidateReason)
+	}
+	if f.effects.reallowed != 1 {
+		t.Fatalf("Reallow() effects = %d, want candidate reconnect effect", f.effects.reallowed)
+	}
+}
+
 func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	for _, reason := range []string{"", " padded ", "\xff", strings.Repeat("é", model.AttemptSuspensionPrivateReasonMaximumRunes+1)} {
@@ -802,6 +825,12 @@ func expiryResultFixture(t *testing.T, f *fixture, due store.ExamAttemptParticip
 
 func reallowResultFixture(t *testing.T, f *fixture, suspensionID model.AttemptSuspensionID, replayed bool) *store.ExamAttemptReallowResult {
 	t.Helper()
+	return reallowResultFixtureWithReason(t, f, suspensionID, replayed, model.AttemptSuspensionCandidateReasonSecureContinuityLost)
+}
+
+func reallowResultFixtureWithReason(t *testing.T, f *fixture, suspensionID model.AttemptSuspensionID, replayed bool,
+	reason model.AttemptSuspensionCandidateReason) *store.ExamAttemptReallowResult {
+	t.Helper()
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID, f.at.Add(-time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -811,7 +840,7 @@ func reallowResultFixture(t *testing.T, f *fixture, suspensionID model.AttemptSu
 	suspension := &store.ExamAttemptSuspensionView{ID: suspensionID, AttemptID: f.attemptID,
 		ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 2,
 		State: model.AttemptSuspensionClosed, Source: model.AttemptSuspensionSourcePolicy,
-		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: f.at.Add(-time.Minute),
+		CandidateReason: reason, StartedAt: f.at.Add(-time.Minute),
 		EndedAt: model.OptionalTimeFrom(f.at), ReallowedByUserID: f.call.Principal().UserID}
 	return &store.ExamAttemptReallowResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		CandidateUserID: f.userID, Attempt: attempt, Suspension: suspension, Replayed: replayed}

@@ -443,8 +443,7 @@ func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 	}
 	return view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
 		view.Generation > 0 && view.State == model.AttemptSuspensionActive && view.Source == model.AttemptSuspensionSourcePolicy &&
-		(view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost ||
-			view.CandidateReason == model.AttemptSuspensionCandidateReasonFocusLossPolicy) && !view.StartedAt.IsZero() &&
+		reallowableSuspensionReason(view.CandidateReason) && !view.StartedAt.IsZero() &&
 		!view.EndedAt.Valid && view.ReallowedByUserID.IsZero()
 }
 
@@ -628,10 +627,18 @@ func validReallowReason(reason string) bool {
 		utf8.RuneCountInString(reason) <= model.AttemptSuspensionPrivateReasonMaximumRunes && len(reason) <= 4000
 }
 
+// reallowableSuspensionReason names the policy suspension reasons a manager
+// may re-allow. Active and closed validation share it so the post-commit
+// check cannot reject an outcome the Store deliberately committed.
+func reallowableSuspensionReason(reason model.AttemptSuspensionCandidateReason) bool {
+	return reason == model.AttemptSuspensionCandidateReasonSecureContinuityLost ||
+		reason == model.AttemptSuspensionCandidateReasonFocusLossPolicy
+}
+
 func validClosedSuspension(view *store.ExamAttemptSuspensionView, attemptID model.ExamAttemptID, actorID model.UserID) bool {
 	return view != nil && view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
 		view.Generation > 0 && view.State == model.AttemptSuspensionClosed && view.Source == model.AttemptSuspensionSourcePolicy &&
-		view.CandidateReason == model.AttemptSuspensionCandidateReasonSecureContinuityLost && !view.StartedAt.IsZero() &&
+		reallowableSuspensionReason(view.CandidateReason) && !view.StartedAt.IsZero() &&
 		view.EndedAt.Valid && !view.EndedAt.Time.Before(view.StartedAt) && view.ReallowedByUserID == actorID
 }
 
