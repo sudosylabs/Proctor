@@ -11,6 +11,7 @@ model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
 localization ← {httpapi, websocket}
+internal/weborigin ← {httpapi, websocket}
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 app/exam/manageraccess ← {app/exam, app/exam/resource, app/exam/workspace, app/exam/correction, app/exam/sitting}
 secretseal ← app
@@ -58,11 +59,12 @@ inside `app/` are application-owned modules, not transports.
 | `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
 | `app` | `model`, `store`, `app/idempotency`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
-| `httpapi` | `app`, `model`, `localization`, HTTP libraries | `store`, `sqlstore`, `platform` |
+| `httpapi` | `app`, `model`, `localization`, `internal/weborigin`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
-| `websocket` | `app`, `app/realtime`, `model`, `localization`, WebSocket libraries | SQL and platform service location |
+| `websocket` | `app`, `app/realtime`, `model`, `localization`, `internal/weborigin`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `desktoprelease` | `model`, `internal/canonicaljson`, standard-library signature and artifact validation | persistence, transports, application eligibility, process/filesystem selection |
+| `internal/weborigin` | Standard-library URL parsing | Domain models, application, persistence, transports, configuration |
 | `internal/autocert` | Standard library, `x/crypto/acme`, and `x/net/idna` | Product policy, application, persistence, transports, unrelated third-party libraries |
 | `internal/openapidoc` | Caller-supplied filesystems, OpenAPI/YAML parsing and validation, standard-library encoding | Process filesystem selection, runtime policy, application, persistence, transports |
 | `server` | Construction dependencies | Business rules |

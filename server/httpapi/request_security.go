@@ -11,8 +11,9 @@ import (
 	"errors"
 	"mime"
 	"net/http"
-	"net/url"
 	"strings"
+
+	"github.com/sudosylabs/proctor/server/internal/weborigin"
 )
 
 // browserRequestPolicy protects unsafe requests, including public operations
@@ -23,20 +24,11 @@ type browserRequestPolicy struct {
 }
 
 func newBrowserRequestPolicy(publicURL string) (browserRequestPolicy, error) {
-	parsed, err := url.Parse(publicURL)
-	if err != nil || parsed.User != nil || parsed.Opaque != "" || parsed.Host == "" ||
-		(parsed.Scheme != "https" && parsed.Scheme != "http") {
-		return browserRequestPolicy{}, errors.New("public URL must have an HTTP or HTTPS origin")
+	origin, err := weborigin.FromPublicURL(publicURL)
+	if err != nil {
+		return browserRequestPolicy{}, err
 	}
-	return browserRequestPolicy{origin: serializedOrigin(parsed)}, nil
-}
-
-func serializedOrigin(parsed *url.URL) string {
-	host := strings.ToLower(parsed.Host)
-	if parsed.Scheme == "https" && parsed.Port() == "443" || parsed.Scheme == "http" && parsed.Port() == "80" {
-		host = strings.TrimSuffix(host, ":"+parsed.Port())
-	}
-	return parsed.Scheme + "://" + host
+	return browserRequestPolicy{origin: origin}, nil
 }
 
 func (policy browserRequestPolicy) allows(request *http.Request) bool {
@@ -46,13 +38,11 @@ func (policy browserRequestPolicy) allows(request *http.Request) bool {
 		return true
 	}
 	if origins, present := request.Header["Origin"]; present {
-		if len(origins) != 1 || origins[0] == "" || strings.TrimSpace(origins[0]) != origins[0] {
+		if len(origins) != 1 {
 			return false
 		}
-		origin, err := url.Parse(origins[0])
-		if err != nil || origin.User != nil || origin.Opaque != "" || origin.Path != "" ||
-			origin.RawQuery != "" || origin.ForceQuery || origin.Fragment != "" ||
-			policy.origin == "" || serializedOrigin(origin) != policy.origin {
+		origin, ok := weborigin.FromHeader(origins[0])
+		if !ok || policy.origin == "" || origin != policy.origin {
 			return false
 		}
 	}

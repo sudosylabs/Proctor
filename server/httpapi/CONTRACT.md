@@ -186,7 +186,10 @@ Origin that differs from the configured public origin and reject cross-site,
 same-site, malformed, or repeated Fetch Metadata. Host and forwarded headers
 cannot authorize a browser origin. Native clients may omit browser headers.
 Public routes return `request.invalid`; credential-protected routes use the
-existing `authentication.csrf.invalid` response. Ordinary cookie mutations
+existing `authentication.csrf.invalid` response. Origins compare by their ASCII
+serialization: scheme and host are lowercased and a default port is omitted,
+so `https://Proctor.example:443` names the same origin as
+`https://proctor.example`. The WebSocket upgrade uses the same serialization. Ordinary cookie mutations
 still require their signed double-submit proof.
 
 JSON bodies require exactly one `Content-Type: application/json`, optionally

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/maphash"
 	"net/http"
-	"net/url"
 	"runtime"
 	"sync"
 	"time"
@@ -28,6 +27,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/internal/weborigin"
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -75,7 +75,7 @@ type Hub struct {
 	application     Application
 	logger          Logger
 	localizer       Localizer
-	publicURL       *url.URL
+	publicOrigin    string
 	nodeID          string
 	hashSeed        maphash.Seed
 	recorder        Recorder
@@ -164,8 +164,8 @@ func NewHub(
 	if shutdownTimeout <= 0 {
 		return nil, errors.New("WebSocket shutdown timeout must be positive")
 	}
-	parsed, err := url.Parse(publicURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	publicOrigin, err := weborigin.FromPublicURL(publicURL)
+	if err != nil {
 		return nil, errors.New("WebSocket public URL is invalid")
 	}
 	shardCount := max(runtime.NumCPU(), 1)
@@ -173,7 +173,7 @@ func NewHub(
 		application:     application,
 		logger:          logger,
 		localizer:       localizer,
-		publicURL:       parsed,
+		publicOrigin:    publicOrigin,
 		nodeID:          nodeID,
 		hashSeed:        maphash.MakeSeed(),
 		state:           hubCreated,
@@ -222,10 +222,8 @@ func (h *Hub) OriginAllowed(origin string, allowMissingOrigin bool) bool {
 	if origin == "" {
 		return allowMissingOrigin
 	}
-	parsed, err := url.Parse(origin)
-	return err == nil &&
-		parsed.Scheme == h.publicURL.Scheme &&
-		parsed.Host == h.publicURL.Host
+	serialized, ok := weborigin.FromHeader(origin)
+	return ok && serialized == h.publicOrigin
 }
 
 // Accept upgrades an already-authenticated HTTP request to a WebSocket

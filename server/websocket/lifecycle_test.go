@@ -157,6 +157,31 @@ func TestHubOriginAllowed(t *testing.T) {
 	}
 }
 
+// TestHubOriginAllowedMatchesHTTPOriginNormalization keeps browser
+// WebSocket upgrades consistent with JSON request origin checks when the
+// public URL names a default port or mixed-case host.
+func TestHubOriginAllowedMatchesHTTPOriginNormalization(t *testing.T) {
+	t.Parallel()
+
+	for _, publicURL := range []string{"https://Proctor.Example:443/", "https://proctor.example", "HTTPS://PROCTOR.EXAMPLE"} {
+		hub, err := websocket.NewHub(lifecycleApplication{}, lifecycleLogger{}, publicURL, "node-a", nil, 15*time.Second)
+		if err != nil {
+			t.Fatalf("NewHub(%q) error = %v", publicURL, err)
+		}
+		t.Cleanup(func() { _ = hub.Close() })
+		for _, origin := range []string{"https://proctor.example", "https://PROCTOR.example", "https://proctor.example:443"} {
+			if !hub.OriginAllowed(origin, false) {
+				t.Fatalf("public URL %q rejected browser origin %q", publicURL, origin)
+			}
+		}
+		for _, origin := range []string{"http://proctor.example", "https://proctor.example:8443", "https://proctor.example/path", "null", " https://proctor.example"} {
+			if hub.OriginAllowed(origin, false) {
+				t.Fatalf("public URL %q allowed origin %q", publicURL, origin)
+			}
+		}
+	}
+}
+
 func TestHubStartRespectsCanceledContext(t *testing.T) {
 	t.Parallel()
 

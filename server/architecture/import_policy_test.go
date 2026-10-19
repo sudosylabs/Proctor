@@ -186,6 +186,11 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "browser origin serialization",
+		sources:        []pathPattern{exact(serverModule + "/internal/weborigin")},
+		deniedStandard: standardInfrastructure,
+	},
+	{
 		name:           "canonical agreement JSON",
 		sources:        []pathPattern{exact(serverModule + "/internal/canonicaljson")},
 		deniedStandard: standardInfrastructure,
@@ -413,6 +418,7 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/app/realtime"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/localization"),
+			exact(serverModule+"/internal/weborigin"),
 		),
 		thirdParty: only(descendants("github.com/gorilla")),
 	},
