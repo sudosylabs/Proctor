@@ -145,7 +145,7 @@ func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs
 	if options.Size != nil {
 		size = *options.Size
 	}
-	uploaded, err := f.client.PutObject(ctx, f.bucket, f.key(name), body, size, minio.PutObjectOptions{})
+	uploaded, err := f.client.PutObject(ctx, f.bucket, f.key(name), body, size, putObjectOptions(size))
 	if err != nil {
 		return vfs.Info{}, vfs.Error(op, name, translateError(err))
 	}
@@ -159,6 +159,20 @@ func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs
 		ModifiedAt: modifiedAt,
 		Revision:   revision(uploaded.VersionID, uploaded.ETag),
 	}, nil
+}
+
+// unsizedPartSize is the multipart part size used when a write does not
+// declare its size. MinIO otherwise sizes parts for a 5 TiB object and buffers
+// one ~512 MiB part per upload in memory. With 16 MiB parts each unsized
+// upload buffers at most one part, and an unsized object may reach
+// 16 MiB * 10000 parts (about 156 GiB).
+const unsizedPartSize = 16 << 20
+
+func putObjectOptions(size int64) minio.PutObjectOptions {
+	if size < 0 {
+		return minio.PutObjectOptions{PartSize: unsizedPartSize}
+	}
+	return minio.PutObjectOptions{}
 }
 
 func (f *FS) Stat(ctx context.Context, name string) (vfs.Info, error) {
