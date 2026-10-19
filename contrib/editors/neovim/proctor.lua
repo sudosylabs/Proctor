@@ -52,6 +52,7 @@ table.insert(dap.configurations.go, {
   request = "launch",
   mode = "debug",
   program = root .. "/server/cmd/proctor",
+  buildFlags = "-tags=dev",
   cwd = root,
   output = root .. "/.build/dev/diagnostics/server-dap",
   args = {

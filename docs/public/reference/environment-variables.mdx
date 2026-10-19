@@ -194,7 +194,8 @@ according to the target field; they do not universally mean “unset”.
 `PROCTOR_SERVICE_ENVIRONMENT` is a process-only selector, outside the JSON
 configuration overrides listed above. It accepts `production`, `test`, or `dev`
 (trimmed and case-insensitive). Unset or blank uses the compiled default:
-`production` for binaries built with `-tags production`, `dev` otherwise.
+`production` for every ordinary build, `dev` only for binaries built with the
+explicit `-tags dev`.
 Unknown nonempty values stop server construction. Selection is read once at
 startup and never persisted; changing it requires a restart.
 

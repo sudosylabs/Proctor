@@ -108,14 +108,23 @@ and fails before readiness when the artifacts do not belong to the same build.
 `PROCTOR_SERVICE_ENVIRONMENT` selects `production`, `test`, or `dev` once during
 server construction, outside `config.Config` and its persisted backing. Values
 are trimmed and case-insensitive; unset or blank uses the build default, while
-unknown values fail startup. Builds with the `production` Go tag default to
-production; other builds default to dev. Packaging and runtime-image builds
-always include the production tag. An explicit environment value overrides the
+unknown values fail startup. Every ordinary build defaults to production; only
+builds with the explicit `dev` Go tag (the repository's local run and debug
+targets) default to dev. Packaging and runtime-image builds never pass that
+tag. An explicit environment value overrides the
 build default and requires restart to change.
 
 Only dev skips Desktop login compatibility checks. Request validation,
 readiness, maintenance, account access, browser proof and Session security
 remain active. Protected Attempt admission retains verified-build checks.
+
+Outside dev, Desktop compatibility is evaluated against the verified build
+catalog compiled into the binary from exact signed release tuples
+(`desktop_build_catalog.go`). That catalog is deliberately empty until a
+coordinated release embeds verified Desktop artifacts, so a production server
+built from this tree rejects every Desktop login as an unsupported build.
+Configuration and Institution policy can narrow the catalog but never add to
+it.
 `NewForTesting` defaults to test independently of process environment and build
 tags; `testlib.WithServiceEnvironment` selects development behavior explicitly.
 

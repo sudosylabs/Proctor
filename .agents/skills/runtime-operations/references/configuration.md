@@ -162,9 +162,13 @@ the [`user-settings` skill](../../user-settings/SKILL.md); it never enters `conf
 
 `PROCTOR_SERVICE_ENVIRONMENT` is process-only and independent of `config.Config`,
 its backing, and PostgreSQL. Root construction reads it once; unset or blank
-uses the compiled default (`production` with the production build tag, `dev`
-otherwise). Valid values are production, test, and dev; unknown values fail
-startup. Release packages and runtime images compile with the production tag.
+uses the compiled default: `production` for every ordinary build and `dev` only
+with the explicit `dev` build tag, so an untagged binary fails closed. Valid
+values are production, test, and dev; unknown values fail startup. Local run
+and debug targets pass `-tags dev`; release packages and runtime images never
+do. Outside dev, Desktop login uses the verified build catalog compiled from
+exact signed release tuples, which stays empty (rejecting every Desktop build)
+until a coordinated release embeds verified artifacts.
 Root composition passes the immutable development compatibility decision into
 the application rather than making application services read environment state.
 Only dev skips Desktop login compatibility checks. Protected Attempt admission

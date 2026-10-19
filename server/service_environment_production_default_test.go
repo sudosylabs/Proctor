@@ -1,4 +1,4 @@
-//go:build production
+//go:build !dev
 
 // ---------------------------------------------------------------------------------------------
 // Copyright (c) 2026 Sudosy Labs. All rights reserved.

@@ -129,17 +129,20 @@ configuration.
 
 ## Service environments and Desktop development
 
-An ordinary `make run-server` uses the development build default and skips
-Desktop login compatibility checks. Keep it running, run `make dev-seed` in
+An ordinary `make run-server` compiles with the explicit `dev` Go build tag,
+so it uses the development default and skips Desktop login compatibility
+checks. Keep it running, run `make dev-seed` in
 another terminal, then launch Desktop from its own checkout with
 `npm run dev -- --allow-http-loopback`. Connect to `http://localhost:8065` and
 use a seeded account. No build manifest or extra server configuration is needed.
 
 `PROCTOR_SERVICE_ENVIRONMENT` selects `dev`, `test`, or `production` for the
 process. It is read once at server construction and is never stored in JSON or
-PostgreSQL. Unset or blank uses the compiled default: `dev` without the
-`production` Go build tag, `production` with it. Release packages and runtime
-images always include that tag. Unknown nonempty values stop startup.
+PostgreSQL. Unset or blank uses the compiled default: `production` for every
+ordinary build, including a plain `go build`, and `dev` only with the explicit
+`dev` Go build tag. The repository's `run-server`, `debug-server*`, and editor
+debug configurations pass `-tags dev`; release packages and runtime images
+never do. Unknown nonempty values stop startup.
 
 To exercise production compatibility locally, run:
 
@@ -153,6 +156,15 @@ request validation, account access, PKCE, DPoP, and Session rotation remain
 active. Protected Attempt admission still requires a verified native build.
 Test graphs default to `test` independently of the host environment; tests opt
 into development behavior explicitly.
+
+Production behavior also requires a verified Desktop build catalog. The server
+compiles that catalog from exact signed release tuples in
+`server/desktop_build_catalog.go`; it is deliberately empty until a coordinated
+release embeds verified Desktop artifacts, and neither configuration nor
+Institution policy can add entries. Until then, a production or `test` server
+reports every Desktop build as unsupported and rejects every Desktop login.
+Use the `dev` service environment for Desktop development, and do not deploy a
+release for Desktop candidates until its catalog contains the builds they use.
 
 ## Development datasets
 

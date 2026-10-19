@@ -1,4 +1,4 @@
-//go:build !production
+//go:build dev
 
 // ---------------------------------------------------------------------------------------------
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
@@ -13,4 +13,6 @@
 
 package server
 
+// defaultServiceEnvironment is dev only for builds that opt in with -tags dev,
+// such as the repository's local run and debug targets.
 const defaultServiceEnvironment = ServiceEnvironmentDev

@@ -134,12 +134,17 @@ in another terminal. From the Desktop checkout, run
 `npm run dev -- --allow-http-loopback` and connect to `http://localhost:8065`.
 The browser uses the seeded credentials and performs the real approval handoff.
 
-Development builds default to the `dev` service environment, which skips
-Desktop login compatibility checks. No manifest or configuration entry is
+`make run-server` compiles with the explicit `dev` Go build tag, so it
+defaults to the `dev` service environment, which skips Desktop login
+compatibility checks. No manifest or configuration entry is
 required. `PROCTOR_SERVICE_ENVIRONMENT=production make run-server` enables
 production checks locally. The process-only variable also accepts `test`,
-which enforces compatibility. Release packages and runtime images compile with
-`-tags production` and therefore default to production behavior.
+which enforces compatibility. Every build without that tag, including release
+packages, runtime images, and a plain `go build`, defaults to production
+behavior. Production compatibility uses the verified build catalog compiled
+from exact signed release tuples; until a release embeds verified Desktop
+artifacts that catalog is empty and every Desktop login is rejected as an
+unsupported build.
 
 Development still enforces request validity, readiness, maintenance, account
 access, PKCE, DPoP and Session checks. Protected Attempt admission requires a

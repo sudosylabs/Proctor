@@ -1,4 +1,4 @@
-//go:build production
+//go:build !dev
 
 // ---------------------------------------------------------------------------------------------
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
@@ -13,4 +13,6 @@
 
 package server
 
+// defaultServiceEnvironment fails closed: every build without the explicit
+// dev tag, including a plain go build, enforces production behavior.
 const defaultServiceEnvironment = ServiceEnvironmentProduction

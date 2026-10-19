@@ -122,9 +122,10 @@ test("release executables always compile with the production environment default
   });
   const builds = commands.split("\n").filter((line) => line.startsWith("go build "));
   assert.equal(builds.length, 2);
-  for (const command of builds) assert.match(command, /-tags production /);
+  // Production is the untagged default; only an explicit dev tag opts out.
+  for (const command of builds) assert.doesNotMatch(command, /-tags/);
   const dockerfile = await readFile(new URL("../docker/Dockerfile.runtime", import.meta.url), "utf8");
   const containerBuilds = dockerfile.split("\n").filter((line) => line.includes("go build "));
   assert.equal(containerBuilds.length, 2);
-  for (const command of containerBuilds) assert.match(command, /-tags production/);
+  for (const command of containerBuilds) assert.doesNotMatch(command, /-tags/);
 });

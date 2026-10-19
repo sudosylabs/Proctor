@@ -59,13 +59,13 @@ dev-up: dev-tools dev-state ## Start and health-wait for persistent dependencies
 run: run-server ## Run the production-shaped single-node development lifecycle.
 
 run-server: dev-tools webapp-build dev-up ## Build the webapp, start dependencies, and run the server in the foreground.
-	@$(DEV_SERVER_ENV) $(GO) run $(GOFLAGS) -trimpath -ldflags '$(SERVER_LDFLAGS)' ./server/cmd/proctor serve --config "$(DEV_CONFIG_DIR)/local.json"
+	@$(DEV_SERVER_ENV) $(GO) run $(GOFLAGS) -tags dev -trimpath -ldflags '$(SERVER_LDFLAGS)' ./server/cmd/proctor serve --config "$(DEV_CONFIG_DIR)/local.json"
 
 debug-ready: tools dev-tools webapp-build-debug dev-up ## Prepare the local stack and pinned debugger without starting a debug session.
 	@mkdir -p "$(DEV_DIAGNOSTICS_DIR)"
 
 debug-server: debug-ready ## Debug the local server interactively with Delve.
-	@$(DEV_SERVER_ENV) "$(DLV)" debug ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-interactive" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
+	@$(DEV_SERVER_ENV) "$(DLV)" debug --build-flags='-tags=dev' ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-interactive" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
 
 debug-server-dap: debug-ready ## Start a loopback-only Delve DAP server for VS Code or Neovim.
 	@printf 'Delve DAP listening on 127.0.0.1:%s\n' '$(PROCTOR_DAP_PORT)'
@@ -73,7 +73,7 @@ debug-server-dap: debug-ready ## Start a loopback-only Delve DAP server for VS C
 
 debug-server-headless: debug-ready ## Start a loopback-only legacy Delve server for GoLand remote attach.
 	@printf 'Delve headless server listening on 127.0.0.1:%s\n' '$(PROCTOR_DLV_PORT)'
-	@$(DEV_SERVER_ENV) "$(DLV)" debug --headless --listen="127.0.0.1:$(PROCTOR_DLV_PORT)" --api-version=2 --accept-multiclient ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-headless" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
+	@$(DEV_SERVER_ENV) "$(DLV)" debug --headless --listen="127.0.0.1:$(PROCTOR_DLV_PORT)" --api-version=2 --accept-multiclient --build-flags='-tags=dev' ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-headless" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
 
 debug-test: tools ## Debug one package's tests (override DEBUG_MODULE, DEBUG_PACKAGE, and DEBUG_TEST).
 	@DLV_COMMAND="$(DLV)" $(TEST_DIAGNOSTICS) debug $(TEST_DIAGNOSTIC_CONTEXT)
