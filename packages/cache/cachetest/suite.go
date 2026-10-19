@@ -156,32 +156,47 @@ func Run(t *testing.T, factory Factory) {
 		}
 	})
 
-	t.Run("counter ttl", func(t *testing.T) {
+	t.Run("counter fixed window", func(t *testing.T) {
 		store := factory(t)
 		caps := store.Capabilities()
 		if !caps.TTL || !caps.AtomicCounter {
 			t.Skip("backend lacks TTL or atomic counters")
 		}
 		counter := store.(cache.Counter)
-		value, err := counter.Add(context.Background(), "counter", 1, cache.CounterOptions{TTL: 20 * time.Millisecond})
+		window := cache.CounterOptions{TTL: 100 * time.Millisecond}
+		value, err := counter.Add(context.Background(), "counter", 1, window)
 		if err != nil || value != 1 {
 			t.Fatalf("Add() = %d, %v; want 1, nil", value, err)
 		}
-		time.Sleep(10 * time.Millisecond)
-		value, err = counter.Add(context.Background(), "counter", 1, cache.CounterOptions{TTL: 40 * time.Millisecond})
+		time.Sleep(50 * time.Millisecond)
+		value, err = counter.Add(context.Background(), "counter", 1, cache.CounterOptions{TTL: time.Minute})
 		if err != nil || value != 2 {
-			t.Fatalf("refresh Add() = %d, %v; want 2, nil", value, err)
+			t.Fatalf("second Add() = %d, %v; want 2, nil", value, err)
 		}
-		time.Sleep(20 * time.Millisecond)
-		value, err = counter.Add(context.Background(), "counter", 0, cache.CounterOptions{TTL: 20 * time.Millisecond})
-		if err != nil || value != 2 {
-			t.Fatalf("counter expired before refreshed TTL: %d, %v", value, err)
-		}
-		time.Sleep(30 * time.Millisecond)
 		value, err = counter.Add(context.Background(), "counter", 0, cache.CounterOptions{})
-		if err != nil || value != 0 {
-			t.Fatalf("counter after expiry = %d, %v; want 0, nil", value, err)
+		if err != nil || value != 2 {
+			t.Fatalf("zero-TTL Add() = %d, %v; want 2, nil", value, err)
 		}
+		// 120ms after creation: past the original deadline, which neither a
+		// longer TTL nor a zero TTL on later increments may extend or remove.
+		time.Sleep(70 * time.Millisecond)
+		value, err = counter.Add(context.Background(), "counter", 1, window)
+		if err != nil || value != 1 {
+			t.Fatalf("Add() after the window = %d, %v; want a new window starting at 1", value, err)
+		}
+
+		// A persistent counter gains the first positive TTL applied to it.
+		if _, err = counter.Add(context.Background(), "persistent", 5, cache.CounterOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		value, err = counter.Add(context.Background(), "persistent", 1, cache.CounterOptions{TTL: 40 * time.Millisecond})
+		if err != nil || value != 6 {
+			t.Fatalf("Add() on persistent counter = %d, %v; want 6, nil", value, err)
+		}
+		eventually(t, time.Second, func() bool {
+			value, addErr := counter.Add(context.Background(), "persistent", 0, cache.CounterOptions{TTL: time.Second})
+			return addErr == nil && value == 0
+		})
 	})
 
 	t.Run("counter integer precision", func(t *testing.T) {

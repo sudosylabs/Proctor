@@ -54,7 +54,7 @@ utility or environment object.
 Authentication attempt accounting is one private application module shared by
 local login, account recovery, external-authentication initiation, and
 installation bootstrap. It owns bounded source normalization, domain-separated
-hashed cache keys, sequential counter mechanics, sliding windows, and threshold
+hashed cache keys, sequential counter mechanics, fixed windows, and threshold
 evaluation. Each use case retains which identity, source, operation, or
 provider dimensions apply, its public error mapping, and any successful-action
 reset policy. The module is constructed once over the disposable cache and is

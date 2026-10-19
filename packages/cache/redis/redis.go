@@ -11,11 +11,13 @@ import (
 	"github.com/sudosylabs/proctor/packages/cache"
 )
 
+// counterScript increments and applies a fixed-window expiration atomically:
+// the TTL is set only when the key was absent or had no expiration before
+// this increment (PTTL -2 or -1), so later increments keep the deadline.
 const counterScript = `
+local previousTTL = redis.call("PTTL", KEYS[1])
 redis.call("INCRBY", KEYS[1], ARGV[1])
-if ARGV[2] == "0" then
-	redis.call("PERSIST", KEYS[1])
-else
+if previousTTL < 0 and ARGV[2] ~= "0" then
 	redis.call("PEXPIRE", KEYS[1], ARGV[2])
 end
 return redis.call("GET", KEYS[1])
@@ -140,8 +142,8 @@ func (s *Store[V]) Delete(ctx context.Context, key string) error {
 	return cache.Error("delete", key, err)
 }
 
-// Add atomically increments a Redis integer and refreshes its expiration in
-// the same server-side script. The script returns the stored decimal string
+// Add atomically increments a Redis integer and applies its fixed-window
+// expiration in the same server-side script. The script returns the stored decimal string
 // so Lua's floating-point numbers cannot round the int64 result.
 func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cache.CounterOptions) (int64, error) {
 	if err := ctx.Err(); err != nil {

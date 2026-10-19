@@ -69,8 +69,11 @@ func NormalizedTTL(ttl time.Duration) (time.Duration, error) {
 	return ttl, nil
 }
 
-// CounterOptions controls the lifetime of the result of Add. Each successful
-// Add refreshes the TTL. A zero TTL makes the counter persistent.
+// CounterOptions controls the lifetime of a counter created by Add. Counters
+// use fixed windows: a positive TTL sets the expiration only when Add creates
+// the counter or finds it without one, and later updates keep the existing
+// deadline, so continued increments cannot keep a counter alive. A zero TTL
+// leaves the expiration unchanged and creates a persistent counter.
 type CounterOptions struct {
 	TTL time.Duration
 }

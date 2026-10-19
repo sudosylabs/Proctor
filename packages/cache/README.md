@@ -112,8 +112,10 @@ multiple independently namespaced cache instances.
 - `TTL < 0` returns `cache.ErrInvalidTTL`.
 - Positive TTLs are rounded up to the next whole millisecond.
 - An expired entry behaves exactly like an absent entry.
-- A successful counter update refreshes its TTL; a zero counter TTL removes
-  any existing expiration.
+- Counters use fixed windows: a positive TTL sets a counter's expiration only
+  when `Add` creates it or finds it without one. Later updates, including ones
+  with a different or zero TTL, keep the existing deadline, so repeated
+  increments cannot keep a counter alive.
 
 These rules avoid differences between the nanosecond precision available to an
 in-memory implementation and Redis' millisecond expiration commands.

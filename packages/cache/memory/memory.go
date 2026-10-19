@@ -200,8 +200,8 @@ func (s *Store[V]) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// Add atomically changes an integer stored as base-10 text. Each successful
-// call replaces the key's expiration according to options.
+// Add atomically changes an integer stored as base-10 text. Its expiration is
+// a fixed window: options set it only when the counter is created or has none.
 func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cache.CounterOptions) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, cache.Error("add", key, err)
@@ -241,7 +241,9 @@ func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cac
 	current += delta
 
 	var expiresAt time.Time
-	if ttl > 0 {
+	if found && !item.expiresAt.IsZero() {
+		expiresAt = item.expiresAt
+	} else if ttl > 0 {
 		expiresAt = now.Add(ttl)
 	}
 	data := []byte(strconv.FormatInt(current, 10))

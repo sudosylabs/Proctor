@@ -33,7 +33,9 @@ provider values contribute only to a cryptographic digest. User-controlled
 values never select arbitrary key namespaces.
 
 Attempt counters use the disposable cache with atomic per-key increments and a
-sliding inactivity window. Multi-dimension attempts increment each applicable
+fixed window that starts at a counter's first attempt; later attempts never
+extend it, so continued guessing cannot keep a victim's counter alive
+indefinitely. Multi-dimension attempts increment each applicable
 counter sequentially before evaluating the combined limit. Cache failure fails
 closed, including a failure after an earlier dimension was incremented. A
 successful password login clears only its combined identity/source counter;
