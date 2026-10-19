@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -712,7 +713,7 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	if input == nil || input.SuspensionID != suspensionID || input.ExpectedAttemptRevision != 2 || input.PrivateReason != reason ||
 		input.ActorUserID != managerID || input.ManagerOverride || result.Attempt.State != model.ExamAttemptReady ||
 		result.Suspension.State != model.AttemptSuspensionClosed || f.effects.reallowed != 1 ||
-		strings.Join(f.order, ",") != "manager.get,manager.manage,sitting,audit,reallow,effect.reallow" {
+		strings.Join(f.order, ",") != "manager.manage,sitting,audit,manager.get,reallow,effect.reallow" {
 		t.Fatalf("result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	}
 	if f.audit.values["private_reason"] != nil || strings.Contains(fmt.Sprintf("%#v", result), reason) {
@@ -753,6 +754,81 @@ func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
 	}
 	if f.effects.reallowed != 1 {
 		t.Fatalf("Reallow() effects = %d, want candidate reconnect effect", f.effects.reallowed)
+	}
+}
+
+func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
+	t.Parallel()
+	denied := &Fault{Code: "authorization.denied"}
+	operations := map[string]func(*fixture, model.ExamAttemptID) error{
+		"get": func(f *fixture, attemptID model.ExamAttemptID) error {
+			_, err := f.service.GetManaged(context.Background(), f.call, GetManagedAttemptQuery{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID})
+			return err
+		},
+		"reallow": func(f *fixture, attemptID model.ExamAttemptID) error {
+			_, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, SuspensionID: model.NewAttemptSuspensionID(),
+				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
+			return err
+		},
+		"end": func(f *fixture, attemptID model.ExamAttemptID) error {
+			_, err := f.service.EndByManager(context.Background(), f.call, ManagerEndCommand{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
+				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
+			return err
+		},
+		"browser_activity": func(f *fixture, attemptID model.ExamAttemptID) error {
+			_, err := f.service.ListBrowserActivity(context.Background(), f.call, BrowserActivityPageQuery{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, Limit: 10})
+			return err
+		},
+	}
+	for name, operation := range operations {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var codes []string
+			for _, existing := range []bool{true, false} {
+				f := newFixture(t)
+				useManagerCall(f)
+				f.managerErr = denied
+				f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2,
+					model.NewAttemptSuspensionID())
+				attemptID := f.attemptID
+				if !existing {
+					attemptID = model.NewExamAttemptID()
+				}
+				err := operation(f, attemptID)
+				var fault *Fault
+				if !errors.As(err, &fault) {
+					t.Fatalf("existing=%t error = %v", existing, err)
+				}
+				codes = append(codes, fault.Code)
+				if slices.Contains(f.order, "manager.get") || f.audit.values != nil {
+					t.Fatalf("existing=%t denied caller reached Attempt state: order=%v audit=%#v", existing, f.order, f.audit.values)
+				}
+			}
+			if codes[0] != codes[1] || codes[0] != denied.Code {
+				t.Fatalf("denied responses distinguish Attempt existence: %v", codes)
+			}
+		})
+	}
+}
+
+func TestManagerAttemptMissingAfterAuthorizationCompletesFailedAudit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	useManagerCall(f)
+	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2,
+		model.NewAttemptSuspensionID())
+	f.persistence.getErr = store.NewErrNotFound("exam_attempt", "missing")
+	_, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: model.NewExamAttemptID(), SuspensionID: model.NewAttemptSuspensionID(),
+		ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
+		f.persistence.reallow != nil {
+		t.Fatalf("error=%v audit=%#v order=%v", err, f.audit, f.order)
 	}
 }
 
@@ -1274,6 +1350,7 @@ type fixture struct {
 	effects                   *effectsFake
 	content                   *contentFake
 	managerOverride           bool
+	managerErr                error
 	focusSignalID             model.FocusLossSignalID
 	focusFlagID               model.IntegrityFlagID
 	discrepancyID             model.IntegrityDiscrepancyID
@@ -1429,11 +1506,11 @@ type managerFake struct{ f *fixture }
 
 func (fake *managerFake) AuthorizeSittingView(context.Context, Call, model.ExamSittingID) error {
 	fake.f.order = append(fake.f.order, "manager.authorize")
-	return nil
+	return fake.f.managerErr
 }
 func (fake *managerFake) AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error) {
 	fake.f.order = append(fake.f.order, "manager.manage")
-	return fake.f.managerOverride, nil
+	return fake.f.managerOverride, fake.f.managerErr
 }
 func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ Call, submissionID model.SubmissionID) error {
 	fake.f.order = append(fake.f.order, "submission.authorize")
@@ -1442,7 +1519,7 @@ func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ Call, subm
 }
 func (fake *managerFake) AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, error) {
 	fake.f.order = append(fake.f.order, "browser.authorize")
-	return model.NewAcademicUnitID(), nil
+	return model.NewAcademicUnitID(), fake.f.managerErr
 }
 
 type auditFake struct {
@@ -1600,6 +1677,7 @@ type attemptStoreFake struct {
 	f                               *fixture
 	connect                         *store.ExamAttemptConnect
 	connectErr                      error
+	getErr                          error
 	replayed                        bool
 	firstAdmission                  bool
 	connectionOpened                bool
@@ -1885,6 +1963,9 @@ func (fake *attemptStoreFake) CloseConnection(_ context.Context, input *store.Ex
 }
 func (fake *attemptStoreFake) Get(_ context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
 	fake.f.order = append(fake.f.order, "manager.get")
+	if fake.getErr != nil {
+		return nil, fake.getErr
+	}
 	if fake.attempt == nil || fake.attempt.ExamID != examID || fake.attempt.ID != attemptID {
 		return nil, errors.New("not configured")
 	}

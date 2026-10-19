@@ -223,6 +223,22 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() {
 		return nil, invalid("attempt")
 	}
+	// Authorization precedes every Attempt read so a caller without Sitting
+	// view authority cannot distinguish existing, mismatched, or missing
+	// Attempts; the authorizer records that decision.
+	if err := service.deps.Managers.AuthorizeSittingView(ctx, call, query.SittingID); err != nil {
+		return nil, err
+	}
+	sitting, err := service.deps.Sittings.Resolve(ctx, query.SittingID)
+	if err != nil {
+		return nil, mapStore(err)
+	}
+	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != query.SittingID || !sitting.AcademicUnitID.IsValid() {
+		return nil, unavailable(errors.New("inconsistent managed Attempt Sitting projection"))
+	}
+	if sitting.Sitting.ExamID != query.ExamID {
+		return nil, &Fault{Code: "exam.attempt.not_found"}
+	}
 	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
 		return nil, mapStore(err)
@@ -233,17 +249,6 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 	}
 	if snapshot.Attempt.SittingID != query.SittingID {
 		return nil, &Fault{Code: "exam.attempt.not_found"}
-	}
-	sitting, err := service.deps.Sittings.Resolve(ctx, snapshot.Attempt.SittingID)
-	if err != nil {
-		return nil, mapStore(err)
-	}
-	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != snapshot.Attempt.SittingID ||
-		sitting.Sitting.ExamID != snapshot.Attempt.ExamID || !sitting.AcademicUnitID.IsValid() {
-		return nil, unavailable(errors.New("inconsistent managed Attempt Sitting projection"))
-	}
-	if err = service.deps.Managers.AuthorizeSittingView(ctx, call, snapshot.Attempt.SittingID); err != nil {
-		return nil, err
 	}
 	if snapshot.Attempt.CandidateUserID == call.Principal().UserID {
 		resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
@@ -556,28 +561,17 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 	if err != nil {
 		return ReallowResult{}, err
 	}
-	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
-	if err != nil {
-		return ReallowResult{}, mapStore(err)
-	}
-	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
-		managerSnapshot.Attempt.ExamID != command.ExamID ||
-		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return ReallowResult{}, unavailable(errors.New("inconsistent re-allow Attempt projection"))
-	}
-	if managerSnapshot.Attempt.SittingID != command.SittingID {
-		return ReallowResult{}, &Fault{Code: "exam.attempt.not_found"}
-	}
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, managerSnapshot.Attempt.SittingID)
+	// Authorize the exact Sitting before reading the Attempt so existence is
+	// not probeable; later exits complete the audit attempt as failed.
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
 	if err != nil {
 		return ReallowResult{}, err
 	}
-	snapshot, err := service.deps.Sittings.Resolve(ctx, managerSnapshot.Attempt.SittingID)
+	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
 		return ReallowResult{}, mapStore(err)
 	}
-	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != command.SittingID ||
-		snapshot.Sitting.ExamID != command.ExamID || !snapshot.Sitting.ClassID.IsValid() {
+	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != command.SittingID || !snapshot.Sitting.ClassID.IsValid() {
 		return ReallowResult{}, unavailable(errors.New("incomplete Sitting ownership projection"))
 	}
 	action := model.ActionExamSittingManage
@@ -592,7 +586,19 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 	if err != nil {
 		return ReallowResult{}, err
 	}
-	if managerSnapshot.Attempt.CandidateUserID == principal.UserID {
+	if snapshot.Sitting.ExamID != command.ExamID {
+		return ReallowResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+	}
+	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
+	if err != nil {
+		return ReallowResult{}, service.failAudit(ctx, auditID, err)
+	}
+	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
+		managerSnapshot.Attempt.ExamID != command.ExamID ||
+		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
+		return ReallowResult{}, service.failAudit(ctx, auditID, unavailable(errors.New("inconsistent re-allow Attempt projection")))
+	}
+	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
 		return ReallowResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
 	}
 	at := model.TimeUTC(service.deps.Now())

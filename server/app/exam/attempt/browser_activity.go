@@ -164,32 +164,28 @@ func (service *Service) ListBrowserActivity(ctx context.Context, call Call, quer
 		(query.AfterReceivedAt.IsZero() != !query.AfterSourceID.IsValid()) || !query.AfterReceivedAt.IsZero() && query.AfterSequence < 1 {
 		return BrowserActivityPage{}, invalid("browser_activity_list")
 	}
+	// Authorize the exact Sitting before reading the Attempt so existence is
+	// not probeable; later exits complete the audit attempt as failed.
+	unitID, err := service.deps.Managers.AuthorizeBrowserActivityView(ctx, call, query.SittingID)
+	if err != nil {
+		return BrowserActivityPage{}, err
+	}
+	resource := model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}
+	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamAttemptBrowserActivityView, resource,
+		model.RoleScopeAcademicUnit, unitID.String(), "view_browser_activity", map[string]any{"exam_id": query.ExamID.String(),
+			"exam_sitting_id": query.SittingID.String(), "exam_attempt_id": query.AttemptID.String(), "limit": query.Limit})
+	if err != nil {
+		return BrowserActivityPage{}, err
+	}
 	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
-		return BrowserActivityPage{}, mapStore(err)
+		return BrowserActivityPage{}, service.failAudit(ctx, auditID, err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil || snapshot.Attempt.ExamID != query.ExamID {
-		return BrowserActivityPage{}, unavailable(errors.New("inconsistent Browser Activity Attempt projection"))
+		return BrowserActivityPage{}, service.failAudit(ctx, auditID, unavailable(errors.New("inconsistent Browser Activity Attempt projection")))
 	}
-	if snapshot.Attempt.SittingID != query.SittingID {
-		return BrowserActivityPage{}, &Fault{Code: "exam.attempt.not_found"}
-	}
-	unitID, err := service.deps.Managers.AuthorizeBrowserActivityView(ctx, call, snapshot.Attempt.SittingID)
-	if err != nil {
-		return BrowserActivityPage{}, err
-	}
-	resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamAttemptBrowserActivityView, resource,
-		model.RoleScopeAcademicUnit, unitID.String(), "view_browser_activity", map[string]any{"exam_id": snapshot.Attempt.ExamID.String(),
-			"exam_sitting_id": snapshot.Attempt.SittingID.String(), "exam_attempt_id": snapshot.Attempt.ID.String(), "limit": query.Limit})
-	if err != nil {
-		return BrowserActivityPage{}, err
-	}
-	if snapshot.Attempt.CandidateUserID == call.Principal().UserID {
-		if err = service.deps.Auditor.Fail(ctx, auditID, "exam.attempt.not_found"); err != nil {
-			return BrowserActivityPage{}, err
-		}
-		return BrowserActivityPage{}, &Fault{Code: "exam.attempt.not_found"}
+	if snapshot.Attempt.SittingID != query.SittingID || snapshot.Attempt.CandidateUserID == call.Principal().UserID {
+		return BrowserActivityPage{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
 	}
 	items, err := service.deps.Persistence.ListBrowserActivity(ctx, store.BrowserActivityListOptions{ExamID: query.ExamID,
 		SittingID: query.SittingID, AttemptID: query.AttemptID, AfterReceivedAt: model.TimeUTC(query.AfterReceivedAt),

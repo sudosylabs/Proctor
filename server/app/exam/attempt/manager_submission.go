@@ -41,44 +41,46 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
-	if err != nil {
-		return SubmissionResult{}, mapStore(err)
-	}
-	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
-		managerSnapshot.Attempt.ExamID != command.ExamID ||
-		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return SubmissionResult{}, unavailable(errors.New("inconsistent manager-ended Attempt projection"))
-	}
-	if managerSnapshot.Attempt.SittingID != command.SittingID {
-		return SubmissionResult{}, &Fault{Code: "exam.attempt.not_found"}
-	}
-	sitting, err := service.deps.Sittings.Resolve(ctx, managerSnapshot.Attempt.SittingID)
-	if err != nil {
-		return SubmissionResult{}, mapStore(err)
-	}
-	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != managerSnapshot.Attempt.SittingID ||
-		sitting.Sitting.ExamID != managerSnapshot.Attempt.ExamID || !sitting.Sitting.ClassID.IsValid() {
-		return SubmissionResult{}, unavailable(errors.New("inconsistent manager-ended Sitting projection"))
-	}
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, managerSnapshot.Attempt.SittingID)
+	// Authorize the exact Sitting before reading the Attempt so existence is
+	// not probeable; later exits complete the audit attempt as failed.
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
 	if err != nil {
 		return SubmissionResult{}, err
+	}
+	sitting, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
+	if err != nil {
+		return SubmissionResult{}, mapStore(err)
+	}
+	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != command.SittingID || !sitting.Sitting.ClassID.IsValid() {
+		return SubmissionResult{}, unavailable(errors.New("inconsistent manager-ended Sitting projection"))
 	}
 	action := model.ActionExamSittingManage
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, action,
-		model.Resource{Type: model.ResourceExamSitting, ID: managerSnapshot.Attempt.SittingID.String()}, model.RoleScopeClass,
+		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass,
 		sitting.Sitting.ClassID.String(), store.ExamSubmissionManagerEndOperation,
-		map[string]any{"exam_id": managerSnapshot.Attempt.ExamID.String(),
-			"exam_sitting_id": managerSnapshot.Attempt.SittingID.String(), "exam_attempt_id": managerSnapshot.Attempt.ID.String(),
+		map[string]any{"exam_id": command.ExamID.String(),
+			"exam_sitting_id": command.SittingID.String(), "exam_attempt_id": command.AttemptID.String(),
 			"expected_attempt_revision": command.ExpectedAttemptRevision})
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	if managerSnapshot.Attempt.CandidateUserID == principal.UserID {
+	if sitting.Sitting.ExamID != command.ExamID {
+		return SubmissionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+	}
+	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
+	if err != nil {
+		return SubmissionResult{}, service.failAudit(ctx, auditID, err)
+	}
+	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
+		managerSnapshot.Attempt.ExamID != command.ExamID ||
+		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
+		return SubmissionResult{}, service.failAudit(ctx, auditID,
+			unavailable(errors.New("inconsistent manager-ended Attempt projection")))
+	}
+	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
 		return SubmissionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
 	}
 	request := store.ExamSubmissionManagerEndRequest{ExamID: command.ExamID, SittingID: command.SittingID,
