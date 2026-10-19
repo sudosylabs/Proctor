@@ -257,16 +257,27 @@ type Sessions struct {
 	MaximumPerUser         int      `json:"MaximumPerUser"`
 }
 
+// LoginRateLimit bounds local login attempts in fixed windows by account and
+// source together, by account alone across every source, and by source alone.
 type LoginRateLimit struct {
+	Window                  Duration `json:"Window"`
+	MaximumAttempts         int      `json:"MaximumAttempts"`
+	MaximumIdentityAttempts int      `json:"MaximumIdentityAttempts"`
+	MaximumSourceAttempts   int      `json:"MaximumSourceAttempts"`
+}
+
+// AttemptRateLimit bounds attempts in fixed windows by one identity and by
+// one source.
+type AttemptRateLimit struct {
 	Window                Duration `json:"Window"`
 	MaximumAttempts       int      `json:"MaximumAttempts"`
 	MaximumSourceAttempts int      `json:"MaximumSourceAttempts"`
 }
 
 type AccountRecovery struct {
-	EmailVerificationTTL Duration       `json:"EmailVerificationTTL"`
-	PasswordResetTTL     Duration       `json:"PasswordResetTTL"`
-	RateLimit            LoginRateLimit `json:"RateLimit"`
+	EmailVerificationTTL Duration         `json:"EmailVerificationTTL"`
+	PasswordResetTTL     Duration         `json:"PasswordResetTTL"`
+	RateLimit            AttemptRateLimit `json:"RateLimit"`
 }
 
 type PersonalAccessTokens struct {
@@ -442,14 +453,15 @@ func Default() Config {
 			},
 			RecentAuthenticationTTL: Duration{Duration: 15 * time.Minute},
 			LoginRateLimit: LoginRateLimit{
-				Window:                Duration{Duration: time.Minute},
-				MaximumAttempts:       10,
-				MaximumSourceAttempts: 1000,
+				Window:                  Duration{Duration: time.Minute},
+				MaximumAttempts:         10,
+				MaximumIdentityAttempts: 50,
+				MaximumSourceAttempts:   1000,
 			},
 			AccountRecovery: AccountRecovery{
 				EmailVerificationTTL: Duration{Duration: 24 * time.Hour},
 				PasswordResetTTL:     Duration{Duration: time.Hour},
-				RateLimit: LoginRateLimit{
+				RateLimit: AttemptRateLimit{
 					Window:                Duration{Duration: 15 * time.Minute},
 					MaximumAttempts:       3,
 					MaximumSourceAttempts: 100,
@@ -1265,8 +1277,15 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 
 	rateLimit := authentication.LoginRateLimit
 	validateAuthenticationRateLimit(
-		"authentication.login_rate_limit", rateLimit, add,
+		"authentication.login_rate_limit", AttemptRateLimit{
+			Window: rateLimit.Window, MaximumAttempts: rateLimit.MaximumAttempts,
+			MaximumSourceAttempts: rateLimit.MaximumSourceAttempts,
+		}, add,
 	)
+	if rateLimit.MaximumIdentityAttempts < rateLimit.MaximumAttempts ||
+		rateLimit.MaximumIdentityAttempts > 1_000_000 {
+		add("authentication.login_rate_limit.maximum_identity_attempts", "must be between maximum_attempts and 1000000")
+	}
 
 	recovery := authentication.AccountRecovery
 	if recovery.EmailVerificationTTL.Duration < 5*time.Minute ||
@@ -1344,7 +1363,7 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 
 func validateAuthenticationRateLimit(
 	prefix string,
-	rateLimit LoginRateLimit,
+	rateLimit AttemptRateLimit,
 	add func(string, string),
 ) {
 	if rateLimit.Window.Duration < time.Second || rateLimit.Window.Duration > 24*time.Hour {

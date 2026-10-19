@@ -564,9 +564,10 @@ func newTestAuthenticationServiceWithEffects(
 			MaximumPerUser:         10,
 		},
 		LoginRateLimitPolicy{
-			Window:                time.Minute,
-			MaximumAttempts:       20,
-			MaximumSourceAttempts: 100,
+			Window:                  time.Minute,
+			MaximumAttempts:         20,
+			MaximumIdentityAttempts: 50,
+			MaximumSourceAttempts:   100,
 		},
 		&securityEffectsDiagnosticsFake{},
 		newCredential,

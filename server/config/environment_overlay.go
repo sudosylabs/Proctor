@@ -446,6 +446,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_ATTEMPTS", func(cfg *Config) *int {
 		return &cfg.Authentication.LoginRateLimit.MaximumAttempts
 	}),
+	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_IDENTITY_ATTEMPTS", func(cfg *Config) *int {
+		return &cfg.Authentication.LoginRateLimit.MaximumIdentityAttempts
+	}),
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_LOGIN_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS", func(cfg *Config) *int {
 		return &cfg.Authentication.LoginRateLimit.MaximumSourceAttempts
 	}),

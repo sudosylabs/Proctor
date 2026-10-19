@@ -149,6 +149,7 @@
     "LoginRateLimit": {
       "Window": "1m",
       "MaximumAttempts": 10,
+      "MaximumIdentityAttempts": 50,
       "MaximumSourceAttempts": 1000
     },
     "AccountRecovery": {

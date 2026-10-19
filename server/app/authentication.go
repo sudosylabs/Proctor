@@ -38,11 +38,15 @@ type SessionPolicy struct {
 	MaximumPerUser         int
 }
 
-// LoginRateLimitPolicy bounds login attempts by identity and source.
+// LoginRateLimitPolicy bounds attempts in fixed windows by identity and
+// source. MaximumIdentityAttempts applies only to local login: it bounds one
+// account's attempts across every source, so spreading guesses over many
+// addresses cannot multiply the per-account budget.
 type LoginRateLimitPolicy struct {
-	Window                time.Duration
-	MaximumAttempts       int
-	MaximumSourceAttempts int
+	Window                  time.Duration
+	MaximumAttempts         int
+	MaximumIdentityAttempts int
+	MaximumSourceAttempts   int
 }
 
 // PersonalAccessTokenPolicy controls PAT lifetime bounds, per-user limits, and
@@ -702,6 +706,11 @@ func (s *authenticationService) checkLoginRateLimit(
 				maximum:   settings.MaximumAttempts,
 				identity:  loginID,
 				source:    source,
+			},
+			{
+				dimension: authenticationAttemptDimensionIdentity,
+				maximum:   settings.MaximumIdentityAttempts,
+				identity:  loginID,
 			},
 			{
 				dimension: authenticationAttemptDimensionSource,

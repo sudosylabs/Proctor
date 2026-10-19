@@ -39,8 +39,9 @@ indefinitely. Multi-dimension attempts increment each applicable
 counter sequentially before evaluating the combined limit. Cache failure fails
 closed, including a failure after an earlier dimension was incremented. A
 successful password login clears only its combined identity/source counter;
-the source-wide counter continues to protect against attempts spread across
-identities. Changing these dimensions, ordering, window semantics, or reset
+the account-wide counter continues to bound attempts spread across sources
+against one account, and the source-wide counter continues to protect against
+attempts spread across identities. Changing these dimensions, ordering, window semantics, or reset
 behavior is a security-policy change rather than an implementation refactor.
 
 ## Examination containment and integrity

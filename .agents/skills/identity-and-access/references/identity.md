@@ -63,8 +63,10 @@ not a cache locator or a public application capability.
 Every applicable counter is incremented before the combined decision. Counter
 increments are atomic per key but not across keys; a partial cache failure
 fails the request closed and does not roll back an earlier disposable
-increment. A successful local login resets only its combined identity/source
-counter, while the source-wide counter remains. Raw identities, sources,
+increment. Local login counts the combined identity/source, identity-only, and
+source-only dimensions; a successful local login resets only its combined
+identity/source counter, while the identity-wide and source-wide counters
+remain. Raw identities, sources,
 operations, and provider qualifiers never appear in cache keys, errors, logs,
 or diagnostics.
 

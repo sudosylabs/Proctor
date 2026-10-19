@@ -62,17 +62,22 @@ and refresh pressure. The absolute lifetime is always the final ceiling.
 
 ## Login and account-recovery limits
 
-The ordinary login limiter and recovery limiter have the same shape. The
-per-source ceiling cannot be lower than the per-account ceiling.
+Both limiters count attempts in fixed windows that start at a counter's first
+attempt; continued attempts never extend a window, so repeated guessing cannot
+keep an account locked indefinitely. The per-source ceiling cannot be lower than
+the per-account ceiling. Login also has an account-wide ceiling shared by every
+source, so spreading guesses across many addresses cannot multiply the attempts
+allowed against one account.
 
 | Path and default | Meaning and accepted value |
 | --- | --- |
-| `Authentication.LoginRateLimit.Window`<br />Default: `1m` | Rolling login-attempt window. Must be between `1s` and `24h`. |
-| `Authentication.LoginRateLimit.MaximumAttempts`<br />Default: `10` | Maximum attempts associated with one account key in the window. Must be between `1` and `10000`. |
+| `Authentication.LoginRateLimit.Window`<br />Default: `1m` | Fixed login-attempt window. Must be between `1s` and `24h`. |
+| `Authentication.LoginRateLimit.MaximumAttempts`<br />Default: `10` | Maximum attempts associated with one account key from one source in the window. Must be between `1` and `10000`. |
+| `Authentication.LoginRateLimit.MaximumIdentityAttempts`<br />Default: `50` | Maximum attempts associated with one account key from all sources together in the window. Must be between `MaximumAttempts` and `1000000`. |
 | `Authentication.LoginRateLimit.MaximumSourceAttempts`<br />Default: `1000` | Maximum attempts from one source in the window. Must be between `MaximumAttempts` and `1000000`. |
 | `Authentication.AccountRecovery.EmailVerificationTTL`<br />Default: `24h` | Lifetime of an email-verification credential. Must be between `5m` and `720h`. |
 | `Authentication.AccountRecovery.PasswordResetTTL`<br />Default: `1h` | Lifetime of a password-reset credential. Must be between `5m` and `24h`. |
-| `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Rolling recovery-attempt window. Must be between `1s` and `24h`. |
+| `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Fixed recovery-attempt window. Must be between `1s` and `24h`. |
 | `Authentication.AccountRecovery.RateLimit.MaximumAttempts`<br />Default: `3` | Maximum recovery attempts associated with one account key in the window. Must be between `1` and `10000`. |
 | `Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts`<br />Default: `100` | Maximum recovery attempts from one source in the window. Must be between the per-account value and `1000000`. |
 

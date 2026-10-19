@@ -49,10 +49,12 @@ func (c *expiringAuthenticationAttemptCache) Add(
 	now := c.now()
 	entry := c.entries[key]
 	if !entry.expiresAt.After(now) {
+		// Model the platform cache's fixed windows: only a new counter
+		// receives an expiration.
 		entry.count = 0
+		entry.expiresAt = now.Add(ttl)
 	}
 	entry.count += delta
-	entry.expiresAt = now.Add(ttl)
 	c.entries[key] = entry
 	return entry.count, nil
 }
@@ -206,7 +208,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 	cache := newExpiringAuthenticationAttemptCache(time.Now)
 	accounting := mustAuthenticationAttemptAccounting(t, cache)
 	policy := LoginRateLimitPolicy{
-		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 1,
+		Window: time.Minute, MaximumAttempts: 1, MaximumIdentityAttempts: 1, MaximumSourceAttempts: 1,
 	}
 	login := &authenticationService{attempts: accounting, loginRateLimit: policy}
 	recovery := &accountTokenService{
@@ -265,7 +267,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 		}
 	}
 	entries := cache.snapshot()
-	const expectedKeys = 6 // login 2 + recovery 2 + external 1 + bootstrap 1
+	const expectedKeys = 7 // login 3 + recovery 2 + external 1 + bootstrap 1
 	if len(entries) != expectedKeys {
 		t.Fatalf("counter keys = %d, want %d isolated keys", len(entries), expectedKeys)
 	}
@@ -278,7 +280,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 	}
 }
 
-func TestAuthenticationAttemptAccountingUsesSlidingExpirationAndThresholdEdge(t *testing.T) {
+func TestAuthenticationAttemptAccountingUsesFixedWindowAndThresholdEdge(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 13, 10, 0, 0, 0, time.UTC)
@@ -297,17 +299,21 @@ func TestAuthenticationAttemptAccountingUsesSlidingExpirationAndThresholdEdge(t 
 		if err != nil || limited {
 			t.Fatalf("attempt %d = limited %v, error %v", attempt, limited, err)
 		}
-		now = now.Add(45 * time.Second)
+		now = now.Add(20 * time.Second)
 	}
-	_, limited, err := accounting.account(context.Background(), intent)
-	if err != nil || !limited {
-		t.Fatalf("attempt after maximum = limited %v, error %v", limited, err)
+	// Continued attempts inside the window stay limited but never extend it.
+	for now.Before(time.Date(2026, time.August, 13, 10, 0, 59, 0, time.UTC)) {
+		_, limited, err := accounting.account(context.Background(), intent)
+		if err != nil || !limited {
+			t.Fatalf("attempt after maximum = limited %v, error %v", limited, err)
+		}
+		now = now.Add(5 * time.Second)
 	}
 
-	now = now.Add(61 * time.Second)
-	_, limited, err = accounting.account(context.Background(), intent)
+	now = time.Date(2026, time.August, 13, 10, 1, 0, 0, time.UTC)
+	_, limited, err := accounting.account(context.Background(), intent)
 	if err != nil || limited {
-		t.Fatalf("attempt after inactivity window = limited %v, error %v", limited, err)
+		t.Fatalf("attempt in the next fixed window = limited %v, error %v", limited, err)
 	}
 }
 
@@ -529,5 +535,40 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 		if strings.Contains(lower, "reset-user") || strings.Contains(lower, "192.0.2.9") {
 			t.Fatalf("diagnostic exposes raw login identity or source: %q", diagnostic)
 		}
+	}
+}
+
+func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
+	t.Parallel()
+
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	service.loginRateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 2, MaximumIdentityAttempts: 3, MaximumSourceAttempts: 100}
+	if _, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+		User: &model.User{Username: "spread-user", Email: "spread-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Each source stays under its per-account-and-source budget, but the
+	// account-wide budget is shared by every source.
+	for index, source := range []string{"198.51.100.1:1", "198.51.100.2:1", "198.51.100.3:1"} {
+		_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
+		})
+		if !Is(err, "authentication.invalid_credentials") {
+			t.Fatalf("attempt %d from %s: err = %v", index, source, err)
+		}
+	}
+	_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
+	})
+	if !Is(err, "authentication.rate_limited") {
+		t.Fatalf("attempt from a fresh source after the account budget = %v, want rate limited", err)
+	}
+	_, err = service.login(context.Background(), Invocation{}, LoginCommand{
+		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
+	})
+	if !Is(err, "authentication.invalid_credentials") {
+		t.Fatalf("another account from the same source = %v, want an independent budget", err)
 	}
 }
