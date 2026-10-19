@@ -145,8 +145,14 @@ type Options struct {
 	BuildInfo                     BuildInfo
 	PublicURL                     string
 	MaxBodyBytes                  int64
-	RecentAuthenticationTTL       time.Duration
-	NodeID                        string
+	// ReadTimeout and WriteTimeout repeat the server-wide connection
+	// deadlines. Streaming upload and binary download routes extend them by
+	// the time their declared size takes at the minimum admitted throughput.
+	// Zero leaves the corresponding deadline unchanged.
+	ReadTimeout             time.Duration
+	WriteTimeout            time.Duration
+	RecentAuthenticationTTL time.Duration
+	NodeID                  string
 	// WebSocket is the sibling transport constructed at composition root.
 	// HTTP owns only route mounting and session middleware around Accept.
 	WebSocket WebSocketTransport

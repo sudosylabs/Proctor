@@ -338,6 +338,7 @@ func composeConsumers(
 		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
 		Mail:      application,
 		PublicURL: snapshot.Server.PublicURL, MaxBodyBytes: snapshot.Server.MaxBodyBytes,
+		ReadTimeout: snapshot.Server.ReadTimeout.Duration, WriteTimeout: snapshot.Server.WriteTimeout.Duration,
 		RecentAuthenticationTTL: snapshot.Authentication.RecentAuthenticationTTL.Duration,
 		NodeID:                  capabilities.nodeID, WebSocket: webSocketHub,
 	})

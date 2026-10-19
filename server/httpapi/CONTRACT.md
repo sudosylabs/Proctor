@@ -197,6 +197,23 @@ remain available for safe navigation; existing CAS and OIDC GET callbacks
 retain their one-use state and browser-binding checks. A future cross-site
 provider POST requires an explicit protocol design rather than a global bypass.
 
+## Bounded transfer deadlines
+
+`Server.ReadTimeout` and `Server.WriteTimeout` bound ordinary requests. Each
+route declared as a streaming upload or binary download instead receives a
+transfer deadline sized from its declaration, so a slow but legitimate client
+can finish a large transfer:
+
+- after authentication succeeds, a streaming upload extends its read and
+  write deadlines to the configured timeout plus the time the route's
+  effective body limit takes at 64 KiB/s;
+- a binary download extends its write deadline, when the body copy starts, to
+  the configured write timeout plus the time its exact `Content-Length` takes
+  at the same rate.
+
+Unauthenticated requests never receive the extension. Upgrade routes own
+their own connection lifetime.
+
 ## Access Policy and public discovery
 
 `GET /api/v1/discovery` is the versioned, unauthenticated, same-origin server

@@ -42,6 +42,7 @@ type API struct {
 	catalog                 *routeCatalogBuilder
 	webSocket               WebSocketTransport
 	maxBodyBytes            int64
+	transferDeadlines       transferDeadlines
 }
 
 func New(options Options) (*API, error) {
@@ -94,6 +95,7 @@ func New(options Options) (*API, error) {
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		webSocket:               options.WebSocket,
 		maxBodyBytes:            options.MaxBodyBytes,
+		transferDeadlines:       newTransferDeadlines(options.ReadTimeout, options.WriteTimeout),
 	}
 	resources := productionResources(applications, options.Health, options.BuildInfo, cookies, api.webSocket)
 	if err := api.buildRoutingKernel(

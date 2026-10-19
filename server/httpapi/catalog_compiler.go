@@ -89,6 +89,11 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 				return fmt.Errorf("compile resource %q: %w", resource.name, err)
 			}
 			errorPolicy := newRouteErrorPolicy(definition.errorCodes)
+			bodyLimit := a.maxBodyBytes
+			if definition.maxBodyBytes > 0 {
+				bodyLimit = definition.maxBodyBytes
+			}
+			definition.maxBodyBytes = bodyLimit
 			operationHandler := a.operationHandler(definition, errorPolicy)
 			if definition.protocolOperation != nil {
 				operationHandler = a.protocolOperationHandler(definition, errorPolicy)
@@ -97,10 +102,6 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 			}
 			operationHandler = a.withIdempotency(operationHandler, definition.idempotency)
 			handler := a.newHandlerWithErrorPolicy(operationHandler, definition.auth, errorPolicy)
-			bodyLimit := a.maxBodyBytes
-			if definition.maxBodyBytes > 0 {
-				bodyLimit = definition.maxBodyBytes
-			}
 			handler = limitRequestBody(handler, bodyLimit)
 			// Upgrade handlers own long-lived transport lifetimes; WebSocket
 			// metrics record their handshake and connection lifecycle separately.

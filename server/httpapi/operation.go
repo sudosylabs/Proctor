@@ -307,6 +307,11 @@ func (a *API) protocolOperationHandler(
 			writeRouteApplicationError(writer, request, a.logger, errorPolicy, invalidRequestError(nil))
 			return
 		}
+		if definition.protocolKind == RouteProtocolStreamingUpload {
+			if err := a.transferDeadlines.extendForUpload(writer, definition.maxBodyBytes); err != nil {
+				a.logger.ErrorContext(request.Context(), "extend upload transfer deadline", logErr(err))
+			}
+		}
 		result, err := definition.protocolOperation(operationRequest{
 			context: request.Context(), principal: principal,
 			metadata: RequestMetadata(request.Context()), params: params,
@@ -350,6 +355,9 @@ func (a *API) protocolOperationHandler(
 				writer.Header().Set("Content-Length", strconv.FormatInt(result.contentLength, 10))
 				writer.WriteHeader(result.status)
 				return
+			}
+			if err := a.transferDeadlines.extendForDownload(writer, result.contentLength); err != nil {
+				a.logger.ErrorContext(request.Context(), "extend download transfer deadline", logErr(err))
 			}
 			writer.Header().Set("Content-Length", strconv.FormatInt(result.contentLength, 10))
 			writer.WriteHeader(result.status)

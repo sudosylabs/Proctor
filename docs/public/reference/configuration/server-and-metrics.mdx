@@ -28,8 +28,8 @@ Defaults shown here are the values compiled into Proctor and represented in the
 | `Server.PublicURL`<br />Default: `http://localhost:8065` | Canonical browser origin used for externally visible URLs. Must be an absolute `http` or `https` URL with a host and with no credentials, query, or fragment. Its path must be empty or `/`. Built-in TLS requires `https`. |
 | `Server.WebappDirectory`<br />Default: `./webapp/dist` | Directory containing the hosted webapp build. Must be a non-empty path without a null byte. Relative paths are resolved from the process working directory. |
 | `Server.ReadHeaderTimeout`<br />Default: `10s` | Maximum time to read request headers. Must be greater than zero. |
-| `Server.ReadTimeout`<br />Default: `30s` | Maximum time to read the complete request. Must be greater than zero. |
-| `Server.WriteTimeout`<br />Default: `30s` | Maximum response-write time. Must be greater than zero. |
+| `Server.ReadTimeout`<br />Default: `30s` | Maximum time to read the complete request. Authenticated streaming uploads extend it by the time their route body limit takes at 64 KiB/s. Must be greater than zero. |
+| `Server.WriteTimeout`<br />Default: `30s` | Maximum response-write time. Streaming uploads and binary downloads extend it by the time their declared size takes at 64 KiB/s. Must be greater than zero. |
 | `Server.IdleTimeout`<br />Default: `2m` | Maximum keep-alive idle time. Must be greater than zero. |
 | `Server.ShutdownTimeout`<br />Default: `15s` | Grace period for the public server and owned infrastructure during shutdown. Must be greater than zero. |
 | `Server.MaxHeaderBytes`<br />Default: `1048576` (1 MiB) | Maximum request-header size. Must be between `1024` and `16777216` bytes. |
