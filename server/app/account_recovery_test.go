@@ -467,12 +467,14 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
 	testPasswordHashFailures(t, "authentication.account_recovery.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
 		consumed := false
-		tokens := &accountTokenStoreFake{consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
-			consumed = true
-			return nil, errors.New("password reset should not be reached")
-		}}
+		user := &model.User{ID: model.NewUserID(), Email: "student@example.edu"}
+		tokens := &accountTokenStoreFake{byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset},
+			consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+				consumed = true
+				return nil, errors.New("password reset should not be reached")
+			}}
 		application := newAccountTokenTestApp(t, accountTokenTestDependencies{
-			users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
+			users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
 			institution: &model.Institution{ID: model.NewInstitutionID()},
 			mailer:      &accountTokenMailerFake{enabled: true}, hasher: hasher,
 		})
@@ -762,4 +764,32 @@ func (a accountTokenConstructorArgs) build() (*accountTokenService, error) {
 		a.hasher, a.audit, a.effects, a.diagnostics, AccountRecoveryPolicy{},
 		"https://proctor.example.edu", a.newToken, time.Now,
 	)
+}
+
+type countingAccountTokenHasher struct{ calls *int }
+
+func (h countingAccountTokenHasher) Hash(context.Context, string) (string, error) {
+	*h.calls++
+	return "encoded-password", nil
+}
+
+func TestCompletePasswordResetUnknownTokenDoesNotSpendPasswordWork(t *testing.T) {
+	t.Parallel()
+
+	hashes := 0
+	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
+		users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{},
+		tokens:      &accountTokenStoreFake{},
+		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &accountTokenMailerFake{enabled: true},
+		hasher: countingAccountTokenHasher{calls: &hashes},
+	})
+	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
+		Token: model.NewCredentialToken(), Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.9",
+	})
+	if result != nil || !Is(err, "authentication.account_token.invalid") {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if hashes != 0 {
+		t.Fatalf("unknown reset token spent %d password hashes", hashes)
+	}
 }

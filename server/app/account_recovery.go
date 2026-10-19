@@ -341,10 +341,6 @@ func (s *accountTokenService) CompletePasswordReset(
 	if !validRawCredential(command.Token) {
 		return nil, invalidAccountCredential()
 	}
-	passwordHash, err := s.hasher.Hash(ctx, command.Password)
-	if err != nil {
-		return nil, passwordHashError(err, "authentication.account_recovery.unavailable")
-	}
 	institution, err := s.accountRecoveryInstitution(ctx)
 	if err != nil {
 		return nil, err
@@ -371,6 +367,12 @@ func (s *accountTokenService) CompletePasswordReset(
 			return nil, invalidAccountCredential()
 		}
 		return nil, accountRecoveryStoreFailure(err)
+	}
+	// Hash only for a live token's account. The hashing permit is shared with
+	// login, so guessed tokens must not be able to consume it.
+	passwordHash, err := s.hasher.Hash(ctx, command.Password)
+	if err != nil {
+		return nil, passwordHashError(err, "authentication.account_recovery.unavailable")
 	}
 	prepared, err := s.mail.PreparePasswordChanged(appmail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
