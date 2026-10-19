@@ -110,7 +110,10 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 			event.Resource.ID == institution.ID.String() {
 			decisions[event.Action+":"+string(event.Status)] = true
 		}
-		if event.SessionID == "" || event.NodeID == "" || event.RequestID == "" {
+		// A password login attempt is recorded before any Session exists; its
+		// success projection names the issued Session instead.
+		preSession := event.Action == "authentication.login"
+		if (event.SessionID == "" && !preSession) || event.NodeID == "" || event.RequestID == "" {
 			t.Fatalf("incomplete security audit event = %#v", event)
 		}
 	}

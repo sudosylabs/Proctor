@@ -105,6 +105,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
+	seedAuthenticationAuditInstitution(t, persistence)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	ctx := context.Background()
 
@@ -525,6 +526,29 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 	if cookies := login.Result().Cookies(); len(cookies) != 0 {
 		t.Fatalf("CLI login unexpectedly set browser cookies = %#v", cookies)
+	}
+	loginAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
+		Action: "authentication.login", Resource: &model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
+		Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+	})
+	if err != nil || len(loginAudits) != 2 {
+		t.Fatalf("login audits = %#v, %v", loginAudits, err)
+	}
+	outcomes := map[model.AuditStatus]*model.AuditEvent{}
+	for _, event := range loginAudits {
+		outcomes[event.Status] = event
+	}
+	if failed := outcomes[model.AuditStatusFail]; failed == nil || failed.ActorID != "" ||
+		failed.ErrorCode != "authentication.invalid_credentials" || failed.AuthMethod != "password" {
+		t.Fatalf("failed login audit = %#v", failed)
+	}
+	if succeeded := outcomes[model.AuditStatusSuccess]; succeeded == nil || succeeded.ActorID != user.ID ||
+		!strings.Contains(string(succeeded.Result), first.Session.ID.String()) {
+		t.Fatalf("successful login audit = %#v", succeeded)
+	}
+	encodedLoginAudits, err := json.Marshal(loginAudits)
+	if err != nil || strings.Contains(string(encodedLoginAudits), password) || strings.Contains(string(encodedLoginAudits), "wrong password") {
+		t.Fatalf("login audit leaked a password or failed to encode: %v", err)
 	}
 
 	me := performJSONRequest(
