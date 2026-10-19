@@ -311,7 +311,10 @@ must reconcile that record into audit before the node serves traffic.
 The command also rejects the repair while any PostgreSQL-clocked serving-node
 lease is unexpired. Graceful shutdown withdraws its lease; after a crashed node,
 wait for the bounded lease to expire before retrying. Merely constructing this
-offline command never creates a serving lease.
+offline command never creates a serving lease. It also never migrates: like
+`administrator reset-mfa`, it refuses to run unless the database schema exactly
+matches this build, and tells the operator to run `proctor migrate status` and
+`proctor migrate up` first.
 
 MFA recovery has its own host command under those same stopped-node safeguards:
 

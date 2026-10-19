@@ -28,6 +28,19 @@ import (
 type options struct {
 	configPath    string
 	readyNotifier ReadyNotifier
+	// requireCurrentSchema makes construction refuse an out-of-date schema
+	// instead of migrating it; offline host commands must not converge
+	// schema as a side effect.
+	requireCurrentSchema bool
+}
+
+// withCurrentSchemaRequired constructs an inert graph that never applies
+// migrations and fails unless the database schema matches this build.
+func withCurrentSchemaRequired() Option {
+	return func(settings *options) error {
+		settings.requireCurrentSchema = true
+		return nil
+	}
 }
 
 var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after graceful shutdown")
@@ -377,7 +390,10 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, err := composeNode(ctx, compositionInput{configPath: settings.configPath, serviceEnvironment: environment})
+	result, err := composeNode(ctx, compositionInput{
+		configPath: settings.configPath, serviceEnvironment: environment,
+		requireCurrentSchema: settings.requireCurrentSchema,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}

@@ -205,7 +205,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 				timedReads.Add(1)
 			}
 		}),
-	})
+	}, schemaMigrate)
 	if err != nil {
 		t.Fatal(err)
 	}

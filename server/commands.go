@@ -25,9 +25,10 @@ const (
 
 // RecoverAdministratorAccess constructs an inert server graph, invokes its
 // host-only recovery capability, and closes every acquired resource without
-// ever starting workers, listeners, or transports.
+// ever starting workers, listeners, or transports. It never migrates and
+// refuses a schema that differs from this build.
 func RecoverAdministratorAccess(ctx context.Context, configPath string, command AdministratorRecoveryCommand) (_ *AdministratorRecoveryResult, resultErr error) {
-	var options []Option
+	options := []Option{withCurrentSchemaRequired()}
 	if configPath != "" {
 		options = append(options, WithConfigPath(configPath))
 	}

@@ -30,7 +30,7 @@ type AdministratorMFAResetResult struct {
 // ResetAdministratorMFA constructs and closes an inert graph without starting
 // workers or transports. Its named Store aggregate rejects live serving nodes.
 func ResetAdministratorMFA(ctx context.Context, configPath string, command AdministratorMFAResetCommand) (_ *AdministratorMFAResetResult, resultErr error) {
-	var options []Option
+	options := []Option{withCurrentSchemaRequired()}
 	if configPath != "" {
 		options = append(options, WithConfigPath(configPath))
 	}

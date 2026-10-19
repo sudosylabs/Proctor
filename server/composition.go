@@ -32,9 +32,12 @@ import (
 type compositionInput struct {
 	serviceEnvironment ServiceEnvironment
 	configPath         string
-	overrides          TestingOverrides
-	allowMissingJobs   bool
-	constructors       *consumerConstructors
+	// requireCurrentSchema replaces startup migration with a strict schema
+	// version check for offline host commands.
+	requireCurrentSchema bool
+	overrides            TestingOverrides
+	allowMissingJobs     bool
+	constructors         *consumerConstructors
 }
 
 var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is unavailable")
@@ -184,7 +187,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 		return nil, errors.New("invalid service environment")
 	}
 	// 1. Acquire and decorate infrastructure under one temporary owner.
-	infrastructure, err := openRuntimeInfrastructure(ctx, input.configPath, input.overrides)
+	infrastructure, err := openRuntimeInfrastructure(ctx, input.configPath, input.overrides, schemaPolicyFor(input.requireCurrentSchema))
 	if err != nil {
 		return nil, fmt.Errorf("acquire infrastructure: %w", err)
 	}

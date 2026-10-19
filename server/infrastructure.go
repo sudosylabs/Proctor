@@ -50,6 +50,45 @@ const (
 	storeLocalCacheMaxBytes   = 64 << 20
 )
 
+// schemaPolicy selects how construction treats the database schema.
+type schemaPolicy uint8
+
+const (
+	// schemaMigrate applies pending forward migrations, as normal serving does.
+	schemaMigrate schemaPolicy = iota
+	// schemaRequireCurrent refuses any schema that differs from this build.
+	schemaRequireCurrent
+)
+
+func schemaPolicyFor(requireCurrent bool) schemaPolicy {
+	if requireCurrent {
+		return schemaRequireCurrent
+	}
+	return schemaMigrate
+}
+
+type schemaPersistence interface {
+	ApplyPendingMigrations(context.Context) (sqlstore.MigrationResult, error)
+	ValidateSchema(context.Context) error
+}
+
+// prepareSchema converges or verifies the schema. A required-current check
+// never writes: it reports a behind or ahead schema and points the operator
+// at the explicit migrate command.
+func prepareSchema(ctx context.Context, persistence schemaPersistence, policy schemaPolicy) (*sqlstore.MigrationResult, error) {
+	if policy == schemaRequireCurrent {
+		if err := persistence.ValidateSchema(ctx); err != nil {
+			return nil, fmt.Errorf("database schema is not current; this command never migrates, so run `proctor migrate status` and `proctor migrate up` with every node stopped, then retry: %w", err)
+		}
+		return nil, nil
+	}
+	migration, err := persistence.ApplyPendingMigrations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("migrate database: %w", err)
+	}
+	return &migration, nil
+}
+
 // ownedInfrastructure is the sole owner of infrastructure while the root is
 // acquiring and decorating it. Ownership is transferred as one unit to the
 // Platform boundary; before then, release is the only cleanup path.
@@ -107,6 +146,7 @@ func openRuntimeInfrastructure(
 	ctx context.Context,
 	configPath string,
 	overrides TestingOverrides,
+	schema schemaPolicy,
 ) (result ownedInfrastructure, resultErr error) {
 	result = ownedInfrastructure{
 		configuration: overrides.Configuration,
@@ -154,14 +194,11 @@ func openRuntimeInfrastructure(
 		if err != nil {
 			return result, fmt.Errorf("open database: %w", err)
 		}
-		migration, err := persistence.ApplyPendingMigrations(ctx)
+		migration, err := prepareSchema(ctx, persistence, schema)
 		if err != nil {
-			return result, errors.Join(
-				fmt.Errorf("migrate database: %w", err),
-				persistence.Close(),
-			)
+			return result, errors.Join(err, persistence.Close())
 		}
-		result.migration = &migration
+		result.migration = migration
 		result.persistence = persistence
 	}
 	if err := checkAcquisitionContext(ctx, "acquire persistence"); err != nil {
