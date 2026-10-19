@@ -83,8 +83,11 @@ the [`exam-lifecycle` skill](../../exam-lifecycle/SKILL.md).
 The root HTTP-serving module owns the complete client-facing listener lifecycle
 behind one `Serve`/`Shutdown`/`Close` interface. Deployment selects `disabled`,
 `static`, or `lets_encrypt` TLS mode. Static mode loads an operator-provided
-certificate and private key. Let's Encrypt mode uses one exact DNS hostname
-from `Server.PublicURL`, accepts the ACME terms, and persists account and
+certificate and private key. Static certificates are re-read when the files change (checked at
+most every 30 seconds during handshakes) or on `SIGHUP`, keeping the last good
+pair when a replacement fails to load. Let's Encrypt mode uses one exact DNS
+hostname from `Server.PublicURL`, accepts the ACME terms only when the
+operator set `LetsEncrypt.AcceptTermsOfService`, and persists account and
 certificate material in a node-local directory that must be private and
 writable before readiness. Built-in TLS requires TLS 1.2 or newer and never
 reuses Memberlist key material. Automatic-certificate maintenance starts only

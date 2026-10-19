@@ -80,9 +80,13 @@ type ServerTLS struct {
 	HTTPListenAddress  string            `json:"HTTPListenAddress"`
 }
 
+// ServerLetsEncrypt configures ACME issuance. AcceptTermsOfService records
+// the operator's explicit agreement to the Let's Encrypt Subscriber Agreement;
+// lets_encrypt mode is invalid until it is true.
 type ServerLetsEncrypt struct {
-	Email          string `json:"Email"`
-	CacheDirectory string `json:"CacheDirectory"`
+	Email                string `json:"Email"`
+	CacheDirectory       string `json:"CacheDirectory"`
+	AcceptTermsOfService bool   `json:"AcceptTermsOfService"`
 }
 
 // Metrics configures the node-local Prometheus scrape listener. A listener
@@ -1525,6 +1529,9 @@ func validateServerTLS(server Server, cluster Cluster, add func(string, string))
 		}
 		if !settings.ForwardHTTPToHTTPS {
 			add("server.tls.forward_http_to_https", "must be enabled for Let's Encrypt HTTP-01 challenges")
+		}
+		if !settings.LetsEncrypt.AcceptTermsOfService {
+			add("server.tls.lets_encrypt.accept_terms_of_service", "must be true to accept the Let's Encrypt Subscriber Agreement")
 		}
 	default:
 		add("server.tls.mode", "must be disabled, static, or lets_encrypt")

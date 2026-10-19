@@ -22,7 +22,7 @@ func TestPlatformDoesNotExposeInfrastructureLookup(t *testing.T) {
 	t.Parallel()
 
 	allowed := map[string]bool{
-		"Start": true, "CheckDependencies": true, "Close": true,
+		"Start": true, "CheckDependencies": true, "ReloadConfiguration": true, "Close": true,
 	}
 	root := filepath.Join("..", "platform")
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {

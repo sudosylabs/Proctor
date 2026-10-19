@@ -312,6 +312,14 @@ func (s *Service) CheckDependencies(ctx context.Context) error {
 	return nil
 }
 
+// ReloadConfiguration re-reads the operator-owned configuration source and,
+// when it validates, notifies the dynamic listeners (logging and the external
+// provider registry). An invalid source leaves the current configuration in
+// force. Restart-required settings take effect only at the next start.
+func (s *Service) ReloadConfiguration(ctx context.Context) error {
+	return s.configStore.Reload(ctx)
+}
+
 func (s *Service) Close() error {
 	s.shutdownOnce.Do(func() {
 		s.configStore.RemoveListener(s.configListener)

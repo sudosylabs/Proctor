@@ -193,6 +193,7 @@ type httpTLSSettings struct {
 	certificateFile           string
 	privateKeyFile            string
 	letsEncryptEmail          string
+	letsEncryptAcceptTOS      bool
 	letsEncryptCacheDirectory string
 	letsEncryptHostname       string
 	forwardHTTPToHTTPS        bool
@@ -226,6 +227,7 @@ func runtimeSettingsFromConfig(settings config.Server) runtimeSettings {
 			certificateFile:           settings.TLS.CertificateFile,
 			privateKeyFile:            settings.TLS.PrivateKeyFile,
 			letsEncryptEmail:          settings.TLS.LetsEncrypt.Email,
+			letsEncryptAcceptTOS:      settings.TLS.LetsEncrypt.AcceptTermsOfService,
 			letsEncryptCacheDirectory: settings.TLS.LetsEncrypt.CacheDirectory,
 			letsEncryptHostname:       settings.LetsEncryptHostname(),
 			forwardHTTPToHTTPS:        settings.TLS.ForwardHTTPToHTTPS,
@@ -705,6 +707,33 @@ func (s *Server) Close() error {
 // Ready reports whether the server can currently accept traffic.
 func (s *Server) Ready() bool {
 	return s.components.readiness.Ready()
+}
+
+// Reload re-reads the operator-owned configuration file, notifying the
+// dynamically reconfigurable consumers, and reloads static TLS certificate
+// files for a serving node. Each step is independent: a failure keeps that
+// step's current state in force, is logged, and is returned joined. The host
+// process invokes Reload on SIGHUP.
+func (s *Server) Reload(ctx context.Context) error {
+	var result error
+	if reloader, ok := s.components.platform.(interface{ ReloadConfiguration(context.Context) error }); ok {
+		if err := reloader.ReloadConfiguration(ctx); err != nil {
+			result = errors.Join(result, fmt.Errorf("reload configuration: %w", err))
+			s.components.logger.ErrorContext(ctx, "configuration reload failed; keeping the current configuration", logging.Err(err))
+		} else {
+			s.components.logger.InfoContext(ctx, "configuration reloaded; restart-required settings apply at next start")
+		}
+	}
+	s.httpMu.Lock()
+	httpServer := s.http
+	s.httpMu.Unlock()
+	if reloader, ok := httpServer.(interface{ ReloadCertificates() error }); ok {
+		if err := reloader.ReloadCertificates(); err != nil {
+			result = errors.Join(result, fmt.Errorf("reload TLS certificates: %w", err))
+			s.components.logger.ErrorContext(ctx, "TLS certificate reload failed; keeping the current certificate", logging.Err(err))
+		}
+	}
+	return result
 }
 
 func (s *Server) shutdownHTTP(timeout time.Duration) error {

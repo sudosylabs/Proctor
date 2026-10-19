@@ -485,6 +485,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	boolEnvironmentOverride("PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS", func(cfg *Config) *bool {
 		return &cfg.Server.TLS.ForwardHTTPToHTTPS
 	}),
+	boolEnvironmentOverride("PROCTOR_SERVER_TLS_LETS_ENCRYPT_ACCEPT_TERMS_OF_SERVICE", func(cfg *Config) *bool {
+		return &cfg.Server.TLS.LetsEncrypt.AcceptTermsOfService
+	}),
 	intEnvironmentOverride("PROCTOR_DATABASE_MAX_OPEN_CONNECTIONS", func(cfg *Config) *int {
 		return &cfg.Database.MaxOpenConnections
 	}),

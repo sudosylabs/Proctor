@@ -40,7 +40,17 @@ type standardHTTPRuntime struct {
 	listen                         func(string, string) (net.Listener, error)
 	tls                            httpTLSSettings
 	newAutomaticCertificateManager func() automaticCertificateManager
+	certificate                    *staticCertificate
 	stopping                       atomic.Bool
+}
+
+// ReloadCertificates reloads the operator-managed static TLS key pair. It is a
+// no-op for disabled TLS and for Let's Encrypt, whose manager renews itself.
+func (r *standardHTTPRuntime) ReloadCertificates() error {
+	if r.certificate == nil {
+		return nil
+	}
+	return r.certificate.Reload()
 }
 
 func newHTTPServer(settings httpServerSettings) httpRuntime {
@@ -61,13 +71,17 @@ func newHTTPServer(settings httpServerSettings) httpRuntime {
 
 	switch settings.tls.mode {
 	case config.ServerTLSModeStatic:
-		runtime.primary.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		runtime.certificate = newStaticCertificate(settings.tls.certificateFile, settings.tls.privateKeyFile, func(err error) {
+			if settings.errorLog != nil {
+				settings.errorLog.Printf("static TLS certificate reload failed; keeping the previous certificate: %v", err)
+			}
+		})
+		runtime.primary.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: runtime.certificate.GetCertificate}
 		runtime.serve = func(listener net.Listener) error {
-			return runtime.primary.ServeTLS(
-				listener,
-				settings.tls.certificateFile,
-				settings.tls.privateKeyFile,
-			)
+			if err := runtime.certificate.Reload(); err != nil {
+				return err
+			}
+			return runtime.primary.ServeTLS(listener, "", "")
 		}
 	case config.ServerTLSModeLetsEncrypt:
 		runtime.newAutomaticCertificateManager = func() automaticCertificateManager {
@@ -203,11 +217,21 @@ func newAutomaticCertificateManager(settings httpTLSSettings) *ownedAutomaticCer
 		hostname: settings.letsEncryptHostname,
 		manager: &autocert.Manager{
 			Cache:      autocert.DirCache(settings.letsEncryptCacheDirectory),
-			Prompt:     autocert.AcceptTOS,
+			Prompt:     letsEncryptTermsPrompt(settings.letsEncryptAcceptTOS),
 			Email:      settings.letsEncryptEmail,
 			HostPolicy: autocert.HostWhitelist(settings.letsEncryptHostname),
 		},
 	}
+}
+
+// letsEncryptTermsPrompt accepts the ACME terms only when the operator
+// configured explicit acceptance; configuration validation already requires
+// it, so refusal here is defense in depth.
+func letsEncryptTermsPrompt(accepted bool) func(string) bool {
+	if accepted {
+		return autocert.AcceptTOS
+	}
+	return func(string) bool { return false }
 }
 
 func (m *ownedAutomaticCertificateManager) TLSConfig() *tls.Config {

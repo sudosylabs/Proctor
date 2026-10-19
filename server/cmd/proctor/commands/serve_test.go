@@ -9,8 +9,41 @@ package commands
 
 import (
 	"context"
+	"errors"
+	"os"
+	"syscall"
 	"testing"
+	"time"
 )
+
+func TestReloadSignalsRunOneBoundedReloadEachUntilCanceled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal)
+	reloads := make(chan bool)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		forwardReloadSignals(ctx, signals, func(reloadCtx context.Context) error {
+			_, bounded := reloadCtx.Deadline()
+			reloads <- bounded
+			return errors.New("invalid configuration")
+		})
+	}()
+	for range 2 {
+		signals <- syscall.SIGHUP
+		if bounded := <-reloads; !bounded {
+			t.Fatal("reload context has no deadline")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reload forwarding did not stop after cancellation")
+	}
+}
 
 func TestServeReceivesContextAndConfigPath(t *testing.T) {
 	t.Parallel()

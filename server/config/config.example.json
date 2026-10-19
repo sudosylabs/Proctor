@@ -10,7 +10,8 @@
       "PrivateKeyFile": "",
       "LetsEncrypt": {
         "Email": "",
-        "CacheDirectory": "./data/acme"
+        "CacheDirectory": "./data/acme",
+        "AcceptTermsOfService": false
       },
       "ForwardHTTPToHTTPS": false,
       "HTTPListenAddress": "127.0.0.1:8080"

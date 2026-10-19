@@ -10,6 +10,9 @@ package commands
 import (
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -45,5 +48,37 @@ func serve(ctx context.Context, configPath string) error {
 	if err != nil {
 		return err
 	}
+	reloadSignals := make(chan os.Signal, 1)
+	signal.Notify(reloadSignals, syscall.SIGHUP)
+	defer signal.Stop(reloadSignals)
+	reloadCtx, stopReloads := context.WithCancel(ctx)
+	reloadsDone := make(chan struct{})
+	go func() {
+		defer close(reloadsDone)
+		forwardReloadSignals(reloadCtx, reloadSignals, node.Reload)
+	}()
+	defer func() {
+		stopReloads()
+		<-reloadsDone
+	}()
 	return node.Run(ctx)
+}
+
+// reloadSignalTimeout bounds one SIGHUP-triggered reload.
+const reloadSignalTimeout = 30 * time.Second
+
+// forwardReloadSignals runs one bounded reload per received signal until ctx
+// ends. The server logs each reload outcome; a failed reload keeps the
+// running configuration and certificates in force.
+func forwardReloadSignals(ctx context.Context, signals <-chan os.Signal, reload func(context.Context) error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-signals:
+			reloadCtx, cancel := context.WithTimeout(ctx, reloadSignalTimeout)
+			_ = reload(reloadCtx)
+			cancel()
+		}
+	}
 }

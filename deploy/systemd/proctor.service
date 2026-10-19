@@ -13,6 +13,7 @@ WorkingDirectory=/opt/proctor
 EnvironmentFile=-/etc/proctor/proctor.env
 ExecStartPre=/opt/proctor/proctor config validate --config /etc/proctor/config.json
 ExecStart=/opt/proctor/proctor serve --config /etc/proctor/config.json
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=120s

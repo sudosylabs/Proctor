@@ -32,8 +32,13 @@ the service account. The runtime requires TLS 1.2 or newer. Optional HTTP
 forwarding binds a distinct listener and redirects to the configured public
 authority while preserving path and query.
 
-Rotate files as one coherent identity and restart. Validate the hostname,
-chain, expiry, key permissions, and client trust from the actual traffic path.
+Rotate files as one coherent identity; no restart is needed. A serving node
+checks both files for replacement at most every 30 seconds during TLS
+handshakes and reloads them immediately on `SIGHUP` (`systemctl reload
+proctor`). A replacement that does not parse as a matching pair is logged and
+the previous certificate stays in service, so write the new files and then
+signal, or replace them atomically. Validate the hostname, chain, expiry, key
+permissions, and client trust from the actual traffic path.
 
 ### Built-in Let's Encrypt
 
@@ -41,6 +46,9 @@ Mode `lets_encrypt` is a single-node convenience. It requires an HTTPS
 `PublicURL` with one fully qualified DNS hostname, persistent private writable
 cache, HTTP forwarding, public DNS, and certificate-authority reachability on
 ports 80 and 443. Certificate maintenance starts and stops with HTTP serving.
+Set `LetsEncrypt.AcceptTermsOfService` to `true` to record that you have read
+and accept the current Let's Encrypt Subscriber Agreement; the mode is rejected
+until you do.
 
 Let's Encrypt is rejected in Memberlist mode because its cache and issuance are
 node-local and uncoordinated.

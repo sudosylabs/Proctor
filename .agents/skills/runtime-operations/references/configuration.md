@@ -14,8 +14,8 @@ behavior.
 `Server.TLS.Mode` selects `disabled`, `static`, or `lets_encrypt`. Static mode
 requires `CertificateFile` and `PrivateKeyFile`. Let's Encrypt mode requires an
 HTTPS `PublicURL` with one fully qualified DNS hostname, a private local
-`LetsEncrypt.CacheDirectory`, and `ForwardHTTPToHTTPS`; `LetsEncrypt.Email` is
-optional. Forwarding binds `HTTPListenAddress`, which must differ from the main
+`LetsEncrypt.CacheDirectory`, `ForwardHTTPToHTTPS`, and an explicit
+`LetsEncrypt.AcceptTermsOfService: true`; `LetsEncrypt.Email` is optional. Forwarding binds `HTTPListenAddress`, which must differ from the main
 listener. Let's Encrypt is a single-node convenience and is invalid with the
 Memberlist backend; clustered production terminates public TLS at its load
 balancer. Static TLS remains valid in a cluster for an operator-managed
@@ -26,9 +26,11 @@ The corresponding environment overrides are
 `PROCTOR_SERVER_TLS_PRIVATE_KEY_FILE`,
 `PROCTOR_SERVER_TLS_LETS_ENCRYPT_EMAIL`,
 `PROCTOR_SERVER_TLS_LETS_ENCRYPT_CACHE_DIRECTORY`,
+`PROCTOR_SERVER_TLS_LETS_ENCRYPT_ACCEPT_TERMS_OF_SERVICE`,
 `PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS`, and
-`PROCTOR_SERVER_TLS_HTTP_LISTEN_ADDRESS`. TLS mode, listener, certificate, and
-forwarding changes require restart. HTTP certificates and Memberlist gossip
+`PROCTOR_SERVER_TLS_HTTP_LISTEN_ADDRESS`. TLS mode, listener, certificate path,
+and forwarding changes require restart; replaced static certificate files at
+the configured paths are reloaded without restart. HTTP certificates and Memberlist gossip
 keys are independent deployment capabilities and never substitute for one
 another.
 
@@ -145,8 +147,12 @@ each node for the admitted work plus normal runtime overhead. Each permit is
 held until synchronous processing returns, even when the caller cancels; a
 request cancellation cannot stop an Argon or codec call already in progress.
 
-Runtime reconfiguration is capability-specific. Logging and the external
-provider registry reconfigure dynamically; listener addresses, HTTP limits,
+Runtime reconfiguration is capability-specific. `SIGHUP` (systemd
+`ExecReload`) makes the serving node call `config.Store.Reload`: a source that
+fails decoding or validation is logged and the running configuration stays in
+force; a valid one notifies listeners. The same signal reloads static TLS
+certificate files. Logging and the external provider registry reconfigure
+dynamically; listener addresses, HTTP limits,
 cluster backend and node identity require restart. Structural validation and
 external connectivity diagnostics remain separate.
 

@@ -34,6 +34,7 @@ func TestServerTLSModesValidateCoherentDeploymentShapes(t *testing.T) {
 	letsEncrypt.Server.TLS.Mode = "lets_encrypt"
 	letsEncrypt.Server.TLS.LetsEncrypt.Email = "operator@example.edu"
 	letsEncrypt.Server.TLS.LetsEncrypt.CacheDirectory = "/var/lib/proctor/acme"
+	letsEncrypt.Server.TLS.LetsEncrypt.AcceptTermsOfService = true
 	letsEncrypt.Server.TLS.ForwardHTTPToHTTPS = true
 	letsEncrypt.Server.TLS.HTTPListenAddress = ":80"
 	if err := letsEncrypt.Validate(); err != nil {
@@ -80,6 +81,17 @@ func TestServerTLSValidationFailsClosed(t *testing.T) {
 				cfg.Server.TLS.Mode = "lets_encrypt"
 			},
 			fields: []string{"server.public_url", "server.tls.forward_http_to_https"},
+		},
+		{
+			name: "Let's Encrypt requires explicit terms acceptance",
+			configure: func(cfg *Config) {
+				cfg.Server.PublicURL = "https://proctor.example.edu"
+				cfg.Server.TLS.Mode = "lets_encrypt"
+				cfg.Server.TLS.LetsEncrypt.CacheDirectory = "/var/lib/proctor/acme"
+				cfg.Server.TLS.ForwardHTTPToHTTPS = true
+				cfg.Server.TLS.HTTPListenAddress = ":80"
+			},
+			fields: []string{"server.tls.lets_encrypt.accept_terms_of_service"},
 		},
 		{
 			name: "Let's Encrypt is not cluster coordinated",

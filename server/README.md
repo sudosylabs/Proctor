@@ -434,7 +434,9 @@ TOTP purpose; MFA, mail, Memberlist, and TLS keys are never interchangeable.
   setting when a production load balancer terminates public TLS; `PublicURL`
   remains the external HTTPS URL.
 - `static` serves HTTPS with operator-provided `CertificateFile` and
-  `PrivateKeyFile` paths.
+  `PrivateKeyFile` paths. A serving node picks up replaced files within 30
+  seconds, or immediately on `SIGHUP`; an unparsable replacement is logged and
+  the previous certificate stays in service.
 - `lets_encrypt` retrieves and renews a certificate for the single exact DNS
   hostname in `PublicURL` and keeps its account and certificate material in the
   node-local `LetsEncrypt.CacheDirectory`.
@@ -451,7 +453,8 @@ Static TLS with port 80 forwarding can be configured as follows:
     "PrivateKeyFile": "/etc/proctor/tls/private-key.pem",
     "LetsEncrypt": {
       "Email": "",
-      "CacheDirectory": "/var/lib/proctor/acme"
+      "CacheDirectory": "/var/lib/proctor/acme",
+      "AcceptTermsOfService": false
     },
     "ForwardHTTPToHTTPS": true,
     "HTTPListenAddress": ":80"
@@ -468,14 +471,17 @@ For automatic single-node certificates, change the TLS block to:
   "PrivateKeyFile": "",
   "LetsEncrypt": {
     "Email": "operator@example.edu",
-    "CacheDirectory": "/var/lib/proctor/acme"
+    "CacheDirectory": "/var/lib/proctor/acme",
+    "AcceptTermsOfService": true
   },
   "ForwardHTTPToHTTPS": true,
   "HTTPListenAddress": ":80"
 }
 ```
 
-The public DNS record must resolve to this server and ports 80 and 443 must be
+`AcceptTermsOfService` must be `true`: it records the operator's explicit
+acceptance of the current Let's Encrypt Subscriber Agreement, which Proctor
+never accepts implicitly. The public DNS record must resolve to this server and ports 80 and 443 must be
 reachable by the certificate authority. Binding those privileged ports may
 require an operating-system capability or a supervisor that grants them. The
 cache directory is created with mode `0700`; startup rejects an existing cache
