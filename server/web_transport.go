@@ -22,20 +22,27 @@ type rootHTTPTransport struct {
 	owned  runtimeTransport
 	api    http.Handler
 	webapp http.Handler
+	// strictTransportSecurity is the HSTS header value applied to every
+	// response, or empty when this listener does not terminate TLS.
+	strictTransportSecurity string
 }
 
 func newRootHTTPTransport(
 	owned runtimeTransport,
 	api http.Handler,
 	webapp http.Handler,
+	strictTransportSecurity string,
 ) (runtimeTransport, error) {
 	if owned == nil || api == nil || webapp == nil {
 		return nil, errors.New("API lifecycle, API handler, and webapp handler are required")
 	}
-	return &rootHTTPTransport{owned: owned, api: api, webapp: webapp}, nil
+	return &rootHTTPTransport{owned: owned, api: api, webapp: webapp, strictTransportSecurity: strictTransportSecurity}, nil
 }
 
 func (t *rootHTTPTransport) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if t.strictTransportSecurity != "" {
+		writer.Header().Set("Strict-Transport-Security", t.strictTransportSecurity)
+	}
 	if webui.HandlesPath(request.URL.Path) {
 		t.webapp.ServeHTTP(writer, request)
 		return

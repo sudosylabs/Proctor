@@ -14,7 +14,8 @@
         "AcceptTermsOfService": false
       },
       "ForwardHTTPToHTTPS": false,
-      "HTTPListenAddress": "127.0.0.1:8080"
+      "HTTPListenAddress": "127.0.0.1:8080",
+      "StrictTransportSecurityMaxAge": "8760h"
     },
     "ReadHeaderTimeout": "10s",
     "ReadTimeout": "30s",

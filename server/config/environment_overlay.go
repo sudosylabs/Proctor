@@ -308,6 +308,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringListEnvironmentOverride("PROCTOR_SERVER_TRUSTED_PROXIES", func(cfg *Config) *[]string {
 		return &cfg.Server.TrustedProxies
 	}),
+	durationEnvironmentOverride("PROCTOR_SERVER_TLS_STRICT_TRANSPORT_SECURITY_MAX_AGE", func(cfg *Config) *Duration {
+		return &cfg.Server.TLS.StrictTransportSecurityMaxAge
+	}),
 	durationEnvironmentOverride("PROCTOR_SERVER_READ_HEADER_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Server.ReadHeaderTimeout
 	}),

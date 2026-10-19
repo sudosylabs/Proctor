@@ -40,7 +40,7 @@ func TestRootHTTPTransportDispatchesWithoutCrossFallback(t *testing.T) {
 	owned := &routingTransport{routingHandler: routingHandler{name: "owned"}}
 	api := &routingHandler{name: "api"}
 	webapp := &routingHandler{name: "webapp"}
-	transport, err := newRootHTTPTransport(owned, api, webapp)
+	transport, err := newRootHTTPTransport(owned, api, webapp, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +73,37 @@ func TestRootHTTPTransportRetainsOnlyOwnedLifecycle(t *testing.T) {
 	t.Parallel()
 	closeErr := errors.New("close failed")
 	owned := &routingTransport{closeErr: closeErr}
-	transport, err := newRootHTTPTransport(owned, http.NotFoundHandler(), http.NotFoundHandler())
+	transport, err := newRootHTTPTransport(owned, http.NotFoundHandler(), http.NotFoundHandler(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := transport.Close(); !errors.Is(err, closeErr) || owned.closed != 1 {
 		t.Fatalf("Close() = %v, closes=%d", err, owned.closed)
+	}
+}
+
+func TestRootHTTPTransportAppliesStrictTransportSecurityToEveryResponse(t *testing.T) {
+	t.Parallel()
+	owned := &routingTransport{}
+	transport, err := newRootHTTPTransport(owned, &routingHandler{name: "api"}, &routingHandler{name: "webapp"}, "max-age=31536000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/v1/discovery", "/login", "/missing"} {
+		response := httptest.NewRecorder()
+		transport.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+		if got := response.Header().Get("Strict-Transport-Security"); got != "max-age=31536000" {
+			t.Fatalf("GET %s Strict-Transport-Security = %q", path, got)
+		}
+	}
+
+	plain, err := newRootHTTPTransport(owned, &routingHandler{name: "api"}, &routingHandler{name: "webapp"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	plain.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/login", nil))
+	if got := response.Header().Values("Strict-Transport-Security"); len(got) != 0 {
+		t.Fatalf("plain HTTP Strict-Transport-Security = %q", got)
 	}
 }

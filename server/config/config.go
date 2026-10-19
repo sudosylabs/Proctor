@@ -82,6 +82,9 @@ type ServerTLS struct {
 	LetsEncrypt        ServerLetsEncrypt `json:"LetsEncrypt"`
 	ForwardHTTPToHTTPS bool              `json:"ForwardHTTPToHTTPS"`
 	HTTPListenAddress  string            `json:"HTTPListenAddress"`
+	// StrictTransportSecurityMaxAge is the HSTS max-age sent on every
+	// response while this listener terminates TLS. Zero disables HSTS.
+	StrictTransportSecurityMaxAge Duration `json:"StrictTransportSecurityMaxAge"`
 }
 
 // ServerLetsEncrypt configures ACME issuance. AcceptTermsOfService records
@@ -357,8 +360,9 @@ func Default() Config {
 			PublicURL:       "http://localhost:8065",
 			WebappDirectory: "./webapp/dist",
 			TLS: ServerTLS{
-				Mode:              ServerTLSModeDisabled,
-				HTTPListenAddress: "127.0.0.1:8080",
+				Mode:                          ServerTLSModeDisabled,
+				HTTPListenAddress:             "127.0.0.1:8080",
+				StrictTransportSecurityMaxAge: Duration{Duration: 365 * 24 * time.Hour},
 				LetsEncrypt: ServerLetsEncrypt{
 					CacheDirectory: "./data/acme",
 				},
@@ -1516,6 +1520,22 @@ func validatePublicURL(raw string, add func(string, string)) {
 	}
 }
 
+// maximumStrictTransportSecurityMaxAge bounds HSTS to two years so a
+// mistaken value cannot pin browsers to HTTPS indefinitely.
+const maximumStrictTransportSecurityMaxAge = 2 * 365 * 24 * time.Hour
+
+// StrictTransportSecurity returns the Strict-Transport-Security header value
+// for responses served by this listener, or empty when the listener does not
+// terminate TLS or HSTS is disabled. A reverse proxy that terminates TLS owns
+// HSTS for its own origin.
+func (s Server) StrictTransportSecurity() string {
+	maxAge := s.TLS.StrictTransportSecurityMaxAge.Duration
+	if s.TLS.Mode == ServerTLSModeDisabled || maxAge <= 0 {
+		return ""
+	}
+	return "max-age=" + strconv.FormatInt(int64(maxAge/time.Second), 10)
+}
+
 func validateServerTLS(server Server, cluster Cluster, add func(string, string)) {
 	settings := server.TLS
 	parsedPublicURL, _ := url.Parse(server.PublicURL)
@@ -1531,6 +1551,9 @@ func validateServerTLS(server Server, cluster Cluster, add func(string, string))
 		if strings.ContainsRune(item.value, '\x00') {
 			add(item.field, "contains a null byte")
 		}
+	}
+	if maxAge := settings.StrictTransportSecurityMaxAge.Duration; maxAge < 0 || maxAge > maximumStrictTransportSecurityMaxAge || maxAge%time.Second != 0 {
+		add("server.tls.strict_transport_security_max_age", "must be whole seconds between 0 and 17520h")
 	}
 	if settings.LetsEncrypt.Email != "" && !validMailbox(settings.LetsEncrypt.Email) {
 		add("server.tls.lets_encrypt.email", "must be a plain email address")

@@ -366,7 +366,7 @@ func composeConsumers(
 			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
 		)
 	}
-	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler)
+	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler, snapshot.Server.StrictTransportSecurity())
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("compose HTTP transports: %w", err),

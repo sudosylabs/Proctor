@@ -61,6 +61,15 @@ until you do.
 Let's Encrypt is rejected in Memberlist mode because its cache and issuance are
 node-local and uncoordinated.
 
+### HTTP Strict Transport Security
+
+With `static` or `lets_encrypt`, every response carries
+`Strict-Transport-Security` with the max-age from
+`Server.TLS.StrictTransportSecurityMaxAge` (default 365 days; `0` disables it).
+Browsers then refuse plain HTTP to the public host for that period, so lower
+it before first enabling TLS if the host might return to HTTP. In `disabled`
+mode the header is not sent; configure HSTS on the terminating proxy.
+
 ## Keep Other TLS Boundaries Separate
 
 - a non-loopback metrics listener requires its own static TLS identity and

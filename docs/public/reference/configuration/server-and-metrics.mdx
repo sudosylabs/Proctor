@@ -56,6 +56,7 @@ ignores the `Forwarded` header.
 | `Server.TLS.LetsEncrypt.AcceptTermsOfService`<br />Default: `false` | Explicit acceptance of the Let's Encrypt Subscriber Agreement. Must be `true` for `lets_encrypt`; Proctor never accepts the terms on the operator's behalf. |
 | `Server.TLS.ForwardHTTPToHTTPS`<br />Default: `false` | Starts the companion HTTP listener for ACME HTTP-01 and HTTPS redirects. It requires TLS to be enabled. Let's Encrypt requires this value to be `true`. |
 | `Server.TLS.HTTPListenAddress`<br />Default: `127.0.0.1:8080` | Companion HTTP address. Must use port `1`–`65535` and differ from `Server.ListenAddress` when forwarding is enabled. |
+| `Server.TLS.StrictTransportSecurityMaxAge`<br />Default: `8760h` (365 days) | `Strict-Transport-Security` max-age sent on every response while built-in TLS is enabled. Must be whole seconds from `0` to `17520h`; `0` disables HSTS. The header is never sent in `disabled` mode, where a TLS-terminating proxy owns HSTS. |
 
 Let's Encrypt is intentionally single-node: it cannot be combined with the
 Memberlist cluster backend. Its `PublicURL` host must be a lower-case ASCII
