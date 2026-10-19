@@ -81,9 +81,10 @@ and leaves a pending durable security record before normal service resumes.
 Every application node must be stopped while the command runs. Every backend,
 including the single-node local backend, commits and renews a short-lived
 PostgreSQL-clocked serving lease before workers or listeners start. Recovery
-shares the lease mutation fence and refuses to run while any lease remains
-unexpired; after an ungraceful node loss the operator must wait for that lease
-to expire. A renewal failure makes the node unready and force-stops serving
+holds the lease mutation fence exclusively (node lease writes hold it shared)
+and refuses to run while any lease remains unexpired; after an ungraceful node
+loss the operator must wait for that lease to expire. A renewal failure that
+outlasts the bounded retry slack makes the node unready and force-stops serving
 before its last lease can expire; that failed lease is not withdrawn early and
 expires naturally as an additional fail-safe. Constructing the inert recovery
 graph creates no lease.

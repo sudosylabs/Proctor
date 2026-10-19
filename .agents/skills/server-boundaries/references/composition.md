@@ -28,9 +28,13 @@ WebSocket, listener ownership, and HTTP serving before publishing readiness.
 Server records those stages privately: cancellation or failure before HTTP
 accepts the listener closes the Server-owned listener. Normal shutdown makes a
 running node unready and drains HTTP before Jobs, WebSocket, the HTTP transport,
-the exact serving lease, and Platform are disposed. A serving-lease renewal
-failure instead makes the node unready and force-stops HTTP before its last
-lease can expire. That failed lease remains until PostgreSQL expiry so offline
+the exact serving lease, and Platform are disposed. The 30-second lease renews
+every 5 seconds; a transient renewal failure is retried each second while one
+bounded attempt still fits at least 5 seconds before the last proven lease
+expires. A rejected incarnation or exhausted slack instead makes the node
+unready and force-stops HTTP before its last lease can expire. Lease writes
+share the recovery fence and serialize only per node ID, so nodes never queue
+behind one another's renewals. That failed lease remains until PostgreSQL expiry so offline
 recovery cannot begin early; exact-incarnation withdrawal applies only to
 normal shutdown. Every constructed owner is disposed exactly once, including on
 close-before-start; only successfully entered active stages require runtime

@@ -835,3 +835,14 @@ func (s *examAttemptStore) UpdateSecurityCoverage(ctx context.Context, input *st
 		return s.ExamAttemptStore.UpdateSecurityCoverage(ctx, input)
 	})
 }
+
+// Upsert is idempotent for one incarnation claim: replay after a rolled-back
+// transient failure re-extends the same lease or reports its terminal conflict.
+func (s *servingNodeLeaseStore) Upsert(ctx context.Context, claim *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	return retryCall1(ctx, s.layer, func() (*store.ServingNodeLease, error) { return s.ServingNodeLeaseStore.Upsert(ctx, claim) })
+}
+
+// Delete withdraws only the exact incarnation, so replay is idempotent.
+func (s *servingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID string) error {
+	return retryCall0(ctx, s.layer, func() error { return s.ServingNodeLeaseStore.Delete(ctx, nodeID, leaseID) })
+}

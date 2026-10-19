@@ -19,7 +19,14 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// servingNodeLeaseFenceKey fences offline administrator recovery against
+// every serving node. Recovery holds it exclusively; node lease writes hold it
+// shared so they exclude recovery without serializing one another.
 const servingNodeLeaseFenceKey = "administrator_recovery:serving_nodes"
+
+// servingNodeLeaseNodeKeyPrefix scopes the per-node advisory key that
+// serializes competing incarnations claiming the same node ID.
+const servingNodeLeaseNodeKeyPrefix = "serving_node_lease:"
 
 type SQLServingNodeLeaseStore struct{ *SQLStore }
 
@@ -43,7 +50,7 @@ func (s SQLServingNodeLeaseStore) Upsert(ctx context.Context, claim *store.Servi
 		return nil, store.NewErrInvalidInput("serving_node_lease", "upsert", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "upsert serving node lease", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ServingNodeLease, error) {
-		if err := lockServingNodeLeaseFence(ctx, tx); err != nil {
+		if err := lockServingNodeLease(ctx, tx, nodeID); err != nil {
 			return nil, err
 		}
 		var databaseAt time.Time
@@ -81,7 +88,7 @@ func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID st
 		return store.NewErrInvalidInput("serving_node_lease", "node_id", nil)
 	}
 	_, err := runSQLTransaction(ctx, s.GetMaster().Begin, "delete serving node lease", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
-		if err := lockServingNodeLeaseFence(ctx, tx); err != nil {
+		if err := lockServingNodeLease(ctx, tx, nodeID); err != nil {
 			return struct{}{}, err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM serving_node_leases WHERE node_id=$1 AND lease_id=$2`, nodeID, leaseID); err != nil {
@@ -92,6 +99,19 @@ func (s SQLServingNodeLeaseStore) Delete(ctx context.Context, nodeID, leaseID st
 	return err
 }
 
+// lockServingNodeLease admits one node's lease write: it shares the recovery
+// fence with other nodes and exclusively serializes only the same node ID.
+func lockServingNodeLease(ctx context.Context, tx *sqlxTxWrapper, nodeID string) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))`, servingNodeLeaseFenceKey); err != nil {
+		return fmt.Errorf("lock serving node lease fence: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, servingNodeLeaseNodeKeyPrefix+nodeID); err != nil {
+		return fmt.Errorf("lock serving node lease: %w", err)
+	}
+	return nil
+}
+
+// lockServingNodeLeaseFence exclusively fences every serving node lease write.
 func lockServingNodeLeaseFence(ctx context.Context, tx *sqlxTxWrapper) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, servingNodeLeaseFenceKey); err != nil {
 		return fmt.Errorf("lock serving node lease fence: %w", err)

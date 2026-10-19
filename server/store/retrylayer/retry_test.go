@@ -814,3 +814,58 @@ func (s *examAuthoringStub) UpdateDraftNativePolicy(context.Context, *store.Exam
 	s.focusAttempts++
 	return nil, s.err
 }
+
+type servingNodeLeaseRetryStub struct {
+	store.ServingNodeLeaseStore
+	upsertAttempts int
+	deleteAttempts int
+	err            error
+	failures       int
+}
+
+func (s *servingNodeLeaseRetryStub) Upsert(_ context.Context, claim *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
+	s.upsertAttempts++
+	if s.upsertAttempts <= s.failures {
+		return nil, s.err
+	}
+	return &store.ServingNodeLease{NodeID: claim.NodeID, LeaseID: claim.LeaseID}, nil
+}
+
+func (s *servingNodeLeaseRetryStub) Delete(context.Context, string, string) error {
+	s.deleteAttempts++
+	if s.deleteAttempts <= s.failures {
+		return s.err
+	}
+	return nil
+}
+
+type servingNodeLeaseRootStub struct {
+	store.Store
+	lease store.ServingNodeLeaseStore
+}
+
+func (s *servingNodeLeaseRootStub) ServingNodeLease() store.ServingNodeLeaseStore { return s.lease }
+
+func TestRetryServingNodeLeaseIncarnationWritesAreIdempotent(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("serialization failure")
+	stub := &servingNodeLeaseRetryStub{err: transientErr, failures: 2}
+	layer, err := retrylayer.New(&servingNodeLeaseRootStub{lease: stub}, retrylayer.Policy{
+		MaxAttempts:    3,
+		InitialBackoff: time.Nanosecond,
+		MaxBackoff:     time.Nanosecond,
+		IsTransient:    func(err error) bool { return errors.Is(err, transientErr) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseID := model.NewId()
+	lease, err := layer.ServingNodeLease().Upsert(context.Background(), &store.ServingNodeLeaseClaim{NodeID: "node-a", LeaseID: leaseID, Lifetime: 30 * time.Second})
+	if err != nil || lease == nil || lease.LeaseID != leaseID || stub.upsertAttempts != 3 {
+		t.Fatalf("Upsert() = %#v, %v after %d attempts, want the lease after 3", lease, err, stub.upsertAttempts)
+	}
+	if err := layer.ServingNodeLease().Delete(context.Background(), "node-a", leaseID); err != nil || stub.deleteAttempts != 3 {
+		t.Fatalf("Delete() = %v after %d attempts, want success after 3", err, stub.deleteAttempts)
+	}
+}
