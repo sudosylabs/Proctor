@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -38,9 +37,14 @@ func invalidAttemptWorkspaceContent(cause error) error {
 	return &AttemptWorkspaceInvalidContentError{cause: cause}
 }
 
-// StageAttemptWorkspaceObject streams one bounded private file to a new exact
-// opaque identity. It does not make the object authoritative or discoverable;
-// PostgreSQL publication remains a separate fenced mutation.
+// StageAttemptWorkspaceObject streams one bounded private file of exactly
+// declaredSize bytes to a new exact opaque identity while hashing it. The
+// bytes never touch a local spool: candidate answers reach only the VFS. A
+// body whose length differs from declaredSize fails the write or is removed
+// before an error is returned. The object is not authoritative or
+// discoverable; PostgreSQL publication remains a separate fenced mutation,
+// and a caller that rejects the returned digest reclaims the reserved
+// identity.
 func (c *Content) StageAttemptWorkspaceObject(ctx context.Context, objectID model.AttemptWorkspaceObjectID,
 	body io.Reader, declaredSize int64, mediaType string,
 ) (*model.AttemptWorkspaceContent, error) {
@@ -48,57 +52,69 @@ func (c *Content) StageAttemptWorkspaceObject(ctx context.Context, objectID mode
 	if c == nil || c.filesystem == nil {
 		return nil, errors.New("Attempt Workspace content dependency is unavailable")
 	}
-	if !objectID.IsValid() || body == nil || declaredSize < -1 ||
+	if !objectID.IsValid() || body == nil || declaredSize < 0 ||
 		declaredSize > model.AttemptWorkspaceMaximumFileBytes || mediaType == "" || len(mediaType) > 255 {
 		return nil, invalidAttemptWorkspaceContent(errors.New("invalid metadata"))
 	}
-	spool, err := os.CreateTemp("", "proctor-attempt-workspace-*")
-	if err != nil {
-		return nil, sanitize("create Attempt Workspace spool", err)
-	}
-	spoolPath := spool.Name()
-	defer func() {
-		_ = spool.Close()
-		_ = os.Remove(spoolPath)
-	}()
-	hash := sha256.New()
-	limited := &io.LimitedReader{R: body, N: model.AttemptWorkspaceMaximumFileBytes + 1}
-	size, err := io.CopyBuffer(io.MultiWriter(spool, hash), limited, make([]byte, 32<<10))
-	if err != nil || size > model.AttemptWorkspaceMaximumFileBytes || limited.N == 0 || declaredSize >= 0 && size != declaredSize {
-		return nil, invalidAttemptWorkspaceContent(errors.New("content size mismatch"))
-	}
-	content := &model.AttemptWorkspaceContent{MediaType: mediaType, SizeBytes: size,
-		SHA256: fmt.Sprintf("%x", hash.Sum(nil))}
-	if err = content.Validate(); err != nil {
-		return nil, invalidAttemptWorkspaceContent(err)
+	stream := newExactSizeReader(body, declaredSize)
+	content := func() (*model.AttemptWorkspaceContent, error) {
+		if err := stream.finish(); err != nil {
+			return nil, invalidAttemptWorkspaceContent(err)
+		}
+		staged := &model.AttemptWorkspaceContent{MediaType: mediaType, SizeBytes: declaredSize, SHA256: stream.checksum()}
+		if err := staged.Validate(); err != nil {
+			return nil, invalidAttemptWorkspaceContent(err)
+		}
+		return staged, nil
 	}
 	key := attemptWorkspaceObjectKey(objectID)
 	conditional := c.filesystem.Capabilities().ConditionalWrite
 	if !conditional {
-		matching, openErr := c.openMatchingAttemptWorkspaceObject(ctx, objectID, content.SizeBytes, content.SHA256)
+		// Without conditional writes, an existing object is compared with
+		// the incoming bytes instead of being overwritten.
+		_, statErr := c.filesystem.Stat(ctx, key)
 		switch {
-		case openErr == nil && matching:
-			return content, nil
-		case openErr == nil:
-			return nil, sanitize("stage Attempt Workspace object", vfspkg.ErrConflict)
-		case !errors.Is(openErr, vfspkg.ErrNotFound):
-			return nil, sanitize("stage Attempt Workspace object", openErr)
+		case statErr == nil:
+			staged, err := content()
+			if err != nil {
+				return nil, err
+			}
+			matching, openErr := c.openMatchingAttemptWorkspaceObject(ctx, objectID, staged.SizeBytes, staged.SHA256)
+			switch {
+			case openErr != nil:
+				return nil, sanitize("stage Attempt Workspace object", openErr)
+			case !matching:
+				return nil, sanitize("stage Attempt Workspace object", vfspkg.ErrConflict)
+			}
+			return staged, nil
+		case !errors.Is(statErr, vfspkg.ErrNotFound):
+			return nil, sanitize("stage Attempt Workspace object", statErr)
 		}
 	}
-	if _, err = spool.Seek(0, io.SeekStart); err != nil {
-		return nil, sanitize("rewind Attempt Workspace spool", err)
-	}
-	info, err := c.filesystem.Write(ctx, key, spool, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditional})
-	if err != nil {
-		if matching, verifyErr := c.openMatchingAttemptWorkspaceObject(ctx, objectID, content.SizeBytes, content.SHA256); verifyErr == nil && matching {
-			return content, nil
+	size := declaredSize
+	info, writeErr := c.filesystem.Write(ctx, key, stream, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditional})
+	staged, contentErr := content()
+	if contentErr != nil {
+		// An object already present under a conditional write belongs to an
+		// earlier stage and is left untouched.
+		occupied := errors.Is(writeErr, vfspkg.ErrAlreadyExists) || errors.Is(writeErr, vfspkg.ErrConflict)
+		if !occupied {
+			if removeErr := c.filesystem.Remove(ctx, key, vfspkg.RemoveOptions{}); removeErr != nil && !errors.Is(removeErr, vfspkg.ErrNotFound) {
+				return nil, errors.Join(contentErr, sanitize("remove invalid Attempt Workspace object", removeErr))
+			}
 		}
-		return nil, sanitize("stage Attempt Workspace object", err)
+		return nil, contentErr
+	}
+	if writeErr != nil {
+		if matching, verifyErr := c.openMatchingAttemptWorkspaceObject(ctx, objectID, staged.SizeBytes, staged.SHA256); verifyErr == nil && matching {
+			return staged, nil
+		}
+		return nil, sanitize("stage Attempt Workspace object", writeErr)
 	}
 	if info.Size != size {
 		return nil, sanitize("stage Attempt Workspace object", errors.New("backend size mismatch"))
 	}
-	return content, nil
+	return staged, nil
 }
 
 func (c *Content) openMatchingAttemptWorkspaceObject(ctx context.Context, objectID model.AttemptWorkspaceObjectID,

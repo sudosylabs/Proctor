@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -72,15 +71,13 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 		return model.FileRendition{}, err
 	}
 
-	spool, err := os.CreateTemp("", "proctor-exam-resource-*")
+	// Validation needs random access, so the body is spooled to an
+	// already-unlinked private file that a crash cannot leave behind.
+	spool, releaseSpool, err := createUnlinkedSpool("proctor-exam-resource-*")
 	if err != nil {
 		return model.FileRendition{}, sanitize("create exam resource spool", err)
 	}
-	spoolPath := spool.Name()
-	defer func() {
-		_ = spool.Close()
-		_ = os.Remove(spoolPath)
-	}()
+	defer releaseSpool()
 
 	digest := sha256.New()
 	limited := io.LimitReader(workReader{ctx: ctx, reader: body}, declaredSize+1)

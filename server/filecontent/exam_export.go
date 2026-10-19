@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
@@ -99,11 +98,11 @@ func (c *Content) BuildExamExport(ctx context.Context, input app.ExamExportArchi
 		return nil, err
 	}
 	defer release()
-	spool, err := os.CreateTemp("", "proctor-exam-export-*")
+	spool, releaseSpool, err := createUnlinkedSpool("proctor-exam-export-*")
 	if err != nil {
 		return nil, sanitize("create Exam export spool", err)
 	}
-	defer func() { _ = spool.Close(); _ = os.Remove(spool.Name()) }()
+	defer releaseSpool()
 	bounded := &examExportBoundedWriter{writer: spool, remaining: model.ExamExportMaximumArchiveBytes}
 	archive := zip.NewWriter(bounded)
 	manifest := examExportManifestV1{SchemaVersion: 1, ExportID: input.ExportID, Entries: make([]examExportManifestEntryV1, 0, len(input.Files)+2)}

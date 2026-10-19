@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -573,4 +574,21 @@ func testExamResourceAttachmentPDF(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func TestExamResourceContentSpoolHasNoNameDuringProcessing(t *testing.T) {
+	privateTemp := t.TempDir()
+	t.Setenv("TMPDIR", privateTemp)
+	observer := &tempDirectoryObserverVFS{FileSystem: memoryvfs.New(), directory: privateTemp}
+	content, err := New(observer, Policy{MaximumConcurrentOperations: 2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText,
+		strings.NewReader("notes"), 5, time.Now().UTC()); err != nil {
+		t.Fatalf("StoreExamResource() error = %v", err)
+	}
+	if runtime.GOOS != "windows" && len(observer.observed) != 0 {
+		t.Fatalf("spool was reachable by name while open: %v", observer.observed)
+	}
 }

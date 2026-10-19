@@ -342,7 +342,9 @@ protected in-application reads only—no public URL, download/export, print,
 local-folder, external-open, or drag-out capability.
 
 Resource processing reads at most the declared byte size plus one excess byte
-into its private spool before rejecting a size mismatch. Validation preserves
+into its private spool before rejecting a size mismatch. Resource and export
+spools are 0600 temporary files unlinked as soon as they are created, so only
+the open descriptor reaches the bytes and a crash cannot leave them behind. Validation preserves
 exact authored bytes. JSON Resources contain one complete JSON value and permit
 duplicate object keys, arbitrary numeric precision, and escaped unpaired Unicode
 surrogates; raw invalid UTF-8 and NUL remain rejected. JSON syntax validation
@@ -403,6 +405,13 @@ pretend that S3 or another object backend has directory objects. Traversal,
 symbolic and hard links, devices, sockets, and candidate writes beneath
 `.proctor/` are excluded. Opaque VFS object keys never encode a Workspace Path,
 so rename and subtree move change metadata rather than storage layout.
+
+Candidate bytes never touch a local spool. Staging streams exactly the
+declared size to the VFS while hashing it; a body that ends early or continues
+past that size fails the write, and an object already written with the wrong
+length is removed before the error returns. The application compares the
+returned digest with the declared SHA-256 and reclaims the reserved object
+identity on mismatch.
 
 A workspace file has one current mutable content state. Workspace Content
 Version is an opaque optimistic comparison token, not a retained File Revision.

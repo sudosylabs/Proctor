@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -50,7 +51,7 @@ func TestAttemptWorkspaceContentNonConditionalStageReplaysExactBytesAndRejectsMi
 	}
 }
 
-func TestAttemptWorkspaceContentUsesBoundedPrivateSpoolAndCleansEveryOutcome(t *testing.T) {
+func TestAttemptWorkspaceContentStreamsBoundedReadsAndLeavesNoSpool(t *testing.T) {
 	temp := t.TempDir()
 	t.Setenv("TMPDIR", temp)
 	for _, test := range []struct {
@@ -191,6 +192,73 @@ func TestAttemptWorkspaceContentRejectsSizeMismatchAndRemovesExactly(t *testing.
 				t.Fatalf("retained object: %v", openErr)
 			} else {
 				_ = opened.Close()
+			}
+		})
+	}
+}
+
+// tempDirectoryObserverVFS records the named entries of a temporary
+// directory while a backend write is in progress.
+type tempDirectoryObserverVFS struct {
+	vfspkg.FileSystem
+	directory string
+	observed  []string
+}
+
+func (f *tempDirectoryObserverVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+	entries, err := os.ReadDir(f.directory)
+	if err != nil {
+		return vfspkg.Info{}, err
+	}
+	for _, entry := range entries {
+		f.observed = append(f.observed, entry.Name())
+	}
+	return f.FileSystem.Write(ctx, path, body, options)
+}
+
+func TestAttemptWorkspaceContentNeverSpoolsCandidateBytesToLocalDisk(t *testing.T) {
+	temp := t.TempDir()
+	t.Setenv("TMPDIR", temp)
+	for _, conditional := range []bool{true, false} {
+		var filesystem vfspkg.FileSystem = memoryvfs.New()
+		if !conditional {
+			filesystem = &examResourceNonConditionalVFS{FileSystem: filesystem}
+		}
+		observer := &tempDirectoryObserverVFS{FileSystem: filesystem, directory: temp}
+		content, err := New(observer, Policy{MaximumConcurrentOperations: 2}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		answer := strings.Repeat("candidate answer\n", 4096)
+		staged, err := content.StageAttemptWorkspaceObject(context.Background(), model.NewAttemptWorkspaceObjectID(),
+			strings.NewReader(answer), int64(len(answer)), "text/plain")
+		if err != nil {
+			t.Fatalf("conditional=%t: %v", conditional, err)
+		}
+		if staged.SizeBytes != int64(len(answer)) {
+			t.Fatalf("conditional=%t: staged = %#v", conditional, staged)
+		}
+		if len(observer.observed) != 0 {
+			t.Fatalf("conditional=%t: candidate bytes were spooled locally during the write: %v", conditional, observer.observed)
+		}
+	}
+}
+
+func TestAttemptWorkspaceContentRejectsShortBodyWithoutVisibleObject(t *testing.T) {
+	for _, backend := range contentTestBackends() {
+		t.Run(backend.name, func(t *testing.T) {
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			objectID := model.NewAttemptWorkspaceObjectID()
+			_, err = content.StageAttemptWorkspaceObject(context.Background(), objectID, strings.NewReader("ab"), 3, "text/plain")
+			var invalid *AttemptWorkspaceInvalidContentError
+			if !errors.As(err, &invalid) {
+				t.Fatalf("short body error = %T, %v", err, err)
+			}
+			if _, err = content.OpenAttemptWorkspaceObject(context.Background(), objectID); !IsNotFound(err) {
+				t.Fatalf("short object became visible: %v", err)
 			}
 		})
 	}
