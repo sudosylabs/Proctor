@@ -159,7 +159,9 @@ Memberlist mode:
 - carries a protocol version on every message, rejects incompatible peers
   before readiness, and tolerates safe unknown message types/fields between
   adjacent compatible versions for rolling upgrades; and
-- provides best-effort, non-durable delivery.
+- provides best-effort, non-durable delivery: packet-sized envelopes use one
+  UDP datagram and larger envelopes use the reliable per-peer TCP stream so
+  size alone never causes systematic loss.
 
 The configured advertise address may use a stable private DNS name. At startup
 the adapter resolves that name to the concrete IP required by Memberlist while

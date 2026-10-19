@@ -32,6 +32,9 @@ const (
 	maximumJoinCandidates     = 64
 	maximumJoinAttemptsPerRun = 3
 	maxWireBytes              = cluster.MaxMessageBytes + 4096
+	// packetOverheadBytes reserves room inside Memberlist's UDP buffer for
+	// its user-message tag, label, compound header, and keyring encryption.
+	packetOverheadBytes = 128
 )
 
 // Config configures the Memberlist transport. EncryptionKey is the primary
@@ -88,8 +91,11 @@ type Transport struct {
 	state    state
 	handlers map[cluster.Event]cluster.Handler
 	list     *hashimemberlist.Memberlist
-	cancel   context.CancelFunc
-	done     chan struct{}
+	// packetLimit is the largest wire envelope sent as one best-effort UDP
+	// packet; larger envelopes use Memberlist's reliable TCP stream.
+	packetLimit int
+	cancel      context.CancelFunc
+	done        chan struct{}
 }
 
 // New constructs an inert Memberlist transport. Start creates the gossip
@@ -362,6 +368,7 @@ func (t *Transport) Start(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	t.list = list
+	t.packetLimit = config.UDPBufferSize - packetOverheadBytes
 	t.cancel = cancel
 	t.done = make(chan struct{})
 	t.state = stateStarted
@@ -529,7 +536,7 @@ func (t *Transport) Broadcast(ctx context.Context, message *cluster.Message) err
 		return err
 	}
 	t.mu.RLock()
-	list := t.list
+	list, packetLimit := t.list, t.packetLimit
 	t.mu.RUnlock()
 	if list == nil {
 		return cluster.ErrNotStarted
@@ -549,9 +556,26 @@ func (t *Transport) Broadcast(ctx context.Context, message *cluster.Message) err
 		t.cfg.NodeID,
 		members,
 		payload,
-		list.SendBestEffort,
+		memberSendFunc(list, len(payload), packetLimit),
 		func(err error) { t.observeSentMessage(message.Event, payload, err) },
 	)
+}
+
+// memberSender is the Memberlist send surface used for peer delivery.
+type memberSender interface {
+	SendBestEffort(*hashimemberlist.Node, []byte) error
+	SendReliable(*hashimemberlist.Node, []byte) error
+}
+
+// memberSendFunc keeps small envelopes on best-effort UDP and routes any
+// envelope that cannot fit one Memberlist UDP packet to the reliable TCP
+// stream. A UDP datagram larger than the buffer would be fragmented or
+// refused and therefore systematically lost, not merely best-effort.
+func memberSendFunc(sender memberSender, payloadBytes, packetLimit int) func(*hashimemberlist.Node, []byte) error {
+	if payloadBytes > packetLimit {
+		return sender.SendReliable
+	}
+	return sender.SendBestEffort
 }
 
 func broadcastMembers(
@@ -605,23 +629,24 @@ func (t *Transport) SendToNode(ctx context.Context, nodeID string, message *clus
 		return err
 	}
 	t.mu.RLock()
-	list := t.list
+	list, packetLimit := t.list, t.packetLimit
 	t.mu.RUnlock()
 	if list == nil {
 		return cluster.ErrNotStarted
 	}
+	send := memberSendFunc(list, len(payload), packetLimit)
 	for _, member := range list.Members() {
 		meta, metaErr := decodeNodeMeta(member.Meta)
 		if metaErr != nil {
 			if member.Name == nodeID {
-				err = list.SendBestEffort(member, payload)
+				err = send(member, payload)
 				t.observeSentMessage(message.Event, payload, err)
 				return err
 			}
 			continue
 		}
 		if meta.NodeID == nodeID || member.Name == nodeID {
-			err = list.SendBestEffort(member, payload)
+			err = send(member, payload)
 			t.observeSentMessage(message.Event, payload, err)
 			return err
 		}

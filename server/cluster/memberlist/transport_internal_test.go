@@ -13,7 +13,48 @@ import (
 	"net"
 	"strings"
 	"testing"
+
+	hashimemberlist "github.com/hashicorp/memberlist"
 )
+
+type routingSender struct{ bestEffort, reliable int }
+
+func (s *routingSender) SendBestEffort(*hashimemberlist.Node, []byte) error {
+	s.bestEffort++
+	return nil
+}
+
+func (s *routingSender) SendReliable(*hashimemberlist.Node, []byte) error {
+	s.reliable++
+	return nil
+}
+
+func TestMemberSendFuncRoutesOnlyPacketSafeEnvelopesOverUDP(t *testing.T) {
+	t.Parallel()
+
+	const limit = 1272
+	for _, test := range []struct {
+		name         string
+		payloadBytes int
+		wantReliable bool
+	}{
+		{"small", 64, false},
+		{"exact packet limit", limit, false},
+		{"one byte over packet limit", limit + 1, true},
+		{"realtime event maximum", 256 << 10, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			sender := &routingSender{}
+			if err := memberSendFunc(sender, test.payloadBytes, limit)(&hashimemberlist.Node{}, nil); err != nil {
+				t.Fatal(err)
+			}
+			if gotReliable := sender.reliable == 1 && sender.bestEffort == 0; gotReliable != test.wantReliable {
+				t.Fatalf("routing for %d bytes = best-effort:%d reliable:%d", test.payloadBytes, sender.bestEffort, sender.reliable)
+			}
+		})
+	}
+}
 
 func TestResolveAdvertiseHost(t *testing.T) {
 	t.Parallel()

@@ -11,7 +11,15 @@ used by recovery tests.
 
 1. **Best-effort only.** Messages may be delayed, reordered, duplicated, or
    dropped. Transports never claim durable or at-least-once application
-   processing.
+   processing. Memberlist sends an encoded envelope that fits one UDP packet
+   (its UDP buffer less a 128-byte overhead reserve, 1,272 bytes with the LAN
+   defaults) as a single unacknowledged datagram, so loss is random rather
+   than size-dependent. A larger envelope, up to the wire-envelope bound (1 MiB
+   plus 4 KiB, which covers every realtime event up to its 256 KiB limit), uses Memberlist's
+   reliable TCP stream to that peer: a returned nil error means the peer
+   accepted the bytes, not that its handler ran, and a peer that is down or
+   unreachable makes that send fail or block for up to Memberlist's TCP
+   timeout before the loop continues to the next peer.
 2. **Peer-only broadcast.** `Broadcast` must not invoke the sender’s local
    handlers, preventing rebroadcast loops.
 3. **Self-targeted delivery.** `SendToNode` to the current node may invoke local

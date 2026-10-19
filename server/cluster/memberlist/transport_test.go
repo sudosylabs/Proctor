@@ -8,7 +8,9 @@
 package memberlist_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
@@ -139,6 +141,57 @@ func TestMemberlistTwoNodeBestEffortFanout(t *testing.T) {
 	}
 	if selfHits.Load() != 1 {
 		t.Fatalf("self targeted deliveries = %d", selfHits.Load())
+	}
+}
+
+func TestMemberlistDeliversRealtimeSizedMessagesBeyondOneUDPPacket(t *testing.T) {
+	t.Parallel()
+
+	key := make([]byte, 32)
+	discovery := memberlist.NewMemoryDiscovery()
+	nodeA := mustTransport(t, "node-a", freePort(t), discovery, key)
+	nodeB := mustTransport(t, "node-b", freePort(t), discovery, key)
+	// Random bytes defeat Memberlist's payload compression.
+	data := make([]byte, 256<<10)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	var broadcasts, targeted atomic.Int32
+	if err := nodeB.RegisterHandler("test.large", func(_ context.Context, message *cluster.Message) error {
+		if bytes.Equal(message.Data, data) {
+			if message.Props["route"] == "targeted" {
+				targeted.Add(1)
+			} else {
+				broadcasts.Add(1)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := nodeA.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = nodeA.Stop(context.Background()) })
+	if err := nodeB.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = nodeB.Stop(context.Background()) })
+
+	deadline := time.Now().Add(8 * time.Second)
+	for broadcasts.Load() == 0 || targeted.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("large deliveries broadcast=%d targeted=%d", broadcasts.Load(), targeted.Load())
+		}
+		if err := nodeA.Broadcast(ctx, &cluster.Message{Event: "test.large", Data: data}); err != nil {
+			t.Fatal(err)
+		}
+		err := nodeA.SendToNode(ctx, "node-b", &cluster.Message{Event: "test.large", Data: data, Props: map[string]string{"route": "targeted"}})
+		if err != nil && !errors.Is(err, cluster.ErrNodeUnavailable) {
+			t.Fatal(err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
