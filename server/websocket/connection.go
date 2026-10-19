@@ -43,6 +43,8 @@ type connectionRuntime struct {
 	transportCloseOnce sync.Once
 	attemptClose       sync.Once
 	attempt            *examAttemptBinding
+	// inbound is owned by the read pump.
+	inbound frameBudget
 
 	activityMu sync.Mutex
 	activities sync.WaitGroup

@@ -47,6 +47,7 @@ const (
 	CloseBackpressure         = 4002
 	CloseAuthorizationChanged = 4003
 	CloseLimit                = 4004
+	CloseRateLimited          = 4005
 	maximumPerSession         = 8
 	maximumPerUser            = 64
 	maximumSubscriptions      = 256

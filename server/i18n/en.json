@@ -3584,6 +3584,10 @@
     "translation": "connection limit reached"
   },
   {
+    "id": "websocket.close.rate_limited",
+    "translation": "too many requests"
+  },
+  {
     "id": "websocket.close.server_shutdown",
     "translation": "server shutting down"
   },
@@ -3654,6 +3658,10 @@
   {
     "id": "websocket.error.exam_attempt.renewal.request_invalid",
     "translation": "Invalid Exam Attempt renewal request."
+  },
+  {
+    "id": "websocket.error.rate_limited",
+    "translation": "Too many WebSocket requests. Retry shortly."
   },
   {
     "id": "websocket.error.request.invalid",

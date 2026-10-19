@@ -68,6 +68,19 @@ func (c *connectionRuntime) readPump(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// Every frame spends from the connection budget before validation or
+		// dispatch, so no action can drive unbounded application work.
+		if !c.inbound.allow(c.clock.Now()) {
+			if c.recorder != nil {
+				c.recorder.ObserveWebSocketMessage("inbound", boundedWebSocketAction(request.Action), "rate_limited", len(request.Data))
+			}
+			if c.inbound.exhausted() {
+				c.close(CloseRateLimited, localizedCloseReason(c.localizer, c.locale, websocketCloseMessages["rate_limited"]), false)
+				return
+			}
+			c.enqueueError(request.Sequence, "websocket.rate_limited", websocketErrorRateLimited)
+			continue
+		}
 		if err := request.Validate(); err != nil {
 			if c.recorder != nil {
 				c.recorder.ObserveWebSocketMessage("inbound", boundedWebSocketAction(request.Action), "invalid", len(request.Data))

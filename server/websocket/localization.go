@@ -38,6 +38,7 @@ const (
 	websocketErrorBrowserActivityInvalid       websocketErrorPresentation = "browser_activity_invalid"
 	websocketErrorBrowserActivityFailed        websocketErrorPresentation = "browser_activity_failed"
 	websocketErrorRequestInvalid               websocketErrorPresentation = "request_invalid"
+	websocketErrorRateLimited                  websocketErrorPresentation = "rate_limited"
 	websocketErrorSubscriptionDenied           websocketErrorPresentation = "subscription_denied"
 	websocketErrorSubscriptionFailed           websocketErrorPresentation = "subscription_failed"
 	websocketErrorSubscriptionInvalid          websocketErrorPresentation = "subscription_invalid"
@@ -62,6 +63,7 @@ var websocketErrorMessages = map[websocketErrorPresentation]localizedMessage{
 	websocketErrorBrowserActivityInvalid:       {id: "websocket.error.exam_attempt.browser_activity.invalid", fallback: "Invalid browser activity record."},
 	websocketErrorBrowserActivityFailed:        {id: "websocket.error.exam_attempt.browser_activity.failed", fallback: "Browser activity could not be accepted."},
 	websocketErrorRequestInvalid:               {id: "websocket.error.request.invalid", fallback: "Invalid WebSocket request."},
+	websocketErrorRateLimited:                  {id: "websocket.error.rate_limited", fallback: "Too many WebSocket requests. Retry shortly."},
 	websocketErrorSubscriptionDenied:           {id: "websocket.error.subscription.denied", fallback: "WebSocket subscription denied."},
 	websocketErrorSubscriptionFailed:           {id: "websocket.error.subscription.failed", fallback: "WebSocket subscription failed."},
 	websocketErrorSubscriptionInvalid:          {id: "websocket.error.subscription.invalid", fallback: "Invalid subscription."},
@@ -73,6 +75,7 @@ var websocketCloseMessages = map[string]localizedMessage{
 	"backpressure":          {id: "websocket.close.backpressure", fallback: "client is too slow"},
 	"connection_closed":     {id: "websocket.close.connection_closed", fallback: "connection closed"},
 	"connection_limit":      {id: "websocket.close.connection_limit", fallback: "connection limit reached"},
+	"rate_limited":          {id: "websocket.close.rate_limited", fallback: "too many requests"},
 	"server_shutdown":       {id: "websocket.close.server_shutdown", fallback: "server shutting down"},
 	"session_revoked":       {id: "websocket.close.session_revoked", fallback: "session no longer valid"},
 }

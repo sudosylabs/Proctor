@@ -76,6 +76,13 @@ subscriptions, and backpressure policy. Reconnection can replay only state
 retained by the current node; otherwise the server creates a fresh connection
 and instructs the client to resynchronize authoritative state over HTTP.
 
+Every inbound request frame, whatever its action and before validation,
+spends from a per-connection token bucket (burst 64, sustained 16 frames per
+second). A refused frame performs no application work and receives a
+`websocket.rate_limited` error with `retry_after_seconds: 1`; 64 consecutive
+refusals close the connection with code 4005. Browser activity appends keep
+their own narrower intake bound.
+
 Cookie-authenticated upgrades require an exact configured public-origin match;
 bearer-authenticated native clients may omit `Origin`. Subscriptions carry an
 explicit action/resource pair and pass through the application authorization
