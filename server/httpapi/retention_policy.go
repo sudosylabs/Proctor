@@ -58,8 +58,6 @@ func retentionPolicyResource(application RetentionPolicyApplication) resource {
 	module := retentionPolicyResourceModule{application: application}
 	readErrors := operatorReadErrorCodes("retention_policy.unavailable")
 	mutationErrors := operatorMutationErrorCodes(
-		"authentication.strong_required",
-		"authentication.reauthentication_required",
 		"idempotency.key_required",
 		"idempotency.key_invalid",
 		"idempotency.conflict",

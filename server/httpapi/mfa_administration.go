@@ -28,7 +28,7 @@ type resetUserMFARequest struct {
 
 func mfaAdministrationResource(application MFAAdministration) resource {
 	module := mfaAdministrationResourceModule{application: application}
-	return newResource("mfa-administration", strongRecentSessionRoute(http.MethodPost, apiPath(literal("users"), canonicalID("user_id"), literal("mfa"), literal("reset")), operatorMutationErrorCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "authentication.mfa.reset_invalid", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal"), module.reset))
+	return newResource("mfa-administration", strongRecentSessionRoute(http.MethodPost, apiPath(literal("users"), canonicalID("user_id"), literal("mfa"), literal("reset")), operatorMutationErrorCodes("request.invalid", "resource.not_found", "authentication.mfa.reset_invalid", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal"), module.reset))
 }
 func (module mfaAdministrationResourceModule) reset(request operationRequest) (operationResult, error) {
 	userID, err := request.params.RequireUserId()

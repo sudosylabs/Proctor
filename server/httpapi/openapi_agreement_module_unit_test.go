@@ -9,6 +9,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"sort"
 	"strings"
@@ -319,7 +320,7 @@ func syntheticOpenAPIAgreementInputs() ([]Route, openAPIAgreementSuite) {
 	codes := []string{"resource.not_found"}
 	return []Route{{
 			Method: "GET", Path: "/things/{thing_id:[0-9]+}", Auth: AuthPrincipalRequired,
-			ErrorCodes: routeErrorCodes(AuthPrincipalRequired, codes),
+			ErrorCodes: routeErrorCodes(AuthPrincipalRequired, http.MethodGet, codes),
 		}}, openAPIAgreementSuite{Operations: []openAPIAgreementOperation{{
 			Key: "GET /things/{thing_id}", Auth: AuthPrincipalRequired,
 			SuccessStatus: "200", SuccessRef: "#/components/responses/ThingOK", SuccessSchema: "ThingResponse",
@@ -336,10 +337,11 @@ func syntheticOpenAPIDocument(t *testing.T) []byte {
       "get": {
         "operationId": "getThing",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["resource.not_found", "authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce", "authentication.dpop.unavailable"],
+        "x-proctor-error-codes": ["resource.not_found", "authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous", "authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce", "authentication.dpop.unavailable"],
         "security": [{"bearerAuth": []}, {"dpopAuth": []}, {"sessionCookie": []}],
         "responses": {
           "200": {"$ref": "#/components/responses/ThingOK"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "404": {"$ref": "#/components/responses/NotFound"},
           "503": {"$ref": "#/components/responses/ServiceUnavailable"}
@@ -355,6 +357,10 @@ func syntheticOpenAPIDocument(t *testing.T) []byte {
     "requestBodies": {},
     "responses": {
       "ThingOK": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ThingResponse"}}}},
+      "BadRequest": {
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}
+      },
       "NotFound": {
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}

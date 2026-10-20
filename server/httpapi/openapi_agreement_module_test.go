@@ -300,7 +300,8 @@ func evaluateOpenAPIAgreement(
 		}
 		violations = evaluateOpenAPIRequestAgreement(violations, document, key, contract)
 		violations = evaluateOpenAPISuccessAgreement(violations, document, key, contract)
-		expectedErrorCodes := routeErrorCodes(contract.Auth, contract.PublicErrorCodes)
+		method, _, _ := strings.Cut(key, " ")
+		expectedErrorCodes := routeErrorCodes(contract.Auth, method, contract.PublicErrorCodes)
 		violations = compareStringSet(violations, key, "runtime error codes", route.ErrorCodes, expectedErrorCodes)
 		violations = compareStringSet(violations, key, "document error codes", operation.ErrorCodes, expectedErrorCodes)
 		violations = evaluateOpenAPIProblemAgreement(violations, document, key, operation)

@@ -406,7 +406,7 @@ func TestRoutesReturnsDefensiveDeepCopy(t *testing.T) {
 		sessionRoute(
 			http.MethodGet,
 			apiPath(literal("copy")),
-			[]string{"authentication.required"},
+			[]string{"resource.not_found"},
 			func(operationRequest) (operationResult, error) { return noContentResult(), nil },
 		),
 	))

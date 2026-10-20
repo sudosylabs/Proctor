@@ -341,19 +341,14 @@ func authenticationLoginErrorCodes() []string {
 
 func authenticationRefreshErrorCodes() []string {
 	return []string{
-		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
-		"authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal",
+		"authentication.token_invalid", "authentication.session.invalid", "authentication.internal",
 		"authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce",
 		"authentication.dpop.unavailable",
 	}
 }
 
 func sessionAuthenticationMutationErrorCodes(extra ...string) []string {
-	codes := []string{
-		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
-		"authentication.csrf.invalid",
-	}
-	return append(codes, extra...)
+	return append([]string(nil), extra...)
 }
 
 func (module authenticationResourceModule) login(request operationRequest) (operationResult, error) {

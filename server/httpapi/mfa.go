@@ -78,7 +78,7 @@ func mfaRecentMutationCodes(extra ...string) []string {
 }
 
 func mfaStrongRecentMutationCodes(extra ...string) []string {
-	return mfaRecentMutationCodes(append([]string{"authentication.strong_required"}, extra...)...)
+	return mfaRecentMutationCodes(extra...)
 }
 
 func (module mfaResourceModule) status(request operationRequest) (operationResult, error) {

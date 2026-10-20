@@ -71,8 +71,6 @@ func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplicat
 	module := desktopCompatibilityPolicyResourceModule{application: application}
 	readErrors := operatorReadErrorCodes("desktop_compatibility_policy.unavailable")
 	mutationErrors := operatorMutationErrorCodes(
-		"authentication.strong_required",
-		"authentication.reauthentication_required",
 		"idempotency.key_required",
 		"idempotency.key_invalid",
 		"idempotency.conflict",

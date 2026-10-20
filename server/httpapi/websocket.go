@@ -33,9 +33,6 @@ func webSocketResource(transport WebSocketTransport) resource {
 			http.MethodGet,
 			apiPath(literal(webSocketPathLiteral)),
 			[]string{
-				"authentication.required",
-				"authentication.token_invalid",
-				"authentication.credential_ambiguous",
 				"request.invalid",
 				"websocket.origin.invalid",
 				"websocket.unavailable",

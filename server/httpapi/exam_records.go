@@ -41,7 +41,7 @@ func examRecordsResource(application ExamRecordsApplication) resource {
 	completeRoute := sessionRoute(http.MethodPost, completion, mutationErrors, m.complete)
 	waiveRoute := sessionRoute(http.MethodPost, waiver, mutationErrors, m.waive)
 	createRoute := sessionRoute(http.MethodPost, holds, mutationErrors, m.createHold)
-	releaseRoute := strongRecentSessionRoute(http.MethodPost, release, append(append([]string(nil), mutationErrors...), "authentication.strong_required", "authentication.reauthentication_required"), m.releaseHold)
+	releaseRoute := strongRecentSessionRoute(http.MethodPost, release, mutationErrors, m.releaseHold)
 	completeRoute.idempotency, waiveRoute.idempotency, createRoute.idempotency, releaseRoute.idempotency = IdempotencyRequired, IdempotencyRequired, IdempotencyRequired, IdempotencyRequired
 	return newResource("exam-records", sessionRoute(http.MethodGet, completion, readErrors, m.getCompletion), completeRoute,
 		sessionRoute(http.MethodGet, waiver, readErrors, m.getWaiver), waiveRoute,

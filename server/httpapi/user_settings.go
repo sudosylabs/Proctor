@@ -64,15 +64,11 @@ func userSettingsResource(settings UserSettingsApplication) resource {
 }
 
 func userSettingsSessionCodes(extra ...string) []string {
-	return append([]string{
-		"authentication.required",
-		"authentication.token_invalid",
-		"authentication.credential_ambiguous",
-	}, extra...)
+	return append([]string(nil), extra...)
 }
 
 func userSettingsSessionMutationCodes(extra ...string) []string {
-	return append(userSettingsSessionCodes("authentication.csrf.invalid"), extra...)
+	return userSettingsSessionCodes(extra...)
 }
 
 func (module userSettingsResourceModule) read(request operationRequest) (operationResult, error) {

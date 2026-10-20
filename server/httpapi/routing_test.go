@@ -63,7 +63,7 @@ func TestRouteMetadataRetainsVersionRegexAndPolicyContract(t *testing.T) {
 		sessionRoute(
 			http.MethodDelete,
 			apiPath(literal("roles"), canonicalID("role_id")),
-			[]string{"authentication.required"},
+			[]string{"resource.not_found"},
 			func(operationRequest) (operationResult, error) { return noContentResult(), nil },
 		),
 	))
@@ -73,7 +73,7 @@ func TestRouteMetadataRetainsVersionRegexAndPolicyContract(t *testing.T) {
 		t.Fatalf("routes = %#v, want path %q with session policy", routes, want)
 	}
 	policy := newRouteErrorPolicy(routes[0].ErrorCodes)
-	for _, code := range routeErrorCodes(AuthSessionRequired, []string{"authentication.required"}) {
+	for _, code := range routeErrorCodes(AuthSessionRequired, http.MethodDelete, []string{"resource.not_found"}) {
 		if _, exists := policy[code]; !exists {
 			t.Fatalf("routes = %#v, missing protected-route error %q", routes, code)
 		}

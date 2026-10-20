@@ -289,8 +289,7 @@ func invitationResource(invitations InvitationApplication) resource {
 		sessionRoute(http.MethodPost, apiPath(literal("invitations"), literal("academic-unit-role"), literal("accept")),
 			sessionAuthenticationMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"), module.acceptAcademicUnitRole),
 		strongRecentSessionRoute(http.MethodPost, apiPath(literal("institutions"), canonicalID("institution_id"), literal("invitations"), literal("role")),
-			append(academicRelationshipMutationErrorCodes("invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"),
-				"authentication.strong_required", "authentication.reauthentication_required"), module.issueInstitutionRole),
+			academicRelationshipMutationErrorCodes("invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"), module.issueInstitutionRole),
 		sessionRoute(http.MethodPost, apiPath(literal("invitations"), literal("institution-role"), literal("accept")),
 			sessionAuthenticationMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"), module.acceptInstitutionRole),
 	)

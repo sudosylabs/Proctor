@@ -34,7 +34,7 @@ func retentionResource(app RetentionApplication) resource {
 	mutationErrors := operatorMutationErrorCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found",
 		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	preview := sessionRoute(http.MethodPost, apiPath(literal("retention"), literal("previews")), mutationErrors, m.preview)
-	control := strongRecentSessionRoute(http.MethodPut, apiPath(literal("retention"), literal("control")), append(append([]string(nil), mutationErrors...), "authentication.strong_required", "authentication.reauthentication_required"), m.changeControl)
+	control := strongRecentSessionRoute(http.MethodPut, apiPath(literal("retention"), literal("control")), mutationErrors, m.changeControl)
 	preview.idempotency, control.idempotency = IdempotencyRequired, IdempotencyRequired
 	return newResource("retention",
 		sessionRoute(http.MethodGet, apiPath(literal("retention"), literal("control")), readErrors, m.getControl), control, preview,

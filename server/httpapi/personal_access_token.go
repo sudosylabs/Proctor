@@ -102,15 +102,15 @@ func appendRoutePath(path routePath, parts ...pathPart) routePath {
 }
 
 func personalAccessTokenSessionCodes(extra ...string) []string {
-	return append([]string{"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous"}, extra...)
+	return append([]string(nil), extra...)
 }
 
 func personalAccessTokenSessionMutationCodes(extra ...string) []string {
-	return personalAccessTokenSessionCodes(append([]string{"authentication.csrf.invalid"}, extra...)...)
+	return personalAccessTokenSessionCodes(extra...)
 }
 
 func personalAccessTokenRecentMutationCodes(extra ...string) []string {
-	return personalAccessTokenSessionMutationCodes(append([]string{"authentication.reauthentication_required"}, extra...)...)
+	return personalAccessTokenSessionMutationCodes(extra...)
 }
 
 func (module personalAccessTokenResourceModule) disable(request operationRequest) (operationResult, error) {

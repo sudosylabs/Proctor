@@ -94,9 +94,6 @@ func roleResource(roles RoleApplication) resource {
 
 func operatorReadErrorCodes(specific ...string) []string {
 	codes := []string{
-		"authentication.required",
-		"authentication.token_invalid",
-		"authentication.credential_ambiguous",
 		"authorization.denied",
 		"authorization.request.invalid",
 		"authorization.unavailable",
@@ -105,7 +102,7 @@ func operatorReadErrorCodes(specific ...string) []string {
 }
 
 func operatorMutationErrorCodes(specific ...string) []string {
-	codes := operatorReadErrorCodes("authentication.csrf.invalid", "audit.unavailable")
+	codes := operatorReadErrorCodes("audit.unavailable")
 	return append(codes, specific...)
 }
 

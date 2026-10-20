@@ -72,10 +72,7 @@ func roleBindingResource(bindings RoleBindingApplication) resource {
 }
 
 func roleBindingMutationErrorCodes(specific ...string) []string {
-	codes := operatorMutationErrorCodes(
-		"authentication.strong_required",
-		"authentication.reauthentication_required",
-	)
+	codes := operatorMutationErrorCodes()
 	return append(codes, specific...)
 }
 

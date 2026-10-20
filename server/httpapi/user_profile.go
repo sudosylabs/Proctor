@@ -165,8 +165,8 @@ func userProfileResource(profiles UserProfileApplication) resource {
 			currentUserContextSessionCodes("request.invalid", "exam.attempt.unavailable"), module.examActivity),
 		principalRoute(http.MethodGet, user, userProfileReadCodes("request.invalid", "resource.not_found"), module.get),
 		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
-		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
-		strongRecentSessionRoute(http.MethodPost, appendRoutePath(email, literal("verify")), userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable"), module.verifyEmail),
+		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
+		strongRecentSessionRoute(http.MethodPost, appendRoutePath(email, literal("verify")), userProfileMutationCodes("request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable"), module.verifyEmail),
 		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
 		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
 		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
@@ -259,7 +259,7 @@ func candidateExamActivityCursorSpec() opaqueCursorSpec[candidateExamActivityCur
 }
 
 func currentUserContextSessionCodes(extra ...string) []string {
-	return append([]string{"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous"}, extra...)
+	return append([]string(nil), extra...)
 }
 
 func (module userProfileResourceModule) context(request operationRequest) (operationResult, error) {
@@ -330,7 +330,6 @@ func userProfileReadCodes(extra ...string) []string {
 
 func userProfilePrincipalCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authorization.denied", "authorization.request.invalid", "authorization.unavailable",
 	}
 	return append(codes, extra...)
@@ -342,8 +341,7 @@ func userProfileMutationCodes(extra ...string) []string {
 
 func userProfilePrincipalMutationCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
-		"authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid",
+		"authorization.denied", "authorization.request.invalid",
 		"authorization.unavailable", "audit.unavailable",
 	}
 	return append(codes, extra...)

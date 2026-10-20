@@ -12,10 +12,14 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 )
 
 func validateResourceCatalog(apiPrefix string, resources []resource) error {
+	if err := validateDeclaredKernelCodes(resources); err != nil {
+		return err
+	}
 	resourceNames := make(map[string]struct{}, len(resources))
 	routeShapes := make(map[string]string)
 	for _, resource := range resources {
@@ -96,6 +100,28 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 				seenErrors[code] = struct{}{}
 			}
 		}
+	}
+	return nil
+}
+
+// validateDeclaredKernelCodes rejects resource error tables that repeat a code
+// the kernel already adds for the route's authentication requirement and
+// method, so each table states only what its operation can return.
+func validateDeclaredKernelCodes(resources []resource) error {
+	var problems []string
+	for _, resource := range resources {
+		for _, route := range resource.routes {
+			kernel := kernelErrorCodes(route.auth, route.method)
+			for _, code := range route.declaredErrorCodes {
+				// request.invalid is also every decoding operation's own code.
+				if code != "request.invalid" && slices.Contains(kernel, code) {
+					problems = append(problems, fmt.Sprintf("resource %q %s route declares kernel error code %q", resource.name, route.method, code))
+				}
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
 }

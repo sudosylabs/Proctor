@@ -45,7 +45,7 @@ func TestProtectedRouteManifestDeclaresDPoPAuthenticationErrors(t *testing.T) {
 	for _, requirement := range []AuthRequirement{AuthSessionRequired} {
 		requirement := requirement
 		t.Run(string(requirement), func(t *testing.T) {
-			declared := routeErrorCodes(requirement, []string{"authentication.credentials.invalid"})
+			declared := routeErrorCodes(requirement, http.MethodPost, []string{"authentication.credentials.invalid"})
 			operationPolicy := newRouteErrorPolicy(declared)
 			handler := api.newHandlerWithErrorPolicy(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 				t.Fatal("protected handler ran after invalid DPoP proof")

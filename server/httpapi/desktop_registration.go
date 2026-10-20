@@ -43,15 +43,12 @@ func desktopRegistrationResource(application DesktopRegistrations) resource {
 	collection := apiPath(literal("users"), literal("me"), literal("desktop-registrations"))
 	item := appendRoutePath(collection, canonicalID("desktop_registration_id"))
 	sessionErrors := []string{
-		"authentication.required", "authentication.token_invalid",
-		"authentication.credential_ambiguous", "desktop_registration.unavailable",
+		"desktop_registration.unavailable",
 	}
 	return newResource(
 		"desktop-registrations",
 		sessionRoute(http.MethodGet, collection, sessionErrors, module.list),
 		strongRecentSessionRoute(http.MethodDelete, item, append(sessionErrors,
-			"authentication.csrf.invalid",
-			"authentication.strong_required", "authentication.reauthentication_required",
 			"request.invalid", "resource.not_found", "audit.unavailable"), module.revoke),
 	)
 }

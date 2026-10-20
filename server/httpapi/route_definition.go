@@ -7,20 +7,26 @@
 
 package httpapi
 
-import "net/http"
+import (
+	"net/http"
+	"slices"
+)
 
 type routeDefinition struct {
-	method            string
-	path              routePath
-	auth              AuthRequirement
-	errorCodes        []string
-	operation         operation
-	protocolName      string
-	protocolKind      RouteProtocolKind
-	protocolOperation protocolOperation
-	upgradeOperation  upgradeOperation
-	idempotency       IdempotencyRequirement
-	maxBodyBytes      int64
+	method     string
+	path       routePath
+	auth       AuthRequirement
+	errorCodes []string
+	// declaredErrorCodes are the codes the resource declared before the kernel
+	// added the codes its authentication requirement implies.
+	declaredErrorCodes []string
+	operation          operation
+	protocolName       string
+	protocolKind       RouteProtocolKind
+	protocolOperation  protocolOperation
+	upgradeOperation   upgradeOperation
+	idempotency        IdempotencyRequirement
+	maxBodyBytes       int64
 }
 
 // upgradeRoute is the sole raw response exception. A successful HTTP upgrade
@@ -38,7 +44,7 @@ func upgradeRoute(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes:   routeErrorCodes(auth, errorCodes),
+		errorCodes: routeErrorCodes(auth, method, errorCodes), declaredErrorCodes: errorCodes,
 		protocolName: name, protocolKind: RouteProtocolUpgrade,
 		upgradeOperation: operation, idempotency: IdempotencyNone,
 	}
@@ -53,35 +59,67 @@ func route(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes: routeErrorCodes(auth, errorCodes), operation: operation,
+		errorCodes: routeErrorCodes(auth, method, errorCodes), declaredErrorCodes: errorCodes, operation: operation,
 		idempotency: IdempotencyNone,
 	}
 }
 
-func routeErrorCodes(auth AuthRequirement, errorCodes []string) []string {
+// routeErrorCodes returns a route's complete public error list: the codes
+// its resource declares plus the kernel codes its authentication requirement
+// and method imply. Resource tables therefore declare only the codes their
+// operation adds.
+func routeErrorCodes(auth AuthRequirement, method string, errorCodes []string) []string {
 	result := append([]string(nil), errorCodes...)
+	for _, code := range kernelErrorCodes(auth, method) {
+		if !slices.Contains(result, code) {
+			result = append(result, code)
+		}
+	}
+	return result
+}
+
+// kernelErrorCodes are the codes the routing kernel itself can return before
+// an operation runs: browser-request and CSRF refusals for unsafe methods,
+// credential extraction and DPoP failures, and the assurance refusals of the
+// requirement.
+func kernelErrorCodes(auth AuthRequirement, method string) []string {
+	unsafe := requiresCSRF(method)
 	switch auth {
-	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
-		AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
-		for _, code := range []string{
+	case AuthPublic:
+		if unsafe {
+			return []string{"request.invalid"}
+		}
+		return nil
+	case AuthRefreshCredentialRequired:
+		codes := []string{"authentication.required", "authentication.credential_ambiguous"}
+		if unsafe {
+			codes = append(codes, "authentication.csrf.invalid")
+		}
+		return codes
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired, AuthSessionRequired,
+		AuthStrongSessionRequired, AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
+		codes := []string{
+			"authentication.required",
+			"authentication.token_invalid",
+			"authentication.credential_ambiguous",
 			"authentication.dpop.invalid",
 			"authentication.dpop.replayed",
 			"authentication.dpop.use_nonce",
 			"authentication.dpop.unavailable",
-		} {
-			found := false
-			for _, existing := range result {
-				if existing == code {
-					found = true
-					break
-				}
-			}
-			if !found {
-				result = append(result, code)
-			}
 		}
+		if unsafe {
+			codes = append(codes, "authentication.csrf.invalid")
+		}
+		if auth == AuthStrongSessionRequired || auth == AuthStrongRecentSessionRequired {
+			codes = append(codes, "authentication.strong_required")
+		}
+		if auth == AuthRecentMFARecoverySessionRequired || auth == AuthRecentSessionRequired || auth == AuthStrongRecentSessionRequired {
+			codes = append(codes, "authentication.reauthentication_required")
+		}
+		return codes
+	default:
+		return nil
 	}
-	return result
 }
 
 func idempotentPrincipalRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {
@@ -153,7 +191,7 @@ func protocolRoute(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes:   routeErrorCodes(auth, errorCodes),
+		errorCodes: routeErrorCodes(auth, method, errorCodes), declaredErrorCodes: errorCodes,
 		protocolName: name, protocolKind: kind, protocolOperation: operation,
 		idempotency: IdempotencyNone,
 	}

@@ -27,7 +27,6 @@ paths:
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable
@@ -106,7 +105,6 @@ paths:
         - authentication.required
         - authentication.token_invalid
         - authentication.credential_ambiguous
-        - authentication.csrf.invalid
         - authorization.denied
         - authorization.request.invalid
         - authorization.unavailable

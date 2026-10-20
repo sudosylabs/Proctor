@@ -37,6 +37,12 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   `apperror.Code`, when the transport mints an application-only code, or when
   a listed code is never minted. Route error lists may name only catalog
   codes;
+- declare in a route's error list only the codes its operation can return.
+  The kernel adds the codes its own checks produce for the route's
+  authentication requirement and method (credential extraction, DPoP,
+  CSRF on unsafe methods, strong and recent assurance, and the public
+  browser-request refusal), and catalog compilation rejects a resource table
+  that repeats one of them;
 - name every code `<domain>[.<subdomain>].<condition>` with lowercase,
   dot-separated `snake_case` segments, putting a qualifier before the
   condition word (`revision_conflict`, `content_invalid`). The HTTP status is
