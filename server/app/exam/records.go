@@ -172,7 +172,7 @@ func (r *Records) begin(ctx context.Context, invocation invocation.Invocation, s
 	if scope.Scope.SubmissionID.IsValid() {
 		data["submission_id"] = scope.Scope.SubmissionID.String()
 	}
-	id, err := r.deps.Auditor.Begin(ctx, invocation, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
+	id, err := r.deps.Auditor.BeginAtScope(ctx, invocation, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
 		scope.AcademicUnitID.String(), operation, data, nil)
 	if err != nil {
 		return store.ExamRecordsMutation{}, err

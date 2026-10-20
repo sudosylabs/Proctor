@@ -103,15 +103,6 @@ func (a examResourceAuthorizationAdapter) Authorize(ctx context.Context, invocat
 	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
-type examResourceAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (a examResourceAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
-}
-func (a examResourceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return a.audit.Fail(ctx, id, code)
-}
-
 type examResourceRealtimeEffects struct{ realtime *realtimeService }
 
 func (e examResourceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, _ model.ExamResourceID, draftRevision int64, _ string) error {
@@ -126,6 +117,6 @@ func (e examResourceRealtimeEffects) Report(ctx context.Context, operation strin
 }
 
 var _ examresource.Authorizer = examResourceAuthorizationAdapter{}
-var _ examresource.Auditor = examResourceAuditAdapter{}
+var _ examresource.Auditor = mutationAuditAdapter{}
 var _ examresource.Effects = examResourceRealtimeEffects{}
 var _ examresource.EffectFailures = examResourceRealtimeEffects{}

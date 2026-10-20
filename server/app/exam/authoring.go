@@ -67,7 +67,7 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -182,7 +182,7 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
 		"exam_id": examID.String(), "academic_unit_id": command.AcademicUnitID.String(),
 		"creator_user_id": principal.UserID.String(),
 	}, nil)
@@ -320,7 +320,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 	if instructions != nil {
 		instructions = &candidate.InstructionsMarkdown
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
@@ -413,7 +413,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
@@ -500,7 +500,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1, "browser_policy_enabled": policy.Enabled,
 	}, nil)
@@ -629,7 +629,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation i
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)

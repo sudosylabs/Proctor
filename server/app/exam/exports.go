@@ -188,7 +188,7 @@ func (s *Exports) Create(ctx context.Context, invocation invocation.Invocation, 
 	if !exportID.IsValid() || !jobID.IsValid() {
 		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export identities"))
 	}
-	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, command.Scope.Resource(), model.RoleScopeAcademicUnit, unit.String(), "create_exam_export", map[string]any{"exam_export_id": exportID.String(), "submission_count": len(selected), "category_count": len(command.Categories)}, nil)
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, action, command.Scope.Resource(), model.RoleScopeAcademicUnit, unit.String(), "create_exam_export", map[string]any{"exam_export_id": exportID.String(), "submission_count": len(selected), "category_count": len(command.Categories)}, nil)
 	if err != nil {
 		return nil, err
 	}

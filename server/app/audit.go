@@ -33,17 +33,9 @@ type userSettingsAuditAdapter struct{ audit *auditService }
 
 type mailAuditAdapter struct{ audit *auditService }
 
-func (a mailAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return (mutationAuditAdapter{audit: a.audit}).Begin(ctx, invocation, action, resource, operation, value, prior)
-}
-
-func (a mailAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return (mutationAuditAdapter{audit: a.audit}).BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID,
-		operation, value, prior)
-}
-
 func (a mailAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
-	return (mutationAuditAdapter{audit: a.audit}).Fail(ctx, auditID, errorCode)
+	_, appErr := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusFail, errorCode, nil)
+	return appErr
 }
 
 func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {

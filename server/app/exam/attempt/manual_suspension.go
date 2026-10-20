@@ -76,10 +76,10 @@ func (service *Service) SuspendByManager(ctx context.Context, invocation invocat
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.Sitting.ClassID.String(),
 		store.ExamAttemptSuspendOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
-			"exam_attempt_id": command.AttemptID.String(), "expected_attempt_revision": command.ExpectedAttemptRevision})
+			"exam_attempt_id": command.AttemptID.String(), "expected_attempt_revision": command.ExpectedAttemptRevision}, nil)
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}

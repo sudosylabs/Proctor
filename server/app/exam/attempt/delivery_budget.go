@@ -75,7 +75,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, invocation invo
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	audit, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), store.DeliveryStopDetailsOperation, map[string]any{"family": command.Request.Family})
+	audit, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), store.DeliveryStopDetailsOperation, map[string]any{"family": command.Request.Family}, nil)
 	if err != nil {
 		return nil, err
 	}

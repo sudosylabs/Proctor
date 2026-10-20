@@ -636,7 +636,7 @@ type auditorFake struct {
 	failErr    error
 }
 
-func (f *auditorFake) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value, _ map[string]any) (model.AuditEventID, error) {
+func (f *auditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value, _ map[string]any) (model.AuditEventID, error) {
 	*f.order = append(*f.order, "audit.begin")
 	f.value = value
 	f.scopeType, f.scopeID = scopeType, scopeID

@@ -59,7 +59,7 @@ func (service *Service) StartBrowserActivity(ctx context.Context, invocation inv
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "start_browser_source", map[string]any{"source_session_id": string(command.SourceSessionID)})
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "start_browser_source", map[string]any{"source_session_id": string(command.SourceSessionID)}, nil)
 	if err != nil {
 		return model.BrowserSourceStatus{}, err
 	}
@@ -98,7 +98,7 @@ func (service *Service) AppendBrowserActivity(ctx context.Context, invocation in
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "append_browser_activity", map[string]any{"source_session_id": string(command.SourceSessionID), "event_count": len(events)})
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "append_browser_activity", map[string]any{"source_session_id": string(command.SourceSessionID), "event_count": len(events)}, nil)
 	if err != nil {
 		return model.BrowserActivityAcknowledgement{}, err
 	}
@@ -173,9 +173,9 @@ func (service *Service) ListBrowserActivity(ctx context.Context, invocation invo
 		return BrowserActivityPage{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource,
 		model.RoleScopeAcademicUnit, unitID.String(), "view_browser_activity", map[string]any{"exam_id": query.ExamID.String(),
-			"exam_sitting_id": query.SittingID.String(), "exam_attempt_id": query.AttemptID.String(), "limit": query.Limit})
+			"exam_sitting_id": query.SittingID.String(), "exam_attempt_id": query.AttemptID.String(), "limit": query.Limit}, nil)
 	if err != nil {
 		return BrowserActivityPage{}, err
 	}

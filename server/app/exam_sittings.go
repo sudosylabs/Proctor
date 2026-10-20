@@ -192,17 +192,6 @@ func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, invocat
 	return apperror.New("exam.sitting.not_found")
 }
 
-type examSittingAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (adapter examSittingAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return adapter.audit.BeginAtScope(ctx, invocation, action, resource,
-		scopeType, scopeID, operation, value, prior)
-}
-
-func (adapter examSittingAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return adapter.audit.Fail(ctx, id, code)
-}
-
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
 func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
@@ -303,7 +292,7 @@ func (effects examSittingRealtimeEffects) Report(ctx context.Context, operation 
 }
 
 var _ examsitting.Authorizer = examSittingAuthorizationAdapter{}
-var _ examsitting.Auditor = examSittingAuditAdapter{}
+var _ examsitting.Auditor = mutationAuditAdapter{}
 var _ examsitting.SystemAuditor = examSittingSystemAuditAdapter{}
 var _ examsitting.Effects = examSittingRealtimeEffects{}
 var _ examsitting.EffectFailures = examSittingRealtimeEffects{}

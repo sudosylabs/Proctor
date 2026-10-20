@@ -47,7 +47,7 @@ func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, invocatio
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)})
+	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)}, nil)
 }
 func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
 	release, admissionErr := service.enterControl(ctx, invocation, false)

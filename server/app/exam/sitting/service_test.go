@@ -961,7 +961,7 @@ type auditorFake struct {
 	failErr   error
 }
 
-func (fake *auditorFake) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
+func (fake *auditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
 	fake.action, fake.resource, fake.operation, fake.value = action, resource, operation, value
 	return model.AuditEventID(fake.id), fake.err
 }

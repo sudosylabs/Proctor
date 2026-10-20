@@ -38,8 +38,8 @@ type ManagerAuthorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
-	Prepare(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (*model.AuditEvent, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	PrepareAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (*model.AuditEvent, error)
 	RecordAuthorizationDecision(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, bool) error
 	Fail(context.Context, model.AuditEventID, string) error
 	Complete(context.Context, model.AuditEventID, map[string]any) error
@@ -202,11 +202,11 @@ func (service *Service) GetManaged(ctx context.Context, invocation invocation.In
 	}
 	if snapshot.Attempt.CandidateUserID == invocation.Principal().UserID {
 		resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
-		auditID, auditErr := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingView, resource,
+		auditID, auditErr := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingView, resource,
 			model.RoleScopeAcademicUnit, sitting.AcademicUnitID.String(), "view_managed_attempt", map[string]any{
 				"exam_id": snapshot.Attempt.ExamID.String(), "exam_sitting_id": snapshot.Attempt.SittingID.String(),
 				"exam_attempt_id": snapshot.Attempt.ID.String(),
-			})
+			}, nil)
 		if auditErr != nil {
 			return nil, auditErr
 		}
@@ -527,11 +527,11 @@ func (service *Service) Reallow(ctx context.Context, invocation invocation.Invoc
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(),
 		store.ExamAttemptReallowOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 			"exam_attempt_id": command.AttemptID.String(), "suspension_id": command.SuspensionID.String(),
-			"expected_attempt_revision": command.ExpectedAttemptRevision})
+			"expected_attempt_revision": command.ExpectedAttemptRevision}, nil)
 	if err != nil {
 		return ReallowResult{}, err
 	}
@@ -826,9 +826,9 @@ func (service *Service) Connect(ctx context.Context, invocation invocation.Invoc
 	credentialHash := model.HashToken(command.ContinuityCredential)
 	participationID, connectionID := service.deps.NewParticipation(), service.deps.NewConnection()
 
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.ClassID.String(),
-		"exam_attempt_connect", map[string]any{"exam_sitting_id": command.SittingID.String()})
+		"exam_attempt_connect", map[string]any{"exam_sitting_id": command.SittingID.String()}, nil)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
@@ -902,9 +902,9 @@ func (service *Service) CloseConnection(ctx context.Context, invocation invocati
 		!command.ClassID.IsValid() || !command.ConnectionID.IsValid() || !command.Reason.IsValid() {
 		return ConnectionClosedResult{}, apperror.Invalid("exam.attempt.invalid", "connection")
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, command.ClassID.String(),
-		"exam_attempt_connection_close", map[string]any{"exam_attempt_id": command.AttemptID.String(), "attempt_connection_id": command.ConnectionID.String()})
+		"exam_attempt_connection_close", map[string]any{"exam_attempt_id": command.AttemptID.String(), "attempt_connection_id": command.ConnectionID.String()}, nil)
 	if err != nil {
 		return ConnectionClosedResult{}, err
 	}

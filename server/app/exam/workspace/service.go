@@ -92,7 +92,7 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -331,7 +331,7 @@ type mutationRunner func(context.Context, *store.ExamStarterWorkspaceMutation, *
 
 func (service *Service) runMutation(ctx context.Context, invocation invocation.Invocation, authorization authorization, auditOperation string, effectOperation ChangeOperation,
 	mutation *store.ExamStarterWorkspaceMutation, idempotency *store.CommandIdempotency, run mutationRunner) (Result, error) {
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: mutation.ExamID.String()},
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: mutation.ExamID.String()},
 		model.RoleScopeAcademicUnit, authorization.unitID.String(), auditOperation,
 		map[string]any{"exam_id": mutation.ExamID.String(), "entry_id": mutation.EntryID.String(), "expected_draft_revision": mutation.ExpectedDraftRevision}, nil)
 	if err != nil {

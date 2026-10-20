@@ -558,7 +558,7 @@ type auditFake struct {
 	began bool
 }
 
-func (a *auditFake) Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error) {
+func (a *auditFake) BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error) {
 	a.f.order = append(a.f.order, "audit.begin")
 	a.began = true
 	return model.NewAuditEventID(), nil

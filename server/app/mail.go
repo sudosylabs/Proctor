@@ -134,8 +134,7 @@ func newMailService(mailStore mailStore, users mailUserStore, authorization mail
 	}
 	rekey, _ := mailStore.(mailRekeyStarter)
 	keyState, _ := mailStore.(mailKeyInspector)
-	rekeyAudit, _ := audit.(mutationAuditor)
-	return &mailService{mail: mailStore, rekey: rekey, keyState: keyState, rekeyAudit: rekeyAudit, users: users,
+	return &mailService{mail: mailStore, rekey: rekey, keyState: keyState, users: users,
 		authorization: authorization, audit: audit, attempts: attempts, composer: composer,
 		sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
 }

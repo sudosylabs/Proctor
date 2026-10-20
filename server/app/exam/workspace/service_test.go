@@ -424,7 +424,7 @@ func (f *fakeWorkspaceAuthorizer) Authorize(context.Context, invocation.Invocati
 
 type fakeWorkspaceAuditor struct{ values map[string]any }
 
-func (f *fakeWorkspaceAuditor) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (model.AuditEventID, error) {
+func (f *fakeWorkspaceAuditor) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (model.AuditEventID, error) {
 	f.values = values
 	return "iiiiiiiiiiiiiiiiiiiiiiiiii", nil
 }

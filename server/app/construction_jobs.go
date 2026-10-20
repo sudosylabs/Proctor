@@ -77,6 +77,7 @@ func constructJobs(
 			return jobConstruction{}, err
 		}
 		mailService.rekeyJobs = deps.Store.Job()
+		mailService.rekeyAudit = mutationAuditAdapter{audit: foundation.audit}
 		mailService.wake = runtime.Wake
 	}
 

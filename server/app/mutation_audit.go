@@ -21,6 +21,9 @@ type mutationAuditor interface {
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
+// mutationAuditAdapter is the one Invocation-shaped view of the audit service.
+// Every parent use case and Exam child receives it directly for
+// principal-attributed mutation audit; it never wraps another adapter.
 type mutationAuditAdapter struct{ audit *auditService }
 
 func (a mutationAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
@@ -52,4 +55,23 @@ func (a mutationAuditAdapter) Fail(ctx context.Context, auditID model.AuditEvent
 		ctx, auditID, model.AuditStatusFail, errorCode, nil,
 	)
 	return appErr
+}
+
+func (a mutationAuditAdapter) PrepareAtScope(_ context.Context, invocation Invocation, action model.Action,
+	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
+) (*model.AuditEvent, error) {
+	return a.audit.prepareCriticalActionAtScope(invocation.Principal(), action, resource, scopeType, scopeID,
+		invocation.RequestMetadata(), map[string]any{"operation": operation, "value": value}, nil)
+}
+
+func (a mutationAuditAdapter) RecordAuthorizationDecision(ctx context.Context, invocation Invocation,
+	action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string, allowed bool,
+) error {
+	return a.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource, scopeType, scopeID,
+		invocation.RequestMetadata(), allowed)
+}
+
+func (a mutationAuditAdapter) Complete(ctx context.Context, auditID model.AuditEventID, value map[string]any) error {
+	_, err := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusSuccess, "", value)
+	return err
 }

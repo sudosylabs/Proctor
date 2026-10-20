@@ -100,7 +100,7 @@ func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocat
 	if err = p.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	auditID, err := p.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
+	auditID, err := p.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 	}, nil)
 	if err != nil {

@@ -113,7 +113,7 @@ func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocatio
 	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Exam{}, err
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_exam_revision": command.ExpectedExamRevision,
 		"exam_revision": command.ExpectedExamRevision + 1,
 	}, nil)

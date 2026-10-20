@@ -66,7 +66,7 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, invocation in
 		resource, model.RoleScopeClass, target.ClassID.String(), true); err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}
-	auditEvent, err := service.deps.Auditor.Prepare(ctx, invocation, model.ActionExamSittingParticipate,
+	auditEvent, err := service.deps.Auditor.PrepareAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		resource, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptCorrectionAcknowledgementOperation,
 		map[string]any{"exam_attempt_id": target.AttemptID.String(), "correction_revision_id": target.CorrectionRevisionID.String(),

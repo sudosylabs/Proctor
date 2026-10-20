@@ -374,11 +374,11 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, invocation i
 	mutation *store.ExamAttemptWorkspaceMutation, idempotency *store.CommandIdempotency,
 	expectedKind model.StarterWorkspaceEntryKind, expectedVersion model.WorkspaceContentVersion,
 ) (WorkspaceMutationResult, error) {
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptWorkspaceMutationOperation,
 		map[string]any{"exam_attempt_id": mutation.Access.AttemptID.String(),
-			"operation": string(mutation.Operation)})
+			"operation": string(mutation.Operation)}, nil)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}

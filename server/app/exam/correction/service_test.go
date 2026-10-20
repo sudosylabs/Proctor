@@ -365,7 +365,7 @@ type correctionAuditFake struct {
 	value map[string]any
 }
 
-func (a *correctionAuditFake) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
+func (a *correctionAuditFake) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
 	a.f.order = append(a.f.order, "audit.begin")
 	a.value = value
 	return model.NewAuditEventID(), nil

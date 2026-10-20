@@ -83,11 +83,11 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, invocation invoca
 	if !validFocusLossTarget(target, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss audit target"))
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptFocusLossOperation, map[string]any{
 			"exam_attempt_id": command.AttemptID.String(), "generation": command.Generation, "sequence": command.Sequence,
-		})
+		}, nil)
 	if err != nil {
 		return FocusLossEvaluation{}, err
 	}
@@ -135,12 +135,12 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, invocation i
 	if target == nil || !target.SubmissionID.IsValid() || !validFocusLossTarget(&target.ExamAttemptFocusLossTarget, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late Focus Loss audit target"))
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptFocusLossDiscrepancyOperation, map[string]any{
 			"exam_attempt_id": command.AttemptID.String(), "submission_id": target.SubmissionID.String(),
 			"generation": command.Generation, "sequence": command.Sequence,
-		})
+		}, nil)
 	if err != nil {
 		return FocusLossEvaluation{}, err
 	}

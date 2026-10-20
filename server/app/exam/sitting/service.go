@@ -96,7 +96,7 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -212,7 +212,7 @@ func (service *Service) Schedule(ctx context.Context, invocation invocation.Invo
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"exam_revision_id": command.ExamRevisionID.String(), "class_id": command.ClassID.String()}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
 		model.RoleScopeAcademicUnit, authorization.unitID.String(), "schedule", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -497,7 +497,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, invocation invocatio
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"exam_revision_id": revisionID.String(), "class_id": classID.String(),
 		"expected_sitting_revision": command.ExpectedRevision}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "update_schedule", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -556,7 +556,7 @@ func (service *Service) Cancel(ctx context.Context, invocation invocation.Invoca
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"expected_sitting_revision": command.ExpectedRevision, "reason_code": string(model.ExamSittingReasonManagerCanceled)}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "cancel", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -632,7 +632,7 @@ func (service *Service) runManagerTransition(ctx context.Context, invocation inv
 		}
 	}
 	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, transition)
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), operation, auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
@@ -679,7 +679,7 @@ func (service *Service) Extend(ctx context.Context, invocation invocation.Invoca
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting deadline Job", err)
 	}
 	auditValue := managerLifecycleAuditValue(command.ExamID, command.SittingID, command.ExpectedRevision, store.ExamSittingTransitionManagerExtended)
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, authorization.action, resource, model.RoleScopeAcademicUnit,
 		authorization.unitID.String(), "extend", auditValue, nil)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err

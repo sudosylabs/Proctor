@@ -91,7 +91,7 @@ func constructIdentity(
 		deps.Store.Invitation(), deps.Store.Class(), deps.Store.AcademicPeriod(),
 		deps.Store.AcademicUnit(), deps.Store.Role(),
 		invitationAuthorizationAdapter{authorization: authorization},
-		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		accountMail, foundation.hasher, mutationAuditAdapter{audit: foundation.audit},
 		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit},
 		classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime}, deps.NodeID, deps.PublicURL,
 		deps.RecentAuthenticationTTL, model.NewCredentialToken, time.Now,

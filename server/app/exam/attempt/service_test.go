@@ -1562,13 +1562,13 @@ func (fake *systemAuditFake) Fail(_ context.Context, _ model.AuditEventID, code 
 	return nil
 }
 
-func (fake *auditFake) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values map[string]any) (model.AuditEventID, error) {
+func (fake *auditFake) BeginAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values, _ map[string]any) (model.AuditEventID, error) {
 	fake.f.order = append(fake.f.order, "audit")
 	fake.values = values
 	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
 	return model.NewAuditEventID(), nil
 }
-func (fake *auditFake) Prepare(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
+func (fake *auditFake) PrepareAtScope(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource,
 	scopeType model.RoleScopeType, scopeID, operation string, values map[string]any,
 ) (*model.AuditEvent, error) {
 	fake.f.order = append(fake.f.order, "audit.prepare")

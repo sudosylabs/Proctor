@@ -388,18 +388,6 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 		AcademicUnitRootIDs: append([]model.AcademicUnitID(nil), constraint.AcademicUnitRootIDs...), ClassIDs: append([]model.ClassID(nil), constraint.ClassIDs...)}, nil
 }
 
-type invitationAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (a invitationAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.Begin(ctx, invocation, action, resource, operation, value, prior)
-}
-func (a invitationAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
-}
-func (a invitationAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
-	return a.audit.Fail(ctx, auditID, errorCode)
-}
-
 func newInvitationService(persistence store.InvitationStore, classes invitationClassReader, periods invitationPeriodReader,
 	academicUnits invitationAcademicUnitReader, roles invitationRoleReader,
 	authorization invitationAuthorizer, mail invitationMailPreparer, hasher invitationPasswordHasher, audit mutationAuditor,

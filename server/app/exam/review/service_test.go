@@ -314,7 +314,7 @@ type reviewAuditorFake struct {
 	failedCode string
 }
 
-func (fake *reviewAuditorFake) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (model.AuditEventID, error) {
+func (fake *reviewAuditorFake) BeginAtScope(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
 	fake.value = value
 	fake.begun++
 	return model.NewAuditEventID(), nil

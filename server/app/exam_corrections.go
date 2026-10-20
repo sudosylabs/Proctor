@@ -82,15 +82,6 @@ func (a examCorrectionAuthorizationAdapter) Authorize(ctx context.Context, invoc
 	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
-type examCorrectionAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (a examCorrectionAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
-}
-func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return a.audit.Fail(ctx, id, code)
-}
-
 type examCorrectionRealtimeEffects struct {
 	realtime    *realtimeService
 	collections examCollectionInvalidationEffects
@@ -117,6 +108,6 @@ func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation str
 }
 
 var _ examcorrection.Authorizer = examCorrectionAuthorizationAdapter{}
-var _ examcorrection.Auditor = examCorrectionAuditAdapter{}
+var _ examcorrection.Auditor = mutationAuditAdapter{}
 var _ examcorrection.Effects = examCorrectionRealtimeEffects{}
 var _ examcorrection.EffectFailures = examCorrectionRealtimeEffects{}

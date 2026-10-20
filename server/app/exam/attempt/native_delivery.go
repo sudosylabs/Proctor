@@ -107,7 +107,7 @@ func (service *Service) beginNativeDeliveryAudit(ctx context.Context, invocation
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrNativeDeliveryInvalid)
 	}
-	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID})
+	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID}, nil)
 }
 func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
 	release, admissionErr := service.enterControl(ctx, invocation, false)

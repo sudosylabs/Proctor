@@ -736,7 +736,8 @@ func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID mode
 	if a.audit == nil {
 		return apperror.New("audit.unavailable")
 	}
-	return (mutationAuditAdapter{audit: a.audit}).Fail(ctx, auditID, errorCode)
+	_, appErr := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusFail, errorCode, nil)
+	return appErr
 }
 
 func (s *desktopAuthorizationService) Start(

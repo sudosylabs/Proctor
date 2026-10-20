@@ -251,10 +251,10 @@ func (service *Service) Submit(ctx context.Context, invocation invocation.Invoca
 	if !submissionID.IsValid() {
 		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "submission_id")
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionSealOperation,
-		map[string]any{"exam_attempt_id": access.AttemptID.String()})
+		map[string]any{"exam_attempt_id": access.AttemptID.String()}, nil)
 	if err != nil {
 		return SubmissionResult{}, err
 	}

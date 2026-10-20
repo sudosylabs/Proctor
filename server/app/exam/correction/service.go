@@ -34,7 +34,7 @@ type Authorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
 }
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 type Effects interface {
@@ -197,7 +197,7 @@ func (s *Service) StageResourceContent(ctx context.Context, invocation invocatio
 	if e != nil {
 		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "upload_lease").Wrap(e)
 	}
-	auditID, err := s.deps.Auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_correction_resource_stage_reserve", map[string]any{
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_correction_resource_stage_reserve", map[string]any{
 		"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "base_revision_id": c.BaseRevisionID.String(), "target": string(c.Target),
 	}, nil)
 	if err != nil {
@@ -275,7 +275,7 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 	}
 	at := model.TimeUTC(s.deps.Now())
 	value := map[string]any{"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "expected_sitting_revision": c.ExpectedSittingRevision, "expected_current_revision_id": c.ExpectedCurrentRevisionID.String(), "instructions_present": c.Instructions.Present, "browser_policy_present": c.BrowserPolicy.Present, "resource_count": len(c.Resources), "acknowledgement_required": c.AcknowledgementRequired}
-	auditID, err := s.deps.Auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
+	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
 	if err != nil {
 		return Result{}, err
 	}

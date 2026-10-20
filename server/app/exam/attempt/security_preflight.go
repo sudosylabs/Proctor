@@ -54,7 +54,7 @@ func (service *Service) beginPreflightAudit(ctx context.Context, invocation invo
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != sittingID || !snapshot.Sitting.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Sitting ownership is invalid"))
 	}
-	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()})
+	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()}, nil)
 }
 func (service *Service) PrepareSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
 	release, admissionErr := service.enterControl(ctx, invocation, false)

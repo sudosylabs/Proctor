@@ -26,7 +26,7 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
+	BeginAtScope(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -129,13 +129,13 @@ func (service *Service) SaveDecision(ctx context.Context, invocation invocation.
 		return Result{}, err
 	}
 	at := model.TimeUTC(service.deps.Now())
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionSubmissionReview,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionSubmissionReview,
 		model.Resource{Type: model.ResourceSubmission, ID: command.SubmissionID.String()}, model.RoleScopeAcademicUnit,
 		authorization.AcademicUnitID.String(), store.ExamIntegrityReviewDecisionOperation, map[string]any{
 			"submission_id": command.SubmissionID.String(), "integrity_flag_id": command.FlagID.String(),
 			"expected_review_revision":   command.ExpectedReviewRevision,
 			"expected_decision_revision": command.ExpectedDecisionRevision, "outcome": string(command.Outcome),
-		})
+		}, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -198,10 +198,10 @@ func (service *Service) UpdateDraft(ctx context.Context, invocation invocation.I
 		return Result{}, err
 	}
 	at := model.TimeUTC(service.deps.Now())
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionSubmissionReview,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionSubmissionReview,
 		model.Resource{Type: model.ResourceSubmission, ID: command.SubmissionID.String()}, model.RoleScopeAcademicUnit,
 		authorization.AcademicUnitID.String(), store.ExamIntegrityReviewDraftOperation,
-		map[string]any{"submission_id": command.SubmissionID.String(), "expected_review_revision": command.ExpectedReviewRevision})
+		map[string]any{"submission_id": command.SubmissionID.String(), "expected_review_revision": command.ExpectedReviewRevision}, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -290,10 +290,10 @@ func (service *Service) terminalMutation(ctx context.Context, invocation invocat
 	if kind == terminalRelease {
 		action = model.ActionSubmissionRelease
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
+	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, action,
 		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.RoleScopeAcademicUnit,
 		authorization.AcademicUnitID.String(), operation,
-		map[string]any{"submission_id": submissionID.String(), "submission_review_id": reviewID.String(), "expected_review_revision": expectedRevision})
+		map[string]any{"submission_id": submissionID.String(), "submission_review_id": reviewID.String(), "expected_review_revision": expectedRevision}, nil)
 	if err != nil {
 		return Result{}, err
 	}

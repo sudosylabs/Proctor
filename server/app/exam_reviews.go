@@ -220,17 +220,6 @@ func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Cont
 	return apperror.New("exam.integrity_review.not_found")
 }
 
-type examIntegrityReviewAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (adapter examIntegrityReviewAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
-	return adapter.audit.BeginAtScope(ctx, invocation, action, resource,
-		scopeType, scopeID, operation, value, nil)
-}
-
-func (adapter examIntegrityReviewAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return adapter.audit.Fail(ctx, id, code)
-}
-
 type examIntegrityReviewRealtimeEffects struct{ realtime *realtimeService }
 
 func (effects examIntegrityReviewRealtimeEffects) publishManagerBoardInvalidation(ctx context.Context,

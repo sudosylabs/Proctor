@@ -108,15 +108,6 @@ func (a examStarterWorkspaceAuthorizationAdapter) Authorize(ctx context.Context,
 	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
-type examStarterWorkspaceAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (a examStarterWorkspaceAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
-}
-func (a examStarterWorkspaceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return a.audit.Fail(ctx, id, code)
-}
-
 type examStarterWorkspaceRealtimeEffects struct{ realtime *realtimeService }
 
 func (effects examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation examworkspace.ChangeOperation, changedAt time.Time) error {
@@ -131,6 +122,6 @@ func (effects examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, o
 }
 
 var _ examworkspace.Authorizer = examStarterWorkspaceAuthorizationAdapter{}
-var _ examworkspace.Auditor = examStarterWorkspaceAuditAdapter{}
+var _ examworkspace.Auditor = mutationAuditAdapter{}
 var _ examworkspace.Effects = examStarterWorkspaceRealtimeEffects{}
 var _ examworkspace.EffectFailures = examStarterWorkspaceRealtimeEffects{}

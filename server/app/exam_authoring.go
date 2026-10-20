@@ -168,15 +168,6 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation 
 		OverrideInstitutionWide: override.InstitutionWide, OverrideAcademicUnitRootIDs: append([]model.AcademicUnitID(nil), override.AcademicUnitRootIDs...)}, nil
 }
 
-type examAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (a examAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
-}
-func (a examAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return a.audit.Fail(ctx, id, code)
-}
-
 type examRealtimeEffects struct {
 	realtime    *realtimeService
 	collections examCollectionInvalidationEffects
@@ -223,7 +214,7 @@ func (e examRealtimeEffects) Report(ctx context.Context, operation string, err e
 }
 
 var _ examengine.Authorizer = examAuthorizationAdapter{}
-var _ examengine.Auditor = examAuditAdapter{}
+var _ examengine.Auditor = mutationAuditAdapter{}
 var _ examengine.Effects = examRealtimeEffects{}
 var _ examengine.EffectFailures = examRealtimeEffects{}
 

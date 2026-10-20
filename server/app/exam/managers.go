@@ -154,7 +154,7 @@ func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Inv
 	if transition.eligibilityRequired {
 		auditData["target_eligible"] = eligible
 	}
-	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), transition.operation, auditData, nil)
+	auditID, err := a.deps.Auditor.BeginAtScope(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), transition.operation, auditData, nil)
 	if err != nil {
 		return ManagerChange{}, err
 	}

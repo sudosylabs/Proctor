@@ -399,36 +399,6 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ct
 		authorization.ExamID, submissionID)
 }
 
-type examAttemptAuditAdapter struct{ audit mutationAuditAdapter }
-
-func (adapter examAttemptAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
-	return adapter.audit.BeginAtScope(ctx, invocation, action, resource,
-		scopeType, scopeID, operation, value, nil)
-}
-
-func (adapter examAttemptAuditAdapter) Prepare(_ context.Context, invocation Invocation, action model.Action,
-	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (*model.AuditEvent, error) {
-	return adapter.audit.audit.prepareCriticalActionAtScope(invocation.Principal(), action, resource, scopeType, scopeID,
-		invocation.RequestMetadata(), map[string]any{"operation": operation, "value": value}, nil)
-}
-
-func (adapter examAttemptAuditAdapter) RecordAuthorizationDecision(ctx context.Context, invocation Invocation,
-	action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string, allowed bool,
-) error {
-	return adapter.audit.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource, scopeType, scopeID,
-		invocation.RequestMetadata(), allowed)
-}
-
-func (adapter examAttemptAuditAdapter) Complete(ctx context.Context, auditID model.AuditEventID, value map[string]any) error {
-	_, err := adapter.audit.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusSuccess, "", value)
-	return err
-}
-
-func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
-	return adapter.audit.Fail(ctx, id, code)
-}
-
 type examAttemptRealtimeEffects struct {
 	realtime *realtimeService
 }
@@ -693,7 +663,7 @@ func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation 
 }
 
 var _ examattempt.ManagerAuthorizer = examAttemptManagerAuthorizationAdapter{}
-var _ examattempt.Auditor = examAttemptAuditAdapter{}
+var _ examattempt.Auditor = mutationAuditAdapter{}
 var _ examattempt.Effects = examAttemptRealtimeEffects{}
 var _ examattempt.EffectFailures = examAttemptRealtimeEffects{}
 
