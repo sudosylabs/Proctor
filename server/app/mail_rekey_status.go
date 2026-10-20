@@ -66,7 +66,7 @@ func (s *mailService) RekeyStatus(ctx context.Context, invocation Invocation, jo
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailRekeyStatusView{}, err
 	}
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionMailRekey); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailRekey); err != nil {
 		return MailRekeyStatusView{}, err
 	}
 	if s.rekeyJobs == nil || !jobID.IsValid() {

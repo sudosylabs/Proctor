@@ -151,12 +151,11 @@ func (a *App) Can(
 // closed if either policy resolution or decision audit fails.
 func (a *App) Authorize(
 	ctx context.Context,
-	principal model.Principal,
+	invocation Invocation,
 	action model.Action,
 	resource model.Resource,
-	metadata model.RequestMetadata,
 ) error {
-	err := a.authorization.Authorize(ctx, principal, action, resource, metadata)
+	err := a.authorization.Authorize(ctx, invocation, action, resource)
 	a.recordOperational("authorization", "decision", err)
 	return err
 }

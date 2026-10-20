@@ -178,10 +178,10 @@ type recordsAuthorizerFake struct {
 	denied bool
 }
 
-func (f *recordsAuthorizerFake) Deny(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
+func (f *recordsAuthorizerFake) RecordDenial(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
 	*f.order = append(*f.order, "records.deny_self")
 	f.denied = true
-	return apperror.New("exam.not_found")
+	return nil
 }
 
 type recordsStoreFake struct {

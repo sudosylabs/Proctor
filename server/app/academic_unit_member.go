@@ -57,7 +57,10 @@ type academicUnitMemberStore interface {
 	EndWithAudit(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 }
 
-type academicUnitMemberAuthorizer interface {
+// membershipAuthorizer authorizes a membership mutation on its scope Resource
+// and, before the scope is known, the caller's coarse authority for the
+// Resource type.
+type membershipAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
 	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
 }
@@ -69,7 +72,7 @@ type academicUnitMemberUserStore interface {
 type academicUnitMemberService struct {
 	store         academicUnitMemberStore
 	users         academicUnitMemberUserStore
-	authorization academicUnitMemberAuthorizer
+	authorization membershipAuthorizer
 	audit         mutationAuditor
 	mail          relationshipTransitionMailPreparer
 	effects       authorizationInvalidationEffects
@@ -78,7 +81,7 @@ type academicUnitMemberService struct {
 }
 
 func newAcademicUnitMemberService(persistence academicUnitMemberStore, users academicUnitMemberUserStore,
-	authorization academicUnitMemberAuthorizer, audit mutationAuditor, mail relationshipTransitionMailPreparer,
+	authorization membershipAuthorizer, audit mutationAuditor, mail relationshipTransitionMailPreparer,
 	effects authorizationInvalidationEffects, now func() time.Time, newID func() string,
 ) *academicUnitMemberService {
 	return &academicUnitMemberService{store: persistence, users: users, authorization: authorization, audit: audit,

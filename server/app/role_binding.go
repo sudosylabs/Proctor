@@ -73,7 +73,6 @@ type roleBindingUserStore interface {
 }
 
 type roleBindingAuthorizer interface {
-	AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
 	AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error)
 	AuthorizeRoleBindingPreflight(context.Context, Invocation, model.Action) error
 	AuthorizeRoleBindingScope(context.Context, Invocation, model.Action, model.RoleScopeType, string) (model.Resource, error)

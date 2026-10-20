@@ -47,11 +47,6 @@ type sessionAdministrationStore interface {
 	RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
 
-type sessionAdministrationAuthorizer interface {
-	AuthorizeView(context.Context, Invocation, string) error
-	AuthorizeManage(context.Context, Invocation, string) error
-}
-
 type sessionAdministrationUserStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 }
@@ -59,7 +54,7 @@ type sessionAdministrationUserStore interface {
 type sessionAdministrationService struct {
 	sessions      sessionAdministrationStore
 	users         sessionAdministrationUserStore
-	authorization sessionAdministrationAuthorizer
+	authorization resourceAuthorizer
 	audit         mutationAuditor
 	mail          sessionAdministrationMailPreparer
 	effects       sessionRevocationEffects
@@ -69,7 +64,7 @@ type sessionAdministrationService struct {
 func newSessionAdministrationService(
 	sessions sessionAdministrationStore,
 	users sessionAdministrationUserStore,
-	authorization sessionAdministrationAuthorizer,
+	authorization resourceAuthorizer,
 	audit mutationAuditor,
 	mail sessionAdministrationMailPreparer,
 	effects sessionRevocationEffects,
@@ -97,7 +92,7 @@ func (s *sessionAdministrationService) List(
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeView(ctx, invocation, userID.String()); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionView, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return nil, err
 	}
 	var (
@@ -139,7 +134,7 @@ func (s *sessionAdministrationService) RevokeOne(
 	if !sessionID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "session_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, userID.String()); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return err
 	}
 	session, err := s.sessions.Get(ctx, sessionID)
@@ -196,7 +191,7 @@ func (s *sessionAdministrationService) RevokeAll(
 	if !userID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, userID.String()); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: userID.String()}); err != nil {
 		return err
 	}
 	user, err := s.users.Get(ctx, userID)
@@ -244,38 +239,6 @@ func (s *sessionAdministrationService) RevokeAll(
 
 func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*preparedDirectMail, error) {
 	return s.mail.PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation{Recipient: user, At: at})
-}
-
-type sessionAdministrationAuthorization struct {
-	authorization *accessControlService
-}
-
-func (a sessionAdministrationAuthorization) AuthorizeView(
-	ctx context.Context,
-	invocation Invocation,
-	userID string,
-) error {
-	return a.authorization.authorizeCurrentState(
-		ctx,
-		invocation.Principal(),
-		model.ActionSessionView,
-		model.Resource{Type: model.ResourceUser, ID: userID},
-		invocation.RequestMetadata(),
-	)
-}
-
-func (a sessionAdministrationAuthorization) AuthorizeManage(
-	ctx context.Context,
-	invocation Invocation,
-	userID string,
-) error {
-	return a.authorization.authorizeCurrentState(
-		ctx,
-		invocation.Principal(),
-		model.ActionSessionManage,
-		model.Resource{Type: model.ResourceUser, ID: userID},
-		invocation.RequestMetadata(),
-	)
 }
 
 var sessionAdministrationStoreErrors = apperror.StoreTable{

@@ -26,12 +26,8 @@ type mfaAudit interface {
 	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, any) error
 }
 
-type mfaResetAuthorizer interface {
-	Authorize(context.Context, model.Principal, model.Action, model.Resource, model.RequestMetadata) error
-}
-
 type mfaSecurityDependencies struct {
-	authorization mfaResetAuthorizer
+	authorization resourceAuthorizer
 	capabilities  accessPolicyCapabilitySource
 	attempts      *authenticationAttemptAccounting
 	rateLimit     LoginRateLimitPolicy

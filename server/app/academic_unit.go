@@ -13,7 +13,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 // GetAcademicUnitQuery identifies one academic unit to retrieve.
@@ -36,8 +35,8 @@ type SearchAcademicUnitsQuery struct {
 
 type academicUnitAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	Installation(context.Context) (model.Resource, error)
-	AuthorizeInstallation(
+	InstitutionResource(context.Context) (model.Resource, error)
+	AuthorizeInstitution(
 		context.Context, Invocation, model.Action,
 	) (model.Resource, error)
 }
@@ -45,96 +44,6 @@ type academicUnitAuthorizer interface {
 type scopedAcademicResourceAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
 	AuthorizeWithScope(context.Context, Invocation, model.Action, model.Resource) (model.RoleScopeType, string, error)
-}
-
-func (a academicUnitAuthorization) Installation(
-	ctx context.Context,
-) (model.Resource, error) {
-	institution, err := a.institutions.GetSingleton(ctx)
-	if err != nil {
-		return model.Resource{}, institutionStoreErrors.Translate(err)
-	}
-	return model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()}, nil
-}
-
-type academicUnitAuthorization struct {
-	authorization *accessControlService
-	institutions  store.InstitutionStore
-}
-
-func (a academicUnitAuthorization) Authorize(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-) error {
-	return a.authorization.authorizeCurrentState(
-		ctx,
-		invocation.Principal(),
-		action,
-		resource,
-		invocation.RequestMetadata(),
-	)
-}
-
-func (a academicUnitAuthorization) AuthorizeWithScope(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-) (model.RoleScopeType, string, error) {
-	return a.authorization.authorizeCurrentStateWithScope(
-		ctx,
-		invocation.Principal(),
-		action,
-		resource,
-		invocation.RequestMetadata(),
-	)
-}
-
-func (a academicUnitAuthorization) AuthorizePreflight(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resourceType model.ResourceType,
-) error {
-	return a.authorization.authorizeResourcePreflight(ctx, invocation, action, resourceType)
-}
-
-func (a academicUnitAuthorization) AuthorizeUserRead(ctx context.Context, invocation Invocation, userID string) error {
-	_, err := a.authorization.authorizeUserRead(ctx, invocation, userID)
-	return err
-}
-
-func (a academicUnitAuthorization) AuthorizeInstallation(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-) (model.Resource, error) {
-	resource, err := a.Installation(ctx)
-	if err != nil {
-		return model.Resource{}, err
-	}
-	if err := a.Authorize(ctx, invocation, action, resource); err != nil {
-		return model.Resource{}, err
-	}
-	return resource, nil
-}
-
-func (a academicUnitAuthorization) AuthorizeAcademicPeriodOwner(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	period *model.AcademicPeriod,
-) error {
-	return a.authorization.authorizeAcademicPeriodOwner(ctx, invocation, action, period)
-}
-
-func (a academicUnitAuthorization) AuthorizeAcademicPeriodList(
-	ctx context.Context,
-	invocation Invocation,
-) (store.AcademicPeriodVisibilityScope, error) {
-	return a.authorization.authorizeAcademicPeriodList(ctx, invocation)
 }
 
 type academicUnitQueryService struct {
@@ -220,7 +129,7 @@ func (s *academicUnitQueryService) List(
 	var institution model.Resource
 	if parentID == "" {
 		var err error
-		institution, err = s.authorization.AuthorizeInstallation(
+		institution, err = s.authorization.AuthorizeInstitution(
 			ctx, invocation, model.ActionAcademicUnitView,
 		)
 		if err != nil {
@@ -228,7 +137,7 @@ func (s *academicUnitQueryService) List(
 		}
 	} else {
 		var err error
-		institution, err = s.authorization.Installation(ctx)
+		institution, err = s.authorization.InstitutionResource(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +164,7 @@ func (s *academicUnitQueryService) Search(
 	invocation Invocation,
 	query SearchAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
-	institution, err := s.authorization.AuthorizeInstallation(
+	institution, err := s.authorization.AuthorizeInstitution(
 		ctx, invocation, model.ActionAcademicUnitView,
 	)
 	if err != nil {

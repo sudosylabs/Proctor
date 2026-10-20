@@ -72,18 +72,12 @@ type roleAuthorizerFake struct {
 	bindingScope  store.UserVisibilityScope
 }
 
-func (a *roleAuthorizerFake) AuthorizeManage(context.Context, Invocation) (model.Resource, error) {
-	*a.events = append(*a.events, "authorize-manage")
-	return a.resource, a.err
-}
-
-func (a *roleAuthorizerFake) AuthorizeView(context.Context, Invocation) (model.Resource, error) {
-	*a.events = append(*a.events, "authorize-view")
-	return a.resource, a.err
-}
-
-func (a *roleAuthorizerFake) AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error) {
-	*a.events = append(*a.events, "authorize-binding-institution")
+func (a *roleAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+	event := "authorize-view"
+	if action == model.ActionRoleManage {
+		event = "authorize-manage"
+	}
+	*a.events = append(*a.events, event)
 	return a.resource, a.err
 }
 

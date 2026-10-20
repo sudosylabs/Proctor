@@ -46,7 +46,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, command.UserID.String()); err != nil {
+	if err := a.userProfiles.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: command.UserID.String()}); err != nil {
 		return nil, err
 	}
 	id := command.UserID
@@ -78,7 +78,7 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, command.UserID.String()); err != nil {
+	if err := a.userProfiles.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: command.UserID.String()}); err != nil {
 		return nil, err
 	}
 	id := command.UserID

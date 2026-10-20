@@ -110,16 +110,15 @@ func (a *inboundTestApplication) CloseExamAttemptConnection(ctx context.Context,
 
 func (a *inboundTestApplication) AuthorizeWebSocketSubscription(
 	_ context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
+	invocation app.Invocation,
 	action model.Action,
 	resource model.Resource,
 ) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.authorizations = append(a.authorizations, inboundAuthorizationCall{
-		principal: principal,
-		metadata:  metadata,
+		principal: invocation.Principal(),
+		metadata:  invocation.RequestMetadata(),
 		action:    action,
 		resource:  resource,
 	})

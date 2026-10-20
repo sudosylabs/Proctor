@@ -74,11 +74,6 @@ type classMemberUserStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 }
 
-type classMemberAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
-}
-
 type classMemberSittingStore interface {
 	ListInvalidationTargetsByClass(context.Context, model.ClassID, model.ExamSittingID, int) ([]store.ExamSittingInvalidationTarget, error)
 }
@@ -92,7 +87,7 @@ type classMemberService struct {
 	store         classMemberStore
 	classes       classMemberClassStore
 	users         classMemberUserStore
-	authorization classMemberAuthorizer
+	authorization membershipAuthorizer
 	audit         mutationAuditor
 	mail          classTransitionMailPreparer
 	effects       classMemberEffects
@@ -101,7 +96,7 @@ type classMemberService struct {
 }
 
 func newClassMemberService(persistence classMemberStore, classes classMemberClassStore, users classMemberUserStore,
-	authorization classMemberAuthorizer, audit mutationAuditor, mail classTransitionMailPreparer,
+	authorization membershipAuthorizer, audit mutationAuditor, mail classTransitionMailPreparer,
 	effects classMemberEffects, now func() time.Time, newID func() string,
 ) *classMemberService {
 	return &classMemberService{store: persistence, classes: classes, users: users, authorization: authorization,

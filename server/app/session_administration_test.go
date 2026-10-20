@@ -68,13 +68,12 @@ func (s *sessionAdministrationStoreFake) RevokeAllForUserWithAudit(_ context.Con
 
 type sessionAdministrationAuthorizerFake struct{ events *[]string }
 
-func (a *sessionAdministrationAuthorizerFake) AuthorizeView(context.Context, Invocation, string) error {
-	*a.events = append(*a.events, "authorize-view")
-	return nil
-}
-
-func (a *sessionAdministrationAuthorizerFake) AuthorizeManage(context.Context, Invocation, string) error {
-	*a.events = append(*a.events, "authorize-manage")
+func (a *sessionAdministrationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
+	event := "authorize-view"
+	if action == model.ActionSessionManage {
+		event = "authorize-manage"
+	}
+	*a.events = append(*a.events, event)
 	return nil
 }
 

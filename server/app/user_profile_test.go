@@ -148,13 +148,14 @@ func (a *userProfileAuthorizerFake) AuthorizeRead(context.Context, Invocation, s
 	*a.events = append(*a.events, "authorize-read")
 	return a.readErr
 }
-func (a *userProfileAuthorizerFake) AuthorizeManage(context.Context, Invocation, string) error {
+func (a *userProfileAuthorizerFake) Authorize(context.Context, Invocation, model.Action, model.Resource) error {
 	*a.events = append(*a.events, "authorize-manage")
 	return nil
 }
 
-func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(ctx context.Context, invocation Invocation, userID string) error {
-	return a.AuthorizeManage(ctx, invocation, userID)
+func (a *userProfileAuthorizerFake) AuthorizeAccountStateManage(context.Context, Invocation, string) error {
+	*a.events = append(*a.events, "authorize-manage")
+	return nil
 }
 func (a *userProfileAuthorizerFake) AuthorizeProfilePictureWrite(context.Context, Invocation, string) error {
 	*a.events = append(*a.events, "authorize-profile-picture-write")

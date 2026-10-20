@@ -158,7 +158,7 @@ func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T
 	application := &App{exams: child}
 	principal := testExamPrincipal(model.NewUserID())
 	examID := model.NewExamID()
-	err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{RequestID: "subscribe"}, model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	err := application.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "subscribe"}), model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *test
 	resource := model.Resource{Type: model.ResourceExam, ID: model.NewExamID().String()}
 	for _, failure := range []error{apperror.New("exam.not_found"), apperror.New("authorization.denied")} {
 		application := &App{exams: &examUseCasesFake{err: failure}}
-		err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{}, model.ActionExamView, resource)
+		err := application.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}), model.ActionExamView, resource)
 		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("error = %v, want concealed resource.not_found", err)
 		}

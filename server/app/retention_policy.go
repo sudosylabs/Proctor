@@ -23,15 +23,11 @@ type retentionPolicyInstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 }
 
-type retentionPolicyAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-}
-
 type retentionPolicyService struct {
 	policies                store.RetentionPolicyStore
 	lifecycle               store.RetentionStore
 	institutions            retentionPolicyInstitutionStore
-	authorization           retentionPolicyAuthorizer
+	authorization           resourceAuthorizer
 	audit                   mutationAuditor
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
@@ -49,7 +45,7 @@ func newRetentionPolicyService(
 	policies store.RetentionPolicyStore,
 	lifecycle store.RetentionStore,
 	institutions retentionPolicyInstitutionStore,
-	authorization retentionPolicyAuthorizer,
+	authorization resourceAuthorizer,
 	audit mutationAuditor,
 	recentAuthenticationTTL time.Duration,
 	now func() time.Time,

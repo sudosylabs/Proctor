@@ -106,10 +106,6 @@ type AcademicAdministrationBatchResult struct {
 	Failed    int
 }
 
-type academicAdministrationBatchAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-}
-
 type academicAdministrationOutcomeLookup interface {
 	Has(context.Context, *store.CommandIdempotency) (bool, error)
 }
@@ -129,7 +125,7 @@ type academicAdministrationBatchCommands interface {
 
 type academicAdministrationBatchService struct {
 	commands      academicAdministrationBatchCommands
-	authorization academicAdministrationBatchAuthorizer
+	authorization resourceAuthorizer
 	outcomes      academicAdministrationOutcomeLookup
 	now           func() time.Time
 	recentTTL     time.Duration
@@ -182,7 +178,7 @@ func (a *App) RunAcademicAdministrationBatch(ctx context.Context, invocation Inv
 	return a.academicAdministrationBatches.Run(ctx, invocation, command)
 }
 
-func newAcademicAdministrationBatchService(commands academicAdministrationBatchCommands, authorization academicAdministrationBatchAuthorizer, outcomes academicAdministrationOutcomeLookup, now func() time.Time, recentTTL time.Duration) *academicAdministrationBatchService {
+func newAcademicAdministrationBatchService(commands academicAdministrationBatchCommands, authorization resourceAuthorizer, outcomes academicAdministrationOutcomeLookup, now func() time.Time, recentTTL time.Duration) *academicAdministrationBatchService {
 	return &academicAdministrationBatchService{commands: commands, authorization: authorization, outcomes: outcomes, now: now, recentTTL: recentTTL}
 }
 

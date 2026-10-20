@@ -69,14 +69,10 @@ type desktopCompatibilityInstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 }
 
-type desktopCompatibilityAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-}
-
 type desktopCompatibilityService struct {
 	policies                store.DesktopCompatibilityPolicyStore
 	institutions            desktopCompatibilityInstitutionStore
-	authorization           desktopCompatibilityAuthorizer
+	authorization           resourceAuthorizer
 	audit                   mutationAuditor
 	catalog                 *desktopBuildCatalog
 	skipBuildChecks         bool
@@ -126,7 +122,7 @@ func newDesktopBuildCatalog(entries []model.DesktopBuildTuple) (*desktopBuildCat
 func newDesktopCompatibilityService(
 	policies store.DesktopCompatibilityPolicyStore,
 	institutions desktopCompatibilityInstitutionStore,
-	authorization desktopCompatibilityAuthorizer,
+	authorization resourceAuthorizer,
 	audit mutationAuditor,
 	builds []model.DesktopBuildTuple,
 	skipBuildChecks bool,

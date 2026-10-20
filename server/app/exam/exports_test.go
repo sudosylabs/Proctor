@@ -37,12 +37,9 @@ func (a *exportAuthorizerFake) Authorize(_ context.Context, _ invocation.Invocat
 	}
 	return nil
 }
-func (a *exportAuthorizerFake) Deny(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error {
+func (a *exportAuthorizerFake) RecordDenial(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error {
 	a.self = true
-	if a.denyErr != nil {
-		return a.denyErr
-	}
-	return apperror.New("exam.not_found")
+	return a.denyErr
 }
 
 func TestBrowserHistoryExportRejectsOverrideAndRechecksBeforeOpeningBytes(t *testing.T) {

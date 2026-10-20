@@ -49,8 +49,7 @@ type roleStore interface {
 }
 
 type roleAuthorizer interface {
-	AuthorizeView(context.Context, Invocation) (model.Resource, error)
-	AuthorizeManage(context.Context, Invocation) (model.Resource, error)
+	AuthorizeInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
 	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
 }
 
@@ -81,7 +80,7 @@ func (a *App) ListRoles(ctx context.Context, invocation Invocation, _ ListRolesQ
 }
 
 func (s *roleService) List(ctx context.Context, invocation Invocation) ([]*model.Role, error) {
-	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleView); err != nil {
 		return nil, err
 	}
 	roles, err := s.roles.List(ctx)
@@ -103,7 +102,7 @@ func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetR
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
-	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleView); err != nil {
 		return nil, err
 	}
 	role, err := s.roles.Get(ctx, id)
@@ -118,7 +117,7 @@ func (a *App) CreateRole(ctx context.Context, invocation Invocation, command Cre
 }
 
 func (s *roleService) Create(ctx context.Context, invocation Invocation, command CreateRoleCommand) (*model.Role, error) {
-	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
+	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleManage)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +163,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
-	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
+	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleManage)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +243,7 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "role_id")
 	}
-	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
+	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleManage)
 	if err != nil {
 		return err
 	}
@@ -285,18 +284,6 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 type roleAuthorization struct {
 	authorization *accessControlService
 	institutions  store.InstitutionStore
-}
-
-func (a roleAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation) (model.Resource, error) {
-	return a.authorizeInstitution(ctx, invocation, model.ActionRoleManage)
-}
-
-func (a roleAuthorization) AuthorizeView(ctx context.Context, invocation Invocation) (model.Resource, error) {
-	return a.authorizeInstitution(ctx, invocation, model.ActionRoleView)
-}
-
-func (a roleAuthorization) AuthorizeRoleBindingInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
-	return a.authorizeInstitution(ctx, invocation, action)
 }
 
 func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocation Invocation, action model.Action) (store.UserVisibilityScope, error) {
@@ -362,19 +349,13 @@ func (a roleAuthorization) CanDelegateActionsAtScope(
 	return nil
 }
 
-func (a roleAuthorization) authorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a roleAuthorization) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, roleStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := a.authorization.authorizeCurrentState(
-		ctx,
-		invocation.Principal(),
-		action,
-		resource,
-		invocation.RequestMetadata(),
-	); err != nil {
+	if err := a.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil

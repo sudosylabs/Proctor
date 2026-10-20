@@ -339,7 +339,7 @@ func (a invitationAuthorizationAdapter) Authorize(ctx context.Context, invocatio
 	if a.authorization == nil {
 		return apperror.New("invitation.unavailable")
 	}
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
 func (a invitationAuthorizationAdapter) CanDelegateActionsAtScope(ctx context.Context, invocation Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {

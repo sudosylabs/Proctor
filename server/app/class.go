@@ -63,19 +63,16 @@ type classStore interface {
 	UpdateWithAudit(context.Context, *store.ClassUpdate) (*model.Class, error)
 	ArchiveWithAudit(context.Context, *store.ClassArchive) (*model.Class, error)
 }
-type classAuthorizer interface {
-	scopedAcademicResourceAuthorizer
-}
 
 type classService struct {
 	store         classStore
-	authorization classAuthorizer
+	authorization scopedAcademicResourceAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 	newID         func() string
 }
 
-func newClassService(persistence classStore, authorization classAuthorizer, audit mutationAuditor, now func() time.Time, newID func() string) *classService {
+func newClassService(persistence classStore, authorization scopedAcademicResourceAuthorizer, audit mutationAuditor, now func() time.Time, newID func() string) *classService {
 	return &classService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 

@@ -133,7 +133,7 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 			return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid browser history access projection"))
 		}
 		if !access.ActorIsManager {
-			if err := s.deps.Authorizer.Deny(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
+			if err := s.deps.Authorizer.RecordDenial(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
 				return err
 			}
 			return apperror.New("exam.not_found")
@@ -149,7 +149,10 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 		}
 		resource := model.Resource{Type: model.ResourceSubmission, ID: a.SubmissionID.String()}
 		if a.CandidateUserID == invocation.Principal().UserID {
-			return s.deps.Authorizer.Deny(ctx, invocation, view, resource, unit)
+			if err := s.deps.Authorizer.RecordDenial(ctx, invocation, view, resource, unit); err != nil {
+				return err
+			}
+			return apperror.New("exam.not_found")
 		}
 		if err := s.deps.Authorizer.Authorize(ctx, invocation, view, resource); err != nil {
 			return err

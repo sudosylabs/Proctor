@@ -942,12 +942,9 @@ func (fake *authorizerFake) Authorize(_ context.Context, _ invocation.Invocation
 	return fake.err
 }
 
-func (fake *authorizerFake) Deny(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
+func (fake *authorizerFake) RecordDenial(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
 	fake.action, fake.resource, fake.denied = action, resource, true
-	if fake.denyErr != nil {
-		return fake.denyErr
-	}
-	return apperror.New("exam.sitting.not_found")
+	return fake.denyErr
 }
 
 type auditorFake struct {

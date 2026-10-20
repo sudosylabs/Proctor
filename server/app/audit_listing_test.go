@@ -36,7 +36,7 @@ type auditListingAuthorizerFake struct {
 	scope  store.AuditVisibilityScope
 }
 
-func (a *auditListingAuthorizerFake) AuthorizeView(context.Context, Invocation) (store.AuditVisibilityScope, error) {
+func (a *auditListingAuthorizerFake) AuthorizeList(context.Context, Invocation) (store.AuditVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-view")
 	return a.scope, a.err
 }

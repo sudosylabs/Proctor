@@ -131,7 +131,7 @@ func presentExamChildError(err error, conceal bool, unavailable apperror.Code, c
 type examAuthorizationAdapter struct{ authorization *accessControlService }
 
 func (a examAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
 func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation Invocation, _ model.AcademicUnitID) (store.ExamListVisibility, error) {

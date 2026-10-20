@@ -102,12 +102,6 @@ func examStarterWorkspaceError(err error, conceal bool) error {
 	return presentExamChildError(err, conceal, "exam.starter_workspace.unavailable", "exam.starter_workspace.not_found")
 }
 
-type examStarterWorkspaceAuthorizationAdapter struct{ authorization *accessControlService }
-
-func (a examStarterWorkspaceAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
-}
-
 type examStarterWorkspaceRealtimeEffects struct{ realtime *realtimeService }
 
 func (effects examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, entryID model.StarterWorkspaceEntryID, draftRevision int64, operation examworkspace.ChangeOperation, changedAt time.Time) error {
@@ -121,7 +115,7 @@ func (effects examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, o
 	effects.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examworkspace.Authorizer = examStarterWorkspaceAuthorizationAdapter{}
+var _ examworkspace.Authorizer = (*accessControlService)(nil)
 var _ examworkspace.Auditor = mutationAuditAdapter{}
 var _ examworkspace.Effects = examStarterWorkspaceRealtimeEffects{}
 var _ examworkspace.EffectFailures = examStarterWorkspaceRealtimeEffects{}

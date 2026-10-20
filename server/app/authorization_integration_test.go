@@ -354,14 +354,14 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
 	}
 	if authErr := helper.App.Authorize(
-		ctx, *principal, model.ActionUserProfilePictureManage,
-		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()}, metadata,
+		ctx, application.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	); authErr != nil {
 		t.Fatalf("self profile-picture authorization = %v", authErr)
 	}
 	if authErr := helper.App.Authorize(
-		ctx, *principal, model.ActionUserProfilePictureManage,
-		model.Resource{Type: model.ResourceUser, ID: target.ID.String()}, metadata,
+		ctx, application.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
+		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
 	); !apperror.Is(authErr, "authorization.denied") {
 		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
 	}

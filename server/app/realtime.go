@@ -227,8 +227,7 @@ func (a *App) PublishRealtimeEvent(ctx context.Context, event apprealtime.Realti
 
 func (a *App) AuthorizeWebSocketSubscription(
 	ctx context.Context,
-	principal model.Principal,
-	metadata model.RequestMetadata,
+	invocation Invocation,
 	action model.Action,
 	resource model.Resource,
 ) (resultErr error) {
@@ -242,7 +241,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		if err := a.exams.AuthorizeView(ctx, NewInvocation(principal, metadata), examID); err != nil {
+		if err := a.exams.AuthorizeView(ctx, invocation, examID); err != nil {
 			return examError(err, true)
 		}
 		return nil
@@ -252,18 +251,12 @@ func (a *App) AuthorizeWebSocketSubscription(
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		if err := a.examSittings.AuthorizeView(ctx, NewInvocation(principal, metadata), sittingID); err != nil {
+		if err := a.examSittings.AuthorizeView(ctx, invocation, sittingID); err != nil {
 			return examSittingError(err, true)
 		}
 		return nil
 	}
-	return a.Authorize(
-		ctx,
-		principal,
-		action,
-		resource,
-		metadata,
-	)
+	return a.Authorize(ctx, invocation, action, resource)
 }
 
 func (a *App) ValidateWebSocketPrincipal(

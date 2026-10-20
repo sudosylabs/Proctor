@@ -144,8 +144,7 @@ func (c *connectionRuntime) handleRequest(
 		metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
 		if err := c.application.AuthorizeWebSocketSubscription(
 			ctx,
-			c.principal,
-			metadata,
+			app.NewInvocation(c.principal, metadata),
 			subscription.Action,
 			subscription.Resource.model(),
 		); err != nil {

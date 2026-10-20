@@ -76,12 +76,6 @@ func examCorrectionError(err error, conceal bool) error {
 	return presentExamChildError(err, conceal, "exam.sitting.correction.unavailable", "exam.sitting.correction.not_found")
 }
 
-type examCorrectionAuthorizationAdapter struct{ authorization *accessControlService }
-
-func (a examCorrectionAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
-}
-
 type examCorrectionRealtimeEffects struct {
 	realtime    *realtimeService
 	collections examCollectionInvalidationEffects
@@ -107,7 +101,7 @@ func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation str
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examcorrection.Authorizer = examCorrectionAuthorizationAdapter{}
+var _ examcorrection.Authorizer = (*accessControlService)(nil)
 var _ examcorrection.Auditor = mutationAuditAdapter{}
 var _ examcorrection.Effects = examCorrectionRealtimeEffects{}
 var _ examcorrection.EffectFailures = examCorrectionRealtimeEffects{}

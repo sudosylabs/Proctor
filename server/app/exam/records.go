@@ -23,7 +23,7 @@ import (
 // RecordsAuthorizer also owns the durable decision for prohibited self-waivers.
 type RecordsAuthorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
-	Deny(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error
+	RecordDenial(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error
 }
 
 type CompleteRecordsCommand struct {
@@ -101,7 +101,10 @@ func (r *Records) authorize(ctx context.Context, invocation invocation.Invocatio
 		return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("Exam records scope projection is incomplete"))
 	}
 	if excludeSelf && principal.UserID == resolved.CandidateUserID {
-		return nil, "", r.deps.Authorizer.Deny(ctx, invocation, ordinary, scope.Resource(), resolved.AcademicUnitID)
+		if err = r.deps.Authorizer.RecordDenial(ctx, invocation, ordinary, scope.Resource(), resolved.AcademicUnitID); err != nil {
+			return nil, "", err
+		}
+		return nil, "", apperror.New("exam.not_found")
 	}
 	action := ordinary
 	if override != "" {

@@ -35,15 +35,11 @@ func constructAccessAndAcademics(
 	if err != nil {
 		return accessAcademicConstruction{}, err
 	}
-	academicAuthorization := academicUnitAuthorization{
-		authorization: authorization,
-		institutions:  deps.Store.Institution(),
-	}
 	capabilities := deploymentAccessPolicyCapabilities{
 		providers: deps.Registry, mail: deps.MailDeliverySender, health: foundation.mailHealth,
 	}
 	accessPolicies, err := newAccessPolicyService(
-		deps.Store.AccessPolicy(), deps.Store.Institution(), academicAuthorization,
+		deps.Store.AccessPolicy(), deps.Store.Institution(), authorization,
 		capabilities,
 		mutationAuditAdapter{audit: foundation.audit},
 		accessPolicyRealtimeEffects{realtime: foundation.realtime},
@@ -54,7 +50,7 @@ func constructAccessAndAcademics(
 		return accessAcademicConstruction{}, err
 	}
 	retentionPolicy, err := newRetentionPolicyService(
-		deps.Store.RetentionPolicy(), deps.Store.Retention(), deps.Store.Institution(), academicAuthorization,
+		deps.Store.RetentionPolicy(), deps.Store.Retention(), deps.Store.Institution(), authorization,
 		mutationAuditAdapter{audit: foundation.audit}, deps.RecentAuthenticationTTL, time.Now,
 	)
 	if err != nil {
@@ -63,7 +59,7 @@ func constructAccessAndAcademics(
 	desktopCompatibility, err := newDesktopCompatibilityService(
 		deps.Store.DesktopCompatibilityPolicy(),
 		deps.Store.Institution(),
-		academicAuthorization,
+		authorization,
 		mutationAuditAdapter{audit: foundation.audit},
 		deps.DesktopBuildCatalog,
 		deps.SkipDesktopCompatibility,
@@ -78,47 +74,47 @@ func constructAccessAndAcademics(
 		desktopCompatibility: desktopCompatibility,
 		retentionPolicy:      retentionPolicy,
 		academicUnits: newAcademicUnitQueryService(
-			deps.Store.AcademicUnit(), academicAuthorization,
+			deps.Store.AcademicUnit(), authorization,
 		),
 		academicUnitCommands: newAcademicUnitCommandService(
-			deps.Store.AcademicUnit(), academicAuthorization,
+			deps.Store.AcademicUnit(), authorization,
 			mutationAuditAdapter{audit: foundation.audit},
 			academicUnitRealtimeEffects{realtime: foundation.realtime},
 			academicUnitEffectReporter{realtime: foundation.realtime},
 			time.Now, model.NewId,
 		),
 		institutions: newInstitutionService(
-			deps.Store.Institution(), academicAuthorization,
+			deps.Store.Institution(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now,
 		),
 		programmes: newProgrammeService(
-			deps.Store.Programme(), academicAuthorization,
+			deps.Store.Programme(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		programmeLevels: newProgrammeLevelService(
-			deps.Store.ProgrammeLevel(), academicAuthorization,
+			deps.Store.ProgrammeLevel(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		academicPeriods: newAcademicPeriodService(
-			deps.Store.AcademicPeriod(), academicAuthorization,
+			deps.Store.AcademicPeriod(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		classes: newClassService(
-			deps.Store.Class(), academicAuthorization,
+			deps.Store.Class(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		affiliations: newAffiliationService(
 			deps.Store.Affiliation(), deps.Store.ClassMember(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit},
+			authorization, mutationAuditAdapter{audit: foundation.audit},
 			affiliationRealtimeEffects{realtime: foundation.realtime}, time.Now, model.NewId,
 		),
 		academicUnitMembers: newAcademicUnitMemberService(
-			deps.Store.AcademicUnitMember(), deps.Store.User(), academicAuthorization,
+			deps.Store.AcademicUnitMember(), deps.Store.User(), authorization,
 			mutationAuditAdapter{audit: foundation.audit}, foundation.mail, foundation.realtime, time.Now, model.NewId,
 		),
 		classMembers: newClassMemberService(
 			deps.Store.ClassMember(), deps.Store.Class(), deps.Store.User(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail,
+			authorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail,
 			classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime},
 			time.Now, model.NewId,
 		),

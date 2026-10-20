@@ -227,7 +227,7 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
 		Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
 	}
-	if err := access.authorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !apperror.Is(err, "authorization.denied") {
+	if err := access.AuthorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("owner preflight error = %v, want authorization.denied", err)
 	}
 	if periods.gets != 0 || units.listAncestors != 0 {
@@ -261,7 +261,7 @@ func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *t
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
 	invocation := NewInvocation(principal, model.RequestMetadata{})
-	if err := access.authorizeResourcePreflight(
+	if err := access.AuthorizePreflight(
 		context.Background(), invocation, model.ActionClassMembersManage, model.ResourceClass,
 	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("preflight error = %v, want authorization.denied", err)

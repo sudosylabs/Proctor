@@ -21,8 +21,8 @@ import (
 
 type Authorizer interface {
 	AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error
-	AuthorizeReview(context.Context, invocation.Invocation, model.SubmissionID) (bool, error)
-	AuthorizeRelease(context.Context, invocation.Invocation, model.SubmissionID) (bool, error)
+	AuthorizeReview(context.Context, invocation.Invocation, model.SubmissionID) (override bool, err error)
+	AuthorizeRelease(context.Context, invocation.Invocation, model.SubmissionID) (override bool, err error)
 }
 
 type Auditor interface {

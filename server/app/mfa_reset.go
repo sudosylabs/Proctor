@@ -47,7 +47,7 @@ func (s *mfaApplicationService) ResetUser(ctx context.Context, invocation Invoca
 		return apperror.New("authentication.mfa.reset_invalid")
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: userID.String()}
-	if err := s.security.authorization.Authorize(ctx, principal, model.ActionUserMFAReset, resource, invocation.RequestMetadata()); err != nil {
+	if err = s.security.authorization.Authorize(ctx, invocation, model.ActionUserMFAReset, resource); err != nil {
 		return err
 	}
 	at := model.TimeFromMillis(s.now().UnixMilli())

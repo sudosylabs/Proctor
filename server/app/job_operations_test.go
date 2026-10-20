@@ -67,7 +67,7 @@ type jobOperationsAuthorizerFake struct {
 	err      error
 }
 
-func (f *jobOperationsAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+func (f *jobOperationsAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
 	*f.events = append(*f.events, "authorize")
 	f.actions = append(f.actions, action)
 	return f.resource, f.err
@@ -186,7 +186,7 @@ func TestJobOperationsRequireDependencies(t *testing.T) {
 	tests := []struct {
 		name          string
 		jobs          jobOperatorEngine
-		authorization jobOperationsAuthorizer
+		authorization institutionAuthorizer
 		audit         mutationAuditor
 		now           func() time.Time
 	}{

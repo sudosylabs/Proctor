@@ -29,11 +29,11 @@ type authorizedScopeConstraint struct {
 	ClassIDs            []model.ClassID
 }
 
-// authorizeResourcePreflight establishes that the principal has some current
+// AuthorizePreflight establishes that the principal has some current
 // authority for the action's resource family before a caller loads an opaque
 // child identifier whose owning scope is not yet known. Callers retain the
 // exact resource authorization after the bounded lookup.
-func (s *accessControlService) authorizeResourcePreflight(
+func (s *accessControlService) AuthorizePreflight(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -109,7 +109,7 @@ func (s *accessControlService) academicPeriodCoarseAuthority(
 	return false, resolved, nil
 }
 
-func (s *accessControlService) authorizeAcademicPeriodList(
+func (s *accessControlService) AuthorizeAcademicPeriodList(
 	ctx context.Context,
 	invocation Invocation,
 ) (store.AcademicPeriodVisibilityScope, error) {
@@ -241,7 +241,7 @@ func (s *accessControlService) authorizeRoleBindingScope(
 	if err != nil {
 		return model.Resource{}, err
 	}
-	if err := s.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata()); err != nil {
+	if err := s.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil

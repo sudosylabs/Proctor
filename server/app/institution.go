@@ -30,20 +30,16 @@ type institutionStore interface {
 	UpdateWithAudit(context.Context, *store.InstitutionUpdate) (*model.Institution, error)
 }
 
-type institutionAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-}
-
 type institutionService struct {
 	store         institutionStore
-	authorization institutionAuthorizer
+	authorization resourceAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 }
 
 func newInstitutionService(
 	persistence institutionStore,
-	authorization institutionAuthorizer,
+	authorization resourceAuthorizer,
 	audit mutationAuditor,
 	now func() time.Time,
 ) *institutionService {

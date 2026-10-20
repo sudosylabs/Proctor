@@ -156,7 +156,7 @@ func (s *academicUnitCommandService) Create(
 	if parentID == "" {
 		action = model.ActionAcademicUnitManage
 		var err error
-		institution, err = s.authorization.AuthorizeInstallation(ctx, invocation, action)
+		institution, err = s.authorization.AuthorizeInstitution(ctx, invocation, action)
 		if err != nil {
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func (s *academicUnitCommandService) Create(
 			return nil, err
 		}
 		var err error
-		institution, err = s.authorization.Installation(ctx)
+		institution, err = s.authorization.InstitutionResource(ctx)
 		if err != nil {
 			return nil, err
 		}

@@ -53,8 +53,8 @@ func TestAuthorizeWebSocketSittingSubscriptionUsesRelationshipGate(t *testing.T)
 	application := &App{examSittings: child}
 	principal := testExamPrincipal(model.NewUserID())
 	sittingID := model.NewExamSittingID()
-	err := application.AuthorizeWebSocketSubscription(context.Background(), principal,
-		model.RequestMetadata{RequestID: "sitting-subscribe"}, model.ActionExamSittingView,
+	err := application.AuthorizeWebSocketSubscription(context.Background(),
+		NewInvocation(principal, model.RequestMetadata{RequestID: "sitting-subscribe"}), model.ActionExamSittingView,
 		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: model.NewExamSittingID().String()}
 	for _, failure := range []error{apperror.New("exam.sitting.not_found"), apperror.New("authorization.denied")} {
 		application := &App{examSittings: &examSittingUseCasesFake{err: failure}}
-		err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{},
+		err := application.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			model.ActionExamSittingView, resource)
 		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("error = %v, want concealed resource.not_found", err)

@@ -97,12 +97,6 @@ func examResourceError(err error, conceal bool) error {
 	return presentExamChildError(err, conceal, "exam.resource.unavailable", "exam.resource.not_found")
 }
 
-type examResourceAuthorizationAdapter struct{ authorization *accessControlService }
-
-func (a examResourceAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
-}
-
 type examResourceRealtimeEffects struct{ realtime *realtimeService }
 
 func (e examResourceRealtimeEffects) Changed(ctx context.Context, examID model.ExamID, _ model.ExamResourceID, draftRevision int64, _ string) error {
@@ -116,7 +110,7 @@ func (e examResourceRealtimeEffects) Report(ctx context.Context, operation strin
 	e.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examresource.Authorizer = examResourceAuthorizationAdapter{}
+var _ examresource.Authorizer = (*accessControlService)(nil)
 var _ examresource.Auditor = mutationAuditAdapter{}
 var _ examresource.Effects = examResourceRealtimeEffects{}
 var _ examresource.EffectFailures = examResourceRealtimeEffects{}

@@ -76,10 +76,6 @@ type accessPolicyInstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 }
 
-type accessPolicyAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action, model.Resource) error
-}
-
 type accessPolicyChanged struct {
 	InstitutionID      model.InstitutionID
 	Revision           int64
@@ -97,7 +93,7 @@ type accessPolicyEffectFailures interface {
 type accessPolicyService struct {
 	policies                store.AccessPolicyStore
 	institutions            accessPolicyInstitutionStore
-	authorization           accessPolicyAuthorizer
+	authorization           resourceAuthorizer
 	capabilities            accessPolicyCapabilitySource
 	audit                   mutationAuditor
 	effects                 accessPolicyEffects
@@ -108,7 +104,7 @@ type accessPolicyService struct {
 }
 
 func newAccessPolicyService(policies store.AccessPolicyStore, institutions accessPolicyInstitutionStore,
-	authorization accessPolicyAuthorizer, capabilities accessPolicyCapabilitySource,
+	authorization resourceAuthorizer, capabilities accessPolicyCapabilitySource,
 	audit mutationAuditor, effects accessPolicyEffects, failures accessPolicyEffectFailures,
 	canonicalOrigin string, recentTTL time.Duration, now func() time.Time,
 ) (*accessPolicyService, error) {

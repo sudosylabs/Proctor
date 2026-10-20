@@ -92,7 +92,7 @@ type accessStore interface {
 
 type Authorizer interface {
 	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
-	Deny(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error
+	RecordDenial(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error
 }
 
 type Auditor interface {
@@ -311,7 +311,7 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, invoca
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
 	if !access.ActorIsManager {
-		if err := service.deps.Authorizer.Deny(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
+		if err := service.deps.Authorizer.RecordDenial(ctx, invocation, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
 			return "", err
 		}
 		return "", apperror.New("exam.sitting.not_found")

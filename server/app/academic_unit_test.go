@@ -37,7 +37,7 @@ func (s academicUnitAuthorizerStub) Authorize(
 	return s.authorize(ctx, invocation, action, resource)
 }
 
-func (s academicUnitAuthorizerStub) Installation(
+func (s academicUnitAuthorizerStub) InstitutionResource(
 	ctx context.Context,
 ) (model.Resource, error) {
 	if s.installation != nil {
@@ -46,7 +46,7 @@ func (s academicUnitAuthorizerStub) Installation(
 	panic("unexpected Installation")
 }
 
-func (s academicUnitAuthorizerStub) AuthorizeInstallation(
+func (s academicUnitAuthorizerStub) AuthorizeInstitution(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -63,13 +63,13 @@ func (f academicUnitAuthorizerFunc) Authorize(
 	return f(ctx, invocation, action, resource)
 }
 
-func (f academicUnitAuthorizerFunc) AuthorizeInstallation(
+func (f academicUnitAuthorizerFunc) AuthorizeInstitution(
 	context.Context, Invocation, model.Action,
 ) (model.Resource, error) {
 	panic("unexpected AuthorizeInstallation")
 }
 
-func (f academicUnitAuthorizerFunc) Installation(
+func (f academicUnitAuthorizerFunc) InstitutionResource(
 	context.Context,
 ) (model.Resource, error) {
 	panic("unexpected Installation")

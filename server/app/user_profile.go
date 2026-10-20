@@ -97,8 +97,11 @@ func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) 
 
 type userProfileAuthorizer interface {
 	AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error)
-	AuthorizeProfileRead(context.Context, Invocation, string) (bool, error)
-	AuthorizeManage(context.Context, Invocation, string) error
+	// AuthorizeProfileRead reports fullProfile when the caller reads its own
+	// profile or holds institution-wide User visibility; a scoped grant reads
+	// the limited profile.
+	AuthorizeProfileRead(context.Context, Invocation, string) (fullProfile bool, err error)
+	Authorize(context.Context, Invocation, model.Action, model.Resource) error
 }
 
 type userProfileService struct {
@@ -199,7 +202,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, id.String()); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: id.String()}); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, id)
@@ -249,7 +252,7 @@ func (a userProfileAuthorization) AuthorizeSearch(ctx context.Context, invocatio
 	return a.authorization.authorizeUserSearch(ctx, invocation)
 }
 
-func (a userProfileAuthorization) AuthorizeProfileRead(ctx context.Context, invocation Invocation, userID string) (bool, error) {
+func (a userProfileAuthorization) AuthorizeProfileRead(ctx context.Context, invocation Invocation, userID string) (fullProfile bool, err error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return false, invalidTokenAppError()
@@ -265,8 +268,8 @@ func (a userProfileAuthorization) AuthorizeRead(ctx context.Context, invocation 
 	return err
 }
 
-func (a userProfileAuthorization) AuthorizeManage(ctx context.Context, invocation Invocation, userID string) error {
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
+func (a userProfileAuthorization) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.authorization.Authorize(ctx, invocation, action, resource)
 }
 
 // AuthorizeAccountStateManage keeps disabled accounts addressable by the one
@@ -281,5 +284,5 @@ func (a userProfileAuthorization) AuthorizeProfilePictureWrite(ctx context.Conte
 	if invocation.Principal().UserID.String() == userID {
 		action = model.ActionUserProfilePictureManage
 	}
-	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, model.Resource{Type: model.ResourceUser, ID: userID}, invocation.RequestMetadata())
+	return a.authorization.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceUser, ID: userID})
 }

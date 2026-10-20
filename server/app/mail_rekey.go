@@ -62,7 +62,7 @@ func (s *mailService) KeyState(ctx context.Context, invocation Invocation) (Mail
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailKeyStateView{}, err
 	}
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionMailRekey); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailRekey); err != nil {
 		return MailKeyStateView{}, err
 	}
 	if s.keyState == nil || s.sealer == nil {
@@ -87,7 +87,7 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailRekeyView{}, err
 	}
-	resource, err := s.authorization.Authorize(ctx, invocation, model.ActionMailRekey)
+	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailRekey)
 	if err != nil {
 		return MailRekeyView{}, err
 	}

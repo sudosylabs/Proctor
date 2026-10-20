@@ -537,7 +537,7 @@ func (e *mfaApplicationEffectsFake) SessionsRevoked(_ context.Context, userID st
 
 type mfaResetAuthorizationFake struct{ err error }
 
-func (a mfaResetAuthorizationFake) Authorize(context.Context, model.Principal, model.Action, model.Resource, model.RequestMetadata) error {
+func (a mfaResetAuthorizationFake) Authorize(context.Context, Invocation, model.Action, model.Resource) error {
 	return a.err
 }
 func testMFASecurity() mfaSecurityDependencies {

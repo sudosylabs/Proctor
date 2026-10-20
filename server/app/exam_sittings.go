@@ -12,7 +12,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -55,9 +54,9 @@ type examSittingUseCases interface {
 	AuthorizeView(context.Context, Invocation, model.ExamSittingID) error
 	AuthorizeBrowserActivityView(context.Context, Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
 	AuthorizeSubmissionView(context.Context, Invocation, model.ExamID, model.SubmissionID) error
-	AuthorizeSubmissionReview(context.Context, Invocation, model.ExamID, model.SubmissionID) (bool, error)
-	AuthorizeSubmissionRelease(context.Context, Invocation, model.ExamID, model.SubmissionID) (bool, error)
-	AuthorizeManage(context.Context, Invocation, model.ExamSittingID) (bool, error)
+	AuthorizeSubmissionReview(context.Context, Invocation, model.ExamID, model.SubmissionID) (override bool, err error)
+	AuthorizeSubmissionRelease(context.Context, Invocation, model.ExamID, model.SubmissionID) (override bool, err error)
+	AuthorizeManage(context.Context, Invocation, model.ExamSittingID) (override bool, err error)
 	List(context.Context, Invocation, examsitting.ListQuery) (examsitting.Page, error)
 	UpdateSchedule(context.Context, Invocation, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
 	Cancel(context.Context, Invocation, examsitting.CancelCommand) (store.ExamSittingSnapshot, error)
@@ -178,20 +177,6 @@ func examSittingError(err error, conceal bool) error {
 	return presentExamChildError(err, conceal, "exam.sitting.unavailable", "exam.sitting.not_found")
 }
 
-type examSittingAuthorizationAdapter struct{ authorization *accessControlService }
-
-func (adapter examSittingAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return adapter.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
-}
-
-func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
-	if err := adapter.authorization.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
-		model.RoleScopeAcademicUnit, unitID.String(), invocation.RequestMetadata(), false); err != nil {
-		return err
-	}
-	return apperror.New("exam.sitting.not_found")
-}
-
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
 func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
@@ -291,7 +276,7 @@ func (effects examSittingRealtimeEffects) Report(ctx context.Context, operation 
 	effects.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-var _ examsitting.Authorizer = examSittingAuthorizationAdapter{}
+var _ examsitting.Authorizer = (*accessControlService)(nil)
 var _ examsitting.Auditor = mutationAuditAdapter{}
 var _ examsitting.SystemAuditor = examSittingSystemAuditAdapter{}
 var _ examsitting.Effects = examSittingRealtimeEffects{}

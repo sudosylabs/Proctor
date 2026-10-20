@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -59,21 +58,4 @@ func (a *App) ReleaseRetentionHold(ctx context.Context, invocation Invocation, c
 	return result, examError(err, true)
 }
 
-type examRecordsAuthorizationAdapter struct {
-	authorization *accessControlService
-	audit         authorizationDecisionAudit
-}
-
-func (adapter examRecordsAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
-	return adapter.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
-}
-
-func (adapter examRecordsAuthorizationAdapter) Deny(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
-	if err := adapter.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
-		model.RoleScopeAcademicUnit, unitID.String(), invocation.RequestMetadata(), false); err != nil {
-		return err
-	}
-	return apperror.New("exam.not_found")
-}
-
-var _ examengine.RecordsAuthorizer = examRecordsAuthorizationAdapter{}
+var _ examengine.RecordsAuthorizer = (*accessControlService)(nil)

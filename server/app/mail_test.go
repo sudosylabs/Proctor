@@ -167,7 +167,7 @@ type mailAuthorizerFake struct {
 	err     error
 }
 
-func (a *mailAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
+func (a *mailAuthorizerFake) AuthorizeInstitution(_ context.Context, _ Invocation, action model.Action) (model.Resource, error) {
 	a.actions = append(a.actions, action)
 	if a.err != nil {
 		return model.Resource{}, a.err

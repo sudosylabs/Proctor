@@ -99,6 +99,14 @@ credential intervention require a strong recent interactive Session.
 - `App.Can` composes policy without auditing; `App.Authorize` durably records
   allow or deny and fails closed. Focused authorizers provide the same split at
   owning use-case boundaries.
+- Every authorization port has one shape,
+  `Authorize(ctx, Invocation, Action, Resource) error`, and the Access Control
+  service satisfies it directly. Named helpers such as `AuthorizeInstitution`,
+  `AuthorizeWithScope`, `AuthorizePreflight`, `RecordDenial`, and
+  list-visibility helpers resolve or report around that one decision; no port
+  takes a raw Principal and request metadata. A helper result that is not the
+  decision itself is named for what it reports, such as `override` or
+  `fullProfile`.
 - List/search queries constrain results by authorized scope in persistence;
   they do not fetch everything and filter in memory.
 - WebSocket commands/subscriptions and background jobs use the same application

@@ -32,7 +32,7 @@ type Sittings interface {
 
 type ManagerAuthorizer interface {
 	AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error
-	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (bool, error)
+	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (override bool, err error)
 	AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error
 	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
 }

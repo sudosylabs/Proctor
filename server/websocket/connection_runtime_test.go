@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -24,8 +25,7 @@ type runtimeTestApplication struct {
 
 func (a *runtimeTestApplication) AuthorizeWebSocketSubscription(
 	context.Context,
-	model.Principal,
-	model.RequestMetadata,
+	app.Invocation,
 	model.Action,
 	model.Resource,
 ) error {

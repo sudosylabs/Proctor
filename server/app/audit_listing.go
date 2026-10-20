@@ -30,7 +30,7 @@ type auditListingStore interface {
 }
 
 type auditListingAuthorizer interface {
-	AuthorizeView(context.Context, Invocation) (store.AuditVisibilityScope, error)
+	AuthorizeList(context.Context, Invocation) (store.AuditVisibilityScope, error)
 }
 
 type auditListingService struct {
@@ -47,7 +47,7 @@ func (a *App) ListAuditEvents(ctx context.Context, invocation Invocation, query 
 }
 
 func (s *auditListingService) List(ctx context.Context, invocation Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
-	visibility, err := s.authorization.AuthorizeView(ctx, invocation)
+	visibility, err := s.authorization.AuthorizeList(ctx, invocation)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ type auditListingAuthorization struct {
 	institutions  store.InstitutionStore
 }
 
-func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation Invocation) (store.AuditVisibilityScope, error) {
+func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation Invocation) (store.AuditVisibilityScope, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return store.AuditVisibilityScope{}, auditListingError(err)

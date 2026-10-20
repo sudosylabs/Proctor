@@ -64,10 +64,6 @@ type mailUserStore interface {
 	Get(context.Context, model.UserID) (*model.User, error)
 }
 
-type mailAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action) (model.Resource, error)
-}
-
 type mailInstitutionStore interface {
 	GetSingleton(context.Context) (*model.Institution, error)
 }
@@ -77,7 +73,7 @@ type mailAuthorizationAdapter struct {
 	institutions  mailInstitutionStore
 }
 
-func (a mailAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a mailAuthorizationAdapter) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	if a.authorization == nil || a.institutions == nil {
 		return model.Resource{}, apperror.New("mail.unavailable")
 	}
@@ -86,7 +82,7 @@ func (a mailAuthorizationAdapter) Authorize(ctx context.Context, invocation Invo
 		return model.Resource{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err = a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata()); err != nil {
+	if err = a.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil
@@ -105,7 +101,7 @@ type mailService struct {
 	rekeyJobs               mailRekeyJobReader
 	rekeyAudit              mutationAuditor
 	users                   mailUserStore
-	authorization           mailAuthorizer
+	authorization           institutionAuthorizer
 	audit                   mailAuditPreparer
 	attempts                *authenticationAttemptAccounting
 	composer                *appmail.Composer
@@ -121,7 +117,7 @@ func newDirectMailPreparer(renderer appmail.Renderer, sender appmail.Sender, sea
 	return appmail.NewComposer(renderer, sender, sealer)
 }
 
-func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
+func newMailService(mailStore mailStore, users mailUserStore, authorization institutionAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}
@@ -168,7 +164,7 @@ func (a *App) GetMailMetrics(ctx context.Context, invocation Invocation) (MailMe
 }
 
 func (s *mailService) Metrics(ctx context.Context, invocation Invocation) (MailMetricsSnapshot, error) {
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailMetricsSnapshot{}, err
 	}
 	return s.metrics.Snapshot(), nil
@@ -196,7 +192,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
 		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
-	institutionResource, err := s.authorization.Authorize(ctx, invocation, model.ActionMailManage)
+	institutionResource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
@@ -247,7 +243,7 @@ func (s *mailService) Get(ctx context.Context, invocation Invocation, id model.M
 	if principal.Validate() != nil {
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailDeliveryView{}, err
 	}
 	if !id.IsValid() {
@@ -264,7 +260,7 @@ func (s *mailService) List(ctx context.Context, invocation Invocation, query Lis
 	if invocation.Principal().Validate() != nil {
 		return MailDeliveryPage{}, invalidTokenAppError()
 	}
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionMailView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailView); err != nil {
 		return MailDeliveryPage{}, err
 	}
 	deliveries, err := s.mail.ListDeliveries(ctx, store.MailDeliveryListOptions{
@@ -302,7 +298,7 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
 		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
-	institutionResource, err := s.authorization.Authorize(ctx, invocation, model.ActionMailManage)
+	institutionResource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionMailManage)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}

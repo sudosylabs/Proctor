@@ -31,6 +31,20 @@ type accessControlService struct {
 	now      func() time.Time
 }
 
+// resourceAuthorizer is the one application authorization port. A use case
+// authorizes an Action on a concrete Resource immediately before the work it
+// guards; named helpers such as AuthorizeInstitution or AuthorizeWithScope
+// resolve or report around this same decision rather than redefining it.
+type resourceAuthorizer interface {
+	Authorize(context.Context, Invocation, model.Action, model.Resource) error
+}
+
+// institutionAuthorizer authorizes an Action on the installation's singleton
+// Institution and returns that Resource for the caller's audit.
+type institutionAuthorizer interface {
+	AuthorizeInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
+}
+
 type authorizationDecisionAudit interface {
 	RecordAuthorizationDecision(context.Context, model.Principal, model.Action, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error
 	RecordUserSearchDecision(context.Context, model.Principal, model.Resource, model.RoleScopeType, string, model.RequestMetadata, bool) error
@@ -159,7 +173,7 @@ func (s *accessControlService) evaluateResolved(
 	return false, nil
 }
 
-func (s *accessControlService) authorizeAcademicPeriodOwner(
+func (s *accessControlService) AuthorizeAcademicPeriodOwner(
 	ctx context.Context,
 	invocation Invocation,
 	action model.Action,
@@ -231,16 +245,75 @@ func personalAccessTokenAllows(
 	}
 }
 
-// Authorize is fail-closed: the requested action is allowed only after the
-// decision itself has been durably recorded.
+// Authorize is the one application authorization shape. It is fail-closed:
+// the requested action is allowed only after the decision itself has been
+// durably recorded against the invocation's principal and request metadata.
 func (s *accessControlService) Authorize(
 	ctx context.Context,
-	principal model.Principal,
+	invocation Invocation,
 	action model.Action,
 	resource model.Resource,
-	metadata model.RequestMetadata,
 ) error {
-	return s.authorizeCurrentState(ctx, principal, action, resource, metadata)
+	return s.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+}
+
+// AuthorizeWithScope is Authorize that also reports the role-binding scope
+// which granted the decision, for use cases that audit at that scope.
+func (s *accessControlService) AuthorizeWithScope(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+) (model.RoleScopeType, string, error) {
+	return s.authorizeCurrentStateWithScope(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
+}
+
+// InstitutionResource returns the installation's singleton Institution as an
+// authorization Resource.
+func (s *accessControlService) InstitutionResource(ctx context.Context) (model.Resource, error) {
+	institution, err := s.resolver.institutions.GetSingleton(ctx)
+	if err != nil {
+		return model.Resource{}, institutionStoreErrors.Translate(err)
+	}
+	return model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()}, nil
+}
+
+// AuthorizeInstitution authorizes action against the singleton Institution
+// and returns that Resource for the caller's audit.
+func (s *accessControlService) AuthorizeInstitution(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+) (model.Resource, error) {
+	resource, err := s.InstitutionResource(ctx)
+	if err != nil {
+		return model.Resource{}, err
+	}
+	if err := s.Authorize(ctx, invocation, action, resource); err != nil {
+		return model.Resource{}, err
+	}
+	return resource, nil
+}
+
+// AuthorizeUserRead authorizes reading another User through the caller's
+// current visibility scope.
+func (s *accessControlService) AuthorizeUserRead(ctx context.Context, invocation Invocation, userID string) error {
+	_, err := s.authorizeUserRead(ctx, invocation, userID)
+	return err
+}
+
+// RecordDenial durably records a denied decision at the Academic Unit scope
+// without evaluating policy, for use cases that refuse by a domain rule such
+// as self-review. The caller returns its own concealing error afterwards.
+func (s *accessControlService) RecordDenial(
+	ctx context.Context,
+	invocation Invocation,
+	action model.Action,
+	resource model.Resource,
+	unitID model.AcademicUnitID,
+) error {
+	return s.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
+		model.RoleScopeAcademicUnit, unitID.String(), invocation.RequestMetadata(), false)
 }
 
 // authorizeCurrentState performs and audits a fresh authorization decision for
@@ -367,6 +440,9 @@ func (s *accessControlService) authorizeUserViewThroughClass(
 	return nil
 }
 
+// authorizeUserRead authorizes reading another User and reports whether the
+// grant came from institution-wide User visibility. A scoped grant through an
+// Academic Unit or Class reports false with a nil error.
 func (s *accessControlService) authorizeUserRead(
 	ctx context.Context,
 	invocation Invocation,

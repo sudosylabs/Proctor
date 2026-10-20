@@ -299,7 +299,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after membership revocation error = %v", appErr)
 	}
-	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, application.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after membership revocation error = %v", appErr)
 	}
@@ -316,7 +316,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after permission revocation error = %v", appErr)
 	}
-	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
+	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, application.NewInvocation(*managerPrincipal, model.RequestMetadata{}),
 		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after permission revocation error = %v", appErr)
 	}

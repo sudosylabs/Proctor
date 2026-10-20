@@ -50,13 +50,9 @@ type jobOperatorEngine interface {
 	Retry(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)
 }
 
-type jobOperationsAuthorizer interface {
-	Authorize(context.Context, Invocation, model.Action) (model.Resource, error)
-}
-
 type jobOperationsService struct {
 	jobs          jobOperatorEngine
-	authorization jobOperationsAuthorizer
+	authorization institutionAuthorizer
 	audit         mutationAuditor
 	now           func() time.Time
 }
@@ -66,13 +62,13 @@ type jobOperationsAuthorization struct {
 	institutions  store.InstitutionStore
 }
 
-func (a jobOperationsAuthorization) Authorize(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
+func (a jobOperationsAuthorization) AuthorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
 		return model.Resource{}, jobOperationsStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err = a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata()); err != nil {
+	if err = a.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
 	return resource, nil
@@ -125,7 +121,7 @@ func (a *App) RetryJob(ctx context.Context, invocation Invocation, command Retry
 	return service.Retry(ctx, invocation, command)
 }
 
-func newJobOperationsService(jobs jobOperatorEngine, authorization jobOperationsAuthorizer, audit mutationAuditor, now func() time.Time) (*jobOperationsService, error) {
+func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAuthorizer, audit mutationAuditor, now func() time.Time) (*jobOperationsService, error) {
 	if jobs == nil {
 		return nil, errors.New("job operations engine is required")
 	}
@@ -142,7 +138,7 @@ func newJobOperationsService(jobs jobOperatorEngine, authorization jobOperations
 }
 
 func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobPage{}, err
 	}
 	page, err := s.jobs.List(ctx, jobengine.ListQuery{
@@ -156,7 +152,7 @@ func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, 
 }
 
 func (s *jobOperationsService) Get(ctx context.Context, invocation Invocation, query GetJobQuery) (JobView, error) {
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobView{}, err
 	}
 	view, err := s.jobs.Get(ctx, query.ID)
@@ -167,7 +163,7 @@ func (s *jobOperationsService) Get(ctx context.Context, invocation Invocation, q
 }
 
 func (s *jobOperationsService) Attempts(ctx context.Context, invocation Invocation, query ListJobAttemptsQuery) (JobAttemptPage, error) {
-	if _, err := s.authorization.Authorize(ctx, invocation, model.ActionJobView); err != nil {
+	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobAttemptPage{}, err
 	}
 	page, err := s.jobs.Attempts(ctx, jobengine.AttemptListQuery{
@@ -188,7 +184,7 @@ func (s *jobOperationsService) Retry(ctx context.Context, invocation Invocation,
 }
 
 func (s *jobOperationsService) mutate(ctx context.Context, invocation Invocation, operation string, id model.JobID, prepare func(context.Context, model.JobID) (jobengine.ControlTarget, error), apply func(context.Context, jobengine.ControlTarget, jobengine.AuditReference) (jobengine.View, error)) (JobView, error) {
-	resource, err := s.authorization.Authorize(ctx, invocation, model.ActionJobManage)
+	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobManage)
 	if err != nil {
 		return JobView{}, err
 	}

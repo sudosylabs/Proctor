@@ -30,7 +30,7 @@ func constructAdministration(
 	)
 	sessionAdministrations := newSessionAdministrationService(
 		deps.Store.Session(), deps.Store.User(),
-		sessionAdministrationAuthorization{authorization: access.authorization},
+		access.authorization,
 		mutationAuditAdapter{audit: foundation.audit}, identity.mail,
 		foundation.realtime, time.Now,
 	)
