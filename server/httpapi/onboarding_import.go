@@ -20,10 +20,10 @@ import (
 
 type OnboardingImportApplication interface {
 	UploadOnboardingImport(context.Context, application.Invocation, application.UploadOnboardingImportCommand) (application.OnboardingImportView, error)
-	GetOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, []application.OnboardingImportRowView, error)
+	GetOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error)
 	CommitOnboardingImport(context.Context, application.Invocation, application.CommitOnboardingImportCommand) (application.OnboardingImportView, error)
-	CancelOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, error)
-	OnboardingImportReport(context.Context, application.Invocation, string, io.Writer) error
+	CancelOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error)
+	OnboardingImportReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error
 }
 
 type onboardingImportModule struct{ imports OnboardingImportApplication }
@@ -184,15 +184,15 @@ type unavailableOnboardingImportApplication struct{}
 func (unavailableOnboardingImportApplication) UploadOnboardingImport(context.Context, application.Invocation, application.UploadOnboardingImportCommand) (application.OnboardingImportView, error) {
 	return application.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) GetOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+func (unavailableOnboardingImportApplication) GetOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
 	return application.OnboardingImportView{}, nil, errUnpresentableResult
 }
 func (unavailableOnboardingImportApplication) CommitOnboardingImport(context.Context, application.Invocation, application.CommitOnboardingImportCommand) (application.OnboardingImportView, error) {
 	return application.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, error) {
+func (unavailableOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
 	return application.OnboardingImportView{}, errUnpresentableResult
 }
-func (unavailableOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, string, io.Writer) error {
+func (unavailableOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
 	return errUnpresentableResult
 }

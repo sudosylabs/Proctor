@@ -259,13 +259,9 @@ func (module examStarterWorkspaceHTTPModule) openFile(request operationRequest) 
 }
 
 func examStarterWorkspaceExamID(request operationRequest) (model.ExamID, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return "", err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return examID, nil
 }
@@ -275,13 +271,9 @@ func examStarterWorkspaceIDs(request operationRequest) (model.ExamID, model.Star
 	if err != nil {
 		return "", "", err
 	}
-	raw, err := request.params.RequireStarterWorkspaceEntryId()
+	entryID, err := request.params.RequireStarterWorkspaceEntryID()
 	if err != nil {
 		return "", "", err
-	}
-	entryID, err := model.ParseStarterWorkspaceEntryID(raw)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, entryID, nil
 }

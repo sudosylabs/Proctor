@@ -127,16 +127,16 @@ func (p Params) RequireExternalIdentityID() (model.ExternalIdentityID, error) {
 	return pathID[model.ExternalIdentityID](p.ExternalIdentityID)
 }
 
-func (p Params) RequireInvitationID() (string, error) {
-	return requirePathID("invitation_id", p.InvitationID)
+func (p Params) RequireInvitationID() (model.InvitationID, error) {
+	return pathID[model.InvitationID](p.InvitationID)
 }
 
-func (p Params) RequireOnboardingImportID() (string, error) {
-	return requirePathID("onboarding_import_id", p.OnboardingImportID)
+func (p Params) RequireOnboardingImportID() (model.OnboardingImportID, error) {
+	return pathID[model.OnboardingImportID](p.OnboardingImportID)
 }
 
-func (p Params) RequireStudentProgressionID() (string, error) {
-	return requirePathID("student_progression_id", p.StudentProgressionID)
+func (p Params) RequireStudentProgressionID() (model.OnboardingImportID, error) {
+	return pathID[model.OnboardingImportID](p.StudentProgressionID)
 }
 
 func (p Params) RequireProviderId() (string, error) {
@@ -219,52 +219,52 @@ func (p Params) RequireRoleBindingID() (model.RoleBindingID, error) {
 	return pathID[model.RoleBindingID](p.RoleBindingID)
 }
 
-func (p Params) RequireJobId() (string, error) {
-	return requirePathID("job_id", p.JobID)
+func (p Params) RequireJobID() (model.JobID, error) {
+	return pathID[model.JobID](p.JobID)
 }
 
-func (p Params) RequireMailDeliveryID() (string, error) {
-	return requirePathID("mail_delivery_id", p.MailDeliveryID)
+func (p Params) RequireMailDeliveryID() (model.MailDeliveryID, error) {
+	return pathID[model.MailDeliveryID](p.MailDeliveryID)
 }
 
-func (p Params) RequireExamId() (string, error) {
-	return requirePathID("exam_id", p.ExamID)
+func (p Params) RequireExamID() (model.ExamID, error) {
+	return pathID[model.ExamID](p.ExamID)
 }
 
-func (p Params) RequireExamRevisionId() (string, error) {
-	return requirePathID("exam_revision_id", p.ExamRevisionID)
+func (p Params) RequireExamRevisionID() (model.ExamRevisionID, error) {
+	return pathID[model.ExamRevisionID](p.ExamRevisionID)
 }
 
-func (p Params) RequireExamSittingId() (string, error) {
-	return requirePathID("exam_sitting_id", p.ExamSittingID)
+func (p Params) RequireExamSittingID() (model.ExamSittingID, error) {
+	return pathID[model.ExamSittingID](p.ExamSittingID)
 }
 
-func (p Params) RequireExamAttemptId() (string, error) {
-	return requirePathID("exam_attempt_id", p.ExamAttemptID)
+func (p Params) RequireExamAttemptID() (model.ExamAttemptID, error) {
+	return pathID[model.ExamAttemptID](p.ExamAttemptID)
 }
 
-func (p Params) RequireSubmissionId() (string, error) {
-	return requirePathID("submission_id", p.SubmissionID)
+func (p Params) RequireSubmissionID() (model.SubmissionID, error) {
+	return pathID[model.SubmissionID](p.SubmissionID)
 }
 
-func (p Params) RequireRetentionHoldID() (string, error) {
-	return requirePathID("retention_hold_id", p.RetentionHoldID)
+func (p Params) RequireRetentionHoldID() (model.RetentionHoldID, error) {
+	return pathID[model.RetentionHoldID](p.RetentionHoldID)
 }
 
-func (p Params) RequireIntegrityFlagID() (string, error) {
-	return requirePathID("integrity_flag_id", p.IntegrityFlagID)
+func (p Params) RequireIntegrityFlagID() (model.IntegrityFlagID, error) {
+	return pathID[model.IntegrityFlagID](p.IntegrityFlagID)
 }
 
-func (p Params) RequireExamResourceId() (string, error) {
-	return requirePathID("exam_resource_id", p.ExamResourceID)
+func (p Params) RequireExamResourceID() (model.ExamResourceID, error) {
+	return pathID[model.ExamResourceID](p.ExamResourceID)
 }
 
-func (p Params) RequireStarterWorkspaceEntryId() (string, error) {
-	return requirePathID("starter_workspace_entry_id", p.StarterWorkspaceEntryID)
+func (p Params) RequireStarterWorkspaceEntryID() (model.StarterWorkspaceEntryID, error) {
+	return pathID[model.StarterWorkspaceEntryID](p.StarterWorkspaceEntryID)
 }
 
-func (p Params) RequireAttemptWorkspaceEntryId() (string, error) {
-	return requirePathID("attempt_workspace_entry_id", p.AttemptWorkspaceEntryID)
+func (p Params) RequireAttemptWorkspaceEntryID() (model.AttemptWorkspaceEntryID, error) {
+	return pathID[model.AttemptWorkspaceEntryID](p.AttemptWorkspaceEntryID)
 }
 
 // pathID converts a canonical path variable into its typed model identifier,
@@ -281,17 +281,29 @@ func pathID[T interface {
 	return id, nil
 }
 
-func requirePathID(name, id string) (string, error) {
-	if !model.IsValidId(id) {
+// opaquePathID accepts a path variable that has the opaque identifier form
+// but no fixed entity type.
+func opaquePathID(value string) (string, error) {
+	if !model.IsValidId(value) {
 		return "", invalidRequestError(nil)
 	}
-	return id, nil
+	return value, nil
 }
 
-func (p Params) RequireExamExportID() (string, error) {
-	return requirePathID("exam_export_id", p.ExamExportID)
+// RequireNativeStreamID returns the native delivery stream selector. The
+// selector names a delivery stream, Participation, or source session chosen
+// by the Store, so it stays an untyped opaque identifier.
+func (p Params) RequireNativeStreamID() (string, error) {
+	return opaquePathID(p.NativeStreamID)
 }
 
+func (p Params) RequireExamExportID() (model.ExamExportID, error) {
+	return pathID[model.ExamExportID](p.ExamExportID)
+}
+
+// RequireSecurityPreflightID returns the server-issued preflight identifier.
+// Preflight identifiers belong to the native agreement vocabulary rather than
+// the typed entity catalog, so the path keeps the opaque identifier form.
 func (p Params) RequireSecurityPreflightID() (string, error) {
-	return requirePathID("security_preflight_id", p.SecurityPreflightID)
+	return opaquePathID(p.SecurityPreflightID)
 }

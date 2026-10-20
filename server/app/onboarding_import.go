@@ -40,7 +40,7 @@ type UploadOnboardingImportCommand struct {
 }
 
 type CommitOnboardingImportCommand struct {
-	ID               string
+	ID               model.OnboardingImportID
 	ExpectedRevision int64
 	PreviewDigest    string
 	Policy           model.OnboardingImportCommitPolicy
@@ -152,7 +152,7 @@ func (a *App) UploadOnboardingImport(ctx context.Context, invocation Invocation,
 	return a.onboardingImports.Upload(ctx, invocation, command)
 }
 
-func (a *App) GetOnboardingImport(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (a *App) GetOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
 	if a == nil || a.onboardingImports == nil {
 		return OnboardingImportView{}, nil, apperror.New("onboarding_import.unavailable")
 	}
@@ -166,14 +166,14 @@ func (a *App) CommitOnboardingImport(ctx context.Context, invocation Invocation,
 	return a.onboardingImports.Commit(ctx, invocation, command)
 }
 
-func (a *App) CancelOnboardingImport(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, error) {
+func (a *App) CancelOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
 		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Cancel(ctx, invocation, id)
 }
 
-func (a *App) OnboardingImportReport(ctx context.Context, invocation Invocation, id string, output io.Writer) error {
+func (a *App) OnboardingImportReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
 	if a == nil || a.onboardingImports == nil {
 		return apperror.New("onboarding_import.unavailable")
 	}
@@ -244,12 +244,11 @@ func newOnboardingImportJob(kind model.JobType, id model.OnboardingImportID, at 
 	return model.NewJob(model.NewJobID(), kind, 1, command, string(kind)+":"+id.String(), at, at, 8)
 }
 
-func (s *onboardingImportService) Get(ctx context.Context, invocation Invocation, rawID string) (OnboardingImportView, []OnboardingImportRowView, error) {
-	return s.get(ctx, invocation, rawID, "")
+func (s *onboardingImportService) Get(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
+	return s.get(ctx, invocation, id, "")
 }
 
-func (s *onboardingImportService) get(ctx context.Context, invocation Invocation, rawID string, expectedMode model.OnboardingImportMode) (OnboardingImportView, []OnboardingImportRowView, error) {
-	id := model.OnboardingImportID(strings.TrimSpace(rawID))
+func (s *onboardingImportService) get(ctx context.Context, invocation Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, []OnboardingImportRowView, error) {
 	value, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, nil, onboardingImportStoreErrors.Translate(err)
@@ -282,7 +281,7 @@ func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocat
 }
 
 func (s *onboardingImportService) commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
-	id := model.OnboardingImportID(strings.TrimSpace(command.ID))
+	id := command.ID
 	if !id.IsValid() || command.ExpectedRevision < 1 || len(command.PreviewDigest) != sha256.Size*2 || !command.Policy.IsValid() || !validInvitationBatchItemKey(command.IdempotencyKey) {
 		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
@@ -344,12 +343,11 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 	return onboardingImportView(committed), nil
 }
 
-func (s *onboardingImportService) Cancel(ctx context.Context, invocation Invocation, rawID string) (OnboardingImportView, error) {
-	return s.cancel(ctx, invocation, rawID, "")
+func (s *onboardingImportService) Cancel(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
+	return s.cancel(ctx, invocation, id, "")
 }
 
-func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocation, rawID string, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
-	id := model.OnboardingImportID(strings.TrimSpace(rawID))
+func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocation, id model.OnboardingImportID, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return OnboardingImportView{}, onboardingImportStoreErrors.Translate(err)
@@ -394,15 +392,14 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 	return onboardingImportView(canceled), nil
 }
 
-func (s *onboardingImportService) Report(ctx context.Context, invocation Invocation, rawID string, output io.Writer) error {
-	return s.report(ctx, invocation, rawID, output, "")
+func (s *onboardingImportService) Report(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
+	return s.report(ctx, invocation, id, output, "")
 }
 
-func (s *onboardingImportService) report(ctx context.Context, invocation Invocation, rawID string, output io.Writer, expectedMode model.OnboardingImportMode) error {
+func (s *onboardingImportService) report(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer, expectedMode model.OnboardingImportMode) error {
 	if output == nil {
 		return apperror.New("request.invalid")
 	}
-	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
 		return onboardingImportStoreErrors.Translate(err)

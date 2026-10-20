@@ -120,7 +120,7 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 	return jsonResult(http.StatusOK, response), nil
 }
 func (module jobResourceModule) get(request operationRequest) (operationResult, error) {
-	jobID, err := request.params.RequireJobId()
+	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -131,7 +131,7 @@ func (module jobResourceModule) get(request operationRequest) (operationResult, 
 	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
 func (module jobResourceModule) listAttempts(request operationRequest) (operationResult, error) {
-	jobID, err := request.params.RequireJobId()
+	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -156,7 +156,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	return jsonResult(http.StatusOK, response), nil
 }
 func (module jobResourceModule) cancel(request operationRequest) (operationResult, error) {
-	jobID, err := request.params.RequireJobId()
+	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -167,7 +167,7 @@ func (module jobResourceModule) cancel(request operationRequest) (operationResul
 	return jsonResult(http.StatusOK, jobResponseFromApplication(view)), nil
 }
 func (module jobResourceModule) retry(request operationRequest) (operationResult, error) {
-	jobID, err := request.params.RequireJobId()
+	jobID, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -34,13 +34,9 @@ func (m examAttemptHTTPModule) deliveryBudget(request operationRequest) (operati
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
 func (m examAttemptHTTPModule) stopDeliveryDetails(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attempt, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	attempt, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	headers, err := candidateAttemptAccessHeaders(request.request)
 	if err != nil {

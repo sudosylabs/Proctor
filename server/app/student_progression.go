@@ -30,7 +30,7 @@ type DryRunStudentProgressionCommand struct {
 }
 
 type CommitStudentProgressionCommand struct {
-	ID               string
+	ID               model.OnboardingImportID
 	ExpectedRevision int64
 	PreviewDigest    string
 	IdempotencyKey   string
@@ -43,7 +43,7 @@ func (a *App) DryRunStudentProgression(ctx context.Context, invocation Invocatio
 	return a.onboardingImports.dryRunProgression(ctx, invocation, command)
 }
 
-func (a *App) GetStudentProgression(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (a *App) GetStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
 	if a == nil || a.onboardingImports == nil {
 		return OnboardingImportView{}, nil, apperror.New("student_progression.unavailable")
 	}
@@ -63,7 +63,7 @@ func (a *App) CommitStudentProgression(ctx context.Context, invocation Invocatio
 	return view, studentProgressionError(err)
 }
 
-func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, error) {
+func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
 		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
 	}
@@ -71,7 +71,7 @@ func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocatio
 	return view, studentProgressionError(err)
 }
 
-func (a *App) StudentProgressionReport(ctx context.Context, invocation Invocation, id string, output io.Writer) error {
+func (a *App) StudentProgressionReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
 	if a == nil || a.onboardingImports == nil {
 		return apperror.New("student_progression.unavailable")
 	}

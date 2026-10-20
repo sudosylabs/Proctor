@@ -566,13 +566,9 @@ func (module examIntegrityReviewHTTPModule) terminal(request operationRequest,
 }
 
 func (module examIntegrityReviewHTTPModule) studentResult(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	result, err := module.application.GetStudentExamResult(request.context, request.invocation(), attemptID)
 	if err != nil {
@@ -647,25 +643,17 @@ func examIntegrityReviewDecisionDTO(decision model.IntegrityReviewDecision) exam
 }
 
 func reviewSubmissionID(request operationRequest) (model.SubmissionID, error) {
-	raw, err := request.params.RequireSubmissionId()
+	id, err := request.params.RequireSubmissionID()
 	if err != nil {
 		return "", err
-	}
-	id, err := model.ParseSubmissionID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
 
 func reviewFlagID(request operationRequest) (model.IntegrityFlagID, error) {
-	raw, err := request.params.RequireIntegrityFlagID()
+	id, err := request.params.RequireIntegrityFlagID()
 	if err != nil {
 		return "", err
-	}
-	id, err := model.ParseIntegrityFlagID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return id, nil
 }

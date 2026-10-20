@@ -184,7 +184,7 @@ func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationR
 	if m.mail == nil {
 		return operationResult{}, errUnpresentableResult
 	}
-	raw, err := request.params.RequireJobId()
+	raw, err := request.params.RequireJobID()
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -288,13 +288,9 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 	if err != nil {
 		return operationResult{}, err
 	}
-	raw, err := request.params.RequireRetentionHoldID()
+	holdID, err := request.params.RequireRetentionHoldID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	holdID, err := model.ParseRetentionHoldID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body releaseRetentionHoldRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -394,13 +390,9 @@ func recordsSubmissionScope(request operationRequest) (model.RetentionHoldScope,
 	if err != nil {
 		return model.RetentionHoldScope{}, err
 	}
-	raw, err := request.params.RequireSubmissionId()
+	id, err := request.params.RequireSubmissionID()
 	if err != nil {
 		return model.RetentionHoldScope{}, err
-	}
-	id, err := model.ParseSubmissionID(raw)
-	if err != nil {
-		return model.RetentionHoldScope{}, invalidRequestError(err)
 	}
 	return model.RetentionHoldScope{ExamID: examID, SittingID: sittingID, SubmissionID: id}, nil
 }

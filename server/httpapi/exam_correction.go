@@ -314,13 +314,9 @@ func examSittingCorrectionIDs(request operationRequest) (model.ExamID, model.Exa
 	if err != nil {
 		return "", "", err
 	}
-	rawSittingID, err := request.params.RequireExamSittingId()
+	sittingID, err := request.params.RequireExamSittingID()
 	if err != nil {
 		return "", "", err
-	}
-	sittingID, err := model.ParseExamSittingID(rawSittingID)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }

@@ -449,13 +449,9 @@ func (m examResourceModule) create(request operationRequest) (operationResult, e
 }
 
 func (m examResourceModule) get(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.exams.GetExam(request.context, request.invocation(), application.GetExamQuery{ExamID: examID})
 	if err != nil {
@@ -465,13 +461,9 @@ func (m examResourceModule) get(request operationRequest) (operationResult, erro
 }
 
 func (m examResourceModule) editDraftText(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body editExamDraftTextRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -496,13 +488,9 @@ func (m examResourceModule) editDraftText(request operationRequest) (operationRe
 }
 
 func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftFocusLossRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -539,13 +527,9 @@ func (m examResourceModule) configureDraftFocusLoss(request operationRequest) (o
 }
 
 func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftBrowserPolicyRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -568,13 +552,9 @@ func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest
 }
 
 func (m examResourceModule) configureDraftNativePolicy(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body configureExamDraftNativePolicyRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -596,13 +576,9 @@ func (m examResourceModule) configureDraftNativePolicy(request operationRequest)
 }
 
 func (m examResourceModule) archive(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body archiveExamRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -729,13 +705,9 @@ func (m examResourceModule) transferOwner(request operationRequest) (operationRe
 }
 
 func examIDFromRequest(request operationRequest) (model.ExamID, error) {
-	raw, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return "", err
-	}
-	examID, err := model.ParseExamID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return examID, nil
 }

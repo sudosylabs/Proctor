@@ -40,13 +40,9 @@ func browserDeliveryAppendErrorCodes() []string {
 	return append(nativeDeliveryAppendErrorCodes(), "exam.attempt.browser_activity_conflict")
 }
 func browserSourceQuery(request operationRequest, list bool) (application.BrowserSourceQuery, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return application.BrowserSourceQuery{}, err
-	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return application.BrowserSourceQuery{}, invalidRequestError(err)
 	}
 	query := application.BrowserSourceQuery{Access: application.CandidateExamAttemptAccess{AttemptID: attemptID}, SourceSessionID: model.BrowserSourceSessionID(request.params.BrowserSourceSessionID)}
 	if list {

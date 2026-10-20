@@ -173,7 +173,7 @@ type ListInvitationsQuery struct {
 }
 
 type ResendInvitationCommand struct {
-	ID                        string
+	ID                        model.InvitationID
 	ExpectedRevision          int64
 	IdempotencyKey            string
 	BatchScopeType            model.RoleScopeType
@@ -184,7 +184,7 @@ type ResendInvitationCommand struct {
 }
 
 type RevokeInvitationCommand struct {
-	ID                        string
+	ID                        model.InvitationID
 	ExpectedRevision          int64
 	IdempotencyKey            string
 	BatchScopeType            model.RoleScopeType
@@ -200,7 +200,8 @@ type invitationLifecycleIdempotencySemantic struct {
 }
 
 type ReplaceInvitationCommand struct {
-	ID, Purpose, TargetEmail, ClassID, AcademicUnitID, InstitutionID, RoleID  string
+	ID                                                                        model.InvitationID
+	Purpose, TargetEmail, ClassID, AcademicUnitID, InstitutionID, RoleID      string
 	ExpectedRevision, IntendedStartsAt, IntendedEndsAt                        int64
 	SuggestedUsername, SuggestedDisplayName                                   string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale, SuggestedTimezone string
@@ -477,7 +478,7 @@ func (a *App) ListInvitations(ctx context.Context, invocation Invocation, query 
 	return a.invitations.List(ctx, invocation, query)
 }
 
-func (a *App) GetInvitation(ctx context.Context, invocation Invocation, id string) (InvitationAdministrationView, error) {
+func (a *App) GetInvitation(ctx context.Context, invocation Invocation, id model.InvitationID) (InvitationAdministrationView, error) {
 	if a == nil || a.invitations == nil {
 		return InvitationAdministrationView{}, apperror.New("invitation.unavailable")
 	}
@@ -826,12 +827,12 @@ func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocati
 			onboardingImportID: batch.onboardingImportID, onboardingImportRowNumber: batch.onboardingImportRowNumber})
 		return invitationBatchViewOutcome(view, err)
 	case InvitationBatchResend:
-		view, err := s.Resend(ctx, invocation, ResendInvitationCommand{ID: item.InvitationID, ExpectedRevision: item.ExpectedRevision,
+		view, err := s.Resend(ctx, invocation, ResendInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID)), ExpectedRevision: item.ExpectedRevision,
 			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
 			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
 		return invitationBatchAdministrationOutcome(view, err)
 	case InvitationBatchRevoke:
-		view, err := s.Revoke(ctx, invocation, RevokeInvitationCommand{ID: item.InvitationID, ExpectedRevision: item.ExpectedRevision,
+		view, err := s.Revoke(ctx, invocation, RevokeInvitationCommand{ID: model.InvitationID(strings.TrimSpace(item.InvitationID)), ExpectedRevision: item.ExpectedRevision,
 			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
 			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
 		return invitationBatchAdministrationOutcome(view, err)
@@ -902,10 +903,9 @@ func (s *invitationService) List(ctx context.Context, invocation Invocation, que
 	return result, nil
 }
 
-func (s *invitationService) GetAdministration(ctx context.Context, invocation Invocation, rawID string) (InvitationAdministrationView, error) {
-	id, err := model.ParseInvitationID(strings.TrimSpace(rawID))
-	if err != nil {
-		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id").Wrap(err)
+func (s *invitationService) GetAdministration(ctx context.Context, invocation Invocation, id model.InvitationID) (InvitationAdministrationView, error) {
+	if !id.IsValid() {
+		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
 	}
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationView)
 	if err != nil {
@@ -919,9 +919,9 @@ func (s *invitationService) GetAdministration(ctx context.Context, invocation In
 }
 
 func (s *invitationService) Resend(ctx context.Context, invocation Invocation, command ResendInvitationCommand) (InvitationAdministrationView, error) {
-	id, err := model.ParseInvitationID(strings.TrimSpace(command.ID))
-	if err != nil || command.ExpectedRevision < 1 {
-		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id").Wrap(err)
+	id := command.ID
+	if !id.IsValid() || command.ExpectedRevision < 1 {
+		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
 	}
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationManage)
 	if err != nil {
@@ -1014,9 +1014,9 @@ func (s *invitationService) Resend(ctx context.Context, invocation Invocation, c
 }
 
 func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, command RevokeInvitationCommand) (InvitationAdministrationView, error) {
-	id, err := model.ParseInvitationID(strings.TrimSpace(command.ID))
-	if err != nil || command.ExpectedRevision < 1 {
-		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id").Wrap(err)
+	id := command.ID
+	if !id.IsValid() || command.ExpectedRevision < 1 {
+		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
 	}
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationManage)
 	if err != nil {
@@ -1094,9 +1094,9 @@ func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, c
 }
 
 func (s *invitationService) Replace(ctx context.Context, invocation Invocation, command ReplaceInvitationCommand) (InvitationAdministrationView, error) {
-	id, err := model.ParseInvitationID(strings.TrimSpace(command.ID))
-	if err != nil || command.ExpectedRevision < 1 {
-		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id").Wrap(err)
+	id := command.ID
+	if !id.IsValid() || command.ExpectedRevision < 1 {
+		return InvitationAdministrationView{}, apperror.New("request.invalid").WithField("field", "invitation_id")
 	}
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationManage)
 	if err != nil {

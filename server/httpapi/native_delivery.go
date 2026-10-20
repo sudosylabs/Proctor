@@ -39,15 +39,11 @@ func nativeDeliveryResource(app ExamAttemptApplication) resource {
 }
 
 func nativeDeliveryQuery(request operationRequest) (application.NativeDeliveryQuery, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return application.NativeDeliveryQuery{}, err
 	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return application.NativeDeliveryQuery{}, invalidRequestError(err)
-	}
-	streamID, err := requirePathID("stream_id", request.params.NativeStreamID)
+	streamID, err := request.params.RequireNativeStreamID()
 	if err != nil {
 		return application.NativeDeliveryQuery{}, err
 	}

@@ -29,8 +29,8 @@ func (*recordingOnboardingImportApplication) UploadOnboardingImport(context.Cont
 	return application.OnboardingImportView{}, nil
 }
 
-func (candidate *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ application.Invocation, id string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	candidate.getID = id
+func (candidate *recordingOnboardingImportApplication) GetOnboardingImport(_ context.Context, _ application.Invocation, id model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+	candidate.getID = id.String()
 	return application.OnboardingImportView{}, nil, nil
 }
 
@@ -38,11 +38,11 @@ func (*recordingOnboardingImportApplication) CommitOnboardingImport(context.Cont
 	return application.OnboardingImportView{}, nil
 }
 
-func (*recordingOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, error) {
+func (*recordingOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
 	return application.OnboardingImportView{}, nil
 }
 
-func (*recordingOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, string, io.Writer) error {
+func (*recordingOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
 	return nil
 }
 

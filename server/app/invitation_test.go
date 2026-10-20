@@ -528,7 +528,7 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 		&invitationAuthorizerFake{}, mail, now.Add(time.Minute))
 	_, err = service.Resend(context.Background(),
 		NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{}),
-		ResendInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision,
+		ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
 			BatchScopeType: model.RoleScopeClass, BatchScopeID: classID.String(), batchDuplicate: true,
 			batchCanonicalKey: invitationBatchItemIdempotencyKey("mail-disabled", "canonical")})
@@ -852,7 +852,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 		t.Fatalf("Invitation list = %#v / %#v", page, persistence.listOptions)
 	}
 
-	resent, err := service.Resend(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision})
+	resent, err := service.Resend(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +861,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 		t.Fatalf("Invitation resend = %#v / %#v / %q", resent, persistence.resent, mail.issueURL)
 	}
 
-	revoked, err := service.Revoke(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision})
+	revoked, err := service.Revoke(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -901,7 +901,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 	}
 	actor := model.NewUserID()
 	result, err := service.Replace(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
-		ReplaceInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision,
+		ReplaceInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
 			SuggestedUsername: "new-student"})
 	if err != nil {

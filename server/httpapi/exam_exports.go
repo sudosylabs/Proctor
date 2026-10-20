@@ -114,13 +114,9 @@ func (m examExportsHTTPModule) query(request operationRequest) (application.Exam
 	if err != nil {
 		return application.ExamExportQuery{}, err
 	}
-	raw, err := request.params.RequireExamExportID()
+	id, err := request.params.RequireExamExportID()
 	if err != nil {
 		return application.ExamExportQuery{}, err
-	}
-	id, err := model.ParseExamExportID(raw)
-	if err != nil {
-		return application.ExamExportQuery{}, invalidRequestError(err)
 	}
 	return application.ExamExportQuery{Scope: scope, ExportID: id}, nil
 }

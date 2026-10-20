@@ -29,7 +29,7 @@ type InvitationApplication interface {
 	IssueInstitutionRoleInvitation(context.Context, application.Invocation, application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error)
 	AcceptInstitutionRoleInvitation(context.Context, application.Invocation, application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error)
 	ListInvitations(context.Context, application.Invocation, application.ListInvitationsQuery) (application.InvitationAdministrationPage, error)
-	GetInvitation(context.Context, application.Invocation, string) (application.InvitationAdministrationView, error)
+	GetInvitation(context.Context, application.Invocation, model.InvitationID) (application.InvitationAdministrationView, error)
 	ResendInvitation(context.Context, application.Invocation, application.ResendInvitationCommand) (application.InvitationAdministrationView, error)
 	RevokeInvitation(context.Context, application.Invocation, application.RevokeInvitationCommand) (application.InvitationAdministrationView, error)
 	ReplaceInvitation(context.Context, application.Invocation, application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error)
@@ -243,7 +243,7 @@ func (unavailableInvitationApplication) AcceptInstitutionRoleInvitation(context.
 func (unavailableInvitationApplication) ListInvitations(context.Context, application.Invocation, application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
 	return application.InvitationAdministrationPage{}, errUnpresentableResult
 }
-func (unavailableInvitationApplication) GetInvitation(context.Context, application.Invocation, string) (application.InvitationAdministrationView, error) {
+func (unavailableInvitationApplication) GetInvitation(context.Context, application.Invocation, model.InvitationID) (application.InvitationAdministrationView, error) {
 	return application.InvitationAdministrationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) ResendInvitation(context.Context, application.Invocation, application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {
@@ -364,18 +364,18 @@ func (m invitationResourceModule) get(request operationRequest) (operationResult
 }
 
 func (m invitationResourceModule) resend(request operationRequest) (operationResult, error) {
-	return m.mutate(request, func(id string, revision int64) (application.InvitationAdministrationView, error) {
+	return m.mutate(request, func(id model.InvitationID, revision int64) (application.InvitationAdministrationView, error) {
 		return m.invitations.ResendInvitation(request.context, request.invocation(), application.ResendInvitationCommand{ID: id, ExpectedRevision: revision})
 	})
 }
 
 func (m invitationResourceModule) revoke(request operationRequest) (operationResult, error) {
-	return m.mutate(request, func(id string, revision int64) (application.InvitationAdministrationView, error) {
+	return m.mutate(request, func(id model.InvitationID, revision int64) (application.InvitationAdministrationView, error) {
 		return m.invitations.RevokeInvitation(request.context, request.invocation(), application.RevokeInvitationCommand{ID: id, ExpectedRevision: revision})
 	})
 }
 
-func (m invitationResourceModule) mutate(request operationRequest, mutation func(string, int64) (application.InvitationAdministrationView, error)) (operationResult, error) {
+func (m invitationResourceModule) mutate(request operationRequest, mutation func(model.InvitationID, int64) (application.InvitationAdministrationView, error)) (operationResult, error) {
 	id, err := request.params.RequireInvitationID()
 	if err != nil {
 		return operationResult{}, err

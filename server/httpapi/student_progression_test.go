@@ -32,17 +32,17 @@ func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.C
 	f.command = command
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ application.Invocation, id string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	f.getID = id
+func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ application.Invocation, id model.OnboardingImportID) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+	f.getID = id.String()
 	return f.view, f.rows, nil
 }
 func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, application.Invocation, string) (application.OnboardingImportView, error) {
+func (f *studentProgressionApplicationFake) CancelStudentProgression(context.Context, application.Invocation, model.OnboardingImportID) (application.OnboardingImportView, error) {
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, application.Invocation, string, io.Writer) error {
+func (f *studentProgressionApplicationFake) StudentProgressionReport(context.Context, application.Invocation, model.OnboardingImportID, io.Writer) error {
 	return nil
 }
 

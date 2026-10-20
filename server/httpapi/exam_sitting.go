@@ -616,13 +616,9 @@ func validExamSittingManagerReason(reason string) bool {
 }
 
 func examSittingExamID(request operationRequest) (model.ExamID, error) {
-	raw, err := request.params.RequireExamId()
+	id, err := request.params.RequireExamID()
 	if err != nil {
 		return "", err
-	}
-	id, err := model.ParseExamID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -632,13 +628,9 @@ func examSittingIDs(request operationRequest) (model.ExamID, model.ExamSittingID
 	if err != nil {
 		return "", "", err
 	}
-	raw, err := request.params.RequireExamSittingId()
+	sittingID, err := request.params.RequireExamSittingID()
 	if err != nil {
 		return "", "", err
-	}
-	sittingID, err := model.ParseExamSittingID(raw)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }

@@ -233,13 +233,9 @@ func (m examResourceHTTPModule) open(request operationRequest) (protocolResult, 
 }
 
 func examResourceExamID(request operationRequest) (model.ExamID, error) {
-	raw, err := request.params.RequireExamId()
+	id, err := request.params.RequireExamID()
 	if err != nil {
 		return "", err
-	}
-	id, err := model.ParseExamID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -248,13 +244,9 @@ func examResourceIDs(request operationRequest) (model.ExamID, model.ExamResource
 	if err != nil {
 		return "", "", err
 	}
-	raw, err := request.params.RequireExamResourceId()
+	resourceID, err := request.params.RequireExamResourceID()
 	if err != nil {
 		return "", "", err
-	}
-	resourceID, err := model.ParseExamResourceID(raw)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, resourceID, nil
 }

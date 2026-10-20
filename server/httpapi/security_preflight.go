@@ -81,13 +81,9 @@ func securityPreflightErrorCodes() []string {
 	return academicMutationErrorCodes("exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.registered_desktop_required", "exam.attempt.desktop_incompatible", "exam.attempt.sitting_not_open", "exam.attempt.management_authority_conflict", "exam.attempt.configuration_unsupported", "exam.attempt.unavailable", "exam.security.preflight_expired", "exam.security.preflight_superseded", "exam.security.preflight_consumed", "exam.security.preflight_rate_limited", "exam.security.policy_changed", "exam.security.session_changed", "exam.security.configuration_unsupported", "exam.security.attempt_not_ready", "exam.security.catalog_missing", "exam.security.unsupported_capability", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 }
 func (m examAttemptHTTPModule) prepareSecurityPreflight(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamSittingId()
+	sittingID, err := request.params.RequireExamSittingID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	sittingID, err := model.ParseExamSittingID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body prepareSecurityPreflightRequest
 	if err = request.decodeJSON(&body); err != nil {
@@ -135,13 +131,9 @@ func securityPreflightResource(application ExamAttemptApplication) resource {
 }
 
 func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (operationResult, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	recovered, err := m.application.RecoverExamSecurityPolicy(request.context, request.invocation(), attemptID)
 	if err != nil {

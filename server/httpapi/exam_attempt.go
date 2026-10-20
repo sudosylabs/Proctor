@@ -829,13 +829,9 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 	if err != nil {
 		return operationResult{}, err
 	}
-	rawRevisionID, err := request.params.RequireExamRevisionId()
+	correctionRevisionID, err := request.params.RequireExamRevisionID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	correctionRevisionID, err := model.ParseExamRevisionID(rawRevisionID)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body acknowledgeExamCorrectionRequest
 	if err = decodeCandidateWorkspaceJSON(request, &body); err != nil {
@@ -1440,13 +1436,9 @@ func (module examAttemptHTTPModule) openSubmissionFile(request operationRequest)
 	if err != nil {
 		return protocolResult{}, err
 	}
-	raw, err := request.params.RequireAttemptWorkspaceEntryId()
+	entryID, err := request.params.RequireAttemptWorkspaceEntryID()
 	if err != nil {
 		return protocolResult{}, err
-	}
-	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
-	if err != nil {
-		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenExamSubmissionFile(request.context, request.invocation(),
 		application.OpenExamSubmissionFileQuery{GetSubmissionQuery: ownership, EntryID: entryID})
@@ -1461,13 +1453,9 @@ func managedSubmissionQuery(request operationRequest) (application.GetExamSubmis
 	if err != nil {
 		return application.GetExamSubmissionQuery{}, err
 	}
-	raw, err := request.params.RequireSubmissionId()
+	submissionID, err := request.params.RequireSubmissionID()
 	if err != nil {
 		return application.GetExamSubmissionQuery{}, err
-	}
-	submissionID, err := model.ParseSubmissionID(raw)
-	if err != nil {
-		return application.GetExamSubmissionQuery{}, invalidRequestError(err)
 	}
 	return application.GetExamSubmissionQuery{ExamID: examID, SittingID: sittingID,
 		AttemptID: attemptID, SubmissionID: submissionID}, nil
@@ -1620,13 +1608,9 @@ func candidateWorkspaceEntryAccess(request operationRequest) (application.Candid
 	if err != nil {
 		return application.CandidateExamAttemptAccess{}, "", err
 	}
-	raw, err := request.params.RequireAttemptWorkspaceEntryId()
+	entryID, err := request.params.RequireAttemptWorkspaceEntryID()
 	if err != nil {
 		return application.CandidateExamAttemptAccess{}, "", err
-	}
-	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
-	if err != nil {
-		return application.CandidateExamAttemptAccess{}, "", invalidRequestError(err)
 	}
 	return access, entryID, nil
 }
@@ -1652,13 +1636,9 @@ func (module examAttemptHTTPModule) openResource(request operationRequest) (prot
 	if err != nil {
 		return protocolResult{}, err
 	}
-	raw, err := request.params.RequireExamResourceId()
+	resourceID, err := request.params.RequireExamResourceID()
 	if err != nil {
 		return protocolResult{}, err
-	}
-	resourceID, err := model.ParseExamResourceID(raw)
-	if err != nil {
-		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenCandidateExamResource(request.context, request.invocation(), application.OpenCandidateExamResourceQuery{Access: access, ResourceID: resourceID})
 	if err != nil {
@@ -1672,13 +1652,9 @@ func (module examAttemptHTTPModule) openWorkspaceFile(request operationRequest) 
 	if err != nil {
 		return protocolResult{}, err
 	}
-	raw, err := request.params.RequireAttemptWorkspaceEntryId()
+	entryID, err := request.params.RequireAttemptWorkspaceEntryID()
 	if err != nil {
 		return protocolResult{}, err
-	}
-	entryID, err := model.ParseAttemptWorkspaceEntryID(raw)
-	if err != nil {
-		return protocolResult{}, invalidRequestError(err)
 	}
 	opened, err := module.application.OpenCandidateExamWorkspaceFile(request.context, request.invocation(), application.OpenCandidateExamWorkspaceFileQuery{Access: access, EntryID: entryID})
 	if err != nil {
@@ -1702,13 +1678,9 @@ func candidateAttemptContentResult(request operationRequest, opened application.
 }
 
 func candidateAccess(request operationRequest) (application.CandidateExamAttemptAccess, error) {
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return application.CandidateExamAttemptAccess{}, err
-	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return application.CandidateExamAttemptAccess{}, invalidRequestError(err)
 	}
 	headers, err := candidateAttemptAccessHeaders(request.request)
 	if err != nil {
@@ -1719,21 +1691,13 @@ func candidateAccess(request operationRequest) (application.CandidateExamAttempt
 }
 
 func managedExamAttemptScope(request operationRequest) (model.ExamID, model.ExamSittingID, error) {
-	rawExam, err := request.params.RequireExamId()
+	examID, err := request.params.RequireExamID()
 	if err != nil {
 		return "", "", err
 	}
-	rawSitting, err := request.params.RequireExamSittingId()
+	sittingID, err := request.params.RequireExamSittingID()
 	if err != nil {
 		return "", "", err
-	}
-	examID, err := model.ParseExamID(rawExam)
-	if err != nil {
-		return "", "", invalidRequestError(err)
-	}
-	sittingID, err := model.ParseExamSittingID(rawSitting)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, nil
 }
@@ -1743,13 +1707,9 @@ func managedExamAttemptIDs(request operationRequest) (model.ExamID, model.ExamSi
 	if err != nil {
 		return "", "", "", err
 	}
-	raw, err := request.params.RequireExamAttemptId()
+	attemptID, err := request.params.RequireExamAttemptID()
 	if err != nil {
 		return "", "", "", err
-	}
-	attemptID, err := model.ParseExamAttemptID(raw)
-	if err != nil {
-		return "", "", "", invalidRequestError(err)
 	}
 	return examID, sittingID, attemptID, nil
 }

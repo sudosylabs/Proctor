@@ -205,9 +205,9 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 			t.Fatalf("%s = %d %s", mutation.path, response.Code, response.Body.String())
 		}
 	}
-	if applicationFake.resend.ID != id || applicationFake.resend.ExpectedRevision != 7 ||
-		applicationFake.revoke.ID != id || applicationFake.revoke.ExpectedRevision != 8 ||
-		applicationFake.replace.ID != id || applicationFake.replace.ExpectedRevision != 9 ||
+	if applicationFake.resend.ID != model.InvitationID(id) || applicationFake.resend.ExpectedRevision != 7 ||
+		applicationFake.revoke.ID != model.InvitationID(id) || applicationFake.revoke.ExpectedRevision != 8 ||
+		applicationFake.replace.ID != model.InvitationID(id) || applicationFake.replace.ExpectedRevision != 9 ||
 		applicationFake.replace.TargetEmail != "replacement@example.edu" {
 		t.Fatalf("Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
 	}
@@ -270,8 +270,8 @@ func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
 		t.Fatalf("malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
 	}
 }
-func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ application.Invocation, id string) (application.InvitationAdministrationView, error) {
-	a.getID = id
+func (a *invitationHTTPApplication) GetInvitation(_ context.Context, _ application.Invocation, id model.InvitationID) (application.InvitationAdministrationView, error) {
+	a.getID = id.String()
 	return a.administrationView(), nil
 }
 func (a *invitationHTTPApplication) ResendInvitation(_ context.Context, _ application.Invocation, command application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {

@@ -160,13 +160,9 @@ func (module examRevisionHTTPModule) list(request operationRequest) (operationRe
 }
 
 func examRevisionExamID(request operationRequest) (model.ExamID, error) {
-	raw, err := request.params.RequireExamId()
+	id, err := request.params.RequireExamID()
 	if err != nil {
 		return "", err
-	}
-	id, err := model.ParseExamID(raw)
-	if err != nil {
-		return "", invalidRequestError(err)
 	}
 	return id, nil
 }
@@ -176,13 +172,9 @@ func examRevisionIDs(request operationRequest) (model.ExamID, model.ExamRevision
 	if err != nil {
 		return "", "", err
 	}
-	raw, err := request.params.RequireExamRevisionId()
+	revisionID, err := request.params.RequireExamRevisionID()
 	if err != nil {
 		return "", "", err
-	}
-	revisionID, err := model.ParseExamRevisionID(raw)
-	if err != nil {
-		return "", "", invalidRequestError(err)
 	}
 	return examID, revisionID, nil
 }
