@@ -205,7 +205,7 @@ and the evidence produced by the smoke test.
 | `make buildenv` | Builds the pinned Go and Node maintainer image through Docker. |
 | `make buildenv-check` | Runs `make check` inside the pinned maintainer image with the checkout mounted at `/workspace`. |
 | `make buildenv-shell` | Opens an interactive shell in the pinned maintainer image with the checkout mounted at `/workspace`. |
-| `make container` | Builds the immutable, non-root Proctor runtime image with the selected version, commit, and build time. |
+| `make container` | Packages Linux binaries for the host architecture with the same recipe as `make dist`, then builds the immutable, non-root runtime image from that package with the release Dockerfile. **Effect:** generated output below `.build/container`. |
 | `make container-load` | Compatibility alias for `make container`. Prefer `make container` in new automation. |
 
 Package outputs deliberately refuse an existing destination. This protects an

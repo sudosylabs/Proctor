@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -124,8 +124,18 @@ test("release executables always compile with the production environment default
   assert.equal(builds.length, 2);
   // Production is the untagged default; only an explicit dev tag opts out.
   for (const command of builds) assert.doesNotMatch(command, /-tags/);
-  const dockerfile = await readFile(new URL("../docker/Dockerfile.runtime", import.meta.url), "utf8");
-  const containerBuilds = dockerfile.split("\n").filter((line) => line.includes("go build "));
-  assert.equal(containerBuilds.length, 2);
-  for (const command of containerBuilds) assert.doesNotMatch(command, /-tags/);
+});
+
+test("the local and release images share one package recipe and Dockerfile", async () => {
+  const container = await readFile(new URL("../make/container.mk", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../../.github/workflows/release.yml", import.meta.url), "utf8");
+  const dockerfile = await readFile(new URL("../docker/Dockerfile.release", import.meta.url), "utf8");
+  // The image copies packaged binaries; it never compiles source.
+  assert.doesNotMatch(dockerfile, /go build|^FROM .* AS /m);
+  assert.match(dockerfile, /COPY --chown=65532:65532 \$\{TARGETARCH\}\/proctor\/ \.\//);
+  assert.match(workflow, /file: build\/docker\/Dockerfile\.release/);
+  assert.match(container, /--file "\$\(ROOT_DIR\)\/build\/docker\/Dockerfile\.release"/);
+  assert.match(container, /\$\(call package-linux,/);
+  const dockerfiles = await readdir(new URL("../docker/", import.meta.url));
+  assert.deepEqual(dockerfiles.filter((name) => name !== "Dockerfile.buildenv").sort(), ["Dockerfile.release"]);
 });

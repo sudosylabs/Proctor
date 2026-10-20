@@ -131,7 +131,7 @@ PROCTOR_BUILDENV_IMAGE
 
 Override an image only for an intentional compatibility or upgrade test. Record
 the exact tag and digest in review evidence. A mutable tag alone does not prove
-which artifact passed. `PROCTOR_GO_IMAGE` supplies the build and runtime builder
+which artifact passed. `PROCTOR_GO_IMAGE` supplies the maintainer build-environment
 base; keep its Go tag synchronized with the version in `go.work` and always
 pair that tag with its immutable digest.
 

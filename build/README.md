@@ -70,7 +70,10 @@ Run `make help` for the current command surface. The main lifecycles are:
   `make check` includes the docs gate.
 - `make package`, `make dist`, and `make container` produce respectively a
   current-platform directory, deterministic Linux archives/checksums, and the
-  minimal non-root runtime image.
+  minimal non-root runtime image. `dist` and `container` share one Linux
+  package recipe, and `container` uses the release workflow's
+  `build/docker/Dockerfile.release`, so a local image has the same contents as
+  a published one.
 - `make buildenv-check` runs the hermetic product gate inside the pinned Go and
   Node maintainer image; `make buildenv-shell` opens the same environment for
   diagnosis. Both run as the host uid/gid and mount the checkout at

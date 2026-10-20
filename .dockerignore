@@ -1,50 +1,9 @@
-# Runtime and maintainer images need only the Go workspace, reusable modules,
-# server, hosted webapp, and pinned Go tool manifests. Everything else stays
-# outside the build context so ignored operator/developer material cannot
-# influence or reach the builder.
+# Only the maintainer image builds from the repository root, and it needs only
+# the repository-pinned Go tool manifests. Everything else stays outside the
+# build context so ignored operator/developer material cannot influence or
+# reach the builder. The runtime image builds from a packaged directory below
+# .build/container or the release job's extracted archives, never this tree.
 *
-!go.work
-!go.work.sum
-!packages
-!packages/**
-!server
-!server/**
-!webapp
-!webapp/**
-
-# These patterns remain excluded even when they are nested below an included
-# source directory.
-**/.env
-**/.env.*
-**/.npmrc
-**/.pnp
-**/.pnp.js
-**/.next
-**/.turbo
-**/.vercel
-**/.vscode
-**/.scratch
-**/.scratch/**
-**/.plans
-**/.plans/**
-**/tmp
-**/tmp/**
-**/legacy
-**/legacy/**
-**/tools
-**/tools/**
-**/*.pem
-**/.DS_Store
-**/node_modules
-**/coverage
-**/dist
-**/out
-**/npm-debug.log*
-**/yarn-debug.log*
-**/yarn-error.log*
-server/config/config.json
-
-# The maintainer image installs the repository-pinned Go developer tools.
 !build/
 build/**
 !build/tools/

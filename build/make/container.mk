@@ -17,13 +17,19 @@ buildenv-shell: buildenv ## Open an interactive shell in the pinned maintainer e
 		--volume '$(ROOT_DIR):/workspace' --workdir /workspace \
 		$(PROCTOR_BUILDENV_RUN_FLAGS) "$(PROCTOR_BUILDENV_IMAGE)" bash
 
-container: ## Build the immutable non-root Proctor runtime image.
-	$(DOCKER) build --file "$(ROOT_DIR)/build/docker/Dockerfile.runtime" \
-		--build-arg GO_IMAGE='$(PROCTOR_GO_IMAGE)' \
-		--build-arg VERSION='$(VERSION)' \
-		--build-arg COMMIT='$(COMMIT)' \
-		--build-arg BUILD_TIME='$(BUILD_TIME)' \
-		--build-arg SOURCE_DATE_EPOCH='$(SOURCE_DATE_EPOCH)' \
-		--tag "$(PROCTOR_RUNTIME_IMAGE)" "$(ROOT_DIR)"
+# The local image uses the release recipe: package Linux binaries once, then
+# copy that package into the distroless image with the release Dockerfile.
+CONTAINER_ARCH ?= $(GO_HOST_ARCH)
+CONTAINER_CONTEXT_DIR := $(BUILD_DIR)/container
+
+container: webapp-build ## Build the immutable non-root runtime image from a Linux package.
+	rm -rf "$(CONTAINER_CONTEXT_DIR)"
+	$(call package-linux,$(CONTAINER_ARCH),$(CONTAINER_CONTEXT_DIR)/$(CONTAINER_ARCH)/proctor)
+	$(DOCKER) build --file "$(ROOT_DIR)/build/docker/Dockerfile.release" \
+		--platform 'linux/$(CONTAINER_ARCH)' \
+		--label 'org.opencontainers.image.revision=$(COMMIT)' \
+		--label 'org.opencontainers.image.version=$(VERSION)' \
+		--label 'org.opencontainers.image.licenses=AGPL-3.0-only' \
+		--tag "$(PROCTOR_RUNTIME_IMAGE)" "$(CONTAINER_CONTEXT_DIR)"
 
 container-load: container ## Compatibility alias for local image builds.
