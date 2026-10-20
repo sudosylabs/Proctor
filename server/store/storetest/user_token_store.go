@@ -97,8 +97,14 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 	}
 	result, err := ss.UserToken().ChangeEmail(ctx, command)
 	requireNoError(t, err)
+	// The User's modification time never moves backwards when the database
+	// clock trails the node clock that created the User.
+	wantUserUpdatedAt := result.Token.CreatedAt
+	if user.UpdatedAt.After(wantUserUpdatedAt) {
+		wantUserUpdatedAt = user.UpdatedAt
+	}
 	if result.Token.CreatedAt.Equal(preparedAt) || result.Token.ExpiresAt.Sub(result.Token.CreatedAt) != tokenLifetime ||
-		!result.User.UpdatedAt.Equal(result.Token.CreatedAt) {
+		!result.User.UpdatedAt.Equal(wantUserUpdatedAt) {
 		t.Fatalf("database-clock User/token = %#v / %#v", result.User, result.Token)
 	}
 	for _, expected := range []struct {
@@ -409,8 +415,11 @@ func testUserTokenCallerClockCannotBackdateEmailVerification(t *testing.T, ss st
 		userTokenCompletionAudit("authentication.email_verification.complete", institution.ID.String()),
 	)
 	requireNoError(t, err)
-	if !result.Token.ConsumedAt.Valid || !result.Token.ConsumedAt.Time.After(token.CreatedAt) ||
-		!result.User.UpdatedAt.After(token.CreatedAt) {
+	// The node clock is a minute behind; PostgreSQL time decides, and a
+	// database clock trailing the token's creating node may only meet it.
+	if !result.Token.ConsumedAt.Valid || result.Token.ConsumedAt.Time.Before(token.CreatedAt) ||
+		result.User.UpdatedAt.Before(token.CreatedAt) ||
+		!result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)) {
 		t.Fatalf("behind-node verification result = %#v", result)
 	}
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{
@@ -437,9 +446,10 @@ func testUserTokenCallerClockCannotBackdatePasswordReset(t *testing.T, ss store.
 		passwordResetCompletion(t, user, token.TokenHash, "behind-node-password-hash", behindNodeTime,
 			userTokenCompletionAudit("authentication.password_reset.complete", institution.ID.String())))
 	requireNoError(t, err)
-	if !result.Token.ConsumedAt.Valid || !result.Token.ConsumedAt.Time.After(token.CreatedAt) ||
-		!result.PasswordCredential.PasswordChangedAt.After(token.CreatedAt) || len(result.RevokedSessions) != 1 ||
-		!result.RevokedSessions[0].RevokedAt.Time.After(session.CreatedAt) {
+	if !result.Token.ConsumedAt.Valid || result.Token.ConsumedAt.Time.Before(token.CreatedAt) ||
+		!result.Token.ConsumedAt.Time.After(model.TimeFromMillis(behindNodeTime)) ||
+		result.PasswordCredential.PasswordChangedAt.Before(token.CreatedAt) || len(result.RevokedSessions) != 1 ||
+		result.RevokedSessions[0].RevokedAt.Time.Before(session.CreatedAt) {
 		t.Fatalf("behind-node password reset result = %#v", result)
 	}
 	audits, err := ss.Audit().List(ctx, store.AuditListOptions{

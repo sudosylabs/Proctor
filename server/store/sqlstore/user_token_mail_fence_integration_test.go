@@ -431,6 +431,122 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 	}
 }
 
+// TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads moves every
+// node-clock instant a consumption touches a minute after PostgreSQL time, as
+// creating nodes whose clocks lead the database do. PostgreSQL still decides
+// validity, but the recorded transition never precedes those lifecycles and
+// stays one instant across the token, User, credential, Sessions, and audit.
+func TestUserTokenConsumptionPreservesLifecycleWhenNodeClockLeads(t *testing.T) {
+	lead := func(t *testing.T, ctx context.Context, persistence *SQLStore, query string, id string) {
+		t.Helper()
+		if _, err := persistence.GetMaster().Exec(ctx, query, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setup := func(t *testing.T, ctx context.Context, persistence *SQLStore, purpose model.UserTokenPurpose, name string) (*model.Institution, *model.User, *model.UserToken) {
+		t.Helper()
+		institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: name, DisplayName: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: name, Email: name + "@example.edu"})
+		if purpose == model.UserTokenPasswordReset {
+			credential, saveErr := persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-original-password"})
+			if saveErr != nil {
+				t.Fatal(saveErr)
+			}
+			lead(t, ctx, persistence, `UPDATE password_credentials SET created_at=created_at+INTERVAL '1 minute',
+				updated_at=updated_at+INTERVAL '1 minute', password_changed_at=password_changed_at+INTERVAL '1 minute' WHERE id=?`, credential.ID.String())
+		}
+		token := &model.UserToken{UserID: user.ID, Purpose: purpose,
+			TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
+		action := "authentication.email_verification.request"
+		if purpose == model.UserTokenPasswordReset {
+			action = "authentication.password_reset.request"
+		}
+		token, err = authenticationPolicyTestIssue(t, ctx, persistence, token,
+			authenticationPolicyTestAudit(action, user.ID.String(), institution.ID.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		lead(t, ctx, persistence, `UPDATE users SET updated_at=updated_at+INTERVAL '1 minute' WHERE id=?`, user.ID.String())
+		lead(t, ctx, persistence, `UPDATE user_tokens SET created_at=created_at+INTERVAL '1 minute',
+			updated_at=updated_at+INTERVAL '1 minute', expires_at=expires_at+INTERVAL '1 minute' WHERE id=?`, token.ID.String())
+		token, err = persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return institution, user, token
+	}
+	consumedAudit := func(t *testing.T, ctx context.Context, persistence *SQLStore, action string, at time.Time) {
+		t.Helper()
+		audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
+			Action: action, Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true},
+		})
+		if err != nil || len(audits) != 1 || !audits[0].CreatedAt.Equal(at) {
+			t.Fatalf("consumption audits = %#v, %v; want one at %v", audits, err, at)
+		}
+	}
+
+	t.Run("email_verification", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		persistence := openTestStore(t)
+		resetTestStore(t, persistence)
+		institution, user, token := setup(t, ctx, persistence, model.UserTokenEmailVerification, "verification-node-leads")
+		result, err := persistence.UserToken().ConsumeEmailVerification(ctx, token.TokenHash, model.GetMillis(),
+			authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := result.Token.ConsumedAt.Time
+		if at.Before(token.UpdatedAt) || !result.User.UpdatedAt.Equal(at) || !result.Token.UpdatedAt.Equal(at) {
+			t.Fatalf("verification result = %#v / %#v", result.Token, result.User)
+		}
+		if persisted, getErr := persistence.User().Get(ctx, user.ID); getErr != nil || !persisted.UpdatedAt.Equal(at) {
+			t.Fatalf("persisted User = %#v, %v", persisted, getErr)
+		}
+		if persisted, getErr := persistence.UserToken().GetByHash(ctx, token.TokenHash, token.Purpose); getErr != nil ||
+			!persisted.ConsumedAt.Time.Equal(at) {
+			t.Fatalf("persisted token = %#v, %v", persisted, getErr)
+		}
+		consumedAudit(t, ctx, persistence, "authentication.email_verification.complete", at)
+	})
+
+	t.Run("password_reset", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		persistence := openTestStore(t)
+		resetTestStore(t, persistence)
+		institution, user, token := setup(t, ctx, persistence, model.UserTokenPasswordReset, "reset-node-leads")
+		session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
+		session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
+		if err != nil {
+			t.Fatal(err)
+		}
+		leadSessionDatabaseClock(t, ctx, persistence, session.ID)
+		completion := authenticationPolicyTestResetCompletion(t, user, token.TokenHash, "encoded-replacement-password",
+			model.GetMillis(), authenticationPolicyTestCompletionAudit(institution.ID.String()))
+		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at := result.Token.ConsumedAt.Time
+		if at.Before(token.UpdatedAt) || !result.PasswordCredential.PasswordChangedAt.Equal(at) ||
+			len(result.RevokedSessions) != 1 || !result.RevokedSessions[0].RevokedAt.Time.Equal(at) {
+			t.Fatalf("reset result = %#v / %#v / %#v", result.Token, result.PasswordCredential, result.RevokedSessions)
+		}
+		if persisted, getErr := persistence.Session().Get(ctx, session.ID); getErr != nil || !persisted.RevokedAt.Time.Equal(at) {
+			t.Fatalf("persisted Session = %#v, %v", persisted, getErr)
+		}
+		if persisted, getErr := persistence.PasswordCredential().GetByUser(ctx, user.ID); getErr != nil ||
+			!persisted.PasswordChangedAt.Equal(at) || !persisted.UpdatedAt.Equal(at) {
+			t.Fatalf("persisted credential = %#v, %v", persisted, getErr)
+		}
+		consumedAudit(t, ctx, persistence, "authentication.password_reset.complete", at)
+	})
+}
+
 func assertExpiredConsumptionAuditAbsent(t *testing.T, ctx context.Context, persistence *SQLStore, action string) {
 	t.Helper()
 	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{

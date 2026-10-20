@@ -63,3 +63,22 @@ func latestTime(persisted, requested time.Time) time.Time {
 	}
 	return UTCTime(persisted)
 }
+
+// transitionInstant returns the millisecond instant recorded for one
+// PostgreSQL-timed transition. PostgreSQL time still makes every validity
+// decision, but rows created by a node whose clock leads the database must not
+// record a transition that precedes their own lifecycle, so the instant is
+// raised to the latest such floor, rounded up to the next millisecond.
+func transitionInstant(databaseNow time.Time, floors ...time.Time) time.Time {
+	at := UTCTime(databaseNow).Truncate(time.Millisecond)
+	for _, floor := range floors {
+		floor = UTCTime(floor)
+		if floor.After(at) {
+			at = floor.Truncate(time.Millisecond)
+			if at.Before(floor) {
+				at = at.Add(time.Millisecond)
+			}
+		}
+	}
+	return at
+}

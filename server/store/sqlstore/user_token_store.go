@@ -206,10 +206,10 @@ func (s SQLUserTokenStore) VerifyEmailPrivileged(ctx context.Context, input *sto
 			return nil, err
 		}
 		at := input.Occurrence.CreatedAt
-		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=?,archived_at=? WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at,?),archived_at=GREATEST(updated_at,?) WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, err
 		}
-		result, err := tx.Exec(ctx, `UPDATE users SET email_verified=true,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE users SET email_verified=true,mail_eligibility_revision=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
 		if err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}
@@ -483,7 +483,7 @@ func (s SQLUserTokenStore) Issue(
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE user_tokens
-			   SET updated_at = ?, archived_at = ?
+			   SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(updated_at, ?)
 			 WHERE user_id = ? AND purpose = ?
 			   AND archived_at IS NULL AND consumed_at IS NULL`,
 			candidate.CreatedAt,
@@ -556,7 +556,6 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		if err != nil {
 			return nil, err
 		}
-		at := databaseNow.Truncate(time.Millisecond)
 		token, err := lockActiveUserToken(
 			ctx, tx, tokenHash, model.UserTokenEmailVerification, databaseNow,
 		)
@@ -567,13 +566,14 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		if err != nil {
 			return nil, err
 		}
+		at := transitionInstant(databaseNow, token.CreatedAt, token.UpdatedAt, user.UpdatedAt)
 		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET updated_at = ?, email_verified = true, mail_eligibility_revision = ?, revision = revision + 1
+		   SET updated_at = GREATEST(updated_at, ?), email_verified = true, mail_eligibility_revision = ?, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
 			at, mailEligibilityRevision, user.ID,
 		); err != nil {
@@ -591,13 +591,13 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		if _, err := insertAuditEventAt(ctx, tx, event, at); err != nil {
 			return nil, fmt.Errorf("audit email verification: %w", err)
 		}
-		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
-		token.UpdatedAt = at
+		token.ConsumedAt = sql.NullTime{Time: latestTime(token.CreatedAt, at), Valid: true}
+		token.UpdatedAt = latestTime(token.UpdatedAt, at)
 		verified, err := user.model()
 		if err != nil {
 			return nil, err
 		}
-		verified.UpdatedAt = at
+		verified.UpdatedAt = latestTime(verified.UpdatedAt, at)
 		verified.EmailVerified = true
 		verified.Revision++
 		rehydratedToken, err := token.model()
@@ -654,11 +654,6 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err != nil {
 			return nil, err
 		}
-		at := databaseNow.Truncate(time.Millisecond)
-		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
-		if err != nil {
-			return nil, err
-		}
 		token, err := lockActiveUserToken(
 			ctx, tx, input.TokenHash, model.UserTokenPasswordReset, databaseNow,
 		)
@@ -680,13 +675,25 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		); err != nil {
 			return nil, translateError("password_credential", token.UserID, err)
 		}
+		var sessionFloor sql.NullTime
+		if err = tx.Get(ctx, &sessionFloor, `SELECT MAX(GREATEST(s.updated_at, c.updated_at)) FROM sessions s
+			LEFT JOIN session_credentials c ON c.session_id=s.id AND c.archived_at IS NULL AND c.revoked_at IS NULL
+			WHERE s.user_id=? AND s.archived_at IS NULL AND s.revoked_at IS NULL`, token.UserID); err != nil {
+			return nil, fmt.Errorf("read password reset Session floor: %w", err)
+		}
+		at := transitionInstant(databaseNow, token.CreatedAt, token.UpdatedAt, user.UpdatedAt,
+			credential.UpdatedAt, credential.PasswordChangedAt, TimeFromNullTime(sessionFloor))
+		occurrence, delivery, job, err := recoveryMailAt(input.Occurrence, input.Delivery, input.Job, at)
+		if err != nil {
+			return nil, err
+		}
 		credential.Revision++
 		credential.PasswordHash = input.PasswordHash
-		credential.PasswordChangedAt = at
-		credential.UpdatedAt = at
+		credential.PasswordChangedAt = latestTime(credential.PasswordChangedAt, at)
+		credential.UpdatedAt = latestTime(credential.UpdatedAt, at)
 		if _, err := tx.Exec(ctx, `
 		UPDATE password_credentials
-		   SET updated_at = ?, password_hash = ?, password_changed_at = ?, revision = revision + 1
+		   SET updated_at = GREATEST(updated_at, ?), password_hash = ?, password_changed_at = GREATEST(password_changed_at, ?), revision = revision + 1
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL`,
 			at, input.PasswordHash, at, credential.ID, token.UserID,
 		); err != nil {
@@ -716,8 +723,8 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err := insertRecoveryMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
 			return nil, err
 		}
-		token.ConsumedAt = sql.NullTime{Time: at, Valid: true}
-		token.UpdatedAt = at
+		token.ConsumedAt = sql.NullTime{Time: latestTime(token.CreatedAt, at), Valid: true}
+		token.UpdatedAt = latestTime(token.UpdatedAt, at)
 		rehydratedUser, err := user.model()
 		if err != nil {
 			return nil, err
@@ -883,7 +890,7 @@ func consumeUserTokens(
 	at = model.TimeUTC(at)
 	result, err := executor.Exec(ctx, `
 		UPDATE user_tokens
-		   SET updated_at = ?, consumed_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), consumed_at = GREATEST(created_at, ?)
 		 WHERE user_id = ? AND purpose = ?
 		   AND archived_at IS NULL AND consumed_at IS NULL`,
 		at, at, userID, purpose,
