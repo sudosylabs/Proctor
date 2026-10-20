@@ -12,7 +12,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -94,9 +93,9 @@ type examExportResponse struct {
 
 func exportResponse(e *model.ExamExport) examExportResponse {
 	r := examExportResponse{ID: e.ID.String(), ExamID: e.Scope.ExamID.String(), SittingID: e.Scope.SittingID.String(), SubmissionID: e.Scope.SubmissionID.String(), Categories: slices.Clone(e.Categories), State: e.State, PolicyRevision: e.PolicyRevision,
-		CreatedAt: model.TimeUTC(e.CreatedAt).Format(time.RFC3339Nano), ExpiresAt: model.TimeUTC(e.ExpiresAt).Format(time.RFC3339Nano), ConstructionDeadline: model.TimeUTC(e.SourceExpiresAt).Format(time.RFC3339Nano), SubmissionCount: e.SubmissionCount, FileCount: e.FileCount, SourceBytes: e.SourceBytes, ArchiveSizeBytes: e.ArchiveSizeBytes, ArchiveSHA256: e.ArchiveSHA256}
+		CreatedAt: model.FormatRFC3339(e.CreatedAt), ExpiresAt: model.FormatRFC3339(e.ExpiresAt), ConstructionDeadline: model.FormatRFC3339(e.SourceExpiresAt), SubmissionCount: e.SubmissionCount, FileCount: e.FileCount, SourceBytes: e.SourceBytes, ArchiveSizeBytes: e.ArchiveSizeBytes, ArchiveSHA256: e.ArchiveSHA256}
 	if e.ReadyAt.Valid {
-		r.ReadyAt = model.TimeUTC(e.ReadyAt.Time).Format(time.RFC3339Nano)
+		r.ReadyAt = model.FormatRFC3339(e.ReadyAt.Time)
 	}
 	return r
 }

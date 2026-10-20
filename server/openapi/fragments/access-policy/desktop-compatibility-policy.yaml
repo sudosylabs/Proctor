@@ -201,7 +201,6 @@ components:
         - revoked_desktop_build_ids
         - administrator_message
         - availability
-        - retry_at
         - created_at
         - updated_at
       properties:
@@ -229,10 +228,9 @@ components:
             - ready
             - maintenance
         retry_at:
-          oneOf:
-            - type: string
-              format: date-time
-            - type: 'null'
+          type: string
+          format: date-time
+          description: Present only while availability is maintenance and a retry time is set.
         created_at:
           type: string
           format: date-time

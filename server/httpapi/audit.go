@@ -24,15 +24,15 @@ import (
 const defaultAuditPageSize = 50
 
 type auditCursor struct {
-	Version  int    `json:"version,omitempty"`
-	CreateAt int64  `json:"create_at"`
-	Id       string `json:"id"`
+	Version   int    `json:"version,omitempty"`
+	CreatedAt string `json:"created_at"`
+	ID        string `json:"id"`
 }
 
 type auditEventResponse struct {
 	ID         string                `json:"id"`
-	CreateAt   int64                 `json:"create_at"`
-	UpdateAt   int64                 `json:"update_at"`
+	CreatedAt  string                `json:"created_at"`
+	UpdatedAt  string                `json:"updated_at"`
 	ActorID    string                `json:"actor_id,omitempty"`
 	SessionID  string                `json:"session_id,omitempty"`
 	Action     string                `json:"action"`
@@ -63,9 +63,9 @@ type auditListResponse struct {
 
 func auditEventResponseFromModel(event *model.AuditEvent) auditEventResponse {
 	return auditEventResponse{
-		ID: event.ID.String(), CreateAt: model.MillisFromTime(event.CreatedAt),
-		UpdateAt: model.MillisFromTime(event.UpdatedAt),
-		ActorID:  event.ActorID.String(), SessionID: event.SessionID.String(), Action: event.Action,
+		ID: event.ID.String(), CreatedAt: model.FormatRFC3339(event.CreatedAt),
+		UpdatedAt: model.FormatRFC3339(event.UpdatedAt),
+		ActorID:   event.ActorID.String(), SessionID: event.SessionID.String(), Action: event.Action,
 		Resource:  auditResourceResponse{Type: event.Resource.Type, ID: event.Resource.ID},
 		ScopeType: event.ScopeType, ScopeID: event.ScopeID,
 		Status: event.Status, RequestID: event.RequestID, NodeID: event.NodeID,
@@ -107,8 +107,8 @@ func (module auditResourceModule) list(request operationRequest) (operationResul
 	if len(events) == query.Limit {
 		last := events[len(events)-1]
 		response.NextCursor, err = encodeAuditCursor(auditCursor{
-			CreateAt: model.MillisFromTime(last.CreatedAt),
-			Id:       last.ID.String(),
+			CreatedAt: model.FormatRFC3339(last.CreatedAt),
+			ID:        last.ID.String(),
 		})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
@@ -132,8 +132,9 @@ func auditQueryFromRequest(request *http.Request) (application.ListAuditEventsQu
 		if err != nil {
 			return query, err
 		}
-		query.BeforeTime = cursor.CreateAt
-		query.BeforeID = cursor.Id
+		createdAt, _ := model.ParseRFC3339(cursor.CreatedAt)
+		query.BeforeTime = model.MillisFromTime(createdAt)
+		query.BeforeID = cursor.ID
 	}
 	query.ActorID = values.Get("actor_id")
 	query.Action = values.Get("action")
@@ -170,12 +171,13 @@ func decodeAuditCursor(raw string) (auditCursor, error) {
 func auditCursorSpec() opaqueCursorSpec[auditCursor] {
 	return opaqueCursorSpec[auditCursor]{
 		label: "audit", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
-		members:        []string{"version", "create_at", "id"},
+		members:        []string{"version", "created_at", "id"},
 		version:        func(cursor auditCursor) int { return cursor.Version },
 		setVersion:     func(cursor *auditCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
 		validate: func(cursor auditCursor) error {
-			if cursor.CreateAt <= 0 || !model.AuditEventID(cursor.Id).IsValid() {
+			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
+			if err != nil || createdAt.IsZero() || !model.AuditEventID(cursor.ID).IsValid() {
 				return errors.New("invalid audit keyset")
 			}
 			return nil

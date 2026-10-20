@@ -46,7 +46,7 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "RoleBindingResponse", DTO: reflect.TypeOf(roleBindingResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "user_id", "role_id", "scope_type", "scope_id", "start_at"},
+				Required: []string{"id", "created_at", "updated_at", "user_id", "role_id", "scope_type", "scope_id", "start_at"},
 			},
 			{
 				Name: "CreateRoleBindingRequest", DTO: reflect.TypeOf(createRoleBindingRequest{}),

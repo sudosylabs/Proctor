@@ -151,9 +151,9 @@ components:
           type: boolean
           description: Whether this Session may currently replace the settings source.
         updated_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the latest durable replacement.
+          type: string
+          format: date-time
+          description: Time of the latest durable replacement.
     UserSettingsReplaceRequest:
       description: Complete conditional replacement for the current User Settings Document.
       type: object
@@ -187,8 +187,8 @@ components:
           type: integer
           minimum: 1
         updated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         changed:
           type: boolean
           description: False when the accepted source already matched the retained document.

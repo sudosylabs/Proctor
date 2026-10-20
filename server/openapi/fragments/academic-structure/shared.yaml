@@ -80,9 +80,8 @@ components:
       required:
         - revision
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - institution_id
         - name
         - display_name
@@ -95,15 +94,15 @@ components:
           description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         institution_id:
           $ref: '#/components/schemas/ID'
         parent_id:
@@ -125,25 +124,6 @@ components:
         - name
         - display_name
       properties:
-        id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        create_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        update_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        delete_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
         institution_id:
           type: string
           deprecated: true
@@ -167,9 +147,8 @@ components:
       required:
         - revision
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - academic_unit_id
         - name
         - display_name
@@ -182,15 +161,15 @@ components:
           description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         academic_unit_id:
           $ref: '#/components/schemas/ID'
         name:
@@ -205,9 +184,8 @@ components:
       required:
         - revision
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - programme_id
         - name
         - display_name
@@ -220,15 +198,15 @@ components:
           description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         programme_id:
           $ref: '#/components/schemas/ID'
         name:
@@ -243,9 +221,8 @@ components:
       required:
         - revision
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - programme_level_id
         - academic_period_id
         - name
@@ -259,15 +236,15 @@ components:
           description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         programme_level_id:
           $ref: '#/components/schemas/ID'
         academic_period_id:

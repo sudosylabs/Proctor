@@ -43,11 +43,11 @@ describe("explicit MFA mutations", () => {
   it("keeps the matching provisioning URI with the setup key and expiry", async () => {
     const provisioningURI = "otpauth://totp/Proctor:preview?secret=SETUPKEY&issuer=Proctor";
     const post = vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(201, {
-      data: { secret: "SETUPKEY", provisioning_uri: provisioningURI, expires_at: 1_900_000_000_000 },
+      data: { secret: "SETUPKEY", provisioning_uri: provisioningURI, expires_at: "2030-03-17T17:46:40Z" },
     }));
-    await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "success", setup: { secret: "SETUPKEY", provisioningURI, expiresAt: 1_900_000_000_000 } });
+    await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "success", setup: { secret: "SETUPKEY", provisioningURI, expiresAt: "2030-03-17T17:46:40Z" } });
     expect(post).toHaveBeenCalledOnce();
-    post.mockResolvedValue(apiResult(201, { data: { secret: "SETUPKEY", expires_at: 1e20 } }));
+    post.mockResolvedValue(apiResult(201, { data: { secret: "SETUPKEY", expires_at: 1_900_000_000_000 } }));
     await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "unavailable" });
   });
 
@@ -60,7 +60,7 @@ describe("explicit MFA mutations", () => {
     `otpauth://totp/${"a".repeat(2048)}?secret=SETUPKEY`,
   ])("rejects an unusable or mismatched provisioning URI: %s", async (provisioning_uri) => {
     vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(201, {
-      data: { secret: "SETUPKEY", provisioning_uri, expires_at: 1_900_000_000_000 },
+      data: { secret: "SETUPKEY", provisioning_uri, expires_at: "2030-03-17T17:46:40Z" },
     }));
     await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "unavailable" });
   });

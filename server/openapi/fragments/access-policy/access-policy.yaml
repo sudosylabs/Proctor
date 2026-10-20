@@ -212,8 +212,8 @@ components:
           example:
             id: ybndrfg8ejkmcpqxot1uwisza3
             revision: 4
-            created_at: 1798761600000
-            updated_at: 1798765200000
+            created_at: '2027-01-01T00:00:00Z'
+            updated_at: '2027-01-01T01:00:00Z'
             local_login_enabled: true
             public_registration_enabled: false
             invitation_admission_enabled: true
@@ -321,9 +321,9 @@ components:
               - provider_admissions
               - revoke_existing_sessions
         changed_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the replacement committed.
+          type: string
+          format: date-time
+          description: Time when the replacement committed.
         outcome:
           type: string
           const: applied
@@ -354,11 +354,11 @@ components:
           minimum: 1
           description: Monotonic policy revision used for optimistic concurrency.
         created_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         updated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         local_login_enabled:
           type: boolean
         public_registration_enabled:

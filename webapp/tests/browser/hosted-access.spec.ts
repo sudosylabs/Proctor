@@ -144,7 +144,7 @@ async function mockDesktopAuthorization(
         }
       : {}),
     device_name: request.deviceName,
-    expires_at: Date.now() + 300_000,
+    expires_at: new Date(Date.now() + 300_000).toISOString(),
     local_login_enabled: !authenticated,
     external_providers: authenticated ? [] : defaultDiscovery.providers,
   });
@@ -828,7 +828,7 @@ test("Invitation acceptance exchanges the claim before account creation", async 
         handle: "private-browser-handle",
         purpose: "student_class",
         requirement: "account",
-        expires_at: Date.now() + 300_000,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
       }),
     });
   });
@@ -909,7 +909,7 @@ test("Invitation retry preserves the live claim after a temporary exchange failu
         handle: "private-browser-handle",
         purpose: "student_class",
         requirement: "account",
-        expires_at: Date.now() + 300_000,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
       }),
     });
   });
@@ -971,7 +971,7 @@ test("Session Invitation preserves its handle while warning about new-tab sign i
         handle: "private-browser-handle",
         purpose: "student_class",
         requirement: "session",
-        expires_at: Date.now() + 300_000,
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
       }),
     });
   });
@@ -1038,7 +1038,7 @@ test("Desktop authorization approves the exact sanitized request", async ({
         contentType: "application/json",
         body: JSON.stringify({
           redirect_url: loopbackRedirect,
-          expires_at: Date.now() + 60_000,
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
         }),
       });
     },
@@ -1154,7 +1154,7 @@ test("Desktop local authentication remains in the same tab and creates no browse
             display_name: "Student One",
           },
           device_name: "Exam laptop",
-          expires_at: Date.now() + 300_000,
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
           local_login_enabled: false,
           external_providers: [],
         }),
@@ -1276,7 +1276,7 @@ test("Desktop local authentication disables competing actions until completion",
     desktop.authenticate();
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({
       state: "authenticated", account: defaultDesktopAuthorization.account, device_name: "Exam laptop",
-      expires_at: Date.now() + 300_000, local_login_enabled: false, external_providers: [],
+      expires_at: new Date(Date.now() + 300_000).toISOString(), local_login_enabled: false, external_providers: [],
     }) });
   });
   await page.goto("/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof");
@@ -1380,7 +1380,7 @@ test("provider connection requires an explicit provider selection action", async
         contentType: "application/json",
         body: JSON.stringify({
           redirect_url: `${canonicalOrigin}/authorization/complete`,
-          expires_at: Date.now() + 300_000,
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
         }),
       });
     },
@@ -1537,7 +1537,7 @@ for (const pageCase of [
             handle: "private-browser-handle",
             purpose: "student_class",
             requirement: "account",
-            expires_at: Date.now() + 300_000,
+            expires_at: new Date(Date.now() + 300_000).toISOString(),
           }),
         });
       });

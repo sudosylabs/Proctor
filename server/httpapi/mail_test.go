@@ -112,7 +112,7 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 	id := model.NewMailDeliveryID()
 	fake := &recordingMailAPI{view: application.MailDeliveryView{ID: id, OccurrenceID: model.NewMailOccurrenceID(), TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryFailed, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(time.Hour), MessageID: "<mail." + id.String() + "@example.test>"}}
 	module := mailResourceModule{mail: fake}
-	request, _ := http.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?state=failed&template_key=system.mail_test&created_after=1&created_before=9999999999999&limit=1", nil)
+	request, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/mail/deliveries?state=failed&template_key=system.mail_test&created_after=1970-01-01T00:00:00.001Z&created_before=2286-11-20T17:46:39.999Z&limit=1", nil)
 	result, err := module.listDeliveries(operationRequest{request: request})
 	if err != nil || result.status != http.StatusOK || fake.lists != 1 {
 		t.Fatalf("list result=%#v err=%v lists=%d", result, err, fake.lists)
@@ -137,7 +137,7 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 
 func TestMailDeliveryEndpointForwardsExactCursorAndMapsMalformedCursor(t *testing.T) {
 	t.Parallel()
-	at := time.Date(2026, 8, 24, 10, 11, 12, 345, time.UTC)
+	at := time.Date(2026, 8, 24, 10, 11, 12, 345000, time.UTC)
 	id := model.NewMailDeliveryID()
 	fake := &recordingMailAPI{view: application.MailDeliveryView{ID: model.NewMailDeliveryID(), CreatedAt: at.Add(-time.Minute)}}
 	logger, _ := newTestLogger(t)
@@ -184,7 +184,7 @@ func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) 
 	}
 	response, ok := result.body.(mailRekeyResponse)
 	if !ok || response.JobID == "" || response.PrimaryKeyID != "22222222222222222222222222222222" ||
-		response.RetiringKeyID != fake.rekeys[0] || response.CreatedAt != 100000 {
+		response.RetiringKeyID != fake.rekeys[0] || response.CreatedAt != "1970-01-01T00:01:40Z" {
 		t.Fatalf("safe rekey response = %#v", result.body)
 	}
 	invalid, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",

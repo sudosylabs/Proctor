@@ -43,7 +43,7 @@ func TestOpenAPISchemaAgreementAllowsNullForRequiredResponsePointer(t *testing.T
 	violations := evaluateOpenAPIShapeAgreement(
 		nil,
 		openAPIDocument{},
-		"schema Response.archived_at",
+		"schema Response.display_name",
 		openAPISchemaShape{Type: []any{"string", "null"}},
 		reflect.TypeOf((*string)(nil)),
 		false,

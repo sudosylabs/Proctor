@@ -654,7 +654,7 @@ func parseOptionalExamSittingTime(field string, value Optional[string]) (*time.T
 }
 
 func parseExamSittingTime(field, raw string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	parsed, err := model.ParseRFC3339(raw)
 	if err != nil || parsed.IsZero() {
 		return time.Time{}, invalidRequestError(errors.New("must be an RFC 3339 instant"))
 	}
@@ -688,15 +688,15 @@ func examSittingResponseFromView(view application.ExamSittingView) examSittingRe
 	sitting := view.Sitting
 	return examSittingResponse{
 		ID: sitting.ID.String(), ExamID: sitting.ExamID.String(), ExamRevisionID: sitting.ExamRevisionID.String(), ClassID: sitting.ClassID.String(),
-		ScheduledStartAt: model.TimeUTC(sitting.ScheduledStartAt).Format(time.RFC3339Nano), ScheduledEndAt: model.TimeUTC(sitting.ScheduledEndAt).Format(time.RFC3339Nano),
-		State: string(sitting.State), CreatedAt: model.TimeUTC(sitting.CreatedAt).Format(time.RFC3339Nano), UpdatedAt: model.TimeUTC(sitting.UpdatedAt).Format(time.RFC3339Nano),
+		ScheduledStartAt: model.FormatRFC3339(sitting.ScheduledStartAt), ScheduledEndAt: model.FormatRFC3339(sitting.ScheduledEndAt),
+		State: string(sitting.State), CreatedAt: model.FormatRFC3339(sitting.CreatedAt), UpdatedAt: model.FormatRFC3339(sitting.UpdatedAt),
 		OpenedAt: sitting.OpenedAt.FormatRFC3339(), PausedAt: sitting.PausedAt.FormatRFC3339(), ClosingAt: sitting.ClosingAt.FormatRFC3339(),
 		ClosedAt: sitting.ClosedAt.FormatRFC3339(), CanceledAt: sitting.CanceledAt.FormatRFC3339(), ReasonCode: string(sitting.ReasonCode), Revision: sitting.Revision,
 	}
 }
 
 func encodeExamSittingCursor(cursor examSittingCursor) (string, error) {
-	wire := examSittingCursorWire{Version: examSittingCursorVersion, StartAt: model.TimeUTC(cursor.StartAt).Format(time.RFC3339Nano), ID: cursor.ID.String()}
+	wire := examSittingCursorWire{Version: examSittingCursorVersion, StartAt: model.FormatRFC3339(cursor.StartAt), ID: cursor.ID.String()}
 	return encodeOpaqueCursor(wire, examSittingCursorSpec())
 }
 
@@ -705,7 +705,7 @@ func decodeExamSittingCursor(raw string) (examSittingCursor, error) {
 	if err != nil {
 		return examSittingCursor{}, err
 	}
-	startAt, _ := time.Parse(time.RFC3339Nano, wire.StartAt)
+	startAt, _ := model.ParseRFC3339(wire.StartAt)
 	id, _ := model.ParseExamSittingID(wire.ID)
 	return examSittingCursor{StartAt: model.TimeUTC(startAt), ID: id}, nil
 }
@@ -718,7 +718,7 @@ func examSittingCursorSpec() opaqueCursorSpec[examSittingCursorWire] {
 		setVersion:     func(cursor *examSittingCursorWire, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == examSittingCursorVersion },
 		validate: func(cursor examSittingCursorWire) error {
-			startAt, err := time.Parse(time.RFC3339Nano, cursor.StartAt)
+			startAt, err := model.ParseRFC3339(cursor.StartAt)
 			if err != nil || startAt.IsZero() || !model.ExamSittingID(cursor.ID).IsValid() {
 				return errors.New("invalid Exam Sitting keyset")
 			}

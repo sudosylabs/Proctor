@@ -400,7 +400,7 @@ components:
       required: [authorization_url, expires_at]
       properties:
         authorization_url: {type: string, format: uri}
-        expires_at: {type: integer, format: int64}
+        expires_at: {type: string, format: date-time}
     DesktopAuthorizationAccountResponse:
       type: object
       additionalProperties: false
@@ -422,11 +422,11 @@ components:
           maxItems: 64
           items: {$ref: '#/components/schemas/ExternalAuthenticationProviderResponse'}
         device_name: {type: string, maxLength: 128}
-        expires_at: {type: integer, format: int64}
+        expires_at: {type: string, format: date-time}
     DesktopAuthorizationApprovalResponse:
       type: object
       additionalProperties: false
       required: [redirect_url, expires_at]
       properties:
         redirect_url: {type: string, format: uri}
-        expires_at: {type: integer, format: int64}
+        expires_at: {type: string, format: date-time}

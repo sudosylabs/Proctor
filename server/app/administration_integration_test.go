@@ -302,7 +302,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		map[string]any{
 			"user_id": secondAdministrator.ID.String(), "role_id": customRole.ID.String(),
 			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
-			"start_at": model.GetMillis(),
+			"start_at": integrationWireTime(model.GetMillis()),
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
@@ -351,7 +351,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		map[string]any{
 			"user_id": secondAdministrator.ID.String(), "role_id": created.Role.ID.String(),
 			"scope_type": model.RoleScopeInstitution, "scope_id": created.Institution.ID.String(),
-			"start_at": model.GetMillis(),
+			"start_at": integrationWireTime(model.GetMillis()),
 		},
 		administratorLogin.Tokens.AccessToken,
 	)

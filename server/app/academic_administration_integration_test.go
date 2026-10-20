@@ -97,7 +97,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		map[string]any{
 			"owner_type": "academic_unit", "owner_id": child.ID.String(),
 			"name": "2026-2027", "display_name": "2026-2027",
-			"start_at": now - 86_400_000, "end_at": now + 31_536_000_000,
+			"start_at": integrationWireTime(now - 86_400_000), "end_at": integrationWireTime(now + 31_536_000_000),
 		},
 		adminToken,
 	)
@@ -122,7 +122,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		map[string]any{
 			"owner_type": "academic_unit", "owner_id": child.ID.String(),
 			"name": "2027-2028", "display_name": "2027-2028",
-			"start_at": period.EndsAt.Add(time.Hour).UnixMilli(), "end_at": period.EndsAt.AddDate(1, 0, 0).UnixMilli(),
+			"start_at": model.FormatRFC3339(period.EndsAt.Add(time.Hour)), "end_at": model.FormatRFC3339(period.EndsAt.AddDate(1, 0, 0)),
 		},
 		adminToken,
 	)
@@ -146,7 +146,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	jsonBatch := performIdempotentJSONRequest(handler, "/api/v1/academic-administration-batches", map[string]any{
 		"operation": "affiliation.add", "scope_type": "institution", "scope_id": installation.Institution.ID.String(),
 		"items": []map[string]any{{
-			"key": "json-staff", "user_id": jsonBatchUser.ID.String(), "affiliation_kind": "staff", "start_at": now - 2_000,
+			"key": "json-staff", "user_id": jsonBatchUser.ID.String(), "affiliation_kind": "staff", "start_at": integrationWireTime(now - 2_000),
 		}},
 	}, adminToken, "academic-json-batch")
 	if jsonBatch.Code != http.StatusOK || !strings.Contains(jsonBatch.Body.String(), `"succeeded":1`) ||
@@ -222,19 +222,19 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 
 	createIntegrationResource[map[string]any](
 		t, handler, http.MethodPost, "/api/v1/users/"+student.ID.String()+"/affiliations",
-		map[string]any{"kind": model.AffiliationStudent, "start_at": now - 10_000},
+		map[string]any{"kind": model.AffiliationStudent, "start_at": integrationWireTime(now - 10_000)},
 		adminToken,
 	)
 	createIntegrationResource[map[string]any](
 		t, handler, http.MethodPost, "/api/v1/users/"+teacher.ID.String()+"/affiliations",
-		map[string]any{"kind": model.AffiliationTeacher, "start_at": now - 10_000},
+		map[string]any{"kind": model.AffiliationTeacher, "start_at": integrationWireTime(now - 10_000)},
 		adminToken,
 	)
-	// Membership wire DTOs keep millis fields; decode into local shapes rather than domain models.
+	// Decode membership wire DTOs into local shapes rather than domain models.
 	type membershipWire struct {
-		ID     string `json:"id"`
-		UserID string `json:"user_id"`
-		EndAt  int64  `json:"end_at"`
+		ID     string    `json:"id"`
+		UserID string    `json:"user_id"`
+		EndAt  time.Time `json:"end_at"`
 	}
 	type enrollmentWire struct {
 		Membership membershipWire  `json:"membership"`
@@ -242,12 +242,12 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	unitMember := createIntegrationResource[membershipWire](
 		t, handler, http.MethodPost, "/api/v1/academic-units/"+child.ID.String()+"/members",
-		map[string]any{"user_id": teacher.ID.String(), "start_at": now - 10_000},
+		map[string]any{"user_id": teacher.ID.String(), "start_at": integrationWireTime(now - 10_000)},
 		adminToken,
 	)
 	firstEnrollmentResponse := performJSONRequest(
 		handler, http.MethodPost, "/api/v1/classes/"+firstClass.ID.String()+"/members",
-		map[string]any{"user_id": student.ID.String(), "start_at": now - 5_000}, adminToken,
+		map[string]any{"user_id": student.ID.String(), "start_at": integrationWireTime(now - 5_000)}, adminToken,
 	)
 	if firstEnrollmentResponse.Code != http.StatusCreated {
 		t.Fatalf("first enrollment = %d: %s; logs: %s", firstEnrollmentResponse.Code, firstEnrollmentResponse.Body.String(), helper.Logs.String())
@@ -259,7 +259,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	transferResponse := performJSONRequest(
 		handler, http.MethodPost, "/api/v1/classes/"+secondClass.ID.String()+"/members",
-		map[string]any{"user_id": student.ID.String(), "start_at": now - 1_000}, adminToken,
+		map[string]any{"user_id": student.ID.String(), "start_at": integrationWireTime(now - 1_000)}, adminToken,
 	)
 	if transferResponse.Code != http.StatusCreated {
 		t.Fatalf("transfer enrollment = %d: %s; logs: %s", transferResponse.Code, transferResponse.Body.String(), helper.Logs.String())
@@ -268,7 +268,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	decodeIntegrationResponse(t, transferResponse, &transfer)
 	if transfer.Previous == nil ||
 		transfer.Previous.ID != firstEnrollment.Membership.ID ||
-		transfer.Previous.EndAt != now-1_000 {
+		!transfer.Previous.EndAt.Equal(time.UnixMilli(now-1_000)) {
 		t.Fatalf("transfer = %#v", &transfer)
 	}
 	effectiveAt := destinationPeriod.StartsAt.Add(time.Hour)
@@ -703,6 +703,19 @@ func createIntegrationUser(
 	return user
 }
 
+// integrationWireTime formats a Unix-millisecond fixture as an API timestamp.
+func integrationWireTime(millis int64) string {
+	return model.FormatRFC3339(time.UnixMilli(millis))
+}
+
+// integrationOptionalTime maps an omitted API timestamp to absence.
+func integrationOptionalTime(value time.Time) model.OptionalTime {
+	if value.IsZero() {
+		return model.OptionalTime{}
+	}
+	return model.OptionalTimeFrom(value)
+}
+
 func createIntegrationResource[T any](
 	t *testing.T,
 	handler http.Handler,
@@ -725,24 +738,24 @@ func createIntegrationResource[T any](
 			ID: model.AcademicUnitID(wire.ID), InstitutionID: model.InstitutionID(wire.InstitutionID),
 			ParentID: model.AcademicUnitID(wire.ParentID), Name: wire.Name,
 			DisplayName: wire.DisplayName, Description: wire.Description,
-			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
-			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+			CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+			ArchivedAt: integrationOptionalTime(wire.ArchivedAt),
 		}
 	case *model.Programme:
 		decodeIntegrationResponse(t, response, &wire)
 		*target = model.Programme{
 			ID: model.ProgrammeID(wire.ID), AcademicUnitID: model.AcademicUnitID(wire.AcademicUnitID),
 			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
-			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
-			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+			CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+			ArchivedAt: integrationOptionalTime(wire.ArchivedAt),
 		}
 	case *model.ProgrammeLevel:
 		decodeIntegrationResponse(t, response, &wire)
 		*target = model.ProgrammeLevel{
 			ID: model.ProgrammeLevelID(wire.ID), ProgrammeID: model.ProgrammeID(wire.ProgrammeID),
 			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
-			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
-			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+			CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+			ArchivedAt: integrationOptionalTime(wire.ArchivedAt),
 		}
 	case *model.AcademicPeriod:
 		decodeIntegrationResponse(t, response, &wire)
@@ -753,9 +766,9 @@ func createIntegrationResource[T any](
 		*target = model.AcademicPeriod{
 			ID: model.AcademicPeriodID(wire.ID), Owner: owner,
 			Name: wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
-			StartsAt: model.TimeFromMillis(wire.StartAt), EndsAt: model.TimeFromMillis(wire.EndAt),
-			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
-			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+			StartsAt: wire.StartAt, EndsAt: wire.EndAt,
+			CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+			ArchivedAt: integrationOptionalTime(wire.ArchivedAt),
 		}
 	case *model.Class:
 		decodeIntegrationResponse(t, response, &wire)
@@ -763,8 +776,8 @@ func createIntegrationResource[T any](
 			ID: model.ClassID(wire.ID), ProgrammeLevelID: model.ProgrammeLevelID(wire.ProgrammeLevelID),
 			AcademicPeriodID: model.AcademicPeriodID(wire.AcademicPeriodID),
 			Name:             wire.Name, DisplayName: wire.DisplayName, Description: wire.Description,
-			CreatedAt: model.TimeFromMillis(wire.CreateAt), UpdatedAt: model.TimeFromMillis(wire.UpdateAt),
-			ArchivedAt: model.OptionalTimeFromMillis(wire.DeleteAt),
+			CreatedAt: wire.CreatedAt, UpdatedAt: wire.UpdatedAt,
+			ArchivedAt: integrationOptionalTime(wire.ArchivedAt),
 		}
 	default:
 		decodeIntegrationResponse(t, response, &result)
@@ -773,23 +786,23 @@ func createIntegrationResource[T any](
 }
 
 type wireAcademicResourceResponse struct {
-	ID               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
-	InstitutionID    string `json:"institution_id"`
-	OwnerType        string `json:"owner_type"`
-	OwnerID          string `json:"owner_id"`
-	ParentID         string `json:"parent_id"`
-	AcademicUnitID   string `json:"academic_unit_id"`
-	ProgrammeID      string `json:"programme_id"`
-	ProgrammeLevelID string `json:"programme_level_id"`
-	AcademicPeriodID string `json:"academic_period_id"`
-	Name             string `json:"name"`
-	DisplayName      string `json:"display_name"`
-	Description      string `json:"description"`
-	StartAt          int64  `json:"start_at"`
-	EndAt            int64  `json:"end_at"`
+	ID               string    `json:"id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	ArchivedAt       time.Time `json:"archived_at"`
+	InstitutionID    string    `json:"institution_id"`
+	OwnerType        string    `json:"owner_type"`
+	OwnerID          string    `json:"owner_id"`
+	ParentID         string    `json:"parent_id"`
+	AcademicUnitID   string    `json:"academic_unit_id"`
+	ProgrammeID      string    `json:"programme_id"`
+	ProgrammeLevelID string    `json:"programme_level_id"`
+	AcademicPeriodID string    `json:"academic_period_id"`
+	Name             string    `json:"name"`
+	DisplayName      string    `json:"display_name"`
+	Description      string    `json:"description"`
+	StartAt          time.Time `json:"start_at"`
+	EndAt            time.Time `json:"end_at"`
 }
 
 func parseIntegrationAcademicPeriodOwner(ownerType, ownerID string) (model.AcademicPeriodOwner, error) {
@@ -830,14 +843,14 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 		return
 	case *[]*model.AcademicUnitMember:
 		var wire []struct {
-			ID             string `json:"id"`
-			CreateAt       int64  `json:"create_at"`
-			UpdateAt       int64  `json:"update_at"`
-			DeleteAt       int64  `json:"delete_at"`
-			AcademicUnitID string `json:"academic_unit_id"`
-			UserID         string `json:"user_id"`
-			StartAt        int64  `json:"start_at"`
-			EndAt          int64  `json:"end_at"`
+			ID             string    `json:"id"`
+			CreatedAt      time.Time `json:"created_at"`
+			UpdatedAt      time.Time `json:"updated_at"`
+			ArchivedAt     time.Time `json:"archived_at"`
+			AcademicUnitID string    `json:"academic_unit_id"`
+			UserID         string    `json:"user_id"`
+			StartAt        time.Time `json:"start_at"`
+			EndAt          time.Time `json:"end_at"`
 		}
 		if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
 			t.Fatal(err)
@@ -846,9 +859,9 @@ func decodeIntegrationResponse(t *testing.T, response *httptest.ResponseRecorder
 		for _, item := range wire {
 			*typed = append(*typed, &model.AcademicUnitMember{
 				ID: model.AcademicUnitMemberID(item.ID), AcademicUnitID: model.AcademicUnitID(item.AcademicUnitID),
-				UserID: model.UserID(item.UserID), CreatedAt: model.TimeFromMillis(item.CreateAt),
-				UpdatedAt: model.TimeFromMillis(item.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(item.DeleteAt),
-				StartsAt: model.TimeFromMillis(item.StartAt), EndsAt: model.OptionalTimeFromMillis(item.EndAt),
+				UserID: model.UserID(item.UserID), CreatedAt: item.CreatedAt,
+				UpdatedAt: item.UpdatedAt, ArchivedAt: integrationOptionalTime(item.ArchivedAt),
+				StartsAt: item.StartAt, EndsAt: integrationOptionalTime(item.EndAt),
 			})
 		}
 		return

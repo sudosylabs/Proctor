@@ -21,7 +21,7 @@ type userSettingsResponse struct {
 	FormatVersion int    `json:"format_version"`
 	Revision      string `json:"revision"`
 	Writable      bool   `json:"writable"`
-	UpdatedAt     int64  `json:"updated_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type userSettingsReplaceRequest struct {
@@ -33,7 +33,7 @@ type userSettingsReplaceRequest struct {
 type userSettingsReplacementResponse struct {
 	Revision      string `json:"revision"`
 	FormatVersion int    `json:"format_version"`
-	UpdatedAt     int64  `json:"updated_at"`
+	UpdatedAt     string `json:"updated_at"`
 	Changed       bool   `json:"changed"`
 }
 
@@ -81,7 +81,7 @@ func (module userSettingsResourceModule) read(request operationRequest) (operati
 		FormatVersion: view.FormatVersion,
 		Revision:      view.Revision.String(),
 		Writable:      view.Writable,
-		UpdatedAt:     view.UpdatedAt.UnixMilli(),
+		UpdatedAt:     model.FormatRFC3339(view.UpdatedAt),
 	}).withHeaders(http.Header{"Cache-Control": []string{"private, no-store"}}), nil
 }
 
@@ -107,6 +107,6 @@ func (module userSettingsResourceModule) replace(request operationRequest) (oper
 	}
 	return jsonResult(http.StatusOK, userSettingsReplacementResponse{
 		Revision: result.Revision.String(), FormatVersion: result.FormatVersion,
-		UpdatedAt: result.UpdatedAt.UnixMilli(), Changed: result.Changed,
+		UpdatedAt: model.FormatRFC3339(result.UpdatedAt), Changed: result.Changed,
 	}).withHeaders(http.Header{"Cache-Control": []string{"private, no-store"}}), nil
 }

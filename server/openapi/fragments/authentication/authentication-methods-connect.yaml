@@ -102,5 +102,5 @@ components:
           type: string
           format: uri
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time

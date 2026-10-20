@@ -97,7 +97,7 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	createRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/users/me/tokens",
-		strings.NewReader(`{"description":"editor","scopes":["user.profile_picture.manage"],"expires_at":123}`),
+		strings.NewReader(`{"description":"editor","scopes":["user.profile_picture.manage"],"expires_at":"1970-01-01T00:00:00.123Z"}`),
 	)
 	createRequest.Header.Set("Authorization", "Bearer credential")
 	createRequest.Header.Set("Content-Type", "application/json")
@@ -120,7 +120,7 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 	invalidRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/v1/users/me/tokens",
-		strings.NewReader(`{"description":"editor","scopes":[],"expires_at":123,"unknown":true}`),
+		strings.NewReader(`{"description":"editor","scopes":[],"expires_at":"1970-01-01T00:00:00.123Z","unknown":true}`),
 	)
 	invalidRequest.Header.Set("Authorization", "Bearer credential")
 	invalidRequest.Header.Set("Content-Type", "application/json")
@@ -162,7 +162,7 @@ func TestAccountSecurityResourcesRunThroughFocusedKernel(t *testing.T) {
 		classRouteAuthenticator{principal: stalePrincipal},
 		personalAccessTokenResource(applicationStub),
 	)
-	staleRequest := httptest.NewRequest(http.MethodPost, "/api/v1/users/me/tokens", strings.NewReader(`{"description":"editor","scopes":[],"expires_at":123}`))
+	staleRequest := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users/me/tokens", strings.NewReader(`{"description":"editor","scopes":[],"expires_at":"1970-01-01T00:00:00.123Z"}`))
 	staleRequest.Header.Set("Authorization", "Bearer credential")
 	staleResponse := httptest.NewRecorder()
 	staleAPI.ServeHTTP(staleResponse, staleRequest)

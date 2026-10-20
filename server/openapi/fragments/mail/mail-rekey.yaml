@@ -170,9 +170,9 @@ components:
           type: string
           pattern: ^[0-9a-f]{32}$
         created_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the rekey Job was created.
+          type: string
+          format: date-time
+          description: Time when the rekey Job was created.
     MailRekeyProgress:
       description: Coarse bounded progress while active payloads are being re-encrypted.
       type: object
@@ -245,14 +245,14 @@ components:
           type: string
           pattern: ^[0-9a-f]{32}$
         created_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         updated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         completed_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         public_error_code:
           type: string
           maxLength: 128

@@ -143,8 +143,9 @@ same optional query parameter. Omission preserves existing clients. A supplied
 stale revision fails with the resource's existing conflict error after
 resource authorization and before any mutation. Store compare-and-swap still
 fences a change between the authorized read and commit, including archives.
-The existing v1 epoch-millisecond presentation fields remain compatible;
-neither those timestamps nor presentation fields replace revision checks.
+Responses present `created_at`, `updated_at`, and, once archived,
+`archived_at` as RFC 3339 timestamps; neither those timestamps nor
+presentation fields replace revision checks.
 
 Class and Academic Unit membership enumeration can opt into bounded paging
 with `limit` or `cursor` while retaining the v1 array response. Pages use stable

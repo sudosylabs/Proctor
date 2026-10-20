@@ -210,7 +210,7 @@ func TestUserSettingsHTTPReadsExactSelfDocumentWithoutCaching(t *testing.T) {
 	}
 	if body.Source != source || body.FormatVersion != 1 ||
 		body.Revision != applicationFake.result.Revision.String() || !body.Writable ||
-		body.UpdatedAt != at.UnixMilli() {
+		body.UpdatedAt != model.FormatRFC3339(at) {
 		t.Fatalf("body = %#v", body)
 	}
 }
@@ -249,7 +249,7 @@ func TestUserSettingsHTTPReadsUnsupportedFormatAsExactReadOnlySource(t *testing.
 		t.Fatal(err)
 	}
 	if body.Source != source || body.FormatVersion != 2 || body.Writable ||
-		body.Revision != applicationFake.result.Revision.String() || body.UpdatedAt != at.UnixMilli() {
+		body.Revision != applicationFake.result.Revision.String() || body.UpdatedAt != model.FormatRFC3339(at) {
 		t.Fatalf("body = %#v", body)
 	}
 }

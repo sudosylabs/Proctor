@@ -10,7 +10,6 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -173,7 +172,7 @@ func retentionPolicyResponseFromModel(policy *model.RetentionPolicy) retentionPo
 		DeletionGraceDays:        policy.DeletionGraceDays,
 		CandidateNotices:         policy.CandidateNotices,
 		AutomaticDeletionEnabled: policy.AutomaticDeletionEnabled,
-		CreatedAt:                model.TimeUTC(policy.CreatedAt).Format(time.RFC3339Nano),
-		UpdatedAt:                model.TimeUTC(policy.UpdatedAt).Format(time.RFC3339Nano),
+		CreatedAt:                model.FormatRFC3339(policy.CreatedAt),
+		UpdatedAt:                model.FormatRFC3339(policy.UpdatedAt),
 	}
 }

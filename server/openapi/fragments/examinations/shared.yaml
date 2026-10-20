@@ -83,7 +83,6 @@ components:
         - owner_user_id
         - created_at
         - updated_at
-        - archived_at
         - revision
       properties:
         id:
@@ -103,9 +102,7 @@ components:
           type: string
           format: date-time
         archived_at:
-          type:
-            - string
-            - 'null'
+          type: string
           format: date-time
         revision:
           type: integer

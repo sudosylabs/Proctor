@@ -25,6 +25,19 @@ Dedicated DTOs prevent domain/persistence evolution from silently changing the
 public API or exposing a newly added sensitive field. This is a deliberate
 boundary even when an upstream design serializes shared model objects.
 
+Every HTTP and realtime timestamp, in bodies and query parameters alike, is an
+RFC 3339 string. Responses format it with `model.FormatRFC3339` (UTC,
+microsecond precision, trailing fractional zeros removed) and omit an absent
+optional instant rather than sending `null` or zero; requests accept any RFC
+3339 offset through `model.ParseRFC3339` or the `httpapi` wire-time helpers.
+Lifecycle members use past-tense `<verb>ed_at` names (`created_at`,
+`updated_at`, `archived_at`, `completed_at`); scheduled bounds and deadlines
+keep their noun form (`start_at`, `end_at`, `expires_at`). Create requests
+never declare server-owned `id` or timestamp members, so strict decoding
+rejects them. The OpenAPI agreement suite enforces this for every registered
+schema. Model-owned canonical security documents, such as delivery closures,
+keep their frozen closed-record codecs.
+
 Use plural kebab-case paths and `snake_case` JSON, query, and path-variable names. Collections return an object with non-null `items` and optional `next_cursor`. Cursors are opaque, versioned, untrusted keysets; growing offsets are not used for unbounded collections. One bounded codec emits canonical unpadded raw URL-safe Base64 over a duplicate-free strict JSON object, rejects padding, non-canonical encodings, invalid UTF-8, duplicate, case-aliased, or unknown members, trailing values, overlong payloads, missing required fields, and unsupported versions, and admits only the legacy versions declared by that resource. The resource still owns the keyset fields, ordering, semantic validation, and any compatibility window; the shared envelope does not interpret pagination meaning. Candidate Workspace retains its established optional continuation entry ID for snapshot-only cursors; server-emitted continuations always include the last entry identity.
 
 A reviewed, checked-in OpenAPI document is the public contract. CI compares it with routes, authentication classifications, DTOs, and error mappings. Generate clients and documentation from OpenAPI, never handlers or domain models.

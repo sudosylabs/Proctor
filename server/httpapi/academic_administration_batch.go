@@ -31,8 +31,8 @@ type academicAdministrationBatchItemRequest struct {
 	RelationshipID  string `json:"relationship_id,omitempty"`
 	RoleID          string `json:"role_id,omitempty"`
 	AffiliationKind string `json:"affiliation_kind,omitempty"`
-	StartAt         int64  `json:"start_at,omitempty"`
-	EndAt           int64  `json:"end_at,omitempty"`
+	StartAt         string `json:"start_at,omitempty"`
+	EndAt           string `json:"end_at,omitempty"`
 }
 
 type academicAdministrationBatchRequest struct {
@@ -77,9 +77,17 @@ func (module academicAdministrationBatchResourceModule) run(request operationReq
 	}
 	items := make([]application.AcademicAdministrationBatchItemCommand, 0, len(body.Items))
 	for _, item := range body.Items {
+		startAt, err := wireTimeMillis("start_at", item.StartAt)
+		if err != nil {
+			return operationResult{}, err
+		}
+		endAt, err := wireTimeMillis("end_at", item.EndAt)
+		if err != nil {
+			return operationResult{}, err
+		}
 		items = append(items, application.AcademicAdministrationBatchItemCommand{IdempotencyKey: item.Key, UserID: item.UserID,
 			RelationshipID: item.RelationshipID, RoleID: item.RoleID, AffiliationKind: model.AffiliationKind(item.AffiliationKind),
-			StartAt: item.StartAt, EndAt: item.EndAt})
+			StartAt: startAt, EndAt: endAt})
 	}
 	result, err := module.batches.RunAcademicAdministrationBatch(request.context, request.invocation(), application.RunAcademicAdministrationBatchCommand{
 		Operation: application.AcademicAdministrationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),

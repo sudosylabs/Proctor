@@ -922,18 +922,18 @@
           "application/json": {
             "example": {
               "display_name": "2026–2027",
-              "end_at": 1817078399000,
+              "end_at": "2027-07-31T23:59:59Z",
               "name": "2026-2027",
               "owner_id": "ybndrfg8ejkmcpqxot1uwisza3",
               "owner_type": "institution",
-              "start_at": 1785542400000
+              "start_at": "2026-08-01T00:00:00Z"
             },
             "schema": {
               "$ref": "#/components/schemas/CreateAcademicPeriodRequest"
             }
           }
         },
-        "description": "Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period.",
+        "description": "Exact owner, canonical presentation, and RFC 3339 bounds for a new Academic Period.",
         "required": true
       },
       "CreateAcademicUnit": {
@@ -956,7 +956,7 @@
         "content": {
           "application/json": {
             "example": {
-              "start_at": 1785542400000,
+              "start_at": "2026-08-01T00:00:00Z",
               "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -972,7 +972,7 @@
           "application/json": {
             "example": {
               "kind": "teacher",
-              "start_at": 1785542400000
+              "start_at": "2026-08-01T00:00:00Z"
             },
             "schema": {
               "$ref": "#/components/schemas/CreateAffiliationRequest"
@@ -1069,7 +1069,7 @@
             "example": {
               "academic_unit_id": "ybndrfg8ejkmcpqxot1uwisza3",
               "description": "Read examination schedules from the registrar tool",
-              "expires_at": 1798761600000,
+              "expires_at": "2027-01-01T00:00:00Z",
               "scopes": [
                 "examinations:read"
               ]
@@ -1169,7 +1169,7 @@
               "role_id": "ybndrfg8ejkmcpqxot1uwisza4",
               "scope_id": "ybndrfg8ejkmcpqxot1uwisza5",
               "scope_type": "academic_unit",
-              "start_at": 1785542400000,
+              "start_at": "2026-08-01T00:00:00Z",
               "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -1390,7 +1390,7 @@
         "content": {
           "application/json": {
             "example": {
-              "start_at": 1785542400000,
+              "start_at": "2026-08-01T00:00:00Z",
               "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
             },
             "schema": {
@@ -2122,7 +2122,7 @@
           "application/json": {
             "example": {
               "display_name": "Academic Year 2026–2027",
-              "end_at": 1819756799000
+              "end_at": "2027-08-31T23:59:59Z"
             },
             "schema": {
               "$ref": "#/components/schemas/UpdateAcademicPeriodRequest"
@@ -2435,7 +2435,7 @@
           "application/json": {
             "example": {
               "available_providers": [],
-              "created_at": 1798761600000,
+              "created_at": "2027-01-01T00:00:00Z",
               "desktop_authorization_enabled": true,
               "durable_mail": true,
               "history": [],
@@ -2446,7 +2446,7 @@
               "provider_admissions": {},
               "public_registration_enabled": false,
               "revision": 4,
-              "updated_at": 1798765200000
+              "updated_at": "2027-01-01T01:00:00Z"
             },
             "schema": {
               "$ref": "#/components/schemas/AccessPolicyResponse"
@@ -5517,9 +5517,8 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "key": {
             "pattern": "^[A-Za-z0-9._~-]{1,128}$",
@@ -5532,9 +5531,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -5716,13 +5714,13 @@
       "AcademicPeriodResponse": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -5731,10 +5729,9 @@
             "type": "string"
           },
           "end_at": {
-            "description": "Exclusive end time in Unix milliseconds; must be after start_at.",
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "description": "Exclusive end time; must be after start_at.",
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -5759,22 +5756,20 @@
             "type": "integer"
           },
           "start_at": {
-            "description": "Inclusive start time in Unix milliseconds.",
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "description": "Inclusive start time.",
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "revision",
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "owner_type",
           "owner_id",
           "name",
@@ -5803,28 +5798,28 @@
           "academic_unit_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -5832,9 +5827,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "academic_unit_id",
           "user_id",
           "start_at"
@@ -5844,13 +5838,13 @@
       "AcademicUnitResponse": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -5876,17 +5870,16 @@
             "minimum": 1,
             "type": "integer"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "revision",
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "institution_id",
           "name",
           "display_name",
@@ -6007,8 +6000,8 @@
             "type": "array"
           },
           "created_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "desktop_authorization_enabled": {
             "type": "boolean"
@@ -6057,8 +6050,8 @@
             "type": "integer"
           },
           "updated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -6143,9 +6136,9 @@
             "$ref": "#/components/schemas/ID"
           },
           "changed_at": {
-            "description": "Unix time in milliseconds when the replacement committed.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the replacement committed.",
+            "format": "date-time",
+            "type": "string"
           },
           "changed_fields": {
             "items": {
@@ -6343,17 +6336,17 @@
       "AffiliationResponse": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -6362,12 +6355,12 @@
             "$ref": "#/components/schemas/AffiliationKind"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -6375,9 +6368,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "user_id",
           "kind",
           "start_at"
@@ -6655,10 +6647,10 @@
           "client_type": {
             "type": "string"
           },
-          "create_at": {
-            "description": "Unix time in milliseconds when the audit Attempt was created.",
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "description": "Time when the audit Attempt was created.",
+            "format": "date-time",
+            "type": "string"
           },
           "error_code": {
             "description": "Stable safe failure category for an unsuccessful action; internal detail is omitted.",
@@ -6710,10 +6702,10 @@
             "description": "Durable outcome state of the audited Attempt.",
             "type": "string"
           },
-          "update_at": {
-            "description": "Unix time in milliseconds of the latest durable audit status change.",
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "description": "Time of the latest durable audit status change.",
+            "format": "date-time",
+            "type": "string"
           },
           "user_agent": {
             "type": "string"
@@ -6721,8 +6713,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
+          "created_at",
+          "updated_at",
           "action",
           "resource",
           "status"
@@ -6816,15 +6808,15 @@
         "additionalProperties": false,
         "properties": {
           "access_expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "access_token": {
             "type": "string"
           },
           "refresh_expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "refresh_token": {
             "type": "string"
@@ -7764,8 +7756,8 @@
         "additionalProperties": false,
         "properties": {
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "handle": {
             "pattern": "^[A-Za-z0-9_-]{43}$",
@@ -9388,31 +9380,31 @@
           "academic_period_id": {
             "$ref": "#/components/schemas/ID"
           },
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "class_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -9420,9 +9412,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "class_id",
           "academic_period_id",
           "user_id",
@@ -9436,13 +9427,13 @@
           "academic_period_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -9465,17 +9456,16 @@
             "minimum": 1,
             "type": "integer"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "revision",
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "programme_level_id",
           "academic_period_id",
           "name",
@@ -9615,18 +9605,6 @@
         "additionalProperties": false,
         "description": "Complete owner, presentation, and time window for a new Academic Period.",
         "properties": {
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "description": {
             "type": "string"
           },
@@ -9634,13 +9612,7 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
+            "format": "date-time",
             "type": "string"
           },
           "name": {
@@ -9657,15 +9629,8 @@
             "type": "string"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -9686,38 +9651,15 @@
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           },
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "end_at": {
             "deprecated": true,
             "description": "Accepted and ignored; memberships are ended through DELETE.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
+            "format": "date-time",
             "type": "string"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -9731,29 +9673,12 @@
       "CreateAcademicUnitRequest": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "description": {
             "description": "An optional human-facing description.",
             "type": "string"
           },
           "display_name": {
             "description": "The human-facing Academic Unit name.",
-            "type": "string"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
             "type": "string"
           },
           "institution_id": {
@@ -9769,12 +9694,6 @@
             "deprecated": true,
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
           }
         },
         "required": [
@@ -9786,39 +9705,16 @@
       "CreateAffiliationRequest": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
+            "format": "date-time",
             "type": "string"
           },
           "kind": {
             "$ref": "#/components/schemas/AffiliationKind"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "deprecated": true,
@@ -9860,27 +9756,10 @@
           "academic_period_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "description": {
             "type": "string"
           },
           "display_name": {
-            "type": "string"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
             "type": "string"
           },
           "name": {
@@ -9890,12 +9769,6 @@
             "deprecated": true,
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
           }
         },
         "required": [
@@ -9981,8 +9854,8 @@
             "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "scopes": {
             "items": {
@@ -10002,27 +9875,10 @@
         "additionalProperties": false,
         "description": "Canonical and human-facing fields for a new Programme Level.",
         "properties": {
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "description": {
             "type": "string"
           },
           "display_name": {
-            "type": "string"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
             "type": "string"
           },
           "name": {
@@ -10032,12 +9888,6 @@
             "deprecated": true,
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
           }
         },
         "required": [
@@ -10055,37 +9905,14 @@
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           },
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "description": {
             "type": "string"
           },
           "display_name": {
             "type": "string"
           },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "type": "string"
-          },
           "name": {
             "type": "string"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
           }
         },
         "required": [
@@ -10135,9 +9962,9 @@
         "description": "Exact effective-dated permission grant to create.",
         "properties": {
           "end_at": {
-            "description": "Optional Unix time in milliseconds when the grant stops being effective.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Optional time when the grant stops being effective.",
+            "format": "date-time",
+            "type": "string"
           },
           "role_id": {
             "$ref": "#/components/schemas/ID"
@@ -10150,9 +9977,9 @@
             "type": "string"
           },
           "start_at": {
-            "description": "Unix time in milliseconds when the grant becomes effective.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the grant becomes effective.",
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -10850,8 +10677,8 @@
         "additionalProperties": false,
         "properties": {
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "redirect_url": {
             "format": "uri",
@@ -10899,8 +10726,8 @@
             "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "external_providers": {
             "items": {
@@ -11115,8 +10942,8 @@
             "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -11220,15 +11047,9 @@
             "type": "string"
           },
           "retry_at": {
-            "oneOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "description": "Present only while availability is maintenance and a retry time is set.",
+            "format": "date-time",
+            "type": "string"
           },
           "revision": {
             "format": "int64",
@@ -11256,7 +11077,6 @@
           "revoked_desktop_build_ids",
           "administrator_message",
           "availability",
-          "retry_at",
           "created_at",
           "updated_at"
         ],
@@ -11307,8 +11127,8 @@
             "type": "string"
           },
           "created_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "current": {
             "type": "boolean"
@@ -11329,8 +11149,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "last_used_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "platform": {
             "enum": [
@@ -12552,36 +12372,13 @@
             "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           },
-          "create_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
-          },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
+            "format": "date-time",
             "type": "string"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "update_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -13182,10 +12979,7 @@
           },
           "archived_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "created_at": {
             "format": "date-time",
@@ -13220,7 +13014,6 @@
           "owner_user_id",
           "created_at",
           "updated_at",
-          "archived_at",
           "revision"
         ],
         "type": "object"
@@ -15338,10 +15131,7 @@
           },
           "archived_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "creator_user_id": {
             "$ref": "#/components/schemas/ID"
@@ -15435,7 +15225,6 @@
           "owner_user_id",
           "title",
           "updated_at",
-          "archived_at",
           "revision",
           "manager_count",
           "sitting_count",
@@ -15782,9 +15571,9 @@
             "$ref": "#/components/schemas/ID"
           },
           "initialized_at": {
-            "description": "Unix time in milliseconds at which bootstrap committed.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time at which bootstrap committed.",
+            "format": "date-time",
+            "type": "string"
           },
           "institution_id": {
             "$ref": "#/components/schemas/ID"
@@ -15814,13 +15603,13 @@
       "InstitutionResponse": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -15837,16 +15626,15 @@
           "name": {
             "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "name",
           "display_name",
           "description",
@@ -15920,8 +15708,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "created_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "delivery": {
             "$ref": "#/components/schemas/InvitationDeliveryResponse"
@@ -15931,12 +15719,12 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -15968,8 +15756,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "state": {
             "enum": [
@@ -15982,8 +15770,8 @@
             "type": "string"
           },
           "updated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -16008,9 +15796,8 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "expected_revision": {
             "format": "int64",
@@ -16028,9 +15815,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "suggested_display_name": {
             "maxLength": 512,
@@ -16205,16 +15991,16 @@
         "additionalProperties": false,
         "properties": {
           "accepted_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "created_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "deadline": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "masked_recipient": {
             "type": "string"
@@ -16237,8 +16023,8 @@
             "type": "string"
           },
           "updated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -16278,12 +16064,12 @@
             "$ref": "#/components/schemas/ID"
           },
           "end_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -16307,8 +16093,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "state": {
             "enum": [
@@ -16338,17 +16124,15 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "role_id": {
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -16365,14 +16149,12 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "suggested_display_name": {
             "maxLength": 512,
@@ -16412,17 +16194,15 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "role_id": {
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "suggested_display_name": {
             "maxLength": 512,
@@ -16479,23 +16259,23 @@
         "additionalProperties": false,
         "description": "Safe execution history for one Job Attempt.",
         "properties": {
-          "complete_at": {
-            "description": "Unix time in milliseconds when the Attempt reached a terminal state, when complete.",
-            "format": "int64",
-            "type": "integer"
+          "completed_at": {
+            "description": "Time when the Attempt reached a terminal state, when complete.",
+            "format": "date-time",
+            "type": "string"
           },
           "heartbeat_at": {
-            "description": "Unix time in milliseconds of the last retained worker heartbeat.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time of the last retained worker heartbeat.",
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "lease_expires_at": {
-            "description": "Unix time in milliseconds at which this execution lease expires.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time at which this execution lease expires.",
+            "format": "date-time",
+            "type": "string"
           },
           "number": {
             "description": "Monotonic attempt number within the parent Job.",
@@ -16506,10 +16286,10 @@
             "description": "Stable safe failure category for a failed terminal Attempt; internal error detail is never returned.",
             "type": "string"
           },
-          "start_at": {
-            "description": "Unix time in milliseconds when execution started.",
-            "format": "int64",
-            "type": "integer"
+          "started_at": {
+            "description": "Time when execution started.",
+            "format": "date-time",
+            "type": "string"
           },
           "status": {
             "$ref": "#/components/schemas/JobAttemptStatus"
@@ -16519,7 +16299,7 @@
           "id",
           "number",
           "status",
-          "start_at",
+          "started_at",
           "heartbeat_at",
           "lease_expires_at"
         ],
@@ -16595,19 +16375,19 @@
             "type": "integer"
           },
           "available_at": {
-            "description": "Unix time in milliseconds at or after which queued work may be claimed.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time at or after which queued work may be claimed.",
+            "format": "date-time",
+            "type": "string"
           },
-          "complete_at": {
-            "description": "Unix time in milliseconds when the Job reached a terminal state.",
-            "format": "int64",
-            "type": "integer"
+          "completed_at": {
+            "description": "Time when the Job reached a terminal state.",
+            "format": "date-time",
+            "type": "string"
           },
-          "create_at": {
-            "description": "Unix time in milliseconds when the Job was created.",
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "description": "Time when the Job was created.",
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -16630,10 +16410,10 @@
             "minimum": 1,
             "type": "integer"
           },
-          "start_at": {
-            "description": "Unix time in milliseconds when the current or latest Attempt started.",
-            "format": "int64",
-            "type": "integer"
+          "started_at": {
+            "description": "Time when the current or latest Attempt started.",
+            "format": "date-time",
+            "type": "string"
           },
           "status": {
             "$ref": "#/components/schemas/JobStatus"
@@ -16642,18 +16422,18 @@
             "description": "Stable allowlisted Job type.",
             "type": "string"
           },
-          "update_at": {
-            "description": "Unix time in milliseconds of the latest durable Job change.",
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "description": "Time of the latest durable Job change.",
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "type",
           "status",
-          "create_at",
-          "update_at",
+          "created_at",
+          "updated_at",
           "available_at",
           "attempt_count",
           "maximum_attempts",
@@ -16758,8 +16538,8 @@
         "additionalProperties": false,
         "properties": {
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "provisioning_uri": {
             "format": "uri",
@@ -16809,8 +16589,8 @@
             "type": "boolean"
           },
           "pending_expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "recently_authenticated": {
             "type": "boolean"
@@ -16915,9 +16695,9 @@
         "description": "Safe durable mail delivery metadata with the recipient masked and content omitted.",
         "properties": {
           "accepted_at": {
-            "description": "Unix time in milliseconds when SMTP accepted the message.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when SMTP accepted the message.",
+            "format": "date-time",
+            "type": "string"
           },
           "attempt_count": {
             "maximum": 8,
@@ -16925,19 +16705,19 @@
             "type": "integer"
           },
           "created_at": {
-            "description": "Unix time in milliseconds when the delivery was created.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the delivery was created.",
+            "format": "date-time",
+            "type": "string"
           },
           "deadline": {
-            "description": "Unix time in milliseconds after which the message is no longer relevant for delivery.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time after which the message is no longer relevant for delivery.",
+            "format": "date-time",
+            "type": "string"
           },
           "failed_at": {
-            "description": "Unix time in milliseconds when the delivery became terminally failed.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the delivery became terminally failed.",
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -16948,9 +16728,9 @@
             "type": "string"
           },
           "message_date": {
-            "description": "Unix time in milliseconds represented by the message Date header.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time represented by the message Date header.",
+            "format": "date-time",
+            "type": "string"
           },
           "message_id": {
             "description": "Safe retained Message-ID for delivery correlation, not a credential.",
@@ -16983,9 +16763,9 @@
             "type": "string"
           },
           "updated_at": {
-            "description": "Unix time in milliseconds of the latest durable state change.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time of the latest durable state change.",
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -17237,9 +17017,9 @@
         "description": "Durable identities created when the rotation Job is accepted.",
         "properties": {
           "created_at": {
-            "description": "Unix time in milliseconds when the rekey Job was created.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the rekey Job was created.",
+            "format": "date-time",
+            "type": "string"
           },
           "job_id": {
             "$ref": "#/components/schemas/ID"
@@ -17270,12 +17050,12 @@
             "type": "integer"
           },
           "completed_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "created_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "job_id": {
             "$ref": "#/components/schemas/ID"
@@ -17316,8 +17096,8 @@
             "$ref": "#/components/schemas/JobStatus"
           },
           "updated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -19617,35 +19397,35 @@
           "academic_unit_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
           },
           "disabled_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "last_used_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "revoked_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "scopes": {
             "items": {
@@ -19653,9 +19433,9 @@
             },
             "type": "array"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -19663,9 +19443,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "user_id",
           "description",
           "scopes",
@@ -19785,13 +19564,13 @@
       "ProgrammeLevelResponse": {
         "additionalProperties": false,
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -19814,17 +19593,16 @@
             "minimum": 1,
             "type": "integer"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "revision",
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "programme_id",
           "name",
           "display_name",
@@ -19844,13 +19622,13 @@
           "academic_unit_id": {
             "$ref": "#/components/schemas/ID"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "type": "string"
@@ -19870,17 +19648,16 @@
             "minimum": 1,
             "type": "integer"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "revision",
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "academic_unit_id",
           "name",
           "display_name",
@@ -19901,8 +19678,8 @@
         "additionalProperties": false,
         "properties": {
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "redirect_url": {
             "format": "uri",
@@ -20284,9 +20061,8 @@
             "type": "string"
           },
           "end_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "expected_revision": {
             "format": "int64",
@@ -20309,9 +20085,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "start_at": {
-            "format": "int64",
-            "minimum": 1,
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "suggested_display_name": {
             "maxLength": 512,
@@ -21203,18 +20978,18 @@
         "additionalProperties": false,
         "description": "Effective-dated grant of one Role to one User in one exact scope.",
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "end_at": {
-            "description": "Unix time in milliseconds when the grant stops being effective, when bounded.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the grant stops being effective, when bounded.",
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
@@ -21230,13 +21005,13 @@
             "type": "string"
           },
           "start_at": {
-            "description": "Unix time in milliseconds when the grant becomes effective.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time when the grant becomes effective.",
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -21244,9 +21019,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "user_id",
           "role_id",
           "scope_type",
@@ -21266,19 +21040,19 @@
         "additionalProperties": false,
         "description": "Reusable Role definition; effective access still requires a scoped Role Binding.",
         "properties": {
+          "archived_at": {
+            "description": "Time when the Role was archived; omitted while active.",
+            "format": "date-time",
+            "type": "string"
+          },
           "built_in": {
             "description": "True when installation invariants protect the Role from ordinary update or deletion.",
             "type": "boolean"
           },
-          "create_at": {
-            "description": "Unix time in milliseconds when the Role was created.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "description": "Unix time in milliseconds when deleted, or zero while active.",
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "description": "Time when the Role was created.",
+            "format": "date-time",
+            "type": "string"
           },
           "description": {
             "description": "Human-facing explanation of the Role's intended responsibility.",
@@ -21302,17 +21076,16 @@
             },
             "type": "array"
           },
-          "update_at": {
-            "description": "Unix time in milliseconds of the latest Role change.",
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "description": "Time of the latest Role change.",
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "name",
           "display_name",
           "description",
@@ -21818,9 +21591,13 @@
       "SessionAdministrationResponse": {
         "additionalProperties": false,
         "properties": {
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "authenticated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "authentication_method": {
             "type": "string"
@@ -21831,13 +21608,9 @@
           "client_type": {
             "type": "string"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "desktop_architecture": {
             "enum": [
@@ -21874,23 +21647,23 @@
             "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "idle_expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "last_activity_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "mfa_completed_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "mfa_recovery_required": {
             "description": "Whether this Session is restricted to MFA reenrollment after an assisted reset.",
@@ -21898,8 +21671,8 @@
           },
           "reauthenticated_at": {
             "description": "Most recent fresh primary proof for the original Session method, independent of initial authentication and MFA history.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "revocation_reason": {
             "description": "Localized presentation of revocation_reason_code.",
@@ -21927,12 +21700,12 @@
             "type": "string"
           },
           "revoked_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -21940,9 +21713,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "user_id",
           "client_type",
           "authentication_method",
@@ -21964,9 +21736,13 @@
       "SessionResponse": {
         "additionalProperties": false,
         "properties": {
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "authenticated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "authentication_method": {
             "type": "string"
@@ -21982,13 +21758,9 @@
             ],
             "type": "string"
           },
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "desktop_architecture": {
             "enum": [
@@ -22025,23 +21797,23 @@
             "type": "string"
           },
           "expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "idle_expires_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "last_activity_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "mfa_completed_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "mfa_recovery_required": {
             "description": "Ordinary access remains unavailable until a new local authenticator is activated.",
@@ -22049,8 +21821,8 @@
           },
           "reauthenticated_at": {
             "description": "Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.",
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "revocation_reason": {
             "description": "Localized presentation of revocation_reason_code.",
@@ -22078,12 +21850,12 @@
             "type": "string"
           },
           "revoked_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "user_id": {
             "$ref": "#/components/schemas/ID"
@@ -22091,9 +21863,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "user_id",
           "client_type",
           "authentication_method",
@@ -22181,26 +21952,18 @@
         "properties": {
           "last_lease_renewed_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "lease_expires_at": {
             "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "state": {
             "$ref": "#/components/schemas/SittingCandidatePresenceState"
           }
         },
         "required": [
-          "state",
-          "last_lease_renewed_at",
-          "lease_expires_at"
+          "state"
         ],
         "type": "object"
       },
@@ -22819,9 +22582,9 @@
           },
           "end_at": {
             "description": "Omitted or null leaves the exclusive end unchanged.",
-            "format": "int64",
+            "format": "date-time",
             "type": [
-              "integer",
+              "string",
               "null"
             ]
           },
@@ -22840,9 +22603,9 @@
           },
           "start_at": {
             "description": "Omitted or null leaves the inclusive start unchanged.",
-            "format": "int64",
+            "format": "date-time",
             "type": [
-              "integer",
+              "string",
               "null"
             ]
           }
@@ -23271,17 +23034,17 @@
         "additionalProperties": false,
         "description": "User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority.",
         "properties": {
-          "create_at": {
-            "format": "int64",
-            "type": "integer"
+          "archived_at": {
+            "format": "date-time",
+            "type": "string"
           },
-          "delete_at": {
-            "format": "int64",
-            "type": "integer"
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "disabled_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "display_name": {
             "type": "string"
@@ -23300,12 +23063,12 @@
             "$ref": "#/components/schemas/ID"
           },
           "last_activity_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "last_login_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "last_name": {
             "type": "string"
@@ -23314,8 +23077,8 @@
             "type": "string"
           },
           "profile_picture_changed_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           },
           "profile_picture_url": {
             "type": "string"
@@ -23323,9 +23086,9 @@
           "timezone": {
             "type": "string"
           },
-          "update_at": {
-            "format": "int64",
-            "type": "integer"
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
           },
           "username": {
             "type": "string"
@@ -23333,9 +23096,8 @@
         },
         "required": [
           "id",
-          "create_at",
-          "update_at",
-          "delete_at",
+          "created_at",
+          "updated_at",
           "username",
           "display_name",
           "first_name",
@@ -23383,8 +23145,8 @@
             "$ref": "#/components/schemas/ID"
           },
           "updated_at": {
-            "format": "int64",
-            "type": "integer"
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
@@ -23414,9 +23176,9 @@
             "type": "string"
           },
           "updated_at": {
-            "description": "Unix time in milliseconds of the latest durable replacement.",
-            "format": "int64",
-            "type": "integer"
+            "description": "Time of the latest durable replacement.",
+            "format": "date-time",
+            "type": "string"
           },
           "writable": {
             "description": "Whether this Session may currently replace the settings source.",
@@ -23703,7 +23465,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
-        "description": "Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are Unix-millisecond instants, and an optional Idempotency-Key makes uncertain retries safe.",
+        "description": "Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are RFC 3339 instants, and an optional Idempotency-Key makes uncertain retries safe.",
         "operationId": "createAcademicPeriod",
         "parameters": [
           {
@@ -24690,7 +24452,7 @@
               "example": {
                 "email": "reviewer.one@example.edu",
                 "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                "start_at": 1785542400000
+                "start_at": "2026-08-01T00:00:00Z"
               },
               "schema": {
                 "$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"
@@ -24790,7 +24552,7 @@
               "example": {
                 "email": "teacher.one@example.edu",
                 "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                "start_at": 1785542400000,
+                "start_at": "2026-08-01T00:00:00Z",
                 "suggested_display_name": "Teacher One",
                 "suggested_username": "teacher-one"
               },
@@ -24905,14 +24667,13 @@
             }
           },
           {
-            "description": "Unix time in milliseconds at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
+            "description": "RFC 3339 instant at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
             "name": "active_at",
             "required": false,
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
@@ -27894,14 +27655,13 @@
             }
           },
           {
-            "description": "Unix time in milliseconds at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
+            "description": "RFC 3339 instant at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
             "name": "active_at",
             "required": false,
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
@@ -37379,7 +37139,7 @@
               "example": {
                 "email": "administrator.one@example.edu",
                 "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                "start_at": 1785542400000
+                "start_at": "2026-08-01T00:00:00Z"
               },
               "schema": {
                 "$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"
@@ -37599,25 +37359,23 @@
             }
           },
           {
-            "description": "Return Invitations created at or after this Unix timestamp in milliseconds.",
+            "description": "Return Invitations created at or after this RFC 3339 instant.",
             "in": "query",
             "name": "created_after",
             "required": false,
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
-            "description": "Return Invitations created before this Unix timestamp in milliseconds.",
+            "description": "Return Invitations created before this RFC 3339 instant.",
             "in": "query",
             "name": "created_before",
             "required": false,
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
@@ -38771,23 +38529,21 @@
             }
           },
           {
-            "description": "Include deliveries created at or after this Unix-millisecond timestamp.",
+            "description": "Include deliveries created at or after this RFC 3339 instant.",
             "in": "query",
             "name": "created_after",
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
-            "description": "Include deliveries created before this Unix-millisecond timestamp.",
+            "description": "Include deliveries created before this RFC 3339 instant.",
             "in": "query",
             "name": "created_before",
             "schema": {
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "format": "date-time",
+              "type": "string"
             }
           }
         ],

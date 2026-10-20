@@ -44,8 +44,8 @@ components:
         - id
         - type
         - status
-        - create_at
-        - update_at
+        - created_at
+        - updated_at
         - available_at
         - attempt_count
         - maximum_attempts
@@ -58,26 +58,26 @@ components:
           description: Stable allowlisted Job type.
         status:
           $ref: '#/components/schemas/JobStatus'
-        create_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the Job was created.
-        update_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the latest durable Job change.
+        created_at:
+          type: string
+          format: date-time
+          description: Time when the Job was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: Time of the latest durable Job change.
         available_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds at or after which queued work may be claimed.
-        start_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the current or latest Attempt started.
-        complete_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the Job reached a terminal state.
+          type: string
+          format: date-time
+          description: Time at or after which queued work may be claimed.
+        started_at:
+          type: string
+          format: date-time
+          description: Time when the current or latest Attempt started.
+        completed_at:
+          type: string
+          format: date-time
+          description: Time when the Job reached a terminal state.
         public_error_code:
           type: string
           description: Stable safe failure category; private worker and infrastructure errors are never exposed.

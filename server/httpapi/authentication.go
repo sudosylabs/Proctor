@@ -84,9 +84,9 @@ type authenticationResponse struct {
 
 type sessionResponse struct {
 	ID                      string `json:"id"`
-	CreateAt                int64  `json:"create_at"`
-	UpdateAt                int64  `json:"update_at"`
-	DeleteAt                int64  `json:"delete_at"`
+	CreatedAt               string `json:"created_at"`
+	UpdatedAt               string `json:"updated_at"`
+	ArchivedAt              string `json:"archived_at,omitempty"`
 	UserID                  string `json:"user_id"`
 	MFARecoveryRequired     bool   `json:"mfa_recovery_required"`
 	ClientType              string `json:"client_type"`
@@ -100,13 +100,13 @@ type sessionResponse struct {
 	DeviceName              string `json:"device_name,omitempty"`
 	AuthenticationMethod    string `json:"authentication_method"`
 	AuthenticationStrength  string `json:"authentication_strength"`
-	AuthenticatedAt         int64  `json:"authenticated_at"`
-	ReauthenticatedAt       int64  `json:"reauthenticated_at,omitempty"`
-	MFACompletedAt          int64  `json:"mfa_completed_at,omitempty"`
-	LastActivityAt          int64  `json:"last_activity_at"`
-	IdleExpiresAt           int64  `json:"idle_expires_at"`
-	ExpiresAt               int64  `json:"expires_at"`
-	RevokedAt               int64  `json:"revoked_at,omitempty"`
+	AuthenticatedAt         string `json:"authenticated_at"`
+	ReauthenticatedAt       string `json:"reauthenticated_at,omitempty"`
+	MFACompletedAt          string `json:"mfa_completed_at,omitempty"`
+	LastActivityAt          string `json:"last_activity_at"`
+	IdleExpiresAt           string `json:"idle_expires_at"`
+	ExpiresAt               string `json:"expires_at"`
+	RevokedAt               string `json:"revoked_at,omitempty"`
 	RevocationReasonCode    string `json:"revocation_reason_code,omitempty"`
 	RevocationReason        string `json:"revocation_reason,omitempty"`
 }
@@ -115,8 +115,8 @@ type authenticationTokensResponse struct {
 	TokenType        string `json:"token_type"`
 	AccessToken      string `json:"access_token"`
 	RefreshToken     string `json:"refresh_token"`
-	AccessExpiresAt  int64  `json:"access_expires_at"`
-	RefreshExpiresAt int64  `json:"refresh_expires_at"`
+	AccessExpiresAt  string `json:"access_expires_at"`
+	RefreshExpiresAt string `json:"refresh_expires_at"`
 }
 
 func sessionResponseFromModel(request *http.Request, session *model.Session) *sessionResponse {
@@ -125,9 +125,9 @@ func sessionResponseFromModel(request *http.Request, session *model.Session) *se
 	}
 	return &sessionResponse{
 		ID:                    session.ID.String(),
-		CreateAt:              model.MillisFromTime(session.CreatedAt),
-		UpdateAt:              model.MillisFromTime(session.UpdatedAt),
-		DeleteAt:              session.ArchivedAt.Millis(),
+		CreatedAt:             model.FormatRFC3339(session.CreatedAt),
+		UpdatedAt:             model.FormatRFC3339(session.UpdatedAt),
+		ArchivedAt:            session.ArchivedAt.FormatRFC3339(),
 		UserID:                session.UserID.String(),
 		MFARecoveryRequired:   session.MFARecoveryRequired,
 		ClientType:            string(session.ClientType),
@@ -139,13 +139,13 @@ func sessionResponseFromModel(request *http.Request, session *model.Session) *se
 		DeviceName:              session.DeviceName,
 		AuthenticationMethod:    session.AuthenticationMethod,
 		AuthenticationStrength:  string(session.AuthenticationStrength),
-		AuthenticatedAt:         model.MillisFromTime(session.AuthenticatedAt),
-		ReauthenticatedAt:       session.ReauthenticatedAt.Millis(),
-		MFACompletedAt:          session.MFACompletedAt.Millis(),
-		LastActivityAt:          model.MillisFromTime(session.LastActivityAt),
-		IdleExpiresAt:           model.MillisFromTime(session.IdleExpiresAt),
-		ExpiresAt:               model.MillisFromTime(session.ExpiresAt),
-		RevokedAt:               session.RevokedAt.Millis(),
+		AuthenticatedAt:         model.FormatRFC3339(session.AuthenticatedAt),
+		ReauthenticatedAt:       session.ReauthenticatedAt.FormatRFC3339(),
+		MFACompletedAt:          session.MFACompletedAt.FormatRFC3339(),
+		LastActivityAt:          model.FormatRFC3339(session.LastActivityAt),
+		IdleExpiresAt:           model.FormatRFC3339(session.IdleExpiresAt),
+		ExpiresAt:               model.FormatRFC3339(session.ExpiresAt),
+		RevokedAt:               session.RevokedAt.FormatRFC3339(),
 		RevocationReasonCode:    string(session.RevocationReason),
 		RevocationReason:        localizedSessionRevocationReason(request, session.RevocationReason),
 	}
@@ -206,8 +206,8 @@ func authenticationTokensResponseFromModel(tokens *model.AuthenticationTokens) *
 		TokenType:        tokens.TokenType,
 		AccessToken:      tokens.AccessToken,
 		RefreshToken:     tokens.RefreshToken,
-		AccessExpiresAt:  model.MillisFromTime(tokens.AccessExpiresAt),
-		RefreshExpiresAt: model.MillisFromTime(tokens.RefreshExpiresAt),
+		AccessExpiresAt:  model.FormatRFC3339(tokens.AccessExpiresAt),
+		RefreshExpiresAt: model.FormatRFC3339(tokens.RefreshExpiresAt),
 	}
 }
 

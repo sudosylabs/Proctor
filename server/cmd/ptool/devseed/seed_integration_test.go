@@ -238,7 +238,7 @@ func TestDevelopmentSeedIntegration(t *testing.T) {
 	for _, alias := range []string{"disabled-student", "disabled-teacher"} {
 		a := state.Accounts[alias]
 		raw, readErr := r.administrativeUser(a.UserID)
-		if readErr != nil || number(decode(raw), "disabled_at") == 0 || !a.SeededDisabled {
+		if readErr != nil || str(decode(raw), "disabled_at") == "" || !a.SeededDisabled {
 			t.Fatalf("disabled fixture %s missing: %v", alias, readErr)
 		}
 		loginBody, _ := json.Marshal(object{"login_id": a.Username, "password": a.Password, "client_type": "cli", "device_id": "disabled-fixture-test", "device_name": "Seed test"})
@@ -343,7 +343,7 @@ func TestDevelopmentSeedIntegration(t *testing.T) {
 		t.Fatal("fresh sitting generation was not recorded")
 	}
 	raw, err = r.get(enabledUserPath, admin)
-	if err != nil || number(decode(raw), "disabled_at") != 0 {
+	if err != nil || str(decode(raw), "disabled_at") != "" {
 		t.Fatalf("replay or refresh disabled a developer-enabled User: %v", err)
 	}
 	_, refreshedHeaders, err := r.request(origin, "GET", picturePath, admin, "", nil, nil)

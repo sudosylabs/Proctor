@@ -4,7 +4,7 @@ import type { DesktopAuthorizationContext } from "./DesktopAuthorizationApi";
 import { createDesktopAuthorizationJourney, desktopJourneyAPI } from "./DesktopAuthorizationJourney";
 
 const bound: DesktopAuthorizationContext = {
-  state: "bound", installation: "Example University", deviceName: "Exam laptop", expiresAt: 1000,
+  state: "bound", installation: "Example University", deviceName: "Exam laptop", expiresAt: "1970-01-01T00:00:01Z",
   localLoginEnabled: true, externalProviders: [{ id: "campus", display_name: "Campus", type: "oidc" }],
 };
 const authenticated: DesktopAuthorizationContext = {

@@ -50,7 +50,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	}
 	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
 	next, err := url.Parse(target)
-	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1000" || next.Query().Get("limit") != "1" {
+	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
 		t.Fatalf("next URL = %#v, %v", next, err)
 	}
 	service.pageResult = &application.AcademicUnitMemberPage{ActiveAt: 1000}
@@ -58,7 +58,7 @@ func TestAcademicUnitMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T)
 	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
 		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
 	}
-	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1000", "?limit=1&history=invalid"} {
+	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
 		if response := call(path + suffix); response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
 		}
@@ -100,7 +100,7 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	}
 	target := strings.TrimSuffix(strings.TrimPrefix(link, "<"), `>; rel="next"`)
 	next, err := url.Parse(target)
-	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1000" || next.Query().Get("limit") != "1" {
+	if err != nil || next.Host != "" || next.Path != path || next.Query().Get("active_at") != "1970-01-01T00:00:01Z" || next.Query().Get("limit") != "1" {
 		t.Fatalf("next URL = %#v, %v", next, err)
 	}
 	service.pageResult = &application.ClassMemberPage{ActiveAt: 1000}
@@ -108,7 +108,7 @@ func TestClassMemberHTTPPagingPreservesArrayAndContinuation(t *testing.T) {
 	if response.Code != http.StatusOK || response.Header().Get("Link") != "" || service.pageQuery.AfterID != member.ID || service.pageQuery.AfterUserID != member.UserID {
 		t.Fatalf("final page/query = %d %#v", response.Code, service.pageQuery)
 	}
-	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1000", "?limit=1&history=invalid"} {
+	for _, suffix := range []string{"?limit=0", "?limit=201", "?limit=1&limit=2", "?cursor=", "?limit=1&history=true&active_at=1970-01-01T00:00:01Z", "?limit=1&history=invalid"} {
 		if response := call(path + suffix); response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid page query %s = %d", suffix, response.Code)
 		}

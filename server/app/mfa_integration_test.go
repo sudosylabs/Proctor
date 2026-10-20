@@ -38,9 +38,9 @@ import (
 )
 
 type wireMFASetup struct {
-	Secret          string `json:"secret"`
-	ProvisioningURI string `json:"provisioning_uri"`
-	ExpiresAt       int64  `json:"expires_at"`
+	Secret          string    `json:"secret"`
+	ProvisioningURI string    `json:"provisioning_uri"`
+	ExpiresAt       time.Time `json:"expires_at"`
 }
 
 type wireMFAActivation struct {
@@ -48,10 +48,10 @@ type wireMFAActivation struct {
 }
 
 type wireMFAStatus struct {
-	Enabled                bool  `json:"enabled"`
-	Pending                bool  `json:"pending"`
-	PendingExpiresAt       int64 `json:"pending_expires_at,omitempty"`
-	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
+	Enabled                bool      `json:"enabled"`
+	Pending                bool      `json:"pending"`
+	PendingExpiresAt       time.Time `json:"pending_expires_at,omitempty"`
+	RecoveryCodesRemaining int       `json:"recovery_codes_remaining"`
 }
 
 func TestMFAIntegration(t *testing.T) {

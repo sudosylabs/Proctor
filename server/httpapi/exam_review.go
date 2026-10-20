@@ -15,7 +15,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
 	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -363,7 +362,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 	for _, item := range page.Items {
 		response.Items = append(response.Items, examIntegrityFlagResponse{Browser: item.Browser, ID: item.Flag.ID.String(),
 			ExamAttemptID: item.Flag.AttemptID.String(), Generation: item.Flag.Generation, PolicyKind: string(item.Flag.Kind),
-			State: string(item.Flag.State), CreatedAt: model.TimeUTC(item.Flag.CreatedAt).Format(time.RFC3339Nano),
+			State: string(item.Flag.State), CreatedAt: model.FormatRFC3339(item.Flag.CreatedAt),
 			EvidenceCount: item.EvidenceCount, EvidenceOverflowCount: item.OverflowCount,
 			UnresolvedMissingCount: item.UnresolvedMissingCount})
 	}
@@ -406,8 +405,8 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 			IntegrityFlagID: item.FlagID.String(), Generation: item.Generation, PolicyKind: string(item.Kind),
 			SignalID: item.SignalID.String(), Sequence: item.Sequence, DurationMilliseconds: item.DurationMilliseconds,
 			Source: string(item.Source), MissingBefore: item.MissingBefore,
-			ObservedAt: model.TimeUTC(item.ObservedAt).Format(time.RFC3339Nano),
-			RecordedAt: model.TimeUTC(item.RecordedAt).Format(time.RFC3339Nano)})
+			ObservedAt: model.FormatRFC3339(item.ObservedAt),
+			RecordedAt: model.FormatRFC3339(item.RecordedAt)})
 	}
 	if page.HasMore {
 		if len(page.Items) == 0 {
@@ -445,7 +444,7 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 			SignalID: item.SignalID.String(), Source: string(item.Source),
 			CorrectionRevisionID:   item.CorrectionRevisionID.String(),
 			BrowserSourceSessionID: string(item.BrowserSourceSessionID), FinalSequence: item.FinalSequence,
-			GapReason: item.GapReason, ReceivedAt: model.TimeUTC(item.ReceivedAt).Format(time.RFC3339Nano)}
+			GapReason: item.GapReason, ReceivedAt: model.FormatRFC3339(item.ReceivedAt)}
 		if item.Kind == model.IntegrityDiscrepancyLateFocusLoss {
 			sequence, duration, missing := item.Sequence, item.DurationMilliseconds, item.MissingBefore
 			projected.Sequence, projected.DurationMilliseconds, projected.MissingBefore = &sequence, &duration, &missing
@@ -577,7 +576,7 @@ func (module examIntegrityReviewHTTPModule) studentResult(request operationReque
 	response := studentExamResultResponse{SubmissionReviewID: result.ReviewID.String(),
 		SubmissionID: result.SubmissionID.String(), ExamAttemptID: result.AttemptID.String(),
 		StudentRemarksMarkdown: result.StudentRemarksMarkdown,
-		ReleasedAt:             model.TimeUTC(result.ReleasedAt).Format(time.RFC3339Nano)}
+		ReleasedAt:             model.FormatRFC3339(result.ReleasedAt)}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
@@ -622,14 +621,14 @@ func examSubmissionReviewDTO(review model.SubmissionReview) examSubmissionReview
 		StudentRemarksMarkdown: review.StudentRemarksMarkdown, FlagCount: review.FlagCount,
 		EvidenceCount: review.EvidenceCount, DiscrepancyCount: review.DiscrepancyCount,
 		EvidenceInventoryDigest: review.EvidenceInventoryDigest,
-		CreatedAt:               model.TimeUTC(review.CreatedAt).Format(time.RFC3339Nano),
-		UpdatedAt:               model.TimeUTC(review.UpdatedAt).Format(time.RFC3339Nano)}
+		CreatedAt:               model.FormatRFC3339(review.CreatedAt),
+		UpdatedAt:               model.FormatRFC3339(review.UpdatedAt)}
 	if review.FinalizedAt.Valid {
-		response.FinalizedAt = model.TimeUTC(review.FinalizedAt.Time).Format(time.RFC3339Nano)
+		response.FinalizedAt = model.FormatRFC3339(review.FinalizedAt.Time)
 		response.FinalizedByUserID = review.FinalizedByUserID.String()
 	}
 	if review.ReleasedAt.Valid {
-		response.ReleasedAt = model.TimeUTC(review.ReleasedAt.Time).Format(time.RFC3339Nano)
+		response.ReleasedAt = model.FormatRFC3339(review.ReleasedAt.Time)
 		response.ReleasedByUserID = review.ReleasedByUserID.String()
 	}
 	return response
@@ -639,7 +638,7 @@ func examIntegrityReviewDecisionDTO(decision model.IntegrityReviewDecision) exam
 	return examIntegrityReviewDecisionResponse{InventoryStale: decision.InventoryStale, ID: decision.ID.String(), IntegrityFlagID: decision.FlagID.String(),
 		Outcome: string(decision.Outcome), Revision: decision.Revision, ActorUserID: decision.ActorUserID.String(),
 		PrivateRationale: decision.PrivateRationale,
-		DecidedAt:        model.TimeUTC(decision.DecidedAt).Format(time.RFC3339Nano)}
+		DecidedAt:        model.FormatRFC3339(decision.DecidedAt)}
 }
 
 func reviewSubmissionID(request operationRequest) (model.SubmissionID, error) {

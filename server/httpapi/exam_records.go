@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -421,10 +420,10 @@ func recordsOptionalScope(examID model.ExamID, sitting, submission Optional[stri
 func recordsCompletionResponse(value model.ExamSittingRecordsCompletion) examRecordsCompletionResponse {
 	out := examRecordsCompletionResponse{SittingID: value.SittingID.String(), Revision: value.Revision, EvidenceRevision: value.EvidenceRevision, CompletedEvidenceRevision: value.CompletedEvidenceRevision, Current: value.IsCurrent(), CompletedByUserID: value.CompletedByUserID.String()}
 	if value.CompletedAt.Valid {
-		out.CompletedAt = model.TimeUTC(value.CompletedAt.Time).Format(time.RFC3339Nano)
+		out.CompletedAt = model.FormatRFC3339(value.CompletedAt.Time)
 	}
 	if value.StaleAt.Valid {
-		out.StaleAt = model.TimeUTC(value.StaleAt.Time).Format(time.RFC3339Nano)
+		out.StaleAt = model.FormatRFC3339(value.StaleAt.Time)
 	}
 	return out
 }
@@ -433,15 +432,15 @@ func recordsWaiverResponse(value *model.SubmissionReviewWaiver) *submissionRevie
 		return nil
 	}
 	return &submissionReviewWaiverResponse{DeliveryInventoryRevision: value.DeliveryInventoryRevision, InventoryInvalidated: value.InventoryInvalidated, SubmissionID: value.SubmissionID.String(), Revision: value.Revision, ReviewRevision: value.ReviewRevision,
-		DiscrepancyCount: value.DiscrepancyCount, ActorUserID: value.ActorUserID.String(), RecordedAt: model.TimeUTC(value.RecordedAt).Format(time.RFC3339Nano), ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason}
+		DiscrepancyCount: value.DiscrepancyCount, ActorUserID: value.ActorUserID.String(), RecordedAt: model.FormatRFC3339(value.RecordedAt), ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason}
 }
 func recordsHoldResponse(value model.RetentionHold) retentionHoldResponse {
 	out := retentionHoldResponse{ID: value.ID.String(), ExamID: value.Scope.ExamID.String(), SittingID: value.Scope.SittingID.String(), SubmissionID: value.Scope.SubmissionID.String(), Revision: value.Revision,
-		CreatedAt: model.TimeUTC(value.CreatedAt).Format(time.RFC3339Nano), CreatedByUserID: value.CreatedByUserID.String(), ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason,
+		CreatedAt: model.FormatRFC3339(value.CreatedAt), CreatedByUserID: value.CreatedByUserID.String(), ReasonCode: value.ReasonCode, PrivateReason: value.PrivateReason,
 		ReleasedByUserID: value.ReleasedByUserID.String(), ReleaseReasonCode: value.ReleaseReasonCode, ReleasePrivateReason: value.ReleasePrivateReason,
 		WorkRetiredSubmissionCount: value.WorkRetiredSubmissionCount, IntegrityRetiredSubmissionCount: value.IntegrityRetiredSubmissionCount}
 	if value.ReleasedAt.Valid {
-		out.ReleasedAt = model.TimeUTC(value.ReleasedAt.Time).Format(time.RFC3339Nano)
+		out.ReleasedAt = model.FormatRFC3339(value.ReleasedAt.Time)
 	}
 	return out
 }

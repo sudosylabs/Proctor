@@ -225,12 +225,12 @@ func TestJobResourcePreservesPrivateProjectionAndBoundedControls(t *testing.T) {
 			t.Fatalf("job list exposed %q: %s", private, list.Body.String())
 		}
 	}
-	cursor, err := encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(now), ID: jobID.String()})
+	cursor, err := encodeJobCursor(jobCursor{CreatedAt: model.FormatRFC3339(now), ID: jobID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	page := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs?cursor="+url.QueryEscape(cursor), "", true)
-	if page.Code != http.StatusOK || !jobs.listQuery.BeforeCreatedAt.Equal(model.TimeFromMillis(model.MillisFromTime(now))) || jobs.listQuery.BeforeID != jobID {
+	if page.Code != http.StatusOK || !jobs.listQuery.BeforeCreatedAt.Equal(model.TimeUTC(now)) || jobs.listQuery.BeforeID != jobID {
 		t.Fatalf("job cursor forwarding = %d query=%#v body=%s", page.Code, jobs.listQuery, page.Body.String())
 	}
 	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs?cursor=not-a-cursor", "", true)

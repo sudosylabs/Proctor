@@ -199,7 +199,7 @@ components:
             role_id: ybndrfg8ejkmcpqxot1uwisza4
             scope_type: academic_unit
             scope_id: ybndrfg8ejkmcpqxot1uwisza5
-            start_at: 1785542400000
+            start_at: '2026-08-01T00:00:00Z'
   responses:
     RoleBindingListOK:
       description: Role Binding collection
@@ -245,10 +245,10 @@ components:
         scope_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the grant becomes effective.
+          type: string
+          format: date-time
+          description: Time when the grant becomes effective.
         end_at:
-          type: integer
-          format: int64
-          description: Optional Unix time in milliseconds when the grant stops being effective.
+          type: string
+          format: date-time
+          description: Optional time when the grant stops being effective.

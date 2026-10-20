@@ -16,24 +16,20 @@ import (
 
 type academicUnitMemberResponse struct {
 	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+	ArchivedAt     string `json:"archived_at,omitempty"`
 	AcademicUnitID string `json:"academic_unit_id"`
 	UserID         string `json:"user_id"`
-	StartAt        int64  `json:"start_at"`
-	EndAt          int64  `json:"end_at,omitempty"`
+	StartAt        string `json:"start_at"`
+	EndAt          string `json:"end_at,omitempty"`
 }
 
 type createAcademicUnitMemberRequest struct {
-	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
 	AcademicUnitID string `json:"academic_unit_id"`
 	UserID         string `json:"user_id"`
-	StartAt        int64  `json:"start_at"`
-	EndAt          int64  `json:"end_at"`
+	StartAt        string `json:"start_at"`
+	EndAt          string `json:"end_at"`
 }
 
 type academicUnitMemberResourceModule struct {
@@ -111,7 +107,11 @@ func (module academicUnitMemberResourceModule) create(request operationRequest) 
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: body.StartAt})
+	startAt, err := wireTimeMillis("start_at", body.StartAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	saved, err := module.members.CreateAcademicUnitMember(request.context, request.invocation(), application.CreateAcademicUnitMemberCommand{AcademicUnitID: unitID, UserID: body.UserID, StartAt: startAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -136,13 +136,13 @@ func academicUnitMemberResponseFromModel(member *model.AcademicUnitMember) acade
 	}
 	return academicUnitMemberResponse{
 		ID:             member.ID.String(),
-		CreateAt:       model.MillisFromTime(member.CreatedAt),
-		UpdateAt:       model.MillisFromTime(member.UpdatedAt),
-		DeleteAt:       member.ArchivedAt.Millis(),
+		CreatedAt:      model.FormatRFC3339(member.CreatedAt),
+		UpdatedAt:      model.FormatRFC3339(member.UpdatedAt),
+		ArchivedAt:     member.ArchivedAt.FormatRFC3339(),
 		AcademicUnitID: member.AcademicUnitID.String(),
 		UserID:         member.UserID.String(),
-		StartAt:        model.MillisFromTime(member.StartsAt),
-		EndAt:          member.EndsAt.Millis(),
+		StartAt:        model.FormatRFC3339(member.StartsAt),
+		EndAt:          member.EndsAt.FormatRFC3339(),
 	}
 }
 

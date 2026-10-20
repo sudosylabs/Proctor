@@ -186,7 +186,7 @@ The read response contains:
   "format_version": 1,
   "revision": "opaque-revision",
   "writable": true,
-  "updated_at": 0
+  "updated_at": "2026-08-15T14:30:00.123Z"
 }
 ~~~
 

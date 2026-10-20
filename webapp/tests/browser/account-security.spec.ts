@@ -32,7 +32,7 @@ async function mockSecurity(page: Page, context = baseContext) {
     if (path === "/api/v1/users/me/mfa/setup") {
       if (!state.context.recently_authenticated) return problem("authentication.reauthentication_required");
       state.context.pending = true;
-      return json({ secret: setupKey, provisioning_uri: provisioningURI, expires_at: Date.now() + 600_000 }, 201);
+      return json({ secret: setupKey, provisioning_uri: provisioningURI, expires_at: new Date(Date.now() + 600_000).toISOString() }, 201);
     }
     if (path === "/api/v1/users/me/mfa/activate") {
       if (request.postDataJSON().code !== "123456") return problem("authentication.mfa.code_invalid");
@@ -59,7 +59,7 @@ async function mockSecurity(page: Page, context = baseContext) {
     if (path === "/api/v1/auth/reauthenticate/password") {
       if (request.postDataJSON().password !== "current-password") return problem("authentication.credentials_invalid", 401);
       state.context.recently_authenticated = true;
-      return json({ id: "current-session", client_type: "web", reauthenticated_at: Date.now() });
+      return json({ id: "current-session", client_type: "web", reauthenticated_at: new Date().toISOString() });
     }
     if (path === "/api/v1/auth/reauthenticate/external") return json({ redirect_url: "https://sso.example/reauthenticate" });
     if (path === "/api/v1/auth/logout") { state.signedOut = true; await route.fulfill({ status: 204 }); return; }

@@ -32,8 +32,17 @@ func decode(raw json.RawMessage) object {
 	return value
 }
 
-func str(value object, key string) string    { text, _ := value[key].(string); return text }
-func number(value object, key string) int64  { n, _ := value[key].(float64); return int64(n) }
+func str(value object, key string) string   { text, _ := value[key].(string); return text }
+func number(value object, key string) int64 { n, _ := value[key].(float64); return int64(n) }
+
+// stamp formats an instant in the API's RFC 3339 timestamp form.
+func stamp(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
+
+// instant parses an RFC 3339 API timestamp; a missing or malformed value is zero.
+func instant(value object, key string) time.Time {
+	parsed, _ := time.Parse(time.RFC3339Nano, str(value, key))
+	return parsed
+}
 func nested(value object, key string) object { obj, _ := value[key].(map[string]any); return obj }
 
 func loopbackOrigin(raw string) (string, error) {

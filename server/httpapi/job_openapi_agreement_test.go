@@ -67,11 +67,11 @@ func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "JobResponse", DTO: reflect.TypeOf(jobResponse{}),
-				Required: []string{"id", "type", "status", "create_at", "update_at", "available_at", "attempt_count", "maximum_attempts", "revision"},
+				Required: []string{"id", "type", "status", "created_at", "updated_at", "available_at", "attempt_count", "maximum_attempts", "revision"},
 			},
 			{
 				Name: "JobAttemptResponse", DTO: reflect.TypeOf(jobAttemptResponse{}),
-				Required: []string{"id", "number", "status", "start_at", "heartbeat_at", "lease_expires_at"},
+				Required: []string{"id", "number", "status", "started_at", "heartbeat_at", "lease_expires_at"},
 			},
 		},
 	}

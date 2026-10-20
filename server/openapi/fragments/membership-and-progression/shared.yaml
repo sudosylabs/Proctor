@@ -46,75 +46,72 @@ components:
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - user_id
         - kind
         - start_at
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         user_id:
           $ref: '#/components/schemas/ID'
         kind:
           $ref: '#/components/schemas/AffiliationKind'
         start_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     AcademicUnitMemberResponse:
       type: object
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - academic_unit_id
         - user_id
         - start_at
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         academic_unit_id:
           $ref: '#/components/schemas/ID'
         user_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     ClassMemberResponse:
       type: object
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - class_id
         - academic_period_id
         - user_id
@@ -122,15 +119,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         class_id:
           $ref: '#/components/schemas/ID'
         academic_period_id:
@@ -138,8 +135,8 @@ components:
         user_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time

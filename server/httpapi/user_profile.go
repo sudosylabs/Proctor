@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -22,9 +21,9 @@ import (
 
 type userProfileResponse struct {
 	ID                      string  `json:"id"`
-	CreateAt                int64   `json:"create_at"`
-	UpdateAt                int64   `json:"update_at"`
-	DeleteAt                int64   `json:"delete_at"`
+	CreatedAt               string  `json:"created_at"`
+	UpdatedAt               string  `json:"updated_at"`
+	ArchivedAt              string  `json:"archived_at,omitempty"`
 	Username                string  `json:"username"`
 	Email                   *string `json:"email,omitempty"`
 	EmailVerified           *bool   `json:"email_verified,omitempty"`
@@ -33,11 +32,11 @@ type userProfileResponse struct {
 	LastName                string  `json:"last_name"`
 	Locale                  *string `json:"locale,omitempty"`
 	Timezone                *string `json:"timezone,omitempty"`
-	LastLoginAt             int64   `json:"last_login_at,omitempty"`
-	LastActivityAt          int64   `json:"last_activity_at,omitempty"`
-	DisabledAt              int64   `json:"disabled_at,omitempty"`
+	LastLoginAt             string  `json:"last_login_at,omitempty"`
+	LastActivityAt          string  `json:"last_activity_at,omitempty"`
+	DisabledAt              string  `json:"disabled_at,omitempty"`
 	ProfilePictureURL       string  `json:"profile_picture_url"`
-	ProfilePictureChangedAt int64   `json:"profile_picture_changed_at,omitempty"`
+	ProfilePictureChangedAt string  `json:"profile_picture_changed_at,omitempty"`
 }
 
 type updateUserProfileRequest struct {
@@ -188,21 +187,21 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 		if err != nil {
 			return operationResult{}, invalidRequestError(err)
 		}
-		query.BeforeScheduledStart, _ = time.Parse(time.RFC3339Nano, cursor.ScheduledStartAt)
+		query.BeforeScheduledStart, _ = model.ParseRFC3339(cursor.ScheduledStartAt)
 		query.BeforeSittingID = model.ExamSittingID(cursor.ExamSittingID)
 	}
 	page, err := module.profiles.ListCandidateExamActivity(request.context, request.invocation(), query)
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := candidateExamActivityResponse{ServerTime: model.TimeUTC(page.ServerTime).Format(time.RFC3339Nano),
+	response := candidateExamActivityResponse{ServerTime: model.FormatRFC3339(page.ServerTime),
 		Items: make([]candidateExamActivityItemResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
 		mapped := candidateExamActivityItemResponse{ExamID: item.ExamID.String(), ExamSittingID: item.SittingID.String(), Title: item.Title,
 			AcademicUnit:     candidateExamActivityRelationResponse{ID: item.AcademicUnitID.String(), DisplayName: item.AcademicUnitDisplayName},
 			Class:            candidateExamActivityRelationResponse{ID: item.ClassID.String(), DisplayName: item.ClassDisplayName},
-			ScheduledStartAt: model.TimeUTC(item.ScheduledStartAt).Format(time.RFC3339Nano),
-			ScheduledEndAt:   model.TimeUTC(item.ScheduledEndAt).Format(time.RFC3339Nano), SittingState: item.SittingState,
+			ScheduledStartAt: model.FormatRFC3339(item.ScheduledStartAt),
+			ScheduledEndAt:   model.FormatRFC3339(item.ScheduledEndAt), SittingState: item.SittingState,
 			ActivityState: item.ActivityState, AccessState: item.AccessState,
 			AllowedActions: append([]application.CandidateExamAllowedAction(nil), item.AllowedActions...)}
 		if item.SittingReasonCode != "" {
@@ -218,10 +217,10 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 		}
 		if item.Submission != nil {
 			mapped.Submission = &candidateExamActivitySubmissionResponse{ID: item.Submission.ID.String(),
-				SubmittedAt: model.TimeUTC(item.Submission.SubmittedAt).Format(time.RFC3339Nano), Provenance: item.Submission.Provenance}
+				SubmittedAt: model.FormatRFC3339(item.Submission.SubmittedAt), Provenance: item.Submission.Provenance}
 		}
 		if item.Result != nil {
-			mapped.Result = &candidateExamActivityResultResponse{ReleasedAt: model.TimeUTC(item.Result.ReleasedAt).Format(time.RFC3339Nano)}
+			mapped.Result = &candidateExamActivityResultResponse{ReleasedAt: model.FormatRFC3339(item.Result.ReleasedAt)}
 		}
 		response.Items = append(response.Items, mapped)
 	}
@@ -231,7 +230,7 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 		}
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeOpaqueCursor(candidateExamActivityCursor{
-			Kind: candidateExamActivityCursorKind, ScheduledStartAt: model.TimeUTC(last.ScheduledStartAt).Format(time.RFC3339Nano),
+			Kind: candidateExamActivityCursorKind, ScheduledStartAt: model.FormatRFC3339(last.ScheduledStartAt),
 			ExamSittingID: last.SittingID.String(),
 		}, candidateExamActivityCursorSpec())
 		if err != nil {
@@ -249,7 +248,7 @@ func candidateExamActivityCursorSpec() opaqueCursorSpec[candidateExamActivityCur
 		setVersion:     func(cursor *candidateExamActivityCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == candidateExamActivityCursorVersion },
 		validate: func(cursor candidateExamActivityCursor) error {
-			at, err := time.Parse(time.RFC3339Nano, cursor.ScheduledStartAt)
+			at, err := model.ParseRFC3339(cursor.ScheduledStartAt)
 			if cursor.Kind != candidateExamActivityCursorKind || err != nil || at.IsZero() ||
 				!model.ExamSittingID(cursor.ExamSittingID).IsValid() {
 				return errors.New("invalid candidate Exam activity keyset")
@@ -495,18 +494,18 @@ func userProfileResponseFromModel(user *model.User) userProfileResponse {
 	}
 	response := userProfileResponse{
 		ID:                      user.ID.String(),
-		CreateAt:                model.MillisFromTime(user.CreatedAt),
-		UpdateAt:                model.MillisFromTime(user.UpdatedAt),
-		DeleteAt:                user.ArchivedAt.Millis(),
+		CreatedAt:               model.FormatRFC3339(user.CreatedAt),
+		UpdatedAt:               model.FormatRFC3339(user.UpdatedAt),
+		ArchivedAt:              user.ArchivedAt.FormatRFC3339(),
 		Username:                user.Username,
 		DisplayName:             user.DisplayName,
 		FirstName:               user.FirstName,
 		LastName:                user.LastName,
-		LastLoginAt:             user.LastLoginAt.Millis(),
-		LastActivityAt:          user.LastActivityAt.Millis(),
-		DisabledAt:              user.DisabledAt.Millis(),
+		LastLoginAt:             user.LastLoginAt.FormatRFC3339(),
+		LastActivityAt:          user.LastActivityAt.FormatRFC3339(),
+		DisabledAt:              user.DisabledAt.FormatRFC3339(),
 		ProfilePictureURL:       pictureURL,
-		ProfilePictureChangedAt: user.ProfilePictureChangedAt.Millis(),
+		ProfilePictureChangedAt: user.ProfilePictureChangedAt.FormatRFC3339(),
 	}
 	if user.Email != "" {
 		response.Email = &user.Email

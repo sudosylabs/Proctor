@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -288,7 +287,7 @@ func examStarterWorkspaceResultResponse(result application.ExamStarterWorkspaceR
 func examStarterWorkspaceListItem(item application.ExamStarterWorkspaceItem) examStarterWorkspaceListItemResponse {
 	entry := item.Entry
 	response := examStarterWorkspaceListItemResponse{ID: entry.ID.String(), Kind: string(entry.Kind), Path: entry.Path,
-		CreatedAt: entry.CreatedAt.Format(time.RFC3339Nano), UpdatedAt: entry.UpdatedAt.Format(time.RFC3339Nano)}
+		CreatedAt: model.FormatRFC3339(entry.CreatedAt), UpdatedAt: model.FormatRFC3339(entry.UpdatedAt)}
 	if item.Object != nil {
 		size := item.Object.SizeBytes
 		response.ContentVersion = item.Object.ContentVersion.String()

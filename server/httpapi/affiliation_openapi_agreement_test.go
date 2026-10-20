@@ -38,7 +38,7 @@ func TestAffiliationOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "AffiliationResponse", DTO: reflect.TypeOf(affiliationResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "user_id", "kind", "start_at"},
+				Required: []string{"id", "created_at", "updated_at", "user_id", "kind", "start_at"},
 			},
 			{Name: "CreateAffiliationRequest", DTO: reflect.TypeOf(createAffiliationRequest{}), Required: []string{"kind"}},
 		},

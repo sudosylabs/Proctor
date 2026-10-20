@@ -30,7 +30,7 @@ type mailRekeyResponse struct {
 	JobID         string `json:"job_id"`
 	PrimaryKeyID  string `json:"primary_key_id"`
 	RetiringKeyID string `json:"retiring_key_id"`
-	CreatedAt     int64  `json:"created_at"`
+	CreatedAt     string `json:"created_at"`
 }
 
 type mailRekeyProgressResponse struct {
@@ -50,9 +50,9 @@ type mailRekeyStatusResponse struct {
 	Status          model.JobStatus            `json:"status"`
 	PrimaryKeyID    string                     `json:"primary_key_id"`
 	RetiringKeyID   string                     `json:"retiring_key_id"`
-	CreatedAt       int64                      `json:"created_at"`
-	UpdatedAt       int64                      `json:"updated_at"`
-	CompletedAt     int64                      `json:"completed_at,omitempty"`
+	CreatedAt       string                     `json:"created_at"`
+	UpdatedAt       string                     `json:"updated_at"`
+	CompletedAt     string                     `json:"completed_at,omitempty"`
 	PublicErrorCode string                     `json:"public_error_code,omitempty"`
 	AttemptCount    int                        `json:"attempt_count"`
 	MaximumAttempts int                        `json:"maximum_attempts"`
@@ -81,14 +81,14 @@ type mailDeliveryResponse struct {
 	TemplateDigest    string                  `json:"template_digest"`
 	MaskedRecipient   string                  `json:"masked_recipient"`
 	State             model.MailDeliveryState `json:"state"`
-	CreatedAt         int64                   `json:"created_at"`
-	UpdatedAt         int64                   `json:"updated_at"`
-	MessageDate       int64                   `json:"message_date"`
-	Deadline          int64                   `json:"deadline"`
+	CreatedAt         string                  `json:"created_at"`
+	UpdatedAt         string                  `json:"updated_at"`
+	MessageDate       string                  `json:"message_date"`
+	Deadline          string                  `json:"deadline"`
 	MessageID         string                  `json:"message_id"`
 	AttemptCount      int                     `json:"attempt_count"`
-	AcceptedAt        int64                   `json:"accepted_at,omitempty"`
-	FailedAt          int64                   `json:"failed_at,omitempty"`
+	AcceptedAt        string                  `json:"accepted_at,omitempty"`
+	FailedAt          string                  `json:"failed_at,omitempty"`
 	PublicFailureCode string                  `json:"public_failure_code,omitempty"`
 }
 
@@ -177,7 +177,7 @@ func (m mailResourceModule) startRekey(request operationRequest) (operationResul
 		return operationResult{}, appErr
 	}
 	return jsonResult(http.StatusAccepted, mailRekeyResponse{JobID: view.JobID.String(),
-		PrimaryKeyID: view.PrimaryKeyID, RetiringKeyID: view.RetiringKeyID, CreatedAt: view.CreatedAt.UnixMilli()}), nil
+		PrimaryKeyID: view.PrimaryKeyID, RetiringKeyID: view.RetiringKeyID, CreatedAt: model.FormatRFC3339(view.CreatedAt)}), nil
 }
 
 func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationResult, error) {
@@ -194,11 +194,11 @@ func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationR
 	}
 	response := mailRekeyStatusResponse{JobID: view.JobID.String(), Status: view.Status,
 		PrimaryKeyID: view.PrimaryKeyID, RetiringKeyID: view.RetiringKeyID,
-		CreatedAt: model.MillisFromTime(view.CreatedAt), UpdatedAt: model.MillisFromTime(view.UpdatedAt),
+		CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt),
 		PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts,
 		Processed: view.Processed, Reencrypted: view.Reencrypted}
 	if view.CompletedAt.Valid {
-		response.CompletedAt = view.CompletedAt.Millis()
+		response.CompletedAt = view.CompletedAt.FormatRFC3339()
 	}
 	if view.Progress != nil {
 		response.Progress = &mailRekeyProgressResponse{Current: view.Progress.Current, Total: view.Progress.Total, Stage: view.Progress.Stage}
@@ -290,7 +290,7 @@ func (m mailResourceModule) listDeliveries(request operationRequest) (operationR
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor, err = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID.String()})
+		response.NextCursor, err = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
 		}
@@ -355,7 +355,7 @@ func listMailDeliveriesQuery(request *http.Request) (application.ListMailDeliver
 		if err != nil {
 			return query, err
 		}
-		query.BeforeCreatedAt, err = time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+		query.BeforeCreatedAt, err = model.ParseRFC3339(cursor.CreatedAt)
 		if err != nil {
 			return query, errors.New("invalid mail delivery cursor time")
 		}
@@ -401,11 +401,11 @@ func listMailDeliveriesQuery(request *http.Request) (application.ListMailDeliver
 }
 
 func parseMailFilterTime(raw string) (time.Time, error) {
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || millis <= 0 {
+	parsed, err := model.ParseRFC3339(raw)
+	if err != nil || parsed.IsZero() {
 		return time.Time{}, errors.New("invalid mail delivery time")
 	}
-	return model.TimeFromMillis(millis), nil
+	return parsed, nil
 }
 
 func encodeMailDeliveryCursor(cursor mailDeliveryCursor) (string, error) {
@@ -424,7 +424,7 @@ func mailDeliveryCursorSpec() opaqueCursorSpec[mailDeliveryCursor] {
 		setVersion:     func(cursor *mailDeliveryCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
 		validate: func(cursor mailDeliveryCursor) error {
-			parsed, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			parsed, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || parsed.IsZero() || !model.MailDeliveryID(cursor.ID).IsValid() {
 				return errors.New("invalid mail delivery keyset")
 			}
@@ -434,12 +434,12 @@ func mailDeliveryCursorSpec() opaqueCursorSpec[mailDeliveryCursor] {
 }
 
 func mailResponse(view application.MailDeliveryView) mailDeliveryResponse {
-	result := mailDeliveryResponse{ID: view.ID.String(), OccurrenceID: view.OccurrenceID.String(), TargetUserID: view.TargetUserID.String(), TemplateKey: view.TemplateKey, TemplateDigest: view.TemplateDigest, MaskedRecipient: view.MaskedRecipient, State: view.State, CreatedAt: model.MillisFromTime(view.CreatedAt), UpdatedAt: model.MillisFromTime(view.UpdatedAt), MessageDate: model.MillisFromTime(view.MessageDate), Deadline: model.MillisFromTime(view.Deadline), MessageID: view.MessageID, AttemptCount: view.AttemptCount, PublicFailureCode: view.PublicFailureCode}
+	result := mailDeliveryResponse{ID: view.ID.String(), OccurrenceID: view.OccurrenceID.String(), TargetUserID: view.TargetUserID.String(), TemplateKey: view.TemplateKey, TemplateDigest: view.TemplateDigest, MaskedRecipient: view.MaskedRecipient, State: view.State, CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), MessageDate: model.FormatRFC3339(view.MessageDate), Deadline: model.FormatRFC3339(view.Deadline), MessageID: view.MessageID, AttemptCount: view.AttemptCount, PublicFailureCode: view.PublicFailureCode}
 	if view.AcceptedAt.Valid {
-		result.AcceptedAt = view.AcceptedAt.Millis()
+		result.AcceptedAt = view.AcceptedAt.FormatRFC3339()
 	}
 	if view.FailedAt.Valid {
-		result.FailedAt = view.FailedAt.Millis()
+		result.FailedAt = view.FailedAt.FormatRFC3339()
 	}
 	return result
 }

@@ -17,9 +17,9 @@ import (
 type academicUnitResponse struct {
 	Revision      int64  `json:"revision"`
 	ID            string `json:"id"`
-	CreateAt      int64  `json:"create_at"`
-	UpdateAt      int64  `json:"update_at"`
-	DeleteAt      int64  `json:"delete_at"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+	ArchivedAt    string `json:"archived_at,omitempty"`
 	InstitutionID string `json:"institution_id"`
 	ParentID      string `json:"parent_id,omitempty"`
 	Name          string `json:"name"`
@@ -30,10 +30,6 @@ type academicUnitResponse struct {
 type createAcademicUnitRequest struct {
 	// Server-owned fields remain accepted for v1 compatibility with the prior
 	// domain-shaped request. Mapping deliberately ignores them.
-	ID            string `json:"id"`
-	CreateAt      int64  `json:"create_at"`
-	UpdateAt      int64  `json:"update_at"`
-	DeleteAt      int64  `json:"delete_at"`
 	InstitutionID string `json:"institution_id"`
 	ParentID      string `json:"parent_id"`
 	Name          string `json:"name"`
@@ -220,9 +216,9 @@ func academicUnitResponseFromModel(unit *model.AcademicUnit) academicUnitRespons
 	}
 	return academicUnitResponse{
 		Revision: unit.Revision, ID: unit.ID.String(),
-		CreateAt:      model.MillisFromTime(unit.CreatedAt),
-		UpdateAt:      model.MillisFromTime(unit.UpdatedAt),
-		DeleteAt:      unit.ArchivedAt.Millis(),
+		CreatedAt:     model.FormatRFC3339(unit.CreatedAt),
+		UpdatedAt:     model.FormatRFC3339(unit.UpdatedAt),
+		ArchivedAt:    unit.ArchivedAt.FormatRFC3339(),
 		InstitutionID: unit.InstitutionID.String(),
 		ParentID:      unit.ParentID.String(),
 		Name:          unit.Name,

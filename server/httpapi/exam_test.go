@@ -379,8 +379,8 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 			t.Fatalf("parse %s: %v", field, err)
 		}
 	}
-	if exam["archived_at"] != nil {
-		t.Fatalf("archived_at = %#v, want null for active exam", exam["archived_at"])
+	if _, present := exam["archived_at"]; present {
+		t.Fatalf("archived_at = %#v, want omitted for active exam", exam["archived_at"])
 	}
 	for _, legacy := range []string{"create_at", "update_at", "delete_at"} {
 		if _, exists := exam[legacy]; exists {

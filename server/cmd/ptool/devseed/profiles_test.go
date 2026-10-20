@@ -125,7 +125,7 @@ func TestDisableAccountReconcilesLostResponseAndPreservesLaterEnablement(t *test
 			return nil, errors.New("lost response")
 		}
 		if disabled {
-			return response(200, `[{"id":"user","disabled_at":123}]`), nil
+			return response(200, `[{"id":"user","disabled_at":"2026-01-02T03:04:05.123Z"}]`), nil
 		}
 		return response(200, `[{"id":"user"}]`), nil
 	})
@@ -173,11 +173,11 @@ func TestAdministrativeUserFindsDisabledAccountBeyondFirstPage(t *testing.T) {
 		if req.URL.Query().Get("after_id") != "user-199" || req.URL.Query().Get("after_username") != "candidate-é+199" {
 			t.Fatal("directory cursor was not preserved")
 		}
-		return response(200, `[{"id":"target","username":"renamed-user","disabled_at":123}]`), nil
+		return response(200, `[{"id":"target","username":"renamed-user","disabled_at":"2026-01-02T03:04:05.123Z"}]`), nil
 	})
 	r.state.Accounts["administrator"] = &account{Token: "token"}
 	raw, err := r.administrativeUser("target")
-	if err != nil || calls != 2 || number(decode(raw), "disabled_at") != 123 {
+	if err != nil || calls != 2 || str(decode(raw), "disabled_at") != "2026-01-02T03:04:05.123Z" {
 		t.Fatalf("paged lookup failed: %v", err)
 	}
 }

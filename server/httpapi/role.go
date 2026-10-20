@@ -35,9 +35,9 @@ type updateRoleRequest struct {
 
 type roleResponse struct {
 	ID          string   `json:"id"`
-	CreateAt    int64    `json:"create_at"`
-	UpdateAt    int64    `json:"update_at"`
-	DeleteAt    int64    `json:"delete_at"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+	ArchivedAt  string   `json:"archived_at,omitempty"`
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description"`
@@ -56,8 +56,8 @@ func roleResponseFromModel(request *http.Request, role *model.Role) roleResponse
 		description = translatedRequestText(request, systemAdministratorRoleDescriptionID, description)
 	}
 	return roleResponse{
-		ID: role.ID.String(), CreateAt: model.MillisFromTime(role.CreatedAt),
-		UpdateAt: model.MillisFromTime(role.UpdatedAt), DeleteAt: role.ArchivedAt.Millis(),
+		ID: role.ID.String(), CreatedAt: model.FormatRFC3339(role.CreatedAt),
+		UpdatedAt: model.FormatRFC3339(role.UpdatedAt), ArchivedAt: role.ArchivedAt.FormatRFC3339(),
 		Name: role.Name, DisplayName: displayName, Description: description,
 		Permissions: append([]string(nil), permissions...), BuiltIn: role.BuiltIn,
 	}

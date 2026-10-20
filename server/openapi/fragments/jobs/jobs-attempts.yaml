@@ -99,7 +99,7 @@ components:
         - id
         - number
         - status
-        - start_at
+        - started_at
         - heartbeat_at
         - lease_expires_at
       properties:
@@ -111,22 +111,22 @@ components:
           description: Monotonic attempt number within the parent Job.
         status:
           $ref: '#/components/schemas/JobAttemptStatus'
-        start_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when execution started.
+        started_at:
+          type: string
+          format: date-time
+          description: Time when execution started.
         heartbeat_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the last retained worker heartbeat.
+          type: string
+          format: date-time
+          description: Time of the last retained worker heartbeat.
         lease_expires_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds at which this execution lease expires.
-        complete_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the Attempt reached a terminal state, when complete.
+          type: string
+          format: date-time
+          description: Time at which this execution lease expires.
+        completed_at:
+          type: string
+          format: date-time
+          description: Time when the Attempt reached a terminal state, when complete.
         public_error_code:
           type: string
           description: Stable safe failure category for a failed terminal Attempt; internal error detail is never returned.

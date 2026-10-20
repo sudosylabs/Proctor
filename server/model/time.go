@@ -17,8 +17,10 @@ import (
 // the precision preserved by durable persistence. Discard sub-microsecond
 // precision before comparisons or writes so a database round trip cannot move
 // an instant forward and invalidate a transition or concurrency check.
-// Millisecond conversions exist only for compatibility at explicit transport
-// boundaries; durable domain and SQL contracts use native temporal types.
+// Millisecond conversions remain only for application commands and Store
+// fields that still carry Unix milliseconds; every wire timestamp uses
+// FormatRFC3339 and ParseRFC3339, and durable SQL contracts use native
+// temporal types.
 
 // TimeUTC returns value in UTC, truncated to microsecond precision. A zero time
 // remains zero. Truncation never extends a deadline into the future.
@@ -27,6 +29,23 @@ func TimeUTC(value time.Time) time.Time {
 		return time.Time{}
 	}
 	return value.UTC().Truncate(time.Microsecond)
+}
+
+// FormatRFC3339 returns value in the canonical wire timestamp form: an RFC 3339
+// UTC string at microsecond precision with trailing fractional zeros removed
+// (time.RFC3339Nano after TimeUTC). Every HTTP and realtime timestamp uses it.
+func FormatRFC3339(value time.Time) string {
+	return TimeUTC(value).Format(time.RFC3339Nano)
+}
+
+// ParseRFC3339 parses a wire timestamp. It accepts any RFC 3339 offset and
+// fractional precision and returns the instant in UTC at domain precision.
+func ParseRFC3339(raw string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return TimeUTC(parsed), nil
 }
 
 // NowUTC returns the current instant in UTC at domain precision. Prefer injecting
@@ -168,5 +187,5 @@ func (o OptionalTime) FormatRFC3339() string {
 	if !o.Valid {
 		return ""
 	}
-	return TimeUTC(o.Time).Format(time.RFC3339Nano)
+	return FormatRFC3339(o.Time)
 }

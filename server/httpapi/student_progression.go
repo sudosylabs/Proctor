@@ -12,7 +12,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -63,13 +62,13 @@ func (m studentProgressionModule) dryRun(request operationRequest) (operationRes
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, invalidRequestError(err)
 	}
-	effectiveAt, err := time.Parse(time.RFC3339Nano, body.EffectiveAt)
+	effectiveAt, err := model.ParseRFC3339(body.EffectiveAt)
 	if err != nil || effectiveAt.IsZero() {
 		return operationResult{}, invalidRequestError(err)
 	}
 	view, err := m.progressions.DryRunStudentProgression(request.context, request.invocation(), application.DryRunStudentProgressionCommand{
 		SourcePeriodID: body.SourcePeriodID, SourceClassID: body.SourceClassID, DestinationPeriodID: body.DestinationPeriodID,
-		DestinationClassID: body.DestinationClassID, EffectiveAt: effectiveAt.UnixMilli(),
+		DestinationClassID: body.DestinationClassID, EffectiveAt: model.MillisFromTime(effectiveAt),
 	})
 	if err != nil {
 		return operationResult{}, err

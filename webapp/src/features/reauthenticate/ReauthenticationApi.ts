@@ -1,5 +1,6 @@
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import { isWireTimestamp } from "../../api/timestamp";
 import { boundedText, isRecord, isWebSession, securityFailure, type SecurityFailure, type SecurityMutationResult } from "../account-security/AccountSecurityApi";
 
 export type ReauthenticationTask = "security" | "connect-provider";
@@ -21,7 +22,7 @@ export async function proveCurrentPassword(password: string): Promise<PasswordPr
   try {
     const { data, error, response } = await apiClient.POST("/api/v1/auth/reauthenticate/password", { body: { password } });
     if (response.status === 200 && isWebSession(data) && isRecord(data) &&
-      typeof data.reauthenticated_at === "number" && Number.isSafeInteger(data.reauthenticated_at) && data.reauthenticated_at > 0) {
+      isWireTimestamp(data.reauthenticated_at)) {
       return { kind: "success" };
     }
     return proofFailure(error, response.status);

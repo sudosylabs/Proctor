@@ -73,13 +73,11 @@ components:
         role_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
     InvitationMutationRequest:
       type: object
       additionalProperties: false
@@ -115,17 +113,17 @@ components:
         masked_recipient:
           type: string
         created_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         updated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         deadline:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         accepted_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         public_failure_code:
           type: string
     InvitationAdministrationResponse:
@@ -173,14 +171,14 @@ components:
           items:
             type: string
         start_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         email:
           type: string
           format: email
@@ -189,11 +187,11 @@ components:
         accepted_user_id:
           $ref: '#/components/schemas/ID'
         created_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         updated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         revision:
           type: integer
           format: int64
@@ -240,14 +238,14 @@ components:
           items:
             type: string
         start_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     InvitationAcceptanceResponse:
       type: object
       additionalProperties: false

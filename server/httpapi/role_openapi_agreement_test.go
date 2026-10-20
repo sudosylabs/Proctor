@@ -49,7 +49,7 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "RoleResponse", DTO: reflect.TypeOf(roleResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "name", "display_name", "description", "permissions", "built_in"},
+				Required: []string{"id", "created_at", "updated_at", "name", "display_name", "description", "permissions", "built_in"},
 			},
 			{
 				Name: "CreateRoleRequest", DTO: reflect.TypeOf(createRoleRequest{}),

@@ -100,7 +100,7 @@ func TestMembershipCursorScopeAndFilterBinding(t *testing.T) {
 	if err != nil || query.ActiveAt == nil || *query.ActiveAt != instant || after.AfterID != cursor.AfterID {
 		t.Fatalf("continuation = %#v %#v %v", query, after, err)
 	}
-	for _, suffix := range []string{"&active_at=2000", "&history=true"} {
+	for _, suffix := range []string{"&active_at=1970-01-01T00:00:02Z", "&history=true"} {
 		if _, _, err := membershipPageQuery(httptest.NewRequest("GET", request(suffix), nil), scope); err == nil {
 			t.Fatalf("conflicting filter accepted: %s", suffix)
 		}

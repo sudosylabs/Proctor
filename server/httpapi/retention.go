@@ -235,7 +235,7 @@ func retentionCursorSpec() opaqueCursorSpec[retentionCursor] {
 			return nil
 		}}
 }
-func retentionTime(at time.Time) string { return model.TimeUTC(at).Format(time.RFC3339Nano) }
+func retentionTime(at time.Time) string { return model.FormatRFC3339(at) }
 func retentionOptionalTime(at model.OptionalTime) *string {
 	if !at.Valid {
 		return nil

@@ -31,7 +31,7 @@ type mfaRecoveryCodesResponse struct {
 type mfaSetupResponse struct {
 	Secret          string `json:"secret"`
 	ProvisioningURI string `json:"provisioning_uri"`
-	ExpiresAt       int64  `json:"expires_at"`
+	ExpiresAt       string `json:"expires_at"`
 }
 
 type mfaActivationResponse struct {
@@ -47,7 +47,7 @@ type mfaStatusResponse struct {
 	RecentlyAuthenticated    bool   `json:"recently_authenticated"`
 	Enabled                  bool   `json:"enabled"`
 	Pending                  bool   `json:"pending"`
-	PendingExpiresAt         int64  `json:"pending_expires_at,omitempty"`
+	PendingExpiresAt         string `json:"pending_expires_at,omitempty"`
 	RecoveryCodesRemaining   int    `json:"recovery_codes_remaining"`
 }
 
@@ -96,7 +96,7 @@ func (module mfaResourceModule) status(request operationRequest) (operationResul
 		AuthenticationStrength: string(status.AuthenticationStrength), RecentlyAuthenticated: status.RecentlyAuthenticated,
 		Enabled:                status.Enabled,
 		Pending:                status.Pending,
-		PendingExpiresAt:       status.PendingExpiresAt.Millis(),
+		PendingExpiresAt:       status.PendingExpiresAt.FormatRFC3339(),
 		RecoveryCodesRemaining: status.RecoveryCodesRemaining,
 	}).withHeaders(noStoreHeaders()), nil
 }
@@ -113,7 +113,7 @@ func (module mfaResourceModule) setup(request operationRequest) (operationResult
 	return jsonResult(http.StatusCreated, mfaSetupResponse{
 		Secret:          setup.Secret,
 		ProvisioningURI: setup.ProvisioningURI,
-		ExpiresAt:       model.MillisFromTime(setup.ExpiresAt),
+		ExpiresAt:       model.FormatRFC3339(setup.ExpiresAt),
 	}).withHeaders(noStoreHeaders()), nil
 }
 

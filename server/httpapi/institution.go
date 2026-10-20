@@ -16,9 +16,9 @@ import (
 
 type institutionResponse struct {
 	ID           string                     `json:"id"`
-	CreateAt     int64                      `json:"create_at"`
-	UpdateAt     int64                      `json:"update_at"`
-	DeleteAt     int64                      `json:"delete_at"`
+	CreatedAt    string                     `json:"created_at"`
+	UpdatedAt    string                     `json:"updated_at"`
+	ArchivedAt   string                     `json:"archived_at,omitempty"`
 	Name         string                     `json:"name"`
 	DisplayName  string                     `json:"display_name"`
 	Description  string                     `json:"description"`
@@ -161,9 +161,9 @@ func institutionResponseFromModel(institution *model.Institution) institutionRes
 	}
 	return institutionResponse{
 		ID:           institution.ID.String(),
-		CreateAt:     model.MillisFromTime(institution.CreatedAt),
-		UpdateAt:     model.MillisFromTime(institution.UpdatedAt),
-		DeleteAt:     institution.ArchivedAt.Millis(),
+		CreatedAt:    model.FormatRFC3339(institution.CreatedAt),
+		UpdatedAt:    model.FormatRFC3339(institution.UpdatedAt),
+		ArchivedAt:   institution.ArchivedAt.FormatRFC3339(),
 		Name:         institution.Name,
 		DisplayName:  institution.DisplayName,
 		Description:  institution.Description,

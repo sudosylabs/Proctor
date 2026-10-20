@@ -28,8 +28,8 @@ type desktopRegistrationResponse struct {
 	Platform         string `json:"platform"`
 	Architecture     string `json:"architecture"`
 	RealtimeProtocol int    `json:"realtime_protocol"`
-	CreatedAt        int64  `json:"created_at"`
-	LastUsedAt       int64  `json:"last_used_at"`
+	CreatedAt        string `json:"created_at"`
+	LastUsedAt       string `json:"last_used_at"`
 	Status           string `json:"status"`
 	Current          bool   `json:"current"`
 }
@@ -100,8 +100,8 @@ func desktopRegistrationResponseFromModel(
 		DesktopRelease: registration.DesktopRelease, DesktopBuildID: registration.DesktopBuildID,
 		Platform: string(registration.Platform), Architecture: string(registration.Architecture),
 		RealtimeProtocol: registration.RealtimeProtocol,
-		CreatedAt:        model.MillisFromTime(registration.CreatedAt),
-		LastUsedAt:       model.MillisFromTime(registration.LastUsedAt),
+		CreatedAt:        model.FormatRFC3339(registration.CreatedAt),
+		LastUsedAt:       model.FormatRFC3339(registration.LastUsedAt),
 		Status:           status, Current: current,
 	}
 }

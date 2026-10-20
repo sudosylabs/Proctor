@@ -109,13 +109,11 @@ components:
             - teacher
             - staff
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
     AcademicAdministrationBatchRequest:
       type: object
       additionalProperties: false

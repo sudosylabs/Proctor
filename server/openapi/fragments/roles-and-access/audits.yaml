@@ -98,22 +98,22 @@ components:
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
+        - created_at
+        - updated_at
         - action
         - resource
         - status
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the audit Attempt was created.
-        update_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the latest durable audit status change.
+        created_at:
+          type: string
+          format: date-time
+          description: Time when the audit Attempt was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: Time of the latest durable audit status change.
         actor_id:
           type: string
           description: User that initiated the action, omitted for actor-less system transitions.

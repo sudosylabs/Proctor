@@ -23,22 +23,22 @@ type createPersonalAccessTokenRequest struct {
 	Description    string   `json:"description"`
 	Scopes         []string `json:"scopes"`
 	AcademicUnitID string   `json:"academic_unit_id,omitempty"`
-	ExpiresAt      int64    `json:"expires_at"`
+	ExpiresAt      string   `json:"expires_at"`
 }
 
 type personalAccessTokenResponse struct {
 	ID             string   `json:"id"`
-	CreateAt       int64    `json:"create_at"`
-	UpdateAt       int64    `json:"update_at"`
-	DeleteAt       int64    `json:"delete_at"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
+	ArchivedAt     string   `json:"archived_at,omitempty"`
 	UserID         string   `json:"user_id"`
 	Description    string   `json:"description"`
 	Scopes         []string `json:"scopes"`
 	AcademicUnitID string   `json:"academic_unit_id,omitempty"`
-	ExpiresAt      int64    `json:"expires_at"`
-	LastUsedAt     int64    `json:"last_used_at,omitempty"`
-	DisabledAt     int64    `json:"disabled_at,omitempty"`
-	RevokedAt      int64    `json:"revoked_at,omitempty"`
+	ExpiresAt      string   `json:"expires_at"`
+	LastUsedAt     string   `json:"last_used_at,omitempty"`
+	DisabledAt     string   `json:"disabled_at,omitempty"`
+	RevokedAt      string   `json:"revoked_at,omitempty"`
 }
 
 type personalAccessTokenCreationResponse struct {
@@ -56,17 +56,17 @@ func personalAccessTokenResponseFromModel(token *model.PersonalAccessToken) pers
 	}
 	return personalAccessTokenResponse{
 		ID:             token.ID.String(),
-		CreateAt:       model.MillisFromTime(token.CreatedAt),
-		UpdateAt:       model.MillisFromTime(token.UpdatedAt),
-		DeleteAt:       token.ArchivedAt.Millis(),
+		CreatedAt:      model.FormatRFC3339(token.CreatedAt),
+		UpdatedAt:      model.FormatRFC3339(token.UpdatedAt),
+		ArchivedAt:     token.ArchivedAt.FormatRFC3339(),
 		UserID:         token.UserID.String(),
 		Description:    token.Description,
 		Scopes:         append([]string(nil), scopes...),
 		AcademicUnitID: token.AcademicUnitID.String(),
-		ExpiresAt:      model.MillisFromTime(token.ExpiresAt),
-		LastUsedAt:     token.LastUsedAt.Millis(),
-		DisabledAt:     token.DisabledAt.Millis(),
-		RevokedAt:      token.RevokedAt.Millis(),
+		ExpiresAt:      model.FormatRFC3339(token.ExpiresAt),
+		LastUsedAt:     token.LastUsedAt.FormatRFC3339(),
+		DisabledAt:     token.DisabledAt.FormatRFC3339(),
+		RevokedAt:      token.RevokedAt.FormatRFC3339(),
 	}
 }
 
@@ -142,12 +142,16 @@ func (module personalAccessTokenResourceModule) create(request operationRequest)
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
+	expiresAt, err := wireTimeMillis("expires_at", input.ExpiresAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	created, err := module.tokens.CreatePersonalAccessToken(
 		request.context,
 		request.invocation(),
 		application.CreatePersonalAccessTokenCommand{
 			Description: input.Description, Scopes: input.Scopes,
-			AcademicUnitID: input.AcademicUnitID, ExpiresAt: input.ExpiresAt,
+			AcademicUnitID: input.AcademicUnitID, ExpiresAt: expiresAt,
 		},
 	)
 	if err != nil {

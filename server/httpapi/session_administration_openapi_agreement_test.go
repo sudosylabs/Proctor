@@ -39,7 +39,7 @@ func TestSessionAdministrationOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Name: "SessionAdministrationResponse", DTO: reflect.TypeOf(sessionResponse{}),
 				Required: []string{
-					"id", "create_at", "update_at", "delete_at", "user_id", "client_type",
+					"id", "created_at", "updated_at", "user_id", "client_type",
 					"authentication_method", "authentication_strength", "mfa_recovery_required", "authenticated_at",
 					"last_activity_at", "idle_expires_at", "expires_at",
 				},

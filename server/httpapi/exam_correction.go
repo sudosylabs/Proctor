@@ -14,7 +14,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -230,7 +229,7 @@ func (module examSittingCorrectionHTTPModule) stage(request operationRequest) (p
 	}
 	response := examSittingCorrectionStageResponse{
 		StageID: result.StageID.String(), ResourceID: result.ResourceID.String(), MediaType: string(result.MediaType),
-		Size: result.Size, SHA256: result.SHA256, ExpiresAt: model.TimeUTC(result.ExpiresAt).Format(time.RFC3339Nano),
+		Size: result.Size, SHA256: result.SHA256, ExpiresAt: model.FormatRFC3339(result.ExpiresAt),
 	}
 	return streamingUploadProtocolResult(http.StatusCreated, response), nil
 }
@@ -304,7 +303,7 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 		ExamID:               result.ExamID.String(), ExamSittingID: result.SittingID.String(),
 		PreviousRevisionID: result.PreviousRevisionID.String(), RevisionID: result.RevisionID.String(),
 		RevisionNumber: result.RevisionNumber, SittingRevision: result.SittingRevision,
-		SittingState: string(result.SittingState), EffectiveAt: model.TimeUTC(result.EffectiveAt).Format(time.RFC3339Nano),
+		SittingState: string(result.SittingState), EffectiveAt: model.FormatRFC3339(result.EffectiveAt),
 	}
 	return jsonResult(http.StatusCreated, response), nil
 }

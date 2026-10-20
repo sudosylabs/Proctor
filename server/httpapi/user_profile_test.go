@@ -378,7 +378,7 @@ func TestEmailMutationResponsesUseNarrowAccountStateProjection(t *testing.T) {
 			if string(fields["id"]) != `"`+userID.String()+`"` || string(fields["email_verified"]) != fmt.Sprintf("%t", test.verified) {
 				t.Fatalf("narrow state response = %s", response.Body.Bytes())
 			}
-			for _, forbidden := range []string{"email", "username", "display_name", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at", "create_at", "update_at", "delete_at"} {
+			for _, forbidden := range []string{"email", "username", "display_name", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at", "created_at", "updated_at", "archived_at"} {
 				if _, exposed := fields[forbidden]; exposed {
 					t.Fatalf("email mutation exposed %q: %s", forbidden, response.Body.Bytes())
 				}

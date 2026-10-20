@@ -109,13 +109,11 @@ components:
         role_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         suggested_username:
           type: string
           maxLength: 64

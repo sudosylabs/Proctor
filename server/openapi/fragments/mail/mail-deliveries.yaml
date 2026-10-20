@@ -67,17 +67,15 @@ paths:
         - name: created_after
           in: query
           schema:
-            type: integer
-            format: int64
-            minimum: 1
-          description: Include deliveries created at or after this Unix-millisecond timestamp.
+            type: string
+            format: date-time
+          description: Include deliveries created at or after this RFC 3339 instant.
         - name: created_before
           in: query
           schema:
-            type: integer
-            format: int64
-            minimum: 1
-          description: Include deliveries created before this Unix-millisecond timestamp.
+            type: string
+            format: date-time
+          description: Include deliveries created before this RFC 3339 instant.
       responses:
         "200":
           $ref: '#/components/responses/MailDeliveryListOK'

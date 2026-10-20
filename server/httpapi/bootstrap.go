@@ -44,7 +44,7 @@ type installationStatusResponse struct {
 
 // installationStateResponse is the public bootstrap marker projection.
 type installationStateResponse struct {
-	InitializedAt       int64  `json:"initialized_at"`
+	InitializedAt       string `json:"initialized_at"`
 	InstitutionID       string `json:"institution_id"`
 	AdministratorUserID string `json:"administrator_user_id"`
 }
@@ -77,7 +77,7 @@ func installationStateResponseFromModel(state *model.InstallationState) *install
 		return nil
 	}
 	return &installationStateResponse{
-		InitializedAt:       model.MillisFromTime(state.InitializedAt),
+		InitializedAt:       model.FormatRFC3339(state.InitializedAt),
 		InstitutionID:       state.InstitutionID.String(),
 		AdministratorUserID: state.AdministratorUserID.String(),
 	}

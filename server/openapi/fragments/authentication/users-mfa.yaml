@@ -428,8 +428,8 @@ components:
           type: string
           format: uri
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     MFAActivationResponse:
       type: object
       additionalProperties: false
@@ -475,8 +475,8 @@ components:
         pending:
           type: boolean
         pending_expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         recovery_codes_remaining:
           type: integer
           minimum: 0

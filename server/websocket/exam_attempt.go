@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"time"
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app"
@@ -257,7 +256,7 @@ func browserActivityAcknowledgementWire(value app.BrowserActivityAcknowledgement
 		Receipts: append([]model.BrowserEventReceipt{}, value.Receipts...), SettledThrough: value.SettledThrough,
 		AllocatedThrough: value.AllocatedThrough, TerminalMissingThrough: value.TerminalMissingThrough,
 		HighestSeen: value.HighestSeen, MissingRangesTruncated: value.MissingRangesTruncated,
-		MissingRanges: make([]browserActivityMissingRangeResponse, len(value.MissingRanges)), ServerTime: model.TimeUTC(value.ServerTime).Format(time.RFC3339Nano)}
+		MissingRanges: make([]browserActivityMissingRangeResponse, len(value.MissingRanges)), ServerTime: model.FormatRFC3339(value.ServerTime)}
 	for index, missing := range value.MissingRanges {
 		response.MissingRanges[index] = browserActivityMissingRangeResponse{First: missing.First, Last: missing.Last}
 	}
@@ -286,7 +285,7 @@ func candidateRuntimeCapabilitiesWire(value app.CandidateRuntimeCapabilities) ca
 		browser.PolicyDigest = value.Browser.PolicyDigest
 	}
 	return candidateRuntimeCapabilitiesResponse{SchemaVersion: value.SchemaVersion,
-		ServerTime: value.ServerTime.Format(time.RFC3339Nano), InteractionState: string(value.InteractionState),
+		ServerTime: model.FormatRFC3339(value.ServerTime), InteractionState: string(value.InteractionState),
 		AttemptConfiguration: candidateAttemptConfigurationResponse{Revision: value.AttemptConfiguration.Revision,
 			Presentation: value.AttemptConfiguration.Presentation, ApprovedCommands: append([]string{}, value.AttemptConfiguration.ApprovedCommands...),
 			ApprovedKeybindings: append([]string{}, value.AttemptConfiguration.ApprovedKeybindings...), Digest: value.AttemptConfiguration.Digest},
@@ -317,11 +316,11 @@ func candidateLiveCorrectionsWire(values []model.CandidateLiveCorrection) []cand
 	result := make([]candidateLiveCorrectionResponse, len(values))
 	for index, value := range values {
 		item := candidateLiveCorrectionResponse{RevisionID: value.RevisionID.String(), RevisionNumber: value.RevisionNumber,
-			EffectiveAt: model.TimeUTC(value.EffectiveAt).Format(time.RFC3339Nano), Summary: value.Summary,
+			EffectiveAt: model.FormatRFC3339(value.EffectiveAt), Summary: value.Summary,
 			ChangedAreas:         append([]model.ExamCorrectionChangedArea(nil), value.ChangedAreas...),
 			AffectedCapabilities: append([]model.CandidateCapability{}, value.AffectedCapabilities...), AcknowledgementRequired: value.AcknowledgementRequired, AcknowledgementState: value.AcknowledgementState}
 		if value.AcknowledgedAt.Valid {
-			at := model.TimeUTC(value.AcknowledgedAt.Time).Format(time.RFC3339Nano)
+			at := model.FormatRFC3339(value.AcknowledgedAt.Time)
 			item.AcknowledgedAt = &at
 		}
 		result[index] = item

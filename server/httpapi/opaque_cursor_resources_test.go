@@ -60,11 +60,11 @@ func TestResourceCursorContracts(t *testing.T) {
 	}{
 		{
 			name: "audit", encode: func() (string, error) {
-				return encodeAuditCursor(auditCursor{CreateAt: 123, Id: auditID})
+				return encodeAuditCursor(auditCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: auditID})
 			}, decode: func(raw string) (any, error) { return decodeAuditCursor(raw) },
-			want: auditCursor{Version: 1, CreateAt: 123, Id: auditID}, plainKeyset: auditID,
-			malformed:       fmt.Sprintf(`{"version":1,"create_at":0,"id":%q}`, auditID),
-			legacyDocuments: []string{fmt.Sprintf(`{"create_at":123,"id":%q}`, auditID)},
+			want: auditCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: auditID}, plainKeyset: auditID,
+			malformed:       fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, auditID),
+			legacyDocuments: []string{fmt.Sprintf(`{"created_at":%q,"id":%q}`, at.Format(time.RFC3339Nano), auditID)},
 		},
 		{
 			name: "mail", encode: func() (string, error) {
@@ -76,11 +76,11 @@ func TestResourceCursorContracts(t *testing.T) {
 		},
 		{
 			name: "job", encode: func() (string, error) {
-				return encodeJobCursor(jobCursor{CreatedAt: 456, ID: jobID})
+				return encodeJobCursor(jobCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: jobID})
 			}, decode: func(raw string) (any, error) { return decodeJobCursor(raw) },
-			want: jobCursor{Version: 1, CreatedAt: 456, ID: jobID}, plainKeyset: jobID,
-			malformed:       fmt.Sprintf(`{"version":1,"created_at":0,"id":%q}`, jobID),
-			legacyDocuments: []string{fmt.Sprintf(`{"created_at":456,"id":%q}`, jobID)},
+			want: jobCursor{Version: 1, CreatedAt: at.Format(time.RFC3339Nano), ID: jobID}, plainKeyset: jobID,
+			malformed:       fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, jobID),
+			legacyDocuments: []string{fmt.Sprintf(`{"created_at":%q,"id":%q}`, at.Format(time.RFC3339Nano), jobID)},
 		},
 		{
 			name: "job attempt", encode: func() (string, error) { return encodeJobAttemptCursor(987654321) },

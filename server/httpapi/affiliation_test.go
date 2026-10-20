@@ -52,7 +52,7 @@ func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 	}
 	affiliations := &affiliationHTTPApplication{result: created}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(affiliations))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/users/"+userID+"/affiliations", strings.NewReader(`{"id":"ignored","user_id":"ignored","kind":"teacher","start_at":100}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users/"+userID+"/affiliations", strings.NewReader(`{"user_id":"ignored","kind":"teacher","start_at":"1970-01-01T00:00:00.1Z"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

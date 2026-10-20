@@ -56,7 +56,7 @@ paths:
               role_id: ybndrfg8ejkmcpqxot1uwisza3
               suggested_username: teacher-one
               suggested_display_name: Teacher One
-              start_at: 1785542400000
+              start_at: '2026-08-01T00:00:00Z'
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure
@@ -126,7 +126,7 @@ paths:
             example:
               email: reviewer.one@example.edu
               role_id: ybndrfg8ejkmcpqxot1uwisza3
-              start_at: 1785542400000
+              start_at: '2026-08-01T00:00:00Z'
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure
@@ -163,13 +163,11 @@ components:
         role_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         suggested_username:
           type: string
           maxLength: 64

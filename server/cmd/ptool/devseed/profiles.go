@@ -105,7 +105,7 @@ func (r *runner) disableAccount(alias string, a *account) error {
 	path := "/api/v1/users/" + a.UserID
 	_, err := r.step("disable/"+alias, token, http.MethodPost, path+"/disable", object{}, nil, func() (json.RawMessage, bool, error) {
 		raw, err := r.administrativeUser(a.UserID)
-		return raw, number(decode(raw), "disabled_at") > 0, err
+		return raw, str(decode(raw), "disabled_at") != "", err
 	})
 	if err != nil {
 		return err

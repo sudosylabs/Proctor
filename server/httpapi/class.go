@@ -17,9 +17,9 @@ import (
 type classResponse struct {
 	Revision         int64  `json:"revision"`
 	ID               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	ArchivedAt       string `json:"archived_at,omitempty"`
 	ProgrammeLevelID string `json:"programme_level_id"`
 	AcademicPeriodID string `json:"academic_period_id"`
 	Name             string `json:"name"`
@@ -27,10 +27,6 @@ type classResponse struct {
 	Description      string `json:"description"`
 }
 type createClassRequest struct {
-	ID               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
 	ProgrammeLevelID string `json:"programme_level_id"`
 	AcademicPeriodID string `json:"academic_period_id"`
 	Name             string `json:"name"`
@@ -254,9 +250,9 @@ func classResponseFromModel(class *model.Class) classResponse {
 	}
 	return classResponse{
 		Revision: class.Revision, ID: class.ID.String(),
-		CreateAt:         model.MillisFromTime(class.CreatedAt),
-		UpdateAt:         model.MillisFromTime(class.UpdatedAt),
-		DeleteAt:         class.ArchivedAt.Millis(),
+		CreatedAt:        model.FormatRFC3339(class.CreatedAt),
+		UpdatedAt:        model.FormatRFC3339(class.UpdatedAt),
+		ArchivedAt:       class.ArchivedAt.FormatRFC3339(),
 		ProgrammeLevelID: class.ProgrammeLevelID.String(),
 		AcademicPeriodID: class.AcademicPeriodID.String(),
 		Name:             class.Name,

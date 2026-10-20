@@ -17,9 +17,9 @@ import (
 type programmeResponse struct {
 	Revision       int64  `json:"revision"`
 	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+	ArchivedAt     string `json:"archived_at,omitempty"`
 	AcademicUnitID string `json:"academic_unit_id"`
 	Name           string `json:"name"`
 	DisplayName    string `json:"display_name"`
@@ -27,10 +27,6 @@ type programmeResponse struct {
 }
 
 type createProgrammeRequest struct {
-	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
 	AcademicUnitID string `json:"academic_unit_id"`
 	Name           string `json:"name"`
 	DisplayName    string `json:"display_name"`
@@ -166,9 +162,9 @@ func programmeResponseFromModel(programme *model.Programme) programmeResponse {
 	}
 	return programmeResponse{
 		Revision: programme.Revision, ID: programme.ID.String(),
-		CreateAt:       model.MillisFromTime(programme.CreatedAt),
-		UpdateAt:       model.MillisFromTime(programme.UpdatedAt),
-		DeleteAt:       programme.ArchivedAt.Millis(),
+		CreatedAt:      model.FormatRFC3339(programme.CreatedAt),
+		UpdatedAt:      model.FormatRFC3339(programme.UpdatedAt),
+		ArchivedAt:     programme.ArchivedAt.FormatRFC3339(),
 		AcademicUnitID: programme.AcademicUnitID.String(),
 		Name:           programme.Name,
 		DisplayName:    programme.DisplayName,

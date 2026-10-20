@@ -126,7 +126,7 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			},
 			{
 				Name: "UserProfileResponse", DTO: reflect.TypeOf(userProfileResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"},
+				Required: []string{"id", "created_at", "updated_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"},
 			},
 			{Name: "UserEmailStateResponse", DTO: reflect.TypeOf(userEmailStateResponse{}), Required: []string{"id", "email_verified"}},
 			{Name: "UpdateUserProfileRequest", DTO: reflect.TypeOf(updateUserProfileRequest{})},

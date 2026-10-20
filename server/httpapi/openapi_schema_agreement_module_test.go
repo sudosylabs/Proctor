@@ -91,6 +91,9 @@ func evaluateOpenAPIShapeAgreement(
 	nullablePaths []string,
 	nonNullablePaths []string,
 ) []openAPIAgreementViolation {
+	if name := agreementTargetField(target); isWireTimestampName(name) {
+		violations = evaluateWireTimestampAgreement(violations, target, name, shape, goType, requestSchema)
+	}
 	nullable := forceNullable
 	for goType.Kind() == reflect.Pointer {
 		nullable = nullable || requestSchema && fieldOptional
@@ -516,6 +519,71 @@ func evaluateBrowserEventCodecAgreement(violations []openAPIAgreementViolation, 
 	}
 	for i, variant := range variants {
 		violations = evaluateOpenAPIShapeAgreement(violations, document, fmt.Sprintf("%s.variant%d", target, i), shape.OneOf[i], variant, request, false, false, false, nil, nil)
+	}
+	return violations
+}
+
+// legacyWireTimestampNames are the retired millisecond-era member names.
+var legacyWireTimestampNames = map[string]string{
+	"create_at": "created_at", "update_at": "updated_at", "delete_at": "archived_at",
+}
+
+func agreementTargetField(target string) string {
+	name := target[strings.LastIndex(target, ".")+1:]
+	return strings.TrimRight(name, "[]{}")
+}
+
+// isWireTimestampName reports whether a JSON member names an instant. Such
+// members use the one wire timestamp dialect: an RFC 3339 date-time string
+// that is omitted, never null, when a response has no value.
+func isWireTimestampName(name string) bool {
+	if _, legacy := legacyWireTimestampNames[name]; legacy {
+		return true
+	}
+	if name == "awaiting_deadline" { // a count of records awaiting their deadline
+		return false
+	}
+	return strings.HasSuffix(name, "_at") || strings.HasSuffix(name, "deadline") ||
+		name == "message_date" || name == "server_time" || name == "database_time"
+}
+
+func evaluateWireTimestampAgreement(
+	violations []openAPIAgreementViolation,
+	target string,
+	name string,
+	shape openAPISchemaShape,
+	goType reflect.Type,
+	requestSchema bool,
+) []openAPIAgreementViolation {
+	if replacement, legacy := legacyWireTimestampNames[name]; legacy {
+		violations = appendAgreementViolation(violations, target, "timestamp name", "use "+replacement)
+	}
+	for goType.Kind() == reflect.Pointer {
+		goType = goType.Elem()
+	}
+	if goType.PkgPath() == reflect.TypeOf(Optional[string]{}).PkgPath() && strings.HasPrefix(goType.Name(), "Optional[") {
+		goType = goType.Field(0).Type
+	}
+	if goType != reflect.TypeOf(time.Time{}) && goType.Kind() != reflect.String {
+		violations = appendAgreementViolation(violations, target, "timestamp dialect", fmt.Sprintf("Go type %s must carry an RFC 3339 string", goType))
+	}
+	value := shape
+	nullable := openAPITypesEqual(shape.Type, []string{"string", "null"})
+	for _, candidate := range shape.OneOf {
+		if openAPITypesEqual(candidate.Type, []string{"null"}) {
+			nullable = true
+			continue
+		}
+		value = candidate
+	}
+	if value.Ref == "" && value.Format != "date-time" {
+		violations = appendAgreementViolation(violations, target, "timestamp dialect", "must be a date-time string")
+	}
+	// Model-owned canonical security documents (time.Time codecs such as
+	// DeliveryClosure) keep their frozen closed-record shape with explicit
+	// nulls; the omission rule binds transport-owned string members.
+	if nullable && !requestSchema && goType.Kind() == reflect.String {
+		violations = appendAgreementViolation(violations, target, "timestamp absence", "absent response timestamps are omitted, never null")
 	}
 	return violations
 }

@@ -58,7 +58,7 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	}
 	classMembers := &classMemberHTTPApplication{result: &model.ClassEnrollment{Membership: member}}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, classMemberResource(classMembers))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/classes/"+classID+"/members", strings.NewReader(`{"id":"ignored","class_id":"ignored","academic_period_id":"ignored","user_id":"`+userID+`","start_at":100}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/classes/"+classID+"/members", strings.NewReader(`{"class_id":"ignored","academic_period_id":"ignored","user_id":"`+userID+`","start_at":"1970-01-01T00:00:00.1Z"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

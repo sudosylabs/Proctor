@@ -16,26 +16,22 @@ import (
 
 type classMemberResponse struct {
 	ID               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	ArchivedAt       string `json:"archived_at,omitempty"`
 	ClassID          string `json:"class_id"`
 	AcademicPeriodID string `json:"academic_period_id"`
 	UserID           string `json:"user_id"`
-	StartAt          int64  `json:"start_at"`
-	EndAt            int64  `json:"end_at,omitempty"`
+	StartAt          string `json:"start_at"`
+	EndAt            string `json:"end_at,omitempty"`
 }
 
 type enrollClassMemberRequest struct {
-	ID               string `json:"id"`
-	CreateAt         int64  `json:"create_at"`
-	UpdateAt         int64  `json:"update_at"`
-	DeleteAt         int64  `json:"delete_at"`
 	ClassID          string `json:"class_id"`
 	AcademicPeriodID string `json:"academic_period_id"`
 	UserID           string `json:"user_id"`
-	StartAt          int64  `json:"start_at"`
-	EndAt            int64  `json:"end_at"`
+	StartAt          string `json:"start_at"`
+	EndAt            string `json:"end_at"`
 }
 
 type classEnrollmentResponse struct {
@@ -118,7 +114,15 @@ func (module classMemberResourceModule) enroll(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	enrollment, err := module.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: body.StartAt, EndAt: body.EndAt})
+	startAt, err := wireTimeMillis("start_at", body.StartAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	endAt, err := wireTimeMillis("end_at", body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	enrollment, err := module.members.EnrollClassMember(request.context, request.invocation(), application.EnrollClassMemberCommand{ClassID: classID, UserID: body.UserID, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -143,14 +147,14 @@ func classMemberResponseFromModel(member *model.ClassMember) classMemberResponse
 	}
 	return classMemberResponse{
 		ID:               member.ID.String(),
-		CreateAt:         model.MillisFromTime(member.CreatedAt),
-		UpdateAt:         model.MillisFromTime(member.UpdatedAt),
-		DeleteAt:         member.ArchivedAt.Millis(),
+		CreatedAt:        model.FormatRFC3339(member.CreatedAt),
+		UpdatedAt:        model.FormatRFC3339(member.UpdatedAt),
+		ArchivedAt:       member.ArchivedAt.FormatRFC3339(),
 		ClassID:          member.ClassID.String(),
 		AcademicPeriodID: member.AcademicPeriodID.String(),
 		UserID:           member.UserID.String(),
-		StartAt:          model.MillisFromTime(member.StartsAt),
-		EndAt:            member.EndsAt.Millis(),
+		StartAt:          model.FormatRFC3339(member.StartsAt),
+		EndAt:            member.EndsAt.FormatRFC3339(),
 	}
 }
 

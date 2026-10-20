@@ -53,8 +53,8 @@ type accessPolicySettingsRequest struct {
 type accessPolicyResponse struct {
 	ID                               string                                   `json:"id"`
 	Revision                         int64                                    `json:"revision"`
-	CreatedAt                        int64                                    `json:"created_at"`
-	UpdatedAt                        int64                                    `json:"updated_at"`
+	CreatedAt                        string                                   `json:"created_at"`
+	UpdatedAt                        string                                   `json:"updated_at"`
 	LocalLoginEnabled                bool                                     `json:"local_login_enabled"`
 	PublicRegistrationEnabled        bool                                     `json:"public_registration_enabled"`
 	InvitationAdmissionEnabled       bool                                     `json:"invitation_admission_enabled"`
@@ -71,7 +71,7 @@ type accessPolicyTransitionResponse struct {
 	ToRevision    int64    `json:"to_revision"`
 	ActorUserID   string   `json:"actor_user_id"`
 	ChangedFields []string `json:"changed_fields"`
-	ChangedAt     int64    `json:"changed_at"`
+	ChangedAt     string   `json:"changed_at"`
 	Outcome       string   `json:"outcome"`
 }
 
@@ -236,7 +236,7 @@ func accessPolicyResponseFromView(view application.AccessPolicyView) accessPolic
 		return response
 	}
 	p := view.Policy
-	response.ID, response.Revision, response.CreatedAt, response.UpdatedAt = p.ID.String(), p.Revision, model.MillisFromTime(p.CreatedAt), model.MillisFromTime(p.UpdatedAt)
+	response.ID, response.Revision, response.CreatedAt, response.UpdatedAt = p.ID.String(), p.Revision, model.FormatRFC3339(p.CreatedAt), model.FormatRFC3339(p.UpdatedAt)
 	response.LocalLoginEnabled, response.PublicRegistrationEnabled = p.LocalLoginEnabled, p.PublicRegistrationEnabled
 	response.InvitationAdmissionEnabled, response.InvitationLocalCredentialEnabled = p.InvitationAdmissionEnabled, p.InvitationLocalCredentialEnabled
 	response.DesktopAuthorizationEnabled, response.ProviderAdmissions = p.DesktopAuthorizationEnabled, p.Settings().ProviderAdmissions
@@ -245,7 +245,7 @@ func accessPolicyResponseFromView(view application.AccessPolicyView) accessPolic
 		if transition != nil {
 			response.History = append(response.History, accessPolicyTransitionResponse{
 				FromRevision: transition.FromRevision, ToRevision: transition.ToRevision, ActorUserID: transition.ActorID.String(),
-				ChangedFields: append([]string(nil), transition.ChangedFields...), ChangedAt: model.MillisFromTime(transition.ChangedAt), Outcome: string(transition.Outcome)})
+				ChangedFields: append([]string(nil), transition.ChangedFields...), ChangedAt: model.FormatRFC3339(transition.ChangedAt), Outcome: string(transition.Outcome)})
 		}
 	}
 	for _, provider := range view.AvailableProviders {

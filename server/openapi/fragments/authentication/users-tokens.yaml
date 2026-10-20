@@ -271,7 +271,7 @@ components:
             scopes:
               - examinations:read
             academic_unit_id: ybndrfg8ejkmcpqxot1uwisza3
-            expires_at: 1798761600000
+            expires_at: '2027-01-01T00:00:00Z'
   responses:
     PersonalAccessTokenOK:
       description: Personal Access Token
@@ -318,16 +318,15 @@ components:
         academic_unit_id:
           $ref: '#/components/schemas/ID'
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     PersonalAccessTokenResponse:
       type: object
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - user_id
         - description
         - scopes
@@ -335,15 +334,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         user_id:
           $ref: '#/components/schemas/ID'
         description:
@@ -355,17 +354,17 @@ components:
         academic_unit_id:
           $ref: '#/components/schemas/ID'
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         last_used_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         disabled_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         revoked_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     PersonalAccessTokenCreationResponse:
       type: object
       additionalProperties: false

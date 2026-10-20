@@ -51,6 +51,10 @@ rg -n '/api/v1/exams|operationId: createExam' server/openapi/fragments
    executable-style `x-codeSamples` example; bodyless and multipart mutations
    use `x-codeSamples`. Never use real Institution, student, Exam, answer,
    credential, object-key, email, or local-machine data.
+   Declare every timestamp, including a time-valued query parameter, as
+   `type: string` with `format: date-time`. A response member with no value is
+   left out of `required` and is never nullable; examples are quoted UTC
+   strings such as `'2026-08-01T00:00:00Z'`.
 4. Co-locate definitions used only by that resource. Promote a definition to
    the area's `shared.yaml` or the root `shared.yaml` only when a second real
    consumer needs it.

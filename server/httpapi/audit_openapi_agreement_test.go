@@ -27,7 +27,7 @@ func TestAuditListingOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "AuditEventResponse", DTO: reflect.TypeOf(auditEventResponse{}),
-				Required: []string{"id", "create_at", "update_at", "action", "resource", "status"},
+				Required: []string{"id", "created_at", "updated_at", "action", "resource", "status"},
 			},
 			{
 				Name: "AuditListResponse", DTO: reflect.TypeOf(auditListResponse{}),

@@ -362,9 +362,8 @@ components:
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - name
         - display_name
         - description
@@ -372,15 +371,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         name:
           type: string
         display_name:
@@ -430,9 +429,8 @@ components:
         present only for self or institution-wide user.view authority.
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - username
         - display_name
         - first_name
@@ -441,15 +439,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         username:
           type: string
         email:
@@ -468,28 +466,27 @@ components:
         timezone:
           type: string
         last_login_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         last_activity_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         disabled_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         profile_picture_url:
           type: string
         profile_picture_changed_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
     RoleResponse:
       description: Reusable Role definition; effective access still requires a scoped Role Binding.
       type: object
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - name
         - display_name
         - description
@@ -498,18 +495,18 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the Role was created.
-        update_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the latest Role change.
-        delete_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when deleted, or zero while active.
+        created_at:
+          type: string
+          format: date-time
+          description: Time when the Role was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: Time of the latest Role change.
+        archived_at:
+          type: string
+          format: date-time
+          description: Time when the Role was archived; omitted while active.
         name:
           type: string
           description: Immutable canonical machine name for the Role.
@@ -533,9 +530,8 @@ components:
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - user_id
         - role_id
         - scope_type
@@ -544,15 +540,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         user_id:
           $ref: '#/components/schemas/ID'
         role_id:
@@ -563,13 +559,13 @@ components:
         scope_id:
           $ref: '#/components/schemas/ID'
         start_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the grant becomes effective.
+          type: string
+          format: date-time
+          description: Time when the grant becomes effective.
         end_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the grant stops being effective, when bounded.
+          type: string
+          format: date-time
+          description: Time when the grant stops being effective, when bounded.
     JobStatus:
       type: string
       enum:

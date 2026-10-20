@@ -39,7 +39,7 @@ export interface paths {
         put?: never;
         /**
          * Create an Institution- or Academic-Unit-owned Academic Period
-         * @description Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are Unix-millisecond instants, and an optional Idempotency-Key makes uncertain retries safe.
+         * @description Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are RFC 3339 instants, and an optional Idempotency-Key makes uncertain retries safe.
          */
         post: operations["createAcademicPeriod"];
         delete?: never;
@@ -5279,13 +5279,13 @@ export interface components {
         AcademicAdministrationBatchItemRequest: {
             /** @enum {string} */
             affiliation_kind?: "student" | "teacher" | "staff";
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            end_at?: string;
             key: string;
             relationship_id?: components["schemas"]["ID"];
             role_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            start_at?: string;
             user_id?: components["schemas"]["ID"];
         };
         AcademicAdministrationBatchItemResponse: {
@@ -5314,17 +5314,17 @@ export interface components {
         };
         AcademicPeriodListResponse: components["schemas"]["AcademicPeriodResponse"][];
         AcademicPeriodResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             /**
-             * Format: int64
-             * @description Exclusive end time in Unix milliseconds; must be after start_at.
+             * Format: date-time
+             * @description Exclusive end time; must be after start_at.
              */
-            end_at: number;
+            end_at: string;
             id: components["schemas"]["ID"];
             name: string;
             owner_id: components["schemas"]["ID"];
@@ -5336,35 +5336,35 @@ export interface components {
              */
             revision: number;
             /**
-             * Format: int64
-             * @description Inclusive start time in Unix milliseconds.
+             * Format: date-time
+             * @description Inclusive start time.
              */
-            start_at: number;
-            /** Format: int64 */
-            update_at: number;
+            start_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         AcademicUnitListResponse: components["schemas"]["AcademicUnitResponse"][];
         AcademicUnitMemberListResponse: components["schemas"]["AcademicUnitMemberResponse"][];
         AcademicUnitMemberResponse: {
             academic_unit_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            end_at?: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         AcademicUnitResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             id: components["schemas"]["ID"];
@@ -5376,8 +5376,8 @@ export interface components {
              * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
              */
             revision: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         AcceptScopedRoleInvitationRequest: {
             claim: string;
@@ -5408,8 +5408,8 @@ export interface components {
         /** @description Current revisioned Access Policy plus bounded safe capabilities and transition history. */
         AccessPolicyResponse: {
             available_providers: components["schemas"]["ExternalAuthenticationProviderResponse"][];
-            /** Format: int64 */
-            created_at: number;
+            /** Format: date-time */
+            created_at: string;
             desktop_authorization_enabled: boolean;
             /** @description Whether the deployment can durably deliver invitation and account-security mail. */
             durable_mail: boolean;
@@ -5428,8 +5428,8 @@ export interface components {
              * @description Monotonic policy revision used for optimistic concurrency.
              */
             revision: number;
-            /** Format: int64 */
-            updated_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         AccessPolicySettingsRequest: {
             /** @description Whether the native-client browser authorization protocol is admitted. */
@@ -5458,10 +5458,10 @@ export interface components {
         AccessPolicyTransitionResponse: {
             actor_user_id: components["schemas"]["ID"];
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the replacement committed.
+             * Format: date-time
+             * @description Time when the replacement committed.
              */
-            changed_at: number;
+            changed_at: string;
             changed_fields: ("local_login_enabled" | "public_registration_enabled" | "invitation_admission_enabled" | "invitation_local_credential_enabled" | "desktop_authorization_enabled" | "provider_admissions" | "revoke_existing_sessions")[];
             /** Format: int64 */
             from_revision: number;
@@ -5511,18 +5511,18 @@ export interface components {
         AffiliationKind: "student" | "teacher" | "staff" | "external";
         AffiliationListResponse: components["schemas"]["AffiliationResponse"][];
         AffiliationResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            end_at?: string;
             id: components["schemas"]["ID"];
             kind: components["schemas"]["AffiliationKind"];
-            /** Format: int64 */
-            start_at: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         /** @description Revision-fenced complete content correction for one open or paused Sitting. */
@@ -5600,10 +5600,10 @@ export interface components {
             authentication_method?: string;
             client_type?: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the audit Attempt was created.
+             * Format: date-time
+             * @description Time when the audit Attempt was created.
              */
-            create_at: number;
+            created_at: string;
             /** @description Stable safe failure category for an unsuccessful action; internal detail is omitted. */
             error_code?: string;
             id: components["schemas"]["ID"];
@@ -5625,10 +5625,10 @@ export interface components {
             /** @description Durable outcome state of the audited Attempt. */
             status: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the latest durable audit status change.
+             * Format: date-time
+             * @description Time of the latest durable audit status change.
              */
-            update_at: number;
+            updated_at: string;
             user_agent?: string;
         };
         /** @description One bounded page of authorized audit Events. */
@@ -5653,11 +5653,11 @@ export interface components {
             user?: components["schemas"]["UserProfileResponse"];
         };
         AuthenticationTokensResponse: {
-            /** Format: int64 */
-            access_expires_at: number;
+            /** Format: date-time */
+            access_expires_at: string;
             access_token: string;
-            /** Format: int64 */
-            refresh_expires_at: number;
+            /** Format: date-time */
+            refresh_expires_at: string;
             refresh_token: string;
             /** @enum {string} */
             token_type: "Bearer" | "DPoP";
@@ -5906,8 +5906,8 @@ export interface components {
             claim: string;
         };
         BrowserInvitationStartResponse: {
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             handle: string;
             /** @enum {string} */
             purpose: "student_class" | "teacher_academic_unit" | "academic_unit_role" | "institution_role";
@@ -6314,26 +6314,26 @@ export interface components {
         ClassMemberListResponse: components["schemas"]["ClassMemberResponse"][];
         ClassMemberResponse: {
             academic_period_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            archived_at?: string;
             class_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            end_at?: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            start_at: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         ClassResponse: {
             academic_period_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             id: components["schemas"]["ID"];
@@ -6344,8 +6344,8 @@ export interface components {
              * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
              */
             revision: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         CompleteExamRecordsRequest: {
             /** Format: int64 */
@@ -6386,39 +6386,16 @@ export interface components {
         CorrectionCapabilitySelection: components["schemas"]["CandidateCapability"][];
         /** @description Complete owner, presentation, and time window for a new Academic Period. */
         CreateAcademicPeriodRequest: {
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
             description?: string;
             display_name: string;
-            /** Format: int64 */
-            end_at: number;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
+            /** Format: date-time */
+            end_at: string;
             name: string;
             owner_id: components["schemas"]["ID"];
             /** @enum {string} */
             owner_type: "institution" | "academic_unit";
-            /** Format: int64 */
-            start_at: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
+            /** Format: date-time */
+            start_at: string;
         };
         CreateAcademicUnitMemberRequest: {
             /**
@@ -6427,60 +6404,20 @@ export interface components {
              */
             academic_unit_id?: string;
             /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
-            /**
-             * Format: int64
+             * Format: date-time
              * @deprecated
              * @description Accepted and ignored; memberships are ended through DELETE.
              */
-            end_at?: number;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
-            /** Format: int64 */
-            start_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
+            end_at?: string;
+            /** Format: date-time */
+            start_at?: string;
             user_id: components["schemas"]["ID"];
         };
         CreateAcademicUnitRequest: {
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
             /** @description An optional human-facing description. */
             description?: string;
             /** @description The human-facing Academic Unit name. */
             display_name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
             /**
              * @deprecated
              * @description Accepted and ignored for v1 compatibility.
@@ -6493,42 +6430,13 @@ export interface components {
              * @description Accepted and ignored; route scope is authoritative.
              */
             parent_id?: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
         };
         CreateAffiliationRequest: {
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
-            /** Format: int64 */
-            end_at?: number;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
+            /** Format: date-time */
+            end_at?: string;
             kind: components["schemas"]["AffiliationKind"];
-            /** Format: int64 */
-            start_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
+            /** Format: date-time */
+            start_at?: string;
             /**
              * @deprecated
              * @description Accepted and ignored; route scope is authoritative.
@@ -6544,37 +6452,14 @@ export interface components {
         /** @description Academic Period and presentation for a concrete student roster. */
         CreateClassRequest: {
             academic_period_id: components["schemas"]["ID"];
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
             description?: string;
             display_name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
             name: string;
             /**
              * @deprecated
              * @description Accepted and ignored; route scope is authoritative.
              */
             programme_level_id?: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
         };
         CreateExamExportRequest: {
             /** @description Work and/or integrity, or Browser Activity alone. Browser Activity requires exact current Exam Manager membership and the dedicated history permission; generic exports contain no ordinary browsing URLs. */
@@ -6596,43 +6481,20 @@ export interface components {
         CreatePersonalAccessTokenRequest: {
             academic_unit_id?: components["schemas"]["ID"];
             description: string;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             scopes: string[];
         };
         /** @description Canonical and human-facing fields for a new Programme Level. */
         CreateProgrammeLevelRequest: {
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
             description?: string;
             display_name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
             name: string;
             /**
              * @deprecated
              * @description Accepted and ignored; route scope is authoritative.
              */
             programme_id?: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
         };
         /** @description Canonical and human-facing fields for a new Programme. */
         CreateProgrammeRequest: {
@@ -6641,32 +6503,9 @@ export interface components {
              * @description Accepted and ignored; route scope is authoritative.
              */
             academic_unit_id?: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
             description?: string;
             display_name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
             name: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
         };
         /** @description Omit both nested IDs for an Exam hold, provide Sitting ID for a Sitting hold, or provide both for an exact Submission hold. Explicit null and empty IDs are rejected. */
         CreateRetentionHoldRequest: {
@@ -6683,19 +6522,19 @@ export interface components {
         /** @description Exact effective-dated permission grant to create. */
         CreateRoleBindingRequest: {
             /**
-             * Format: int64
-             * @description Optional Unix time in milliseconds when the grant stops being effective.
+             * Format: date-time
+             * @description Optional time when the grant stops being effective.
              */
-            end_at?: number;
+            end_at?: string;
             role_id: components["schemas"]["ID"];
             scope_id: components["schemas"]["ID"];
             /** @description Stable scope kind supported by the selected Role permissions. */
             scope_type: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the grant becomes effective.
+             * Format: date-time
+             * @description Time when the grant becomes effective.
              */
-            start_at?: number;
+            start_at?: string;
             user_id: components["schemas"]["ID"];
         };
         /** @description Canonical identity, presentation, and complete permission set for a new custom Role. */
@@ -6863,8 +6702,8 @@ export interface components {
             username: string;
         };
         DesktopAuthorizationApprovalResponse: {
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             /** Format: uri */
             redirect_url: string;
         };
@@ -6878,8 +6717,8 @@ export interface components {
         DesktopAuthorizationContextResponse: {
             account?: components["schemas"]["DesktopAuthorizationAccountResponse"];
             device_name: string;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             external_providers: components["schemas"]["ExternalAuthenticationProviderResponse"][];
             local_login_enabled: boolean;
             /** @enum {string} */
@@ -6931,8 +6770,8 @@ export interface components {
         DesktopAuthorizationStartResponse: {
             /** Format: uri */
             authorization_url: string;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
         };
         DesktopAuthorizationStateRequest: {
             state: string;
@@ -6957,7 +6796,11 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             minimum_desktop_release: string;
-            retry_at: string | null;
+            /**
+             * Format: date-time
+             * @description Present only while availability is maintenance and a retry time is set.
+             */
+            retry_at?: string;
             /** Format: int64 */
             revision: number;
             revoked_desktop_build_ids: string[];
@@ -6976,15 +6819,15 @@ export interface components {
         DesktopRegistrationResponse: {
             /** @enum {string} */
             architecture: "arm64" | "x64";
-            /** Format: int64 */
-            created_at: number;
+            /** Format: date-time */
+            created_at: string;
             current: boolean;
             desktop_build_id: string;
             desktop_release: string;
             display_name: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            last_used_at: number;
+            /** Format: date-time */
+            last_used_at: string;
             /** @enum {string} */
             platform: "darwin" | "win32" | "linux";
             realtime_protocol: number;
@@ -7118,33 +6961,10 @@ export interface components {
              * @description Accepted and ignored; route scope is authoritative.
              */
             class_id?: string;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            create_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            delete_at?: number;
-            /** Format: int64 */
-            end_at?: number;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            id?: string;
-            /** Format: int64 */
-            start_at?: number;
-            /**
-             * Format: int64
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            update_at?: number;
+            /** Format: date-time */
+            end_at?: string;
+            /** Format: date-time */
+            start_at?: string;
             user_id: components["schemas"]["ID"];
         };
         EnrollPasswordRequest: {
@@ -7320,7 +7140,7 @@ export interface components {
         ExamIdentityResponse: {
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
-            archived_at: string | null;
+            archived_at?: string;
             /** Format: date-time */
             created_at: string;
             creator_user_id: components["schemas"]["ID"];
@@ -8000,7 +7820,7 @@ export interface components {
             academic_unit_display_name: string;
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
-            archived_at: string | null;
+            archived_at?: string;
             creator_user_id: components["schemas"]["ID"];
             id: components["schemas"]["ID"];
             manager_count: number;
@@ -8122,10 +7942,10 @@ export interface components {
         InstallationStateResponse: {
             administrator_user_id: components["schemas"]["ID"];
             /**
-             * Format: int64
-             * @description Unix time in milliseconds at which bootstrap committed.
+             * Format: date-time
+             * @description Time at which bootstrap committed.
              */
-            initialized_at: number;
+            initialized_at: string;
             institution_id: components["schemas"]["ID"];
         };
         /** @description Safe public bootstrap state for one installation. */
@@ -8134,17 +7954,17 @@ export interface components {
             initialized: boolean;
         };
         InstitutionResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             exam_capacity: components["schemas"]["ExamCapacityPolicy"];
             id: components["schemas"]["ID"];
             name: string;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         InvitationAcceptanceResponse: {
             academic_unit_member_id?: components["schemas"]["ID"];
@@ -8164,15 +7984,15 @@ export interface components {
             academic_unit_id?: components["schemas"]["ID"];
             accepted_user_id?: components["schemas"]["ID"];
             class_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            created_at: number;
+            /** Format: date-time */
+            created_at: string;
             delivery?: components["schemas"]["InvitationDeliveryResponse"];
             /** Format: email */
             email: string;
-            /** Format: int64 */
-            end_at?: number;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            end_at?: string;
+            /** Format: date-time */
+            expires_at: string;
             id: components["schemas"]["ID"];
             inviter_user_id: components["schemas"]["ID"];
             /** @enum {string} */
@@ -8181,25 +8001,25 @@ export interface components {
             revision: number;
             role_actions?: string[];
             role_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at: number;
+            /** Format: date-time */
+            start_at: string;
             /** @enum {string} */
             state: "pending" | "accepted" | "revoked" | "expired" | "superseded";
-            /** Format: int64 */
-            updated_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         InvitationBatchItemRequest: {
             /** Format: email */
             email?: string;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            end_at?: string;
             /** Format: int64 */
             expected_revision?: number;
             invitation_id?: components["schemas"]["ID"];
             key: string;
             role_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            start_at?: string;
             suggested_display_name?: string;
             suggested_first_name?: string;
             suggested_last_name?: string;
@@ -8232,19 +8052,19 @@ export interface components {
             succeeded: number;
         };
         InvitationDeliveryResponse: {
-            /** Format: int64 */
-            accepted_at?: number;
-            /** Format: int64 */
-            created_at: number;
-            /** Format: int64 */
-            deadline: number;
+            /** Format: date-time */
+            accepted_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            deadline: string;
             masked_recipient: string;
             public_failure_code?: string;
             /** @enum {string} */
             state: "queued" | "sending" | "accepted" | "failed" | "suppressed" | "canceled";
             template_key: string;
-            /** Format: int64 */
-            updated_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         InvitationMutationRequest: {
             /** Format: int64 */
@@ -8254,36 +8074,36 @@ export interface components {
             academic_period_id?: components["schemas"]["ID"];
             academic_unit_id?: components["schemas"]["ID"];
             class_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            end_at?: number;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            end_at?: string;
+            /** Format: date-time */
+            expires_at: string;
             id: components["schemas"]["ID"];
             /** @enum {string} */
             purpose: "student_class" | "teacher_academic_unit" | "academic_unit_role" | "institution_role";
             role_actions?: string[];
             role_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at: number;
+            /** Format: date-time */
+            start_at: string;
             /** @enum {string} */
             state: "pending" | "accepted" | "revoked" | "expired" | "superseded";
         };
         IssueScopedRoleInvitationRequest: {
             /** Format: email */
             email: string;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            end_at?: string;
             role_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            start_at?: string;
         };
         IssueStudentClassInvitationRequest: {
             /** Format: email */
             email: string;
-            /** Format: int64 */
-            end_at?: number;
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            end_at?: string;
+            /** Format: date-time */
+            start_at?: string;
             suggested_display_name?: string;
             suggested_first_name?: string;
             suggested_last_name?: string;
@@ -8294,11 +8114,11 @@ export interface components {
         IssueTeacherAcademicUnitInvitationRequest: {
             /** Format: email */
             email: string;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            end_at?: string;
             role_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            start_at?: string;
             suggested_display_name?: string;
             suggested_first_name?: string;
             suggested_last_name?: string;
@@ -8315,30 +8135,30 @@ export interface components {
         /** @description Safe execution history for one Job Attempt. */
         JobAttemptResponse: {
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the Attempt reached a terminal state, when complete.
+             * Format: date-time
+             * @description Time when the Attempt reached a terminal state, when complete.
              */
-            complete_at?: number;
+            completed_at?: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the last retained worker heartbeat.
+             * Format: date-time
+             * @description Time of the last retained worker heartbeat.
              */
-            heartbeat_at: number;
+            heartbeat_at: string;
             id: components["schemas"]["ID"];
             /**
-             * Format: int64
-             * @description Unix time in milliseconds at which this execution lease expires.
+             * Format: date-time
+             * @description Time at which this execution lease expires.
              */
-            lease_expires_at: number;
+            lease_expires_at: string;
             /** @description Monotonic attempt number within the parent Job. */
             number: number;
             /** @description Stable safe failure category for a failed terminal Attempt; internal error detail is never returned. */
             public_error_code?: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when execution started.
+             * Format: date-time
+             * @description Time when execution started.
              */
-            start_at: number;
+            started_at: string;
             status: components["schemas"]["JobAttemptStatus"];
         };
         /**
@@ -8372,20 +8192,20 @@ export interface components {
             /** @description Number of durable execution Attempts created so far. */
             attempt_count: number;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds at or after which queued work may be claimed.
+             * Format: date-time
+             * @description Time at or after which queued work may be claimed.
              */
-            available_at: number;
+            available_at: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the Job reached a terminal state.
+             * Format: date-time
+             * @description Time when the Job reached a terminal state.
              */
-            complete_at?: number;
+            completed_at?: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the Job was created.
+             * Format: date-time
+             * @description Time when the Job was created.
              */
-            create_at: number;
+            created_at: string;
             id: components["schemas"]["ID"];
             /** @description Maximum execution Attempts allowed by this Job's retry policy. */
             maximum_attempts: number;
@@ -8398,18 +8218,18 @@ export interface components {
              */
             revision: number;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the current or latest Attempt started.
+             * Format: date-time
+             * @description Time when the current or latest Attempt started.
              */
-            start_at?: number;
+            started_at?: string;
             status: components["schemas"]["JobStatus"];
             /** @description Stable allowlisted Job type. */
             type: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the latest durable Job change.
+             * Format: date-time
+             * @description Time of the latest durable Job change.
              */
-            update_at: number;
+            updated_at: string;
         };
         /** @enum {string} */
         JobStatus: "queued" | "running" | "cancel_requested" | "succeeded" | "failed" | "canceled";
@@ -8440,8 +8260,8 @@ export interface components {
             recovery_codes: string[];
         };
         MFASetupResponse: {
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             /** Format: uri */
             provisioning_uri: string;
             secret: string;
@@ -8457,8 +8277,8 @@ export interface components {
             /** @description Whether this Session is restricted to fresh primary proof and local authenticator enrollment after an assisted reset. */
             mfa_recovery_required: boolean;
             pending: boolean;
-            /** Format: int64 */
-            pending_expires_at?: number;
+            /** Format: date-time */
+            pending_expires_at?: string;
             recently_authenticated: boolean;
             recovery_codes_remaining: number;
             /** @description Whether local authenticator enrollment and verification are currently available. */
@@ -8501,34 +8321,34 @@ export interface components {
         /** @description Safe durable mail delivery metadata with the recipient masked and content omitted. */
         MailDeliveryResponse: {
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when SMTP accepted the message.
+             * Format: date-time
+             * @description Time when SMTP accepted the message.
              */
-            accepted_at?: number;
+            accepted_at?: string;
             attempt_count: number;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the delivery was created.
+             * Format: date-time
+             * @description Time when the delivery was created.
              */
-            created_at: number;
+            created_at: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds after which the message is no longer relevant for delivery.
+             * Format: date-time
+             * @description Time after which the message is no longer relevant for delivery.
              */
-            deadline: number;
+            deadline: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the delivery became terminally failed.
+             * Format: date-time
+             * @description Time when the delivery became terminally failed.
              */
-            failed_at?: number;
+            failed_at?: string;
             id: components["schemas"]["ID"];
             /** @description Redacted recipient address suitable for bounded administrative display. */
             masked_recipient: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds represented by the message Date header.
+             * Format: date-time
+             * @description Time represented by the message Date header.
              */
-            message_date: number;
+            message_date: string;
             /** @description Safe retained Message-ID for delivery correlation, not a credential. */
             message_id: string;
             occurrence_id: components["schemas"]["ID"];
@@ -8541,10 +8361,10 @@ export interface components {
             /** @enum {string} */
             template_key: "system.mail_test";
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the latest durable state change.
+             * Format: date-time
+             * @description Time of the latest durable state change.
              */
-            updated_at: number;
+            updated_at: string;
         };
         /**
          * @description Durable lifecycle state of one mail delivery occurrence.
@@ -8639,10 +8459,10 @@ export interface components {
         /** @description Durable identities created when the rotation Job is accepted. */
         MailRekeyResponse: {
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the rekey Job was created.
+             * Format: date-time
+             * @description Time when the rekey Job was created.
              */
-            created_at: number;
+            created_at: string;
             job_id: components["schemas"]["ID"];
             primary_key_id: string;
             retiring_key_id: string;
@@ -8650,10 +8470,10 @@ export interface components {
         /** @description Safe Job status, progress, and optional final key-retirement proof. */
         MailRekeyStatusResponse: {
             attempt_count: number;
-            /** Format: int64 */
-            completed_at?: number;
-            /** Format: int64 */
-            created_at: number;
+            /** Format: date-time */
+            completed_at?: string;
+            /** Format: date-time */
+            created_at: string;
             job_id: components["schemas"]["ID"];
             maximum_attempts: number;
             primary_key_id: string;
@@ -8666,8 +8486,8 @@ export interface components {
             reencrypted: number;
             retiring_key_id: string;
             status: components["schemas"]["JobStatus"];
-            /** Format: int64 */
-            updated_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         MoveCandidateWorkspaceEntryRequest: {
             destination_path: components["schemas"]["StarterWorkspacePath"];
@@ -9045,23 +8865,23 @@ export interface components {
         PersonalAccessTokenListResponse: components["schemas"]["PersonalAccessTokenResponse"][];
         PersonalAccessTokenResponse: {
             academic_unit_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
-            /** Format: int64 */
-            disabled_at?: number;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            disabled_at?: string;
+            /** Format: date-time */
+            expires_at: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            last_used_at?: number;
-            /** Format: int64 */
-            revoked_at?: number;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** Format: date-time */
+            revoked_at?: string;
             scopes: string[];
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         PrepareSecurityPreflightRequest: {
@@ -9107,10 +8927,10 @@ export interface components {
         };
         ProgrammeLevelListResponse: components["schemas"]["ProgrammeLevelResponse"][];
         ProgrammeLevelResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             id: components["schemas"]["ID"];
@@ -9121,16 +8941,16 @@ export interface components {
              * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
              */
             revision: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         ProgrammeListResponse: components["schemas"]["ProgrammeResponse"][];
         ProgrammeResponse: {
             academic_unit_id: components["schemas"]["ID"];
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             description: string;
             display_name: string;
             id: components["schemas"]["ID"];
@@ -9140,8 +8960,8 @@ export interface components {
              * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
              */
             revision: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         /**
          * @description Admission rule applied after a configured provider proves an external identity.
@@ -9149,8 +8969,8 @@ export interface components {
          */
         ProviderAdmissionMode: "linked_only" | "invitation_required" | "auto_provision";
         ProviderConnectionResponse: {
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             /** Format: uri */
             redirect_url: string;
         };
@@ -9280,16 +9100,16 @@ export interface components {
             class_id?: components["schemas"]["ID"];
             /** Format: email */
             email: string;
-            /** Format: int64 */
-            end_at?: number;
+            /** Format: date-time */
+            end_at?: string;
             /** Format: int64 */
             expected_revision: number;
             institution_id?: components["schemas"]["ID"];
             /** @enum {string} */
             purpose: "student_class" | "teacher_academic_unit" | "academic_unit_role" | "institution_role";
             role_id?: components["schemas"]["ID"];
-            /** Format: int64 */
-            start_at?: number;
+            /** Format: date-time */
+            start_at?: string;
             suggested_display_name?: string;
             suggested_first_name?: string;
             suggested_last_name?: string;
@@ -9569,45 +9389,45 @@ export interface components {
         RoleBindingListResponse: components["schemas"]["RoleBindingResponse"][];
         /** @description Effective-dated grant of one Role to one User in one exact scope. */
         RoleBindingResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the grant stops being effective, when bounded.
+             * Format: date-time
+             * @description Time when the grant stops being effective, when bounded.
              */
-            end_at?: number;
+            end_at?: string;
             id: components["schemas"]["ID"];
             role_id: components["schemas"]["ID"];
             scope_id: components["schemas"]["ID"];
             /** @description Stable authorization scope kind for the grant. */
             scope_type: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the grant becomes effective.
+             * Format: date-time
+             * @description Time when the grant becomes effective.
              */
-            start_at: number;
-            /** Format: int64 */
-            update_at: number;
+            start_at: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         /** @description Roles visible to the authorized caller. */
         RoleListResponse: components["schemas"]["RoleResponse"][];
         /** @description Reusable Role definition; effective access still requires a scoped Role Binding. */
         RoleResponse: {
+            /**
+             * Format: date-time
+             * @description Time when the Role was archived; omitted while active.
+             */
+            archived_at?: string;
             /** @description True when installation invariants protect the Role from ordinary update or deletion. */
             built_in: boolean;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds when the Role was created.
+             * Format: date-time
+             * @description Time when the Role was created.
              */
-            create_at: number;
-            /**
-             * Format: int64
-             * @description Unix time in milliseconds when deleted, or zero while active.
-             */
-            delete_at: number;
+            created_at: string;
             /** @description Human-facing explanation of the Role's intended responsibility. */
             description: string;
             /** @description Human-facing Role name. */
@@ -9618,10 +9438,10 @@ export interface components {
             /** @description Duplicate-free set of stable permission actions granted by the Role. */
             permissions: string[];
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the latest Role change.
+             * Format: date-time
+             * @description Time of the latest Role change.
              */
-            update_at: number;
+            updated_at: string;
         };
         SHA256: string;
         /** @description Conditional create or replacement of the current decision for one integrity Flag. */
@@ -9738,15 +9558,15 @@ export interface components {
         };
         SessionAdministrationListResponse: components["schemas"]["SessionAdministrationResponse"][];
         SessionAdministrationResponse: {
-            /** Format: int64 */
-            authenticated_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            authenticated_at: string;
             authentication_method: string;
             authentication_strength: string;
             client_type: string;
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            created_at: string;
             /** @enum {string} */
             desktop_architecture?: "arm64" | "x64";
             desktop_build_id?: string;
@@ -9757,44 +9577,44 @@ export interface components {
             desktop_release?: string;
             device_id?: string;
             device_name?: string;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            idle_expires_at: number;
-            /** Format: int64 */
-            last_activity_at: number;
-            /** Format: int64 */
-            mfa_completed_at?: number;
+            /** Format: date-time */
+            idle_expires_at: string;
+            /** Format: date-time */
+            last_activity_at: string;
+            /** Format: date-time */
+            mfa_completed_at?: string;
             /** @description Whether this Session is restricted to MFA reenrollment after an assisted reset. */
             mfa_recovery_required: boolean;
             /**
-             * Format: int64
+             * Format: date-time
              * @description Most recent fresh primary proof for the original Session method, independent of initial authentication and MFA history.
              */
-            reauthenticated_at?: number;
+            reauthenticated_at?: string;
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
             revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
-            /** Format: int64 */
-            revoked_at?: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            revoked_at?: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         SessionListResponse: components["schemas"]["SessionResponse"][];
         SessionResponse: {
-            /** Format: int64 */
-            authenticated_at: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            authenticated_at: string;
             authentication_method: string;
             authentication_strength: string;
             /** @enum {string} */
             client_type: "desktop" | "cli" | "web";
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
+            /** Format: date-time */
+            created_at: string;
             /** @enum {string} */
             desktop_architecture?: "arm64" | "x64";
             desktop_build_id?: string;
@@ -9805,30 +9625,30 @@ export interface components {
             desktop_release?: string;
             device_id?: string;
             device_name?: string;
-            /** Format: int64 */
-            expires_at: number;
+            /** Format: date-time */
+            expires_at: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            idle_expires_at: number;
-            /** Format: int64 */
-            last_activity_at: number;
-            /** Format: int64 */
-            mfa_completed_at?: number;
+            /** Format: date-time */
+            idle_expires_at: string;
+            /** Format: date-time */
+            last_activity_at: string;
+            /** Format: date-time */
+            mfa_completed_at?: string;
             /** @description Ordinary access remains unavailable until a new local authenticator is activated. */
             mfa_recovery_required: boolean;
             /**
-             * Format: int64
+             * Format: date-time
              * @description Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.
              */
-            reauthenticated_at?: number;
+            reauthenticated_at?: string;
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
             revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
-            /** Format: int64 */
-            revoked_at?: number;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            revoked_at?: string;
+            /** Format: date-time */
+            updated_at: string;
             user_id: components["schemas"]["ID"];
         };
         SittingCandidateAttemptResponse: {
@@ -9850,9 +9670,9 @@ export interface components {
         };
         SittingCandidatePresenceResponse: {
             /** Format: date-time */
-            last_lease_renewed_at: string | null;
+            last_lease_renewed_at?: string;
             /** Format: date-time */
-            lease_expires_at: string | null;
+            lease_expires_at?: string;
             state: components["schemas"]["SittingCandidatePresenceState"];
         };
         /** @enum {string} */
@@ -10046,10 +9866,10 @@ export interface components {
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             display_name?: string | null;
             /**
-             * Format: int64
+             * Format: date-time
              * @description Omitted or null leaves the exclusive end unchanged.
              */
-            end_at?: number | null;
+            end_at?: string | null;
             /**
              * Format: int64
              * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
@@ -10058,10 +9878,10 @@ export interface components {
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
             /**
-             * Format: int64
+             * Format: date-time
              * @description Omitted or null leaves the inclusive start unchanged.
              */
-            start_at?: number | null;
+            start_at?: string | null;
         };
         /** @description Mutable Academic Unit fields, including an optional hierarchy move. */
         UpdateAcademicUnitRequest: {
@@ -10203,30 +10023,30 @@ export interface components {
         UserProfileListResponse: components["schemas"]["UserProfileResponse"][];
         /** @description User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority. */
         UserProfileResponse: {
-            /** Format: int64 */
-            create_at: number;
-            /** Format: int64 */
-            delete_at: number;
-            /** Format: int64 */
-            disabled_at?: number;
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            disabled_at?: string;
             display_name: string;
             /** Format: email */
             email?: string;
             email_verified?: boolean;
             first_name: string;
             id: components["schemas"]["ID"];
-            /** Format: int64 */
-            last_activity_at?: number;
-            /** Format: int64 */
-            last_login_at?: number;
+            /** Format: date-time */
+            last_activity_at?: string;
+            /** Format: date-time */
+            last_login_at?: string;
             last_name: string;
             locale?: string;
-            /** Format: int64 */
-            profile_picture_changed_at?: number;
+            /** Format: date-time */
+            profile_picture_changed_at?: string;
             profile_picture_url: string;
             timezone?: string;
-            /** Format: int64 */
-            update_at: number;
+            /** Format: date-time */
+            updated_at: string;
             username: string;
         };
         /** @description Complete conditional replacement for the current User Settings Document. */
@@ -10241,8 +10061,8 @@ export interface components {
             changed: boolean;
             format_version: number;
             revision: components["schemas"]["ID"];
-            /** Format: int64 */
-            updated_at: number;
+            /** Format: date-time */
+            updated_at: string;
         };
         /** @description Exact private User Settings Document with concurrency metadata. */
         UserSettingsResponse: {
@@ -10253,10 +10073,10 @@ export interface components {
             /** @description Exact validated JSON source, bounded to 256 KiB. */
             source: string;
             /**
-             * Format: int64
-             * @description Unix time in milliseconds of the latest durable replacement.
+             * Format: date-time
+             * @description Time of the latest durable replacement.
              */
-            updated_at: number;
+            updated_at: string;
             /** @description Whether this Session may currently replace the settings source. */
             writable: boolean;
         };
@@ -10406,7 +10226,7 @@ export interface components {
                 /**
                  * @example {
                  *       "available_providers": [],
-                 *       "created_at": 1798761600000,
+                 *       "created_at": "2027-01-01T00:00:00Z",
                  *       "desktop_authorization_enabled": true,
                  *       "durable_mail": true,
                  *       "history": [],
@@ -10417,7 +10237,7 @@ export interface components {
                  *       "provider_admissions": {},
                  *       "public_registration_enabled": false,
                  *       "revision": 4,
-                 *       "updated_at": 1798765200000
+                 *       "updated_at": "2027-01-01T01:00:00Z"
                  *     }
                  */
                 "application/json": components["schemas"]["AccessPolicyResponse"];
@@ -13118,17 +12938,17 @@ export interface components {
                 "application/json": components["schemas"]["ConfigureExamDraftNativePolicyRequest"];
             };
         };
-        /** @description Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period. */
+        /** @description Exact owner, canonical presentation, and RFC 3339 bounds for a new Academic Period. */
         CreateAcademicPeriod: {
             content: {
                 /**
                  * @example {
                  *       "display_name": "2026–2027",
-                 *       "end_at": 1817078399000,
+                 *       "end_at": "2027-07-31T23:59:59Z",
                  *       "name": "2026-2027",
                  *       "owner_id": "ybndrfg8ejkmcpqxot1uwisza3",
                  *       "owner_type": "institution",
-                 *       "start_at": 1785542400000
+                 *       "start_at": "2026-08-01T00:00:00Z"
                  *     }
                  */
                 "application/json": components["schemas"]["CreateAcademicPeriodRequest"];
@@ -13152,7 +12972,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "start_at": 1785542400000,
+                 *       "start_at": "2026-08-01T00:00:00Z",
                  *       "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -13165,7 +12985,7 @@ export interface components {
                 /**
                  * @example {
                  *       "kind": "teacher",
-                 *       "start_at": 1785542400000
+                 *       "start_at": "2026-08-01T00:00:00Z"
                  *     }
                  */
                 "application/json": components["schemas"]["CreateAffiliationRequest"];
@@ -13244,7 +13064,7 @@ export interface components {
                  * @example {
                  *       "academic_unit_id": "ybndrfg8ejkmcpqxot1uwisza3",
                  *       "description": "Read examination schedules from the registrar tool",
-                 *       "expires_at": 1798761600000,
+                 *       "expires_at": "2027-01-01T00:00:00Z",
                  *       "scopes": [
                  *         "examinations:read"
                  *       ]
@@ -13326,7 +13146,7 @@ export interface components {
                  *       "role_id": "ybndrfg8ejkmcpqxot1uwisza4",
                  *       "scope_id": "ybndrfg8ejkmcpqxot1uwisza5",
                  *       "scope_type": "academic_unit",
-                 *       "start_at": 1785542400000,
+                 *       "start_at": "2026-08-01T00:00:00Z",
                  *       "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -13511,7 +13331,7 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "start_at": 1785542400000,
+                 *       "start_at": "2026-08-01T00:00:00Z",
                  *       "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
                  *     }
                  */
@@ -14109,7 +13929,7 @@ export interface components {
                 /**
                  * @example {
                  *       "display_name": "Academic Year 2026–2027",
-                 *       "end_at": 1819756799000
+                 *       "end_at": "2027-08-31T23:59:59Z"
                  *     }
                  */
                 "application/json": components["schemas"]["UpdateAcademicPeriodRequest"];
@@ -14614,7 +14434,7 @@ export interface operations {
                  * @example {
                  *       "email": "reviewer.one@example.edu",
                  *       "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                 *       "start_at": 1785542400000
+                 *       "start_at": "2026-08-01T00:00:00Z"
                  *     }
                  */
                 "application/json": components["schemas"]["IssueScopedRoleInvitationRequest"];
@@ -14656,7 +14476,7 @@ export interface operations {
                  * @example {
                  *       "email": "teacher.one@example.edu",
                  *       "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                 *       "start_at": 1785542400000,
+                 *       "start_at": "2026-08-01T00:00:00Z",
                  *       "suggested_display_name": "Teacher One",
                  *       "suggested_username": "teacher-one"
                  *     }
@@ -14690,8 +14510,8 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
                 cursor?: string;
-                /** @description Unix time in milliseconds at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
-                active_at?: number;
+                /** @description RFC 3339 instant at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
+                active_at?: string;
                 /** @description When true, return membership history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
             };
@@ -15655,8 +15475,8 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
                 cursor?: string;
-                /** @description Unix time in milliseconds at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
-                active_at?: number;
+                /** @description RFC 3339 instant at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
+                active_at?: string;
                 /** @description When true, return enrollment history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
             };
@@ -18468,7 +18288,7 @@ export interface operations {
                  * @example {
                  *       "email": "administrator.one@example.edu",
                  *       "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
-                 *       "start_at": 1785542400000
+                 *       "start_at": "2026-08-01T00:00:00Z"
                  *     }
                  */
                 "application/json": components["schemas"]["IssueScopedRoleInvitationRequest"];
@@ -18525,10 +18345,10 @@ export interface operations {
                 email?: string;
                 /** @description Match the exact Class, Academic Unit, or Institution targeted by the Invitation. */
                 target_id?: components["schemas"]["ID"];
-                /** @description Return Invitations created at or after this Unix timestamp in milliseconds. */
-                created_after?: number;
-                /** @description Return Invitations created before this Unix timestamp in milliseconds. */
-                created_before?: number;
+                /** @description Return Invitations created at or after this RFC 3339 instant. */
+                created_after?: string;
+                /** @description Return Invitations created before this RFC 3339 instant. */
+                created_before?: string;
                 /** @description Continue from the opaque cursor returned by the preceding page. */
                 cursor?: string;
                 /** @description Maximum number of Invitations to return in this page. */
@@ -18908,10 +18728,10 @@ export interface operations {
                 state?: components["schemas"]["MailDeliveryState"][];
                 /** @description Optional set of public allowlisted template keys to include. */
                 template_key?: "system.mail_test"[];
-                /** @description Include deliveries created at or after this Unix-millisecond timestamp. */
-                created_after?: number;
-                /** @description Include deliveries created before this Unix-millisecond timestamp. */
-                created_before?: number;
+                /** @description Include deliveries created at or after this RFC 3339 instant. */
+                created_after?: string;
+                /** @description Include deliveries created before this RFC 3339 instant. */
+                created_before?: string;
             };
             header?: never;
             path?: never;

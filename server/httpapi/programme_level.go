@@ -17,9 +17,9 @@ import (
 type programmeLevelResponse struct {
 	Revision    int64  `json:"revision"`
 	ID          string `json:"id"`
-	CreateAt    int64  `json:"create_at"`
-	UpdateAt    int64  `json:"update_at"`
-	DeleteAt    int64  `json:"delete_at"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	ArchivedAt  string `json:"archived_at,omitempty"`
 	ProgrammeID string `json:"programme_id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
@@ -27,10 +27,6 @@ type programmeLevelResponse struct {
 }
 
 type createProgrammeLevelRequest struct {
-	ID          string `json:"id"`
-	CreateAt    int64  `json:"create_at"`
-	UpdateAt    int64  `json:"update_at"`
-	DeleteAt    int64  `json:"delete_at"`
 	ProgrammeID string `json:"programme_id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
@@ -207,9 +203,9 @@ func programmeLevelResponseFromModel(level *model.ProgrammeLevel) programmeLevel
 	}
 	return programmeLevelResponse{
 		Revision: level.Revision, ID: level.ID.String(),
-		CreateAt:    model.MillisFromTime(level.CreatedAt),
-		UpdateAt:    model.MillisFromTime(level.UpdatedAt),
-		DeleteAt:    level.ArchivedAt.Millis(),
+		CreatedAt:   model.FormatRFC3339(level.CreatedAt),
+		UpdatedAt:   model.FormatRFC3339(level.UpdatedAt),
+		ArchivedAt:  level.ArchivedAt.FormatRFC3339(),
 		ProgrammeID: level.ProgrammeID.String(),
 		Name:        level.Name,
 		DisplayName: level.DisplayName,

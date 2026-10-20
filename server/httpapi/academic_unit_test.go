@@ -131,7 +131,7 @@ func TestAcademicUnitResponsePreservesExistingWireShape(t *testing.T) {
 		Name:          "computing", DisplayName: "Computing", Description: "School",
 	}
 	want, err := json.Marshal(academicUnitResponse{
-		ID: unitID, CreateAt: 10, UpdateAt: 20, DeleteAt: 0,
+		ID: unitID, CreatedAt: "1970-01-01T00:00:00.01Z", UpdatedAt: "1970-01-01T00:00:00.02Z",
 		InstitutionID: institutionID, ParentID: parentID,
 		Name: "computing", DisplayName: "Computing", Description: "School",
 	})
@@ -295,10 +295,6 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			request := httptest.NewRequest(
 				http.MethodPost, tt.path,
 				strings.NewReader(`{
-					"id":"client-owned-id",
-					"create_at":1,
-					"update_at":2,
-					"delete_at":3,
 					"institution_id":"client-institution",
 					"parent_id":"client-parent",
 					"name":"computing",

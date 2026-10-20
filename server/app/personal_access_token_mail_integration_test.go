@@ -49,7 +49,7 @@ func TestPersonalAccessTokenSecurityNoticeIntegration(t *testing.T) {
 	create := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/users/me/tokens", map[string]any{
 		"description": description,
 		"scopes":      []string{string(model.ActionClassView)},
-		"expires_at":  time.Now().Add(24 * time.Hour).UnixMilli(),
+		"expires_at":  model.FormatRFC3339(time.Now().Add(24 * time.Hour)),
 	}, login.Tokens.AccessToken)
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create PAT = %d: %s logs=%s", create.Code, create.Body.String(), helper.Logs.String())

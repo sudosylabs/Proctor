@@ -75,7 +75,7 @@ func TestRoleResponsePreservesExistingWireShape(t *testing.T) {
 		Permissions: []string{string(model.ActionClassView)}, BuiltIn: false,
 	}
 	want, err := json.Marshal(roleResponse{
-		ID: role.ID.String(), CreateAt: 10, UpdateAt: 20, DeleteAt: 0,
+		ID: role.ID.String(), CreatedAt: "1970-01-01T00:00:00.01Z", UpdatedAt: "1970-01-01T00:00:00.02Z",
 		Name: "teacher", DisplayName: "Teacher", Description: "desc",
 		Permissions: []string{string(model.ActionClassView)}, BuiltIn: false,
 	})

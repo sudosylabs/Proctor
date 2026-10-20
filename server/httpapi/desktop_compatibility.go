@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -58,7 +57,7 @@ type desktopCompatibilityPolicyResponse struct {
 	RevokedDesktopBuildIDs []string `json:"revoked_desktop_build_ids"`
 	AdministratorMessage   string   `json:"administrator_message"`
 	Availability           string   `json:"availability"`
-	RetryAt                *string  `json:"retry_at"`
+	RetryAt                *string  `json:"retry_at,omitempty"`
 	CreatedAt              string   `json:"created_at"`
 	UpdatedAt              string   `json:"updated_at"`
 }
@@ -178,7 +177,7 @@ func requiredDesktopCompatibilityPolicySettings(
 	}
 	var retryAt model.OptionalTime
 	if value := body.RetryAt.ValuePointer(); value != nil {
-		parsed, parseErr := time.Parse(time.RFC3339Nano, *value)
+		parsed, parseErr := model.ParseRFC3339(*value)
 		if parseErr != nil {
 			return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 				"request.invalid",
@@ -212,10 +211,10 @@ func desktopCompatibilityPolicyResponseFromModel(
 	response.AdministratorMessage = policy.AdministratorMessage
 	response.Availability = string(policy.Availability)
 	if policy.RetryAt.Valid {
-		value := policy.RetryAt.Time.UTC().Format(time.RFC3339Nano)
+		value := model.FormatRFC3339(policy.RetryAt.Time)
 		response.RetryAt = &value
 	}
-	response.CreatedAt = model.TimeUTC(policy.CreatedAt).Format(time.RFC3339Nano)
-	response.UpdatedAt = model.TimeUTC(policy.UpdatedAt).Format(time.RFC3339Nano)
+	response.CreatedAt = model.FormatRFC3339(policy.CreatedAt)
+	response.UpdatedAt = model.FormatRFC3339(policy.UpdatedAt)
 	return response
 }

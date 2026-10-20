@@ -42,7 +42,7 @@ describe("requestDesktopAuthorizationContext", () => {
             display_name: "Student One",
           },
           device_name: "Exam laptop",
-          expires_at: 1000,
+          expires_at: "1970-01-01T00:00:01Z",
           local_login_enabled: false,
           external_providers: [],
         },
@@ -62,7 +62,7 @@ describe("requestDesktopAuthorizationContext", () => {
           display_name: "Student One",
         },
         deviceName: "Exam laptop",
-        expiresAt: 1000,
+        expiresAt: "1970-01-01T00:00:01Z",
         externalProviders: [],
         installation: "Example University",
         localLoginEnabled: false,
@@ -90,7 +90,7 @@ describe("requestDesktopAuthorizationContext", () => {
         data: {
           state: "bound",
           device_name: "",
-          expires_at: 1000,
+          expires_at: "1970-01-01T00:00:01Z",
           local_login_enabled: true,
           external_providers: [],
         },
@@ -111,15 +111,15 @@ describe("requestDesktopAuthorizationContext", () => {
     { external_providers: [{ id: "../campus", display_name: "Campus", type: "oidc" }] },
     { external_providers: [{ id: "campus", display_name: "Campus", type: "oidc" }, { id: "campus", display_name: "Campus", type: "oidc" }] },
     { external_providers: Array.from({ length: 65 }, (_, index) => ({ id: `campus-${index}`, display_name: "Campus", type: "oidc" })) },
-    { expires_at: Number.NaN },
-    { expires_at: Number.POSITIVE_INFINITY },
-    { expires_at: 1.5 },
+    { expires_at: 1000 },
+    { expires_at: "1970-01-01" },
+    { expires_at: "not-a-time" },
     { device_name: "x".repeat(129) },
     { account: { id: "unexpected", username: "student", display_name: "Student" } },
     { state: "authenticated", account: { id: "user", username: "", display_name: "Student" } },
   ])("rejects malformed context before presentation: %j", async (override) => {
     vi.spyOn(apiClient, "GET").mockResolvedValue(apiResult(200, { data: {
-      state: "bound", device_name: "Laptop", expires_at: 1000, local_login_enabled: true,
+      state: "bound", device_name: "Laptop", expires_at: "1970-01-01T00:00:01Z", local_login_enabled: true,
       external_providers: [], ...override,
     } }));
     await expect(requestDesktopAuthorizationContext("https://proctor.example", async () => ({ kind: "ready", discovery })))
@@ -128,7 +128,7 @@ describe("requestDesktopAuthorizationContext", () => {
 
   it("requires authentication success to carry an authenticated context", async () => {
     vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: {
-      state: "bound", device_name: "Laptop", expires_at: 1000, local_login_enabled: true, external_providers: [],
+      state: "bound", device_name: "Laptop", expires_at: "1970-01-01T00:00:01Z", local_login_enabled: true, external_providers: [],
     } }));
     await expect(authenticateDesktopAuthorizationLocally("Example University", { loginID: "student", password: "private" }))
       .resolves.toEqual({ kind: "unavailable" });
@@ -143,7 +143,7 @@ describe("Desktop approval navigation", () => {
 
   it.each(["127.0.0.1:55000", "[::1]:55000", "127.0.0.1:055000", "[::1]:055000"])("accepts the exact %s loopback protocol", async (host) => {
     const redirectURL = `http://${host}/${path}?${query}`;
-    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: 1000 } }));
+    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: "1970-01-01T00:00:01Z" } }));
     await expect(approveDesktopAuthorization("desktop-state")).resolves.toEqual({ kind: "approved", redirectURL });
   });
 
@@ -152,7 +152,7 @@ describe("Desktop approval navigation", () => {
     const suffix = `55000/${path}`;
     const callback = `${prefix}${"0".repeat(1024 - prefix.length - suffix.length)}${suffix}`;
     const redirectURL = `${callback}?${query}`;
-    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: 1000 } }));
+    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: "1970-01-01T00:00:01Z" } }));
     await expect(approveDesktopAuthorization("desktop-state")).resolves.toEqual({ kind: "approved", redirectURL });
   });
 
@@ -172,7 +172,7 @@ describe("Desktop approval navigation", () => {
     `http://127.0.0.1:55000/${path}?state=desktop-state`,
     "javascript:alert(1)",
   ])("rejects invalid navigation result %s", async (redirectURL) => {
-    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: 1000 } }));
+    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: { redirect_url: redirectURL, expires_at: "1970-01-01T00:00:01Z" } }));
     await expect(approveDesktopAuthorization("desktop-state")).resolves.toEqual({ kind: "unavailable" });
   });
 });

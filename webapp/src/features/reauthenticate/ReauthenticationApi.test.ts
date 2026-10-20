@@ -8,11 +8,11 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("fresh Session proof", () => {
   it("uses the dedicated current-Session endpoint and validates proof time", async () => {
-    const session = { id: "current-session", client_type: "web", reauthenticated_at: 1_900_000_000_000 };
+    const session = { id: "current-session", client_type: "web", reauthenticated_at: "2030-03-17T17:46:40Z" };
     const post = vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(200, { data: session }));
     await expect(proveCurrentPassword("current-password")).resolves.toEqual({ kind: "success" });
     expect(post).toHaveBeenCalledWith("/api/v1/auth/reauthenticate/password", { body: { password: "current-password" } });
-    for (const data of [{ ...session, reauthenticated_at: undefined }, { ...session, client_type: "desktop" }, { ...session, reauthenticated_at: 0 }]) {
+    for (const data of [{ ...session, reauthenticated_at: undefined }, { ...session, client_type: "desktop" }, { ...session, reauthenticated_at: 1_900_000_000_000 }]) {
       post.mockResolvedValue(apiResult(200, { data }));
       await expect(proveCurrentPassword("current-password")).resolves.toEqual({ kind: "unavailable" });
     }

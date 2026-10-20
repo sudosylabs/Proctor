@@ -186,7 +186,7 @@ type examSummaryResponse struct {
 	OwnerUserID             string                      `json:"owner_user_id"`
 	Title                   string                      `json:"title"`
 	UpdatedAt               string                      `json:"updated_at"`
-	ArchivedAt              *string                     `json:"archived_at"`
+	ArchivedAt              *string                     `json:"archived_at,omitempty"`
 	Revision                int64                       `json:"revision"`
 	ManagerCount            int                         `json:"manager_count"`
 	SittingCount            int                         `json:"sitting_count"`
@@ -305,7 +305,7 @@ type examIdentityResponse struct {
 	DefaultRevisionID string  `json:"default_revision_id,omitempty"`
 	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
-	ArchivedAt        *string `json:"archived_at"`
+	ArchivedAt        *string `json:"archived_at,omitempty"`
 	Revision          int64   `json:"revision"`
 }
 
@@ -421,7 +421,7 @@ func (m examResourceModule) list(request operationRequest) (operationResult, err
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor, err = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.TimeUTC(last.UpdatedAt).Format(time.RFC3339Nano), ExamID: last.ID.String()})
+		response.NextCursor, err = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.FormatRFC3339(last.UpdatedAt), ExamID: last.ID.String()})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
 		}
@@ -614,7 +614,7 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 		if decodeErr != nil {
 			return operationResult{}, invalidRequestError(decodeErr)
 		}
-		query.BeforeGrantedAt, _ = time.Parse(time.RFC3339Nano, cursor.GrantedAt)
+		query.BeforeGrantedAt, _ = model.ParseRFC3339(cursor.GrantedAt)
 		query.BeforeUserID = model.UserID(cursor.UserID)
 	}
 	page, err := m.exams.ListExamManagers(request.context, request.invocation(), query)
@@ -627,7 +627,7 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1].Manager
-		response.NextCursor, err = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.TimeUTC(last.GrantedAt).Format(time.RFC3339Nano), UserID: last.UserID.String()})
+		response.NextCursor, err = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.FormatRFC3339(last.GrantedAt), UserID: last.UserID.String()})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
 		}
@@ -739,7 +739,7 @@ func examManagerCursorSpec() opaqueCursorSpec[examManagerCursor] {
 		setVersion:     func(cursor *examManagerCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 1 },
 		validate: func(cursor examManagerCursor) error {
-			grantedAt, err := time.Parse(time.RFC3339Nano, cursor.GrantedAt)
+			grantedAt, err := model.ParseRFC3339(cursor.GrantedAt)
 			if err != nil || grantedAt.IsZero() || !model.UserID(cursor.UserID).IsValid() {
 				return errors.New("invalid Exam Manager keyset")
 			}
@@ -750,13 +750,13 @@ func examManagerCursorSpec() opaqueCursorSpec[examManagerCursor] {
 
 func examManagerResponseFromSummary(summary application.ExamManagerSummary) examManagerResponse {
 	return examManagerResponse{UserID: summary.Manager.UserID.String(), GrantedByUserID: summary.Manager.GrantedByUserID.String(),
-		GrantedAt: model.TimeUTC(summary.Manager.GrantedAt).Format(time.RFC3339Nano), IsCreator: summary.IsCreator, IsOwner: summary.IsOwner}
+		GrantedAt: model.FormatRFC3339(summary.Manager.GrantedAt), IsCreator: summary.IsCreator, IsOwner: summary.IsOwner}
 }
 
 func examManagerChangeResponseFromApplication(change application.ExamManagerChange, present bool) examManagerChangeResponse {
 	return examManagerChangeResponse{Exam: examIdentityResponseFromModel(*change.Exam), Manager: examManagerResponse{
 		UserID: change.Manager.UserID.String(), GrantedByUserID: change.Manager.GrantedByUserID.String(),
-		GrantedAt: model.TimeUTC(change.Manager.GrantedAt).Format(time.RFC3339Nano),
+		GrantedAt: model.FormatRFC3339(change.Manager.GrantedAt),
 		IsCreator: change.Manager.UserID == change.Exam.CreatorUserID, IsOwner: present && change.Manager.UserID == change.Exam.OwnerUserID,
 	}}
 }
@@ -793,11 +793,11 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 	}
 	if endsAfterRaw != "" {
 		var parseErr error
-		query.EndsAfter, parseErr = time.Parse(time.RFC3339, endsAfterRaw)
+		query.EndsAfter, parseErr = model.ParseRFC3339(endsAfterRaw)
 		if parseErr != nil {
 			return query, errors.New("invalid ends_after")
 		}
-		query.StartsBefore, parseErr = time.Parse(time.RFC3339, startsBeforeRaw)
+		query.StartsBefore, parseErr = model.ParseRFC3339(startsBeforeRaw)
 		if parseErr != nil || !query.EndsAfter.Before(query.StartsBefore) {
 			return query, errors.New("invalid starts_before")
 		}
@@ -820,7 +820,7 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 		if err != nil {
 			return query, err
 		}
-		query.BeforeUpdatedAt, err = time.Parse(time.RFC3339Nano, cursor.UpdatedAt)
+		query.BeforeUpdatedAt, err = model.ParseRFC3339(cursor.UpdatedAt)
 		if err != nil {
 			return query, errors.New("invalid Exam catalog cursor")
 		}
@@ -846,7 +846,7 @@ func examCatalogCursorSpec() opaqueCursorSpec[examCatalogCursor] {
 		setVersion:     func(cursor *examCatalogCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == examCatalogCursorVersion },
 		validate: func(cursor examCatalogCursor) error {
-			updatedAt, err := time.Parse(time.RFC3339Nano, cursor.UpdatedAt)
+			updatedAt, err := model.ParseRFC3339(cursor.UpdatedAt)
 			if err != nil || updatedAt.IsZero() || !model.ExamID(cursor.ExamID).IsValid() {
 				return errors.New("invalid Exam catalog keyset")
 			}
@@ -858,21 +858,21 @@ func examCatalogCursorSpec() opaqueCursorSpec[examCatalogCursor] {
 func examSummaryResponseFromApplication(summary application.ExamSummary) examSummaryResponse {
 	var archivedAt *string
 	if summary.ArchivedAt.Valid {
-		formatted := model.TimeUTC(summary.ArchivedAt.Time).Format(time.RFC3339Nano)
+		formatted := model.FormatRFC3339(summary.ArchivedAt.Time)
 		archivedAt = &formatted
 	}
 	response := examSummaryResponse{ID: summary.ID.String(), AcademicUnitID: summary.AcademicUnitID.String(),
 		AcademicUnitDisplayName: summary.AcademicUnitDisplayName,
 		CreatorUserID:           summary.CreatorUserID.String(), OwnerUserID: summary.OwnerUserID.String(), Title: summary.Title,
-		UpdatedAt: model.TimeUTC(summary.UpdatedAt).Format(time.RFC3339Nano), ArchivedAt: archivedAt,
+		UpdatedAt: model.FormatRFC3339(summary.UpdatedAt), ArchivedAt: archivedAt,
 		Revision: summary.Revision, ManagerCount: summary.ManagerCount, SittingCount: summary.SittingCount,
 		MatchingSittingCount: summary.MatchingSittingCount}
 	if summary.SittingSummary != nil {
 		response.SittingSummary = &examCatalogSittingResponse{ID: summary.SittingSummary.ID.String(),
 			ExamRevisionID: summary.SittingSummary.ExamRevisionID.String(), ClassID: summary.SittingSummary.ClassID.String(),
 			ClassDisplayName: summary.SittingSummary.ClassDisplayName,
-			ScheduledStartAt: model.TimeUTC(summary.SittingSummary.ScheduledStartAt).Format(time.RFC3339Nano),
-			ScheduledEndAt:   model.TimeUTC(summary.SittingSummary.ScheduledEndAt).Format(time.RFC3339Nano),
+			ScheduledStartAt: model.FormatRFC3339(summary.SittingSummary.ScheduledStartAt),
+			ScheduledEndAt:   model.FormatRFC3339(summary.SittingSummary.ScheduledEndAt),
 			State:            summary.SittingSummary.State, Revision: summary.SittingSummary.Revision}
 	}
 	return response
@@ -881,12 +881,12 @@ func examSummaryResponseFromApplication(summary application.ExamSummary) examSum
 func examIdentityResponseFromModel(exam model.Exam) examIdentityResponse {
 	var archivedAt *string
 	if exam.ArchivedAt.Valid {
-		formatted := model.TimeUTC(exam.ArchivedAt.Time).Format(time.RFC3339Nano)
+		formatted := model.FormatRFC3339(exam.ArchivedAt.Time)
 		archivedAt = &formatted
 	}
 	return examIdentityResponse{ID: exam.ID.String(), AcademicUnitID: exam.AcademicUnitID.String(), CreatorUserID: exam.CreatorUserID.String(),
 		OwnerUserID: exam.OwnerUserID.String(), DefaultRevisionID: exam.DefaultRevisionID.String(),
-		CreatedAt: model.TimeUTC(exam.CreatedAt).Format(time.RFC3339Nano), UpdatedAt: model.TimeUTC(exam.UpdatedAt).Format(time.RFC3339Nano),
+		CreatedAt: model.FormatRFC3339(exam.CreatedAt), UpdatedAt: model.FormatRFC3339(exam.UpdatedAt),
 		ArchivedAt: archivedAt, Revision: exam.Revision}
 }
 
@@ -911,7 +911,7 @@ func examResponseFromView(view application.ExamView) examResponse {
 			},
 			BrowserPolicy:  browserPolicyDocumentFromModel(browserPolicy),
 			Capacity:       examCapacityPolicyResponseFromModel(view.Capacity),
-			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.TimeUTC(view.Draft.UpdatedAt).Format(time.RFC3339Nano),
+			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.FormatRFC3339(view.Draft.UpdatedAt),
 			Revision: view.Draft.Revision, ResourceCount: view.ResourceCount, HasStarterWorkspace: view.HasStarterWorkspace,
 		},
 		OwnerUserID: view.OwnerUserID.String(), ManagerCount: view.ManagerCount,

@@ -68,11 +68,11 @@ type desktopAuthorizationExchangeRequest struct {
 }
 type desktopAuthorizationStartResponse struct {
 	AuthorizationURL string `json:"authorization_url"`
-	ExpiresAt        int64  `json:"expires_at"`
+	ExpiresAt        string `json:"expires_at"`
 }
 type desktopAuthorizationApprovalResponse struct {
 	RedirectURL string `json:"redirect_url"`
-	ExpiresAt   int64  `json:"expires_at"`
+	ExpiresAt   string `json:"expires_at"`
 }
 
 type desktopAuthorizationAccountResponse struct {
@@ -87,7 +87,7 @@ type desktopAuthorizationContextResponse struct {
 	LocalLoginEnabled bool                                     `json:"local_login_enabled"`
 	ExternalProviders []externalAuthenticationProviderResponse `json:"external_providers"`
 	DeviceName        string                                   `json:"device_name"`
-	ExpiresAt         int64                                    `json:"expires_at"`
+	ExpiresAt         string                                   `json:"expires_at"`
 }
 
 type desktopAuthorizationResourceModule struct {
@@ -153,7 +153,7 @@ func (m desktopAuthorizationResourceModule) start(request operationRequest) (ope
 		return operationResult{}, err
 	}
 	headers := http.Header{"Cache-Control": {"no-store"}, "DPoP-Nonce": {result.DPoPNonce}}
-	return jsonResult(http.StatusCreated, desktopAuthorizationStartResponse{AuthorizationURL: result.AuthorizationURL, ExpiresAt: result.ExpiresAt}).withHeaders(headers), nil
+	return jsonResult(http.StatusCreated, desktopAuthorizationStartResponse{AuthorizationURL: result.AuthorizationURL, ExpiresAt: wireTimeFromMillis(result.ExpiresAt)}).withHeaders(headers), nil
 }
 
 func (m desktopAuthorizationResourceModule) bind(request operationRequest) (operationResult, error) {
@@ -242,7 +242,7 @@ func (m desktopAuthorizationResourceModule) approve(request operationRequest) (o
 	}
 	headers := captureResponseHeaders(m.cookies.clearDesktopAuthorizationBinding)
 	headers.Set("Cache-Control", "no-store")
-	return jsonResult(http.StatusOK, desktopAuthorizationApprovalResponse{RedirectURL: result.RedirectURL, ExpiresAt: result.ExpiresAt}).withHeaders(headers), nil
+	return jsonResult(http.StatusOK, desktopAuthorizationApprovalResponse{RedirectURL: result.RedirectURL, ExpiresAt: wireTimeFromMillis(result.ExpiresAt)}).withHeaders(headers), nil
 }
 
 func (m desktopAuthorizationResourceModule) cancel(request operationRequest) (operationResult, error) {
@@ -277,7 +277,7 @@ func desktopAuthorizationContextResponseFromApplication(value *application.Deskt
 	result := desktopAuthorizationContextResponse{
 		State: string(value.State), LocalLoginEnabled: value.LocalLoginEnabled,
 		ExternalProviders: externalAuthenticationProviderResponses(value.ExternalProviders),
-		DeviceName:        value.DeviceName, ExpiresAt: value.ExpiresAt,
+		DeviceName:        value.DeviceName, ExpiresAt: wireTimeFromMillis(value.ExpiresAt),
 	}
 	if value.Account != nil {
 		result.Account = &desktopAuthorizationAccountResponse{ID: value.Account.ID.String(), Username: value.Account.Username, DisplayName: value.Account.DisplayName}

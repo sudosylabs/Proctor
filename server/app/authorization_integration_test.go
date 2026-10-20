@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -831,8 +832,8 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 			t.Fatalf("institution-wide disabled search %q status = %d: %s", test.path, response.Code, response.Body.String())
 		}
 		var users []struct {
-			ID         string `json:"id"`
-			DisabledAt int64  `json:"disabled_at"`
+			ID         string    `json:"id"`
+			DisabledAt time.Time `json:"disabled_at"`
 		}
 		if err := json.Unmarshal(response.Body.Bytes(), &users); err != nil {
 			t.Fatal(err)
@@ -841,7 +842,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		for _, user := range users {
 			if user.ID == unitUser.ID.String() {
 				found = true
-				if user.DisabledAt == 0 {
+				if user.DisabledAt.IsZero() {
 					t.Fatalf("institution-wide disabled projection omitted disabled_at: %#v", user)
 				}
 			}
@@ -971,7 +972,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	createdToken := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/users/me/tokens", map[string]any{
 		"description": "academic audit automation",
 		"scopes":      []string{string(model.ActionAcademicAuditView)},
-		"expires_at":  model.GetMillis() + 2*60*60*1000,
+		"expires_at":  integrationWireTime(model.GetMillis() + 2*60*60*1000),
 	}, institutionAcademicLogin.Tokens.AccessToken)
 	if createdToken.Code != http.StatusCreated {
 		t.Fatalf("create academic audit PAT status = %d: %s", createdToken.Code, createdToken.Body.String())

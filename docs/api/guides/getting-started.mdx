@@ -65,6 +65,15 @@ extension point. Send one JSON value, use the exact `snake_case` field names,
 and omit fields you do not intend to change. An omitted optional field and an
 explicit `null` can have different meanings where the schema permits both.
 
+Every timestamp, in bodies and query parameters alike, is an RFC 3339 string.
+Lifecycle events use past-tense names such as `created_at`, `updated_at`, and
+`archived_at`. Responses use UTC with up to microsecond precision and drop
+trailing fractional zeros, for example `2026-08-01T09:30:00.123Z`. Requests
+may use any RFC 3339 offset. A response omits a timestamp that has no value,
+such as `archived_at` on an active resource, instead of sending `null` or
+zero. Server-owned fields such as `id` and `created_at` are never accepted
+in create requests.
+
 ```bash
 curl --request GET \
   --url 'https://proctor.example.edu/api/v1/exams?limit=25' \

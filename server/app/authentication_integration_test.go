@@ -289,7 +289,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 			"description":      "local automation",
 			"scopes":           []string{string(model.ActionAcademicUnitView)},
 			"academic_unit_id": parentUnit.ID,
-			"expires_at":       time.Now().Add(2 * time.Hour).UnixMilli(),
+			"expires_at":       model.FormatRFC3339(time.Now().Add(2 * time.Hour)),
 		},
 		session.Tokens.AccessToken,
 	)
@@ -1153,21 +1153,21 @@ type authenticationResponse struct {
 }
 
 type wireUserProfileResponse struct {
-	ID             string `json:"id"`
-	CreateAt       int64  `json:"create_at"`
-	UpdateAt       int64  `json:"update_at"`
-	DeleteAt       int64  `json:"delete_at"`
-	Username       string `json:"username"`
-	Email          string `json:"email"`
-	EmailVerified  bool   `json:"email_verified"`
-	DisplayName    string `json:"display_name"`
-	FirstName      string `json:"first_name"`
-	LastName       string `json:"last_name"`
-	Locale         string `json:"locale"`
-	Timezone       string `json:"timezone"`
-	LastLoginAt    int64  `json:"last_login_at"`
-	LastActivityAt int64  `json:"last_activity_at"`
-	DisabledAt     int64  `json:"disabled_at"`
+	ID             string    `json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	ArchivedAt     time.Time `json:"archived_at"`
+	Username       string    `json:"username"`
+	Email          string    `json:"email"`
+	EmailVerified  bool      `json:"email_verified"`
+	DisplayName    string    `json:"display_name"`
+	FirstName      string    `json:"first_name"`
+	LastName       string    `json:"last_name"`
+	Locale         string    `json:"locale"`
+	Timezone       string    `json:"timezone"`
+	LastLoginAt    time.Time `json:"last_login_at"`
+	LastActivityAt time.Time `json:"last_activity_at"`
+	DisabledAt     time.Time `json:"disabled_at"`
 }
 
 func (w *wireUserProfileResponse) model() *model.User {
@@ -1175,43 +1175,43 @@ func (w *wireUserProfileResponse) model() *model.User {
 		return nil
 	}
 	return &model.User{
-		ID: model.UserID(w.ID), CreatedAt: model.TimeFromMillis(w.CreateAt),
-		UpdatedAt: model.TimeFromMillis(w.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(w.DeleteAt),
+		ID: model.UserID(w.ID), CreatedAt: w.CreatedAt,
+		UpdatedAt: w.UpdatedAt, ArchivedAt: integrationOptionalTime(w.ArchivedAt),
 		Username: w.Username, Email: w.Email, EmailVerified: w.EmailVerified,
 		DisplayName: w.DisplayName, FirstName: w.FirstName, LastName: w.LastName,
 		Locale: w.Locale, Timezone: w.Timezone,
-		LastLoginAt:    model.OptionalTimeFromMillis(w.LastLoginAt),
-		LastActivityAt: model.OptionalTimeFromMillis(w.LastActivityAt),
-		DisabledAt:     model.OptionalTimeFromMillis(w.DisabledAt),
+		LastLoginAt:    integrationOptionalTime(w.LastLoginAt),
+		LastActivityAt: integrationOptionalTime(w.LastActivityAt),
+		DisabledAt:     integrationOptionalTime(w.DisabledAt),
 	}
 }
 
 type wireSessionResponse struct {
-	ID                     string `json:"id"`
-	CreateAt               int64  `json:"create_at"`
-	UpdateAt               int64  `json:"update_at"`
-	DeleteAt               int64  `json:"delete_at"`
-	UserID                 string `json:"user_id"`
-	ClientType             string `json:"client_type"`
-	DeviceID               string `json:"device_id"`
-	DeviceName             string `json:"device_name"`
-	AuthenticationMethod   string `json:"authentication_method"`
-	AuthenticationStrength string `json:"authentication_strength"`
-	AuthenticatedAt        int64  `json:"authenticated_at"`
-	MFACompletedAt         int64  `json:"mfa_completed_at"`
-	LastActivityAt         int64  `json:"last_activity_at"`
-	IdleExpiresAt          int64  `json:"idle_expires_at"`
-	ExpiresAt              int64  `json:"expires_at"`
-	RevokedAt              int64  `json:"revoked_at"`
-	RevocationReasonCode   string `json:"revocation_reason_code"`
-	RevocationReason       string `json:"revocation_reason"`
+	ID                     string    `json:"id"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
+	ArchivedAt             time.Time `json:"archived_at"`
+	UserID                 string    `json:"user_id"`
+	ClientType             string    `json:"client_type"`
+	DeviceID               string    `json:"device_id"`
+	DeviceName             string    `json:"device_name"`
+	AuthenticationMethod   string    `json:"authentication_method"`
+	AuthenticationStrength string    `json:"authentication_strength"`
+	AuthenticatedAt        time.Time `json:"authenticated_at"`
+	MFACompletedAt         time.Time `json:"mfa_completed_at"`
+	LastActivityAt         time.Time `json:"last_activity_at"`
+	IdleExpiresAt          time.Time `json:"idle_expires_at"`
+	ExpiresAt              time.Time `json:"expires_at"`
+	RevokedAt              time.Time `json:"revoked_at"`
+	RevocationReasonCode   string    `json:"revocation_reason_code"`
+	RevocationReason       string    `json:"revocation_reason"`
 }
 
 type wireAuthenticationTokensResponse struct {
-	AccessToken      string `json:"access_token"`
-	RefreshToken     string `json:"refresh_token"`
-	AccessExpiresAt  int64  `json:"access_expires_at"`
-	RefreshExpiresAt int64  `json:"refresh_expires_at"`
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"refresh_token"`
+	AccessExpiresAt  time.Time `json:"access_expires_at"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
 }
 
 func (w *wireAuthenticationTokensResponse) model() *model.AuthenticationTokens {
@@ -1221,8 +1221,8 @@ func (w *wireAuthenticationTokensResponse) model() *model.AuthenticationTokens {
 	return &model.AuthenticationTokens{
 		AccessToken:      w.AccessToken,
 		RefreshToken:     w.RefreshToken,
-		AccessExpiresAt:  model.TimeFromMillis(w.AccessExpiresAt),
-		RefreshExpiresAt: model.TimeFromMillis(w.RefreshExpiresAt),
+		AccessExpiresAt:  w.AccessExpiresAt,
+		RefreshExpiresAt: w.RefreshExpiresAt,
 	}
 }
 
@@ -1231,17 +1231,17 @@ func (w *wireSessionResponse) model() *model.Session {
 		return nil
 	}
 	return &model.Session{
-		ID: model.SessionID(w.ID), CreatedAt: model.TimeFromMillis(w.CreateAt),
-		UpdatedAt: model.TimeFromMillis(w.UpdateAt), ArchivedAt: model.OptionalTimeFromMillis(w.DeleteAt),
+		ID: model.SessionID(w.ID), CreatedAt: w.CreatedAt,
+		UpdatedAt: w.UpdatedAt, ArchivedAt: integrationOptionalTime(w.ArchivedAt),
 		UserID: model.UserID(w.UserID), ClientType: model.SessionClientType(w.ClientType),
 		DeviceID: w.DeviceID, DeviceName: w.DeviceName,
 		AuthenticationMethod:   w.AuthenticationMethod,
 		AuthenticationStrength: model.AuthenticationStrength(w.AuthenticationStrength),
-		AuthenticatedAt:        model.TimeFromMillis(w.AuthenticatedAt),
-		MFACompletedAt:         model.OptionalTimeFromMillis(w.MFACompletedAt),
-		LastActivityAt:         model.TimeFromMillis(w.LastActivityAt),
-		IdleExpiresAt:          model.TimeFromMillis(w.IdleExpiresAt), ExpiresAt: model.TimeFromMillis(w.ExpiresAt),
-		RevokedAt: model.OptionalTimeFromMillis(w.RevokedAt), RevocationReason: model.SessionRevocationReason(w.RevocationReasonCode),
+		AuthenticatedAt:        w.AuthenticatedAt,
+		MFACompletedAt:         integrationOptionalTime(w.MFACompletedAt),
+		LastActivityAt:         w.LastActivityAt,
+		IdleExpiresAt:          w.IdleExpiresAt, ExpiresAt: w.ExpiresAt,
+		RevokedAt: integrationOptionalTime(w.RevokedAt), RevocationReason: model.SessionRevocationReason(w.RevocationReasonCode),
 	}
 }
 

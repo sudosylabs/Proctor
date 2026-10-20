@@ -98,7 +98,7 @@ func (r *runner) populate() error {
 		if i == 1 {
 			start, end = r.state.StartedAt.AddDate(-1, -3, 0), r.state.StartedAt.AddDate(0, -4, 0)
 		}
-		periods[i], err = r.named(fmt.Sprintf("period/%d", i), "/api/v1/academic-periods", fmt.Sprintf("development-period-%d", i), label, object{"owner_type": "institution", "owner_id": r.state.InstitutionID, "start_at": start.UnixMilli(), "end_at": end.UnixMilli()})
+		periods[i], err = r.named(fmt.Sprintf("period/%d", i), "/api/v1/academic-periods", fmt.Sprintf("development-period-%d", i), label, object{"owner_type": "institution", "owner_id": r.state.InstitutionID, "start_at": stamp(start), "end_at": stamp(end)})
 		if err != nil {
 			return err
 		}
@@ -165,20 +165,22 @@ func (r *runner) populate() error {
 		}
 		if i == 0 {
 			// Preserve an actual ended enrollment in a different Academic Period.
-			pastStart := r.state.StartedAt.AddDate(-1, -2, 0).UnixMilli()
+			pastStart := r.state.StartedAt.AddDate(-1, -2, 0).UTC().Truncate(time.Millisecond)
 			historyUser := teachers[0].UserID
 			pastPath := "/api/v1/users/" + historyUser + "/affiliations"
-			_, err = r.step("affiliation/previous-student", admin.Token, "POST", pastPath, object{"kind": "student", "start_at": pastStart}, nil, r.findWhere(pastPath, admin.Token, func(item object) bool { return str(item, "kind") == "student" && number(item, "start_at") == pastStart }))
+			_, err = r.step("affiliation/previous-student", admin.Token, "POST", pastPath, object{"kind": "student", "start_at": stamp(pastStart)}, nil, r.findWhere(pastPath, admin.Token, func(item object) bool {
+				return str(item, "kind") == "student" && instant(item, "start_at").Equal(pastStart)
+			}))
 			if err != nil {
 				return err
 			}
 			path := "/api/v1/classes/" + classes[5] + "/members"
-			_, err = r.step("membership/previous", admin.Token, "POST", path, object{"user_id": historyUser, "start_at": r.state.StartedAt.AddDate(-1, -2, 0).UnixMilli(), "end_at": r.state.StartedAt.AddDate(0, -5, 0).UnixMilli()}, nil, r.find(path+"?history=true", admin.Token, "user_id", historyUser))
+			_, err = r.step("membership/previous", admin.Token, "POST", path, object{"user_id": historyUser, "start_at": stamp(r.state.StartedAt.AddDate(-1, -2, 0)), "end_at": stamp(r.state.StartedAt.AddDate(0, -5, 0))}, nil, r.find(path+"?history=true", admin.Token, "user_id", historyUser))
 			if err != nil {
 				return err
 			}
 			path = "/api/v1/users/" + a.UserID + "/affiliations"
-			_, err = r.step("affiliation/student-staff", admin.Token, "POST", path, object{"kind": "staff", "start_at": r.state.StartedAt.UnixMilli()}, nil, r.find(path, admin.Token, "kind", "staff"))
+			_, err = r.step("affiliation/student-staff", admin.Token, "POST", path, object{"kind": "staff", "start_at": stamp(r.state.StartedAt)}, nil, r.find(path, admin.Token, "kind", "staff"))
 			if err != nil {
 				return err
 			}
@@ -285,7 +287,7 @@ func (r *runner) invitedAccount(key string, p person, kind, scope, role string) 
 			claim = str(decode(op.Body), "claim")
 		}
 		if claim == "" {
-			claim, err = r.invitationClaim(a.Email, number(decode(raw), "created_at"))
+			claim, err = r.invitationClaim(a.Email, instant(decode(raw), "created_at"))
 			if err != nil {
 				return nil, err
 			}
@@ -322,7 +324,7 @@ func (r *runner) settings(key string, a *account, variant int) error {
 	return err
 }
 
-func (r *runner) invitationClaim(email string, createdAt int64) (string, error) {
+func (r *runner) invitationClaim(email string, createdAt time.Time) (string, error) {
 	deadline := time.NewTimer(90 * time.Second)
 	defer deadline.Stop()
 	for {
@@ -340,7 +342,7 @@ func (r *runner) invitationClaim(email string, createdAt int64) (string, error) 
 			return "", err
 		}
 		for _, item := range list.Messages {
-			if item.Created.Before(time.UnixMilli(createdAt)) {
+			if item.Created.Before(createdAt) {
 				continue
 			}
 			raw, _, err = r.request(r.state.Mailpit, "GET", "/api/v1/message/"+url.PathEscape(item.ID), "", "", nil, nil)

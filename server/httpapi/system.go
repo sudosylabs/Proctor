@@ -125,7 +125,7 @@ func (module systemResourceModule) ping(request operationRequest) (operationResu
 	ready := module.health.Ready() && evaluationErr == nil
 	response := systemPingResponse{
 		SchemaVersion:       1,
-		ServerTime:          responseTime.Format(time.RFC3339Nano),
+		ServerTime:          model.FormatRFC3339(responseTime),
 		Availability:        "temporarily_unavailable",
 		Reason:              "temporarily_unavailable",
 		Compatibility:       string(application.DesktopCompatibilityServerIncompatible),
@@ -140,7 +140,7 @@ func (module systemResourceModule) ping(request operationRequest) (operationResu
 		response.MinimumRealtimeProtocol = result.MinimumRealtimeProtocol
 		response.MaximumRealtimeProtocol = result.MaximumRealtimeProtocol
 		if result.RetryAt.Valid && result.RetryAt.Time.After(responseTime) {
-			response.RetryAt = result.RetryAt.Time.UTC().Format(time.RFC3339Nano)
+			response.RetryAt = model.FormatRFC3339(result.RetryAt.Time)
 		}
 	}
 	if ready {

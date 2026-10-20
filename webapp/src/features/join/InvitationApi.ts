@@ -1,6 +1,7 @@
 import { apiClient } from "../../api/client";
 import type { components } from "../../api/generated/schema";
 import { readProblemValue } from "../../api/problem";
+import { isWireTimestamp } from "../../api/timestamp";
 import { requestPublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
 import type { PublicAccessDiscoveryResult } from "../../auth/PublicAccessDiscovery";
 
@@ -146,7 +147,7 @@ function isInvitationTransaction(
       value.purpose === "teacher_academic_unit" ||
       value.purpose === "academic_unit_role" ||
       value.purpose === "institution_role") &&
-    typeof value.expires_at === "number"
+    isWireTimestamp(value.expires_at)
   );
 }
 

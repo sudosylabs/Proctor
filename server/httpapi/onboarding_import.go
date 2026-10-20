@@ -12,7 +12,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -165,10 +164,10 @@ func onboardingImportResponseFromView(view application.OnboardingImportView, row
 		RoleID: view.RoleID.String(), SourcePeriodID: view.SourcePeriodID.String(), SourceClassID: view.SourceClassID.String(), DestinationPeriodID: view.DestinationPeriodID.String(), DestinationClassID: view.DestinationClassID.String(),
 		PreviewDigest: view.PreviewDigest, IgnoredHeaders: append([]string(nil), view.IgnoredHeaders...), TotalRows: view.TotalRows, ValidRows: view.ValidRows,
 		InvalidRows: view.InvalidRows, SucceededRows: view.SucceededRows, NoOpRows: view.NoOpRows, FailedRows: view.FailedRows, SkippedRows: view.SkippedRows,
-		CommitPolicy: string(view.CommitPolicy), ParseJobID: view.ParseJobID.String(), ExecutionJobID: view.ExecutionJobID.String(), CreatedAt: view.CreatedAt.Format(time.RFC3339Nano),
-		UpdatedAt: view.UpdatedAt.Format(time.RFC3339Nano), ExpiresAt: view.ExpiresAt.Format(time.RFC3339Nano), Revision: view.Revision, FailureCode: view.FailureCode}
+		CommitPolicy: string(view.CommitPolicy), ParseJobID: view.ParseJobID.String(), ExecutionJobID: view.ExecutionJobID.String(), CreatedAt: model.FormatRFC3339(view.CreatedAt),
+		UpdatedAt: model.FormatRFC3339(view.UpdatedAt), ExpiresAt: model.FormatRFC3339(view.ExpiresAt), Revision: view.Revision, FailureCode: view.FailureCode}
 	if !view.EffectiveAt.IsZero() {
-		response.EffectiveAt = model.TimeUTC(view.EffectiveAt).Format(time.RFC3339Nano)
+		response.EffectiveAt = model.FormatRFC3339(view.EffectiveAt)
 	}
 	if rows != nil {
 		response.Rows = make([]onboardingImportRowResponse, 0, len(rows))

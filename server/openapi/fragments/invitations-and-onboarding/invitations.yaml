@@ -76,19 +76,17 @@ paths:
         - name: created_after
           in: query
           required: false
-          description: Return Invitations created at or after this Unix timestamp in milliseconds.
+          description: Return Invitations created at or after this RFC 3339 instant.
           schema:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            format: date-time
         - name: created_before
           in: query
           required: false
-          description: Return Invitations created before this Unix timestamp in milliseconds.
+          description: Return Invitations created before this RFC 3339 instant.
           schema:
-            type: integer
-            format: int64
-            minimum: 1
+            type: string
+            format: date-time
         - name: cursor
           in: query
           required: false

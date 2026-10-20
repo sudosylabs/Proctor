@@ -71,7 +71,7 @@ paths:
       tags:
         - Academic structure
       description: >-
-        Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are Unix-millisecond instants, and an optional Idempotency-Key makes uncertain retries safe.
+        Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are RFC 3339 instants, and an optional Idempotency-Key makes uncertain retries safe.
       x-proctor-auth: principal_required
       x-proctor-idempotency: optional
       x-proctor-error-codes:
@@ -285,7 +285,7 @@ components:
       description: The Academic Period identifier.
   requestBodies:
     CreateAcademicPeriod:
-      description: Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period.
+      description: Exact owner, canonical presentation, and RFC 3339 bounds for a new Academic Period.
       required: true
       content:
         application/json:
@@ -296,8 +296,8 @@ components:
             owner_id: ybndrfg8ejkmcpqxot1uwisza3
             name: 2026-2027
             display_name: 2026–2027
-            start_at: 1785542400000
-            end_at: 1817078399000
+            start_at: '2026-08-01T00:00:00Z'
+            end_at: '2027-07-31T23:59:59Z'
     UpdateAcademicPeriod:
       description: Partial Academic Period presentation or bounds update; ownership cannot change.
       required: true
@@ -307,7 +307,7 @@ components:
             $ref: '#/components/schemas/UpdateAcademicPeriodRequest'
           example:
             display_name: Academic Year 2026–2027
-            end_at: 1819756799000
+            end_at: '2027-08-31T23:59:59Z'
   responses:
     AcademicPeriodOK:
       description: Academic Period
@@ -340,9 +340,8 @@ components:
       required:
         - revision
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - owner_type
         - owner_id
         - name
@@ -358,15 +357,15 @@ components:
           description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         owner_type:
           type: string
           enum:
@@ -381,15 +380,13 @@ components:
         description:
           type: string
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Inclusive start time in Unix milliseconds.
+          type: string
+          format: date-time
+          description: Inclusive start time.
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Exclusive end time in Unix milliseconds; must be after start_at.
+          type: string
+          format: date-time
+          description: Exclusive end time; must be after start_at.
     AcademicPeriodListResponse:
       type: array
       items:
@@ -406,25 +403,6 @@ components:
         - start_at
         - end_at
       properties:
-        id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        create_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        update_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        delete_at:
-          type: integer
-          format: int64
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
         owner_type:
           type: string
           enum:
@@ -439,13 +417,11 @@ components:
         description:
           type: string
         start_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
         end_at:
-          type: integer
-          format: int64
-          minimum: 1
+          type: string
+          format: date-time
     UpdateAcademicPeriodRequest:
       description: Mutable Academic Period fields; omitted or null values leave the stored value unchanged.
       type: object
@@ -473,13 +449,13 @@ components:
           description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
         start_at:
           type:
-            - integer
-            - "null"
-          format: int64
+            - string
+            - 'null'
+          format: date-time
           description: Omitted or null leaves the inclusive start unchanged.
         end_at:
           type:
-            - integer
-            - "null"
-          format: int64
+            - string
+            - 'null'
+          format: date-time
           description: Omitted or null leaves the exclusive end unchanged.

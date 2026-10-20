@@ -61,7 +61,7 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 	now := model.GetMillis()
 	period := createIntegrationResource[model.AcademicPeriod](t, server.Handler(), http.MethodPost, "/api/v1/academic-periods",
 		map[string]any{"owner_type": "academic_unit", "owner_id": unit.ID.String(), "name": "batch-2026", "display_name": "Batch 2026",
-			"start_at": now - 60_000, "end_at": now + 31_536_000_000}, token)
+			"start_at": integrationWireTime(now - 60_000), "end_at": integrationWireTime(now + 31_536_000_000)}, token)
 	class := createIntegrationResource[model.Class](t, server.Handler(), http.MethodPost,
 		"/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{"academic_period_id": period.ID.String(), "name": "batch-class", "display_name": "Batch Class"}, token)
@@ -179,7 +179,7 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	now := model.GetMillis()
 	period := createIntegrationResource[model.AcademicPeriod](t, primary.Handler(), http.MethodPost, "/api/v1/academic-periods",
 		map[string]any{"owner_type": "academic_unit", "owner_id": unit.ID.String(), "name": "2026", "display_name": "2026",
-			"start_at": now - 60_000, "end_at": now + 31_536_000_000}, token)
+			"start_at": integrationWireTime(now - 60_000), "end_at": integrationWireTime(now + 31_536_000_000)}, token)
 	class := createIntegrationResource[model.Class](t, primary.Handler(), http.MethodPost,
 		"/api/v1/programme-levels/"+level.ID.String()+"/classes",
 		map[string]any{"academic_period_id": period.ID.String(), "name": "class-a", "display_name": "Class A"}, token)

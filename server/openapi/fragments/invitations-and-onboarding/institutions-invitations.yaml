@@ -56,7 +56,7 @@ paths:
             example:
               email: administrator.one@example.edu
               role_id: ybndrfg8ejkmcpqxot1uwisza3
-              start_at: 1785542400000
+              start_at: '2026-08-01T00:00:00Z'
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure

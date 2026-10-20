@@ -15,25 +15,21 @@ import (
 )
 
 type affiliationResponse struct {
-	ID       string                `json:"id"`
-	CreateAt int64                 `json:"create_at"`
-	UpdateAt int64                 `json:"update_at"`
-	DeleteAt int64                 `json:"delete_at"`
-	UserID   string                `json:"user_id"`
-	Kind     model.AffiliationKind `json:"kind"`
-	StartAt  int64                 `json:"start_at"`
-	EndAt    int64                 `json:"end_at,omitempty"`
+	ID         string                `json:"id"`
+	CreatedAt  string                `json:"created_at"`
+	UpdatedAt  string                `json:"updated_at"`
+	ArchivedAt string                `json:"archived_at,omitempty"`
+	UserID     string                `json:"user_id"`
+	Kind       model.AffiliationKind `json:"kind"`
+	StartAt    string                `json:"start_at"`
+	EndAt      string                `json:"end_at,omitempty"`
 }
 
 type createAffiliationRequest struct {
-	ID       string                `json:"id"`
-	CreateAt int64                 `json:"create_at"`
-	UpdateAt int64                 `json:"update_at"`
-	DeleteAt int64                 `json:"delete_at"`
-	UserID   string                `json:"user_id"`
-	Kind     model.AffiliationKind `json:"kind"`
-	StartAt  int64                 `json:"start_at"`
-	EndAt    int64                 `json:"end_at"`
+	UserID  string                `json:"user_id"`
+	Kind    model.AffiliationKind `json:"kind"`
+	StartAt string                `json:"start_at"`
+	EndAt   string                `json:"end_at"`
 }
 
 type affiliationResourceModule struct {
@@ -110,7 +106,15 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
+	startAt, err := wireTimeMillis("start_at", body.StartAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	endAt, err := wireTimeMillis("end_at", body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
+	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: startAt, EndAt: endAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -134,14 +138,14 @@ func affiliationResponseFromModel(value *model.Affiliation) affiliationResponse 
 		return affiliationResponse{}
 	}
 	return affiliationResponse{
-		ID:       value.ID.String(),
-		CreateAt: model.MillisFromTime(value.CreatedAt),
-		UpdateAt: model.MillisFromTime(value.UpdatedAt),
-		DeleteAt: value.ArchivedAt.Millis(),
-		UserID:   value.UserID.String(),
-		Kind:     value.Kind,
-		StartAt:  model.MillisFromTime(value.StartsAt),
-		EndAt:    value.EndsAt.Millis(),
+		ID:         value.ID.String(),
+		CreatedAt:  model.FormatRFC3339(value.CreatedAt),
+		UpdatedAt:  model.FormatRFC3339(value.UpdatedAt),
+		ArchivedAt: value.ArchivedAt.FormatRFC3339(),
+		UserID:     value.UserID.String(),
+		Kind:       value.Kind,
+		StartAt:    model.FormatRFC3339(value.StartsAt),
+		EndAt:      value.EndsAt.FormatRFC3339(),
 	}
 }
 

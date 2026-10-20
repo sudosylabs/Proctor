@@ -66,9 +66,8 @@ components:
       additionalProperties: false
       required:
         - id
-        - create_at
-        - update_at
-        - delete_at
+        - created_at
+        - updated_at
         - user_id
         - client_type
         - authentication_method
@@ -81,15 +80,15 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/ID'
-        create_at:
-          type: integer
-          format: int64
-        update_at:
-          type: integer
-          format: int64
-        delete_at:
-          type: integer
-          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
         user_id:
           $ref: '#/components/schemas/ID'
         client_type:
@@ -122,30 +121,30 @@ components:
         authentication_strength:
           type: string
         authenticated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         mfa_recovery_required:
           type: boolean
           description: Ordinary access remains unavailable until a new local authenticator is activated.
         reauthenticated_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
           description: Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.
         mfa_completed_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         last_activity_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         idle_expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         revoked_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         revocation_reason_code:
           type: string
           enum:
@@ -186,8 +185,8 @@ components:
         refresh_token:
           type: string
         access_expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time
         refresh_expires_at:
-          type: integer
-          format: int64
+          type: string
+          format: date-time

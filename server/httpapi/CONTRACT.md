@@ -27,6 +27,12 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   value in OpenAPI's `x-proctor-auth` extension;
 - use closed request and response schemas unless a named extension object is
   intentionally open;
+- carry every timestamp, including time-valued query parameters, as an RFC 3339
+  `date-time` string: responses emit UTC at microsecond precision through
+  `model.FormatRFC3339` and omit an absent optional instant instead of sending
+  `null` or zero, lifecycle members use `<verb>ed_at` names such as
+  `created_at`, `updated_at`, and `archived_at`, and create requests never
+  declare server-owned `id` or timestamp members;
 - document stable application error codes in `x-proctor-error-codes`, map each
   code to a declared HTTP response, and return RFC 9457 Problem Details;
 - list every public code once, with its status and meaning, in
@@ -1455,7 +1461,7 @@ that the message reached an inbox.
 
 `GET /api/v1/mail/deliveries` requires `mail.view` and returns the same safe
 projection through a bounded, opaque-cursor collection. Repeated `state` and
-`template_key` filters and optional millisecond `created_after` and
+`template_key` filters and optional RFC 3339 `created_after` and
 `created_before` bounds are applied in persistence; `limit` defaults to 50 and
 is bounded at 200. Authorization completes before any delivery is inspected.
 

@@ -1,10 +1,11 @@
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import { isWireTimestamp } from "../../api/timestamp";
 
 export interface SecurityContext {
   enabled: boolean;
   pending: boolean;
-  pendingExpiresAt?: number;
+  pendingExpiresAt?: string;
   recoveryCodesRemaining: number;
   serviceEnabled: boolean;
   recoveryRequired: boolean;
@@ -28,7 +29,7 @@ export type SecurityFailure = {
 export type SecurityContextResult =
   | { kind: "ready"; context: SecurityContext }
   | SecurityFailure;
-export interface AuthenticatorSetup { secret: string; provisioningURI: string; expiresAt: number }
+export interface AuthenticatorSetup { secret: string; provisioningURI: string; expiresAt: string }
 export type SetupResult = { kind: "success"; setup: AuthenticatorSetup } | SecurityFailure;
 export type RecoveryCodesResult = { kind: "success"; codes: string[] } | SecurityFailure;
 export type SecurityMutationResult = { kind: "success" } | SecurityFailure;
@@ -56,7 +57,7 @@ export async function beginAuthenticatorSetup(): Promise<SetupResult> {
   try {
     const { data, error, response } = await apiClient.POST("/api/v1/users/me/mfa/setup");
     if (response.status === 201 && isRecord(data) && boundedText(data.secret, 256) &&
-      positiveTimestamp(data.expires_at) && validProvisioningURI(data.provisioning_uri, data.secret)) {
+      isWireTimestamp(data.expires_at) && validProvisioningURI(data.provisioning_uri, data.secret)) {
       return { kind: "success", setup: { secret: data.secret, provisioningURI: data.provisioning_uri, expiresAt: data.expires_at } };
     }
     return securityFailure(error, response.status);
@@ -148,7 +149,7 @@ function readSecurityContext(value: unknown): SecurityContext | undefined {
     typeof value.service_enabled !== "boolean" || typeof value.mfa_recovery_required !== "boolean" ||
     !boundedText(value.authentication_method, 128) || !boundedText(value.authentication_strength, 128) ||
     typeof value.recently_authenticated !== "boolean" ||
-    (value.pending_expires_at !== undefined && !positiveTimestamp(value.pending_expires_at)) ||
+    (value.pending_expires_at !== undefined && !isWireTimestamp(value.pending_expires_at)) ||
     (value.authentication_provider_id !== undefined && !boundedText(value.authentication_provider_id, 256))) {
     return undefined;
   }
@@ -159,7 +160,7 @@ function readSecurityContext(value: unknown): SecurityContext | undefined {
     authenticationMethod: value.authentication_method,
     authenticationStrength: value.authentication_strength,
     recentlyAuthenticated: value.recently_authenticated,
-    ...(value.pending_expires_at === undefined ? {} : { pendingExpiresAt: value.pending_expires_at as number }),
+    ...(value.pending_expires_at === undefined ? {} : { pendingExpiresAt: value.pending_expires_at as string }),
     ...(value.authentication_provider_id === undefined ? {} : { authenticationProviderID: value.authentication_provider_id as string }),
   };
 }
@@ -172,7 +173,4 @@ export function boundedText(value: unknown, maximum: number): value is string {
 }
 function nonnegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-function positiveTimestamp(value: unknown): value is number {
-  return nonnegativeInteger(value) && value > 0 && value <= 8.64e15;
 }

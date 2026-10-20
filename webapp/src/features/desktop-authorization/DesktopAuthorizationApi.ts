@@ -1,6 +1,7 @@
 import type { components } from "../../api/generated/schema";
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import { isWireTimestamp } from "../../api/timestamp";
 import {
   requestPublicAccessDiscovery,
   type PublicAccessDiscoveryLoader,
@@ -13,7 +14,7 @@ export type DesktopAuthorizationProvider =
 export interface DesktopAuthorizationContext {
   account?: components["schemas"]["DesktopAuthorizationAccountResponse"];
   deviceName: string;
-  expiresAt: number;
+  expiresAt: string;
   externalProviders: DesktopAuthorizationProvider[];
   installation: string;
   localLoginEnabled: boolean;
@@ -203,7 +204,7 @@ export async function approveDesktopAuthorization(
       "/api/v1/auth/desktop/authorizations/approve",
       { body: { state } },
     );
-    if (response.status === 200 && isRecord(data) && positiveMilliseconds(data.expires_at) &&
+    if (response.status === 200 && isRecord(data) && isWireTimestamp(data.expires_at) &&
       validApprovalRedirect(data.redirect_url, state)) {
       return { kind: "approved", redirectURL: data.redirect_url };
     }
@@ -253,7 +254,7 @@ function validServerContext(value: unknown): value is ServerContext {
   }
   if (
     !boundedString(value.device_name, 128) ||
-    !positiveMilliseconds(value.expires_at) ||
+    !isWireTimestamp(value.expires_at) ||
     typeof value.local_login_enabled !== "boolean" ||
     !Array.isArray(value.external_providers) || value.external_providers.length > 64 ||
     !value.external_providers.every(validProvider) ||
@@ -274,10 +275,6 @@ function validServerContext(value: unknown): value is ServerContext {
 
 function boundedString(value: unknown, maximum: number, required = false): value is string {
   return typeof value === "string" && (!required || value.trim() !== "") && [...value].length <= maximum;
-}
-
-function positiveMilliseconds(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function validProvider(value: unknown): value is DesktopAuthorizationProvider {

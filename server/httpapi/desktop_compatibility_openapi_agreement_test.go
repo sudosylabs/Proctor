@@ -80,7 +80,7 @@ func TestDesktopCompatibilityOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Name:     "DesktopCompatibilityPolicyResponse",
 				DTO:      reflect.TypeOf(desktopCompatibilityPolicyResponse{}),
-				Required: []string{"revision", "minimum_desktop_release", "revoked_desktop_build_ids", "administrator_message", "availability", "retry_at", "created_at", "updated_at"},
+				Required: []string{"revision", "minimum_desktop_release", "revoked_desktop_build_ids", "administrator_message", "availability", "created_at", "updated_at"},
 			},
 		},
 		OperationSelector: func(_ string, path string) bool {

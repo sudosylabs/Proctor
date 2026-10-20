@@ -39,7 +39,7 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "ClassMemberResponse", DTO: reflect.TypeOf(classMemberResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "class_id", "academic_period_id", "user_id", "start_at"},
+				Required: []string{"id", "created_at", "updated_at", "class_id", "academic_period_id", "user_id", "start_at"},
 			},
 			{
 				Name: "EnrollClassMemberRequest", DTO: reflect.TypeOf(enrollClassMemberRequest{}),

@@ -38,8 +38,8 @@ type InvitationApplication interface {
 
 type issueStudentClassInvitationRequest struct {
 	Email                string `json:"email"`
-	StartAt              int64  `json:"start_at,omitempty"`
-	EndAt                int64  `json:"end_at,omitempty"`
+	StartAt              string `json:"start_at,omitempty"`
+	EndAt                string `json:"end_at,omitempty"`
 	SuggestedUsername    string `json:"suggested_username,omitempty"`
 	SuggestedDisplayName string `json:"suggested_display_name,omitempty"`
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
@@ -62,8 +62,8 @@ type acceptStudentClassInvitationRequest struct {
 type issueTeacherAcademicUnitInvitationRequest struct {
 	Email                string `json:"email"`
 	RoleID               string `json:"role_id"`
-	StartAt              int64  `json:"start_at,omitempty"`
-	EndAt                int64  `json:"end_at,omitempty"`
+	StartAt              string `json:"start_at,omitempty"`
+	EndAt                string `json:"end_at,omitempty"`
 	SuggestedUsername    string `json:"suggested_username,omitempty"`
 	SuggestedDisplayName string `json:"suggested_display_name,omitempty"`
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
@@ -77,8 +77,8 @@ type acceptTeacherAcademicUnitInvitationRequest acceptStudentClassInvitationRequ
 type issueScopedRoleInvitationRequest struct {
 	Email   string `json:"email"`
 	RoleID  string `json:"role_id"`
-	StartAt int64  `json:"start_at,omitempty"`
-	EndAt   int64  `json:"end_at,omitempty"`
+	StartAt string `json:"start_at,omitempty"`
+	EndAt   string `json:"end_at,omitempty"`
 }
 
 type acceptScopedRoleInvitationRequest struct {
@@ -94,9 +94,9 @@ type invitationResponse struct {
 	AcademicUnitID   string   `json:"academic_unit_id,omitempty"`
 	RoleID           string   `json:"role_id,omitempty"`
 	RoleActions      []string `json:"role_actions,omitempty"`
-	StartAt          int64    `json:"start_at"`
-	EndAt            int64    `json:"end_at,omitempty"`
-	ExpiresAt        int64    `json:"expires_at"`
+	StartAt          string   `json:"start_at"`
+	EndAt            string   `json:"end_at,omitempty"`
+	ExpiresAt        string   `json:"expires_at"`
 }
 
 type invitationAcceptanceResponse struct {
@@ -121,8 +121,8 @@ type replaceInvitationRequest struct {
 	AcademicUnitID       string `json:"academic_unit_id,omitempty"`
 	InstitutionID        string `json:"institution_id,omitempty"`
 	RoleID               string `json:"role_id,omitempty"`
-	StartAt              int64  `json:"start_at,omitempty"`
-	EndAt                int64  `json:"end_at,omitempty"`
+	StartAt              string `json:"start_at,omitempty"`
+	EndAt                string `json:"end_at,omitempty"`
 	SuggestedUsername    string `json:"suggested_username,omitempty"`
 	SuggestedDisplayName string `json:"suggested_display_name,omitempty"`
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
@@ -137,8 +137,8 @@ type invitationBatchItemRequest struct {
 	ExpectedRevision     int64  `json:"expected_revision,omitempty"`
 	Email                string `json:"email,omitempty"`
 	RoleID               string `json:"role_id,omitempty"`
-	StartAt              int64  `json:"start_at,omitempty"`
-	EndAt                int64  `json:"end_at,omitempty"`
+	StartAt              string `json:"start_at,omitempty"`
+	EndAt                string `json:"end_at,omitempty"`
 	SuggestedUsername    string `json:"suggested_username,omitempty"`
 	SuggestedDisplayName string `json:"suggested_display_name,omitempty"`
 	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
@@ -173,10 +173,10 @@ type invitationDeliveryResponse struct {
 	TemplateKey       string `json:"template_key"`
 	State             string `json:"state"`
 	MaskedRecipient   string `json:"masked_recipient"`
-	CreatedAt         int64  `json:"created_at"`
-	UpdatedAt         int64  `json:"updated_at"`
-	Deadline          int64  `json:"deadline"`
-	AcceptedAt        int64  `json:"accepted_at,omitempty"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
+	Deadline          string `json:"deadline"`
+	AcceptedAt        string `json:"accepted_at,omitempty"`
 	PublicFailureCode string `json:"public_failure_code,omitempty"`
 }
 
@@ -189,14 +189,14 @@ type invitationAdministrationResponse struct {
 	AcademicUnitID   string                      `json:"academic_unit_id,omitempty"`
 	RoleID           string                      `json:"role_id,omitempty"`
 	RoleActions      []string                    `json:"role_actions,omitempty"`
-	StartAt          int64                       `json:"start_at"`
-	EndAt            int64                       `json:"end_at,omitempty"`
-	ExpiresAt        int64                       `json:"expires_at"`
+	StartAt          string                      `json:"start_at"`
+	EndAt            string                      `json:"end_at,omitempty"`
+	ExpiresAt        string                      `json:"expires_at"`
 	Email            string                      `json:"email"`
 	InviterUserID    string                      `json:"inviter_user_id"`
 	AcceptedUserID   string                      `json:"accepted_user_id,omitempty"`
-	CreatedAt        int64                       `json:"created_at"`
-	UpdatedAt        int64                       `json:"updated_at"`
+	CreatedAt        string                      `json:"created_at"`
+	UpdatedAt        string                      `json:"updated_at"`
 	Revision         int64                       `json:"revision"`
 	Delivery         *invitationDeliveryResponse `json:"delivery,omitempty"`
 }
@@ -302,9 +302,13 @@ func (m invitationResourceModule) batch(request operationRequest) (operationResu
 	}
 	items := make([]application.InvitationBatchItemCommand, 0, len(body.Items))
 	for _, item := range body.Items {
+		startAt, endAt, err := wireWindowMillis(item.StartAt, item.EndAt)
+		if err != nil {
+			return operationResult{}, err
+		}
 		items = append(items, application.InvitationBatchItemCommand{IdempotencyKey: item.Key, InvitationID: item.InvitationID,
 			ExpectedRevision: item.ExpectedRevision, TargetEmail: item.Email, RoleID: item.RoleID,
-			IntendedStartsAt: item.StartAt, IntendedEndsAt: item.EndAt, SuggestedUsername: item.SuggestedUsername,
+			IntendedStartsAt: startAt, IntendedEndsAt: endAt, SuggestedUsername: item.SuggestedUsername,
 			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
 			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale, SuggestedTimezone: item.SuggestedTimezone})
 	}
@@ -343,7 +347,7 @@ func (m invitationResourceModule) list(request operationRequest) (operationResul
 	if page.More {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeInvitationCursor(invitationCursor{
-			CreatedAt: model.TimeUTC(last.CreatedAt).Format(time.RFC3339Nano), ID: last.ID.String()})
+			CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
 		}
@@ -406,10 +410,14 @@ func (m invitationResourceModule) replace(request operationRequest) (operationRe
 	if body.ExpectedRevision < 1 {
 		return operationResult{}, invalidRequestError(errors.New("must be positive"))
 	}
+	startAt, endAt, err := wireWindowMillis(body.StartAt, body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	view, err := m.invitations.ReplaceInvitation(request.context, request.invocation(), application.ReplaceInvitationCommand{
 		ID: id, ExpectedRevision: body.ExpectedRevision, Purpose: body.Purpose, TargetEmail: body.Email,
 		ClassID: body.ClassID, AcademicUnitID: body.AcademicUnitID, InstitutionID: body.InstitutionID, RoleID: body.RoleID,
-		IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt, SuggestedUsername: body.SuggestedUsername,
+		IntendedStartsAt: startAt, IntendedEndsAt: endAt, SuggestedUsername: body.SuggestedUsername,
 		SuggestedDisplayName: body.SuggestedDisplayName, SuggestedFirstName: body.SuggestedFirstName,
 		SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
@@ -462,18 +470,18 @@ func invitationListQuery(request *http.Request) (application.ListInvitationsQuer
 		if err != nil {
 			return query, err
 		}
-		query.BeforeCreatedAt, _ = time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+		query.BeforeCreatedAt, _ = model.ParseRFC3339(cursor.CreatedAt)
 		query.BeforeID = model.InvitationID(cursor.ID)
 	}
 	return query, nil
 }
 
 func parseInvitationFilterTime(raw string) (time.Time, error) {
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || millis <= 0 {
+	parsed, err := model.ParseRFC3339(raw)
+	if err != nil || parsed.IsZero() {
 		return time.Time{}, errors.New("invalid Invitation time")
 	}
-	return model.TimeFromMillis(millis), nil
+	return parsed, nil
 }
 
 func encodeInvitationCursor(cursor invitationCursor) (string, error) {
@@ -492,7 +500,7 @@ func invitationCursorSpec() opaqueCursorSpec[invitationCursor] {
 		setVersion:     func(cursor *invitationCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 1 },
 		validate: func(cursor invitationCursor) error {
-			createdAt, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.InvitationID(cursor.ID).IsValid() {
 				return errors.New("invalid Invitation keyset")
 			}
@@ -510,8 +518,12 @@ func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
+	startAt, endAt, err := wireWindowMillis(body.StartAt, body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	created, err := m.invitations.IssueAcademicUnitRoleInvitation(request.context, request.invocation(), application.IssueAcademicUnitRoleInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -528,8 +540,12 @@ func (m invitationResourceModule) issueInstitutionRole(request operationRequest)
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
+	startAt, endAt, err := wireWindowMillis(body.StartAt, body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	created, err := m.invitations.IssueInstitutionRoleInvitation(request.context, request.invocation(), application.IssueInstitutionRoleInvitationCommand{
-		TargetEmail: body.Email, InstitutionID: institutionID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, InstitutionID: institutionID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -574,8 +590,12 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
+	startAt, endAt, err := wireWindowMillis(body.StartAt, body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	created, err := m.invitations.IssueTeacherAcademicUnitInvitation(request.context, request.invocation(), application.IssueTeacherAcademicUnitInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
@@ -609,8 +629,12 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
+	startAt, endAt, err := wireWindowMillis(body.StartAt, body.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	created, err := m.invitations.IssueStudentClassInvitation(request.context, request.invocation(), application.IssueStudentClassInvitationCommand{
-		TargetEmail: body.Email, ClassID: classID.String(), IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, ClassID: classID.String(), IntendedStartsAt: startAt, IntendedEndsAt: endAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
@@ -660,8 +684,8 @@ func invitationAcceptanceResponseFromView(accepted *application.InvitationAccept
 func invitationResponseFromView(view application.InvitationView) invitationResponse {
 	return invitationResponse{ID: view.ID.String(), Purpose: string(view.Purpose), State: string(view.State), ClassID: view.ClassID.String(),
 		AcademicPeriodID: view.AcademicPeriodID.String(), AcademicUnitID: view.AcademicUnitID.String(), RoleID: view.RoleID.String(),
-		RoleActions: append([]string(nil), view.RoleActions...), StartAt: view.IntendedStartsAt.UnixMilli(),
-		EndAt: view.IntendedEndsAt.Millis(), ExpiresAt: view.ExpiresAt.UnixMilli()}
+		RoleActions: append([]string(nil), view.RoleActions...), StartAt: model.FormatRFC3339(view.IntendedStartsAt),
+		EndAt: view.IntendedEndsAt.FormatRFC3339(), ExpiresAt: model.FormatRFC3339(view.ExpiresAt)}
 }
 
 func invitationAdministrationResponseFromView(view application.InvitationAdministrationView) invitationAdministrationResponse {
@@ -670,12 +694,12 @@ func invitationAdministrationResponseFromView(view application.InvitationAdminis
 		ClassID: base.ClassID, AcademicPeriodID: base.AcademicPeriodID, AcademicUnitID: base.AcademicUnitID,
 		RoleID: base.RoleID, RoleActions: base.RoleActions, StartAt: base.StartAt, EndAt: base.EndAt, ExpiresAt: base.ExpiresAt,
 		Email: view.TargetEmail, InviterUserID: view.InviterUserID.String(), AcceptedUserID: view.AcceptedUserID.String(),
-		CreatedAt: model.MillisFromTime(view.CreatedAt), UpdatedAt: model.MillisFromTime(view.UpdatedAt), Revision: view.Revision}
+		CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), Revision: view.Revision}
 	if view.Delivery != nil {
 		response.Delivery = &invitationDeliveryResponse{TemplateKey: string(view.Delivery.TemplateKey), State: string(view.Delivery.State),
-			MaskedRecipient: view.Delivery.MaskedRecipient, CreatedAt: model.MillisFromTime(view.Delivery.CreatedAt),
-			UpdatedAt: model.MillisFromTime(view.Delivery.UpdatedAt), Deadline: model.MillisFromTime(view.Delivery.Deadline),
-			AcceptedAt: view.Delivery.AcceptedAt.Millis(), PublicFailureCode: view.Delivery.PublicFailureCode}
+			MaskedRecipient: view.Delivery.MaskedRecipient, CreatedAt: model.FormatRFC3339(view.Delivery.CreatedAt),
+			UpdatedAt: model.FormatRFC3339(view.Delivery.UpdatedAt), Deadline: model.FormatRFC3339(view.Delivery.Deadline),
+			AcceptedAt: view.Delivery.AcceptedAt.FormatRFC3339(), PublicFailureCode: view.Delivery.PublicFailureCode}
 	}
 	return response
 }

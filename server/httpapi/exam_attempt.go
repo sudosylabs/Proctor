@@ -48,7 +48,7 @@ type browserActivityCursorWire struct {
 
 func encodeBrowserActivityCursor(cursor browserActivityCursor) (string, error) {
 	return encodeOpaqueCursor(browserActivityCursorWire{
-		ReceivedAt: model.TimeUTC(cursor.ReceivedAt).Format(time.RFC3339Nano), SourceSessionID: string(cursor.SourceSessionID), Sequence: cursor.Sequence,
+		ReceivedAt: model.FormatRFC3339(cursor.ReceivedAt), SourceSessionID: string(cursor.SourceSessionID), Sequence: cursor.Sequence,
 	}, browserActivityCursorSpec())
 }
 
@@ -57,7 +57,7 @@ func decodeBrowserActivityCursor(raw string) (browserActivityCursor, error) {
 	if err != nil {
 		return browserActivityCursor{}, err
 	}
-	receivedAt, _ := time.Parse(time.RFC3339Nano, wire.ReceivedAt)
+	receivedAt, _ := model.ParseRFC3339(wire.ReceivedAt)
 	return browserActivityCursor{ReceivedAt: model.TimeUTC(receivedAt), SourceSessionID: model.BrowserSourceSessionID(wire.SourceSessionID), Sequence: wire.Sequence}, nil
 }
 
@@ -69,7 +69,7 @@ func browserActivityCursorSpec() opaqueCursorSpec[browserActivityCursorWire] {
 		setVersion:     func(cursor *browserActivityCursorWire, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == browserActivityCursorVersion },
 		validate: func(cursor browserActivityCursorWire) error {
-			receivedAt, err := time.Parse(time.RFC3339Nano, cursor.ReceivedAt)
+			receivedAt, err := model.ParseRFC3339(cursor.ReceivedAt)
 			if err != nil || receivedAt.IsZero() || !model.BrowserSourceSessionID(cursor.SourceSessionID).IsValid() || cursor.Sequence < 1 {
 				return errors.New("invalid Browser Activity keyset")
 			}
@@ -151,7 +151,7 @@ type examAttemptManagerCursorWire struct {
 
 func encodeExamAttemptManagerCursor(cursor examAttemptManagerCursor) (string, error) {
 	wire := examAttemptManagerCursorWire{
-		CreatedAt: model.TimeUTC(cursor.CreatedAt).Format(time.RFC3339Nano), ID: cursor.ID.String()}
+		CreatedAt: model.FormatRFC3339(cursor.CreatedAt), ID: cursor.ID.String()}
 	return encodeOpaqueCursor(wire, examAttemptManagerCursorSpec())
 }
 
@@ -160,7 +160,7 @@ func decodeExamAttemptManagerCursor(raw string) (examAttemptManagerCursor, error
 	if err != nil {
 		return examAttemptManagerCursor{}, err
 	}
-	createdAt, _ := time.Parse(time.RFC3339Nano, wire.CreatedAt)
+	createdAt, _ := model.ParseRFC3339(wire.CreatedAt)
 	id, _ := model.ParseExamAttemptID(wire.ID)
 	return examAttemptManagerCursor{CreatedAt: model.TimeUTC(createdAt), ID: id}, nil
 }
@@ -173,7 +173,7 @@ func examAttemptManagerCursorSpec() opaqueCursorSpec[examAttemptManagerCursorWir
 		setVersion:     func(cursor *examAttemptManagerCursorWire, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == examAttemptManagerCursorVersion },
 		validate: func(cursor examAttemptManagerCursorWire) error {
-			createdAt, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
 			if err != nil || createdAt.IsZero() || !model.ExamAttemptID(cursor.ID).IsValid() {
 				return errors.New("invalid Exam Attempt keyset")
 			}
@@ -320,8 +320,8 @@ type sittingCandidateSubmissionResponse struct {
 
 type sittingCandidatePresenceResponse struct {
 	State              application.SittingCandidatePresenceState `json:"state"`
-	LastLeaseRenewedAt *string                                   `json:"last_lease_renewed_at"`
-	LeaseExpiresAt     *string                                   `json:"lease_expires_at"`
+	LastLeaseRenewedAt *string                                   `json:"last_lease_renewed_at,omitempty"`
+	LeaseExpiresAt     *string                                   `json:"lease_expires_at,omitempty"`
 }
 
 type sittingCandidateSuspensionResponse struct {
@@ -820,7 +820,7 @@ func (module examAttemptHTTPModule) endByManager(request operationRequest) (oper
 	response := examSubmissionReceiptResponse{BrowserActivity: receipt.BrowserActivity, SubmissionID: receipt.SubmissionID.String(),
 		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
 		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
-		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
+		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.FormatRFC3339(receipt.SubmittedAt)}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
@@ -858,7 +858,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 	return jsonResult(http.StatusOK, acknowledgeExamCorrectionResponse{RevisionID: result.CorrectionRevisionID.String(),
 		CurrentRevisionID: result.CurrentRevisionID.String(), RuntimeCapabilities: candidateRuntimeCapabilitiesFromStore(result.RuntimeCapabilities),
 		AcknowledgementState: string(model.CorrectionAcknowledgementAcknowledged),
-		AcknowledgedAt:       model.TimeUTC(result.AcknowledgedAt.Time).Format(time.RFC3339Nano)}).withHeaders(noStoreHeaders()), nil
+		AcknowledgedAt:       model.FormatRFC3339(result.AcknowledgedAt.Time)}).withHeaders(noStoreHeaders()), nil
 }
 
 func (module examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (operationResult, error) {
@@ -885,7 +885,7 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := sittingCandidateStatusListResponse{ServerTime: model.TimeUTC(page.ServerTime).Format(time.RFC3339Nano),
+	response := sittingCandidateStatusListResponse{ServerTime: model.FormatRFC3339(page.ServerTime),
 		ExamID: page.ExamID.String(), ExamSittingID: page.SittingID.String(), SittingState: page.SittingState,
 		SittingRevision: page.SittingRevision, Items: make([]sittingCandidateStatusItemResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
@@ -895,20 +895,20 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 			Presence:               sittingCandidatePresenceResponse{State: item.Presence.State},
 			NativeSecurity:         item.NativeSecurity, IntegrityAttentionCount: item.IntegrityAttentionCount}
 		if item.Presence.LastLeaseRenewedAt.Valid {
-			value := model.TimeUTC(item.Presence.LastLeaseRenewedAt.Time).Format(time.RFC3339Nano)
+			value := model.FormatRFC3339(item.Presence.LastLeaseRenewedAt.Time)
 			mapped.Presence.LastLeaseRenewedAt = &value
 		}
 		if item.Presence.LeaseExpiresAt.Valid {
-			value := model.TimeUTC(item.Presence.LeaseExpiresAt.Time).Format(time.RFC3339Nano)
+			value := model.FormatRFC3339(item.Presence.LeaseExpiresAt.Time)
 			mapped.Presence.LeaseExpiresAt = &value
 		}
 		if item.Attempt != nil {
 			mapped.Attempt = &sittingCandidateAttemptResponse{ID: item.Attempt.ID.String(), State: item.Attempt.State,
-				Revision: item.Attempt.Revision, CreatedAt: model.TimeUTC(item.Attempt.CreatedAt).Format(time.RFC3339Nano),
-				UpdatedAt: model.TimeUTC(item.Attempt.UpdatedAt).Format(time.RFC3339Nano)}
+				Revision: item.Attempt.Revision, CreatedAt: model.FormatRFC3339(item.Attempt.CreatedAt),
+				UpdatedAt: model.FormatRFC3339(item.Attempt.UpdatedAt)}
 			if item.Attempt.Submission != nil {
 				mapped.Attempt.Submission = &sittingCandidateSubmissionResponse{ID: item.Attempt.Submission.ID.String(),
-					SubmittedAt: model.TimeUTC(item.Attempt.Submission.SubmittedAt).Format(time.RFC3339Nano),
+					SubmittedAt: model.FormatRFC3339(item.Attempt.Submission.SubmittedAt),
 					Provenance:  item.Attempt.Submission.Provenance}
 			}
 		}
@@ -1121,8 +1121,8 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 		event := record.Event
 		item := browserActivityItemResponse{RedirectFromSequence: event.RedirectFromSequence, SourceSessionID: string(record.SourceSessionID), Generation: record.Generation,
 			Sequence: event.Sequence, Kind: event.Kind, PolicyRevision: event.PolicyRevisionID.String(),
-			ClientOccurred: model.TimeUTC(event.ClientOccurredAt).Format(time.RFC3339Nano), MatchedRuleID: event.MatchedRuleID,
-			BlockReason: event.BlockReason, ReceivedAt: model.TimeUTC(event.ReceivedAt).Format(time.RFC3339Nano)}
+			ClientOccurred: model.FormatRFC3339(event.ClientOccurredAt), MatchedRuleID: event.MatchedRuleID,
+			BlockReason: event.BlockReason, ReceivedAt: model.FormatRFC3339(event.ReceivedAt)}
 		if event.Location != nil {
 			item.Location = &browserActivityLocationResponse{Scheme: event.Location.Scheme, Host: event.Location.Host, Port: event.Location.Port, Path: event.Location.Path}
 		}
@@ -1169,11 +1169,11 @@ func candidateLiveCorrectionsFromModel(values []model.CandidateLiveCorrection) [
 	result := make([]candidateLiveCorrectionResponse, len(values))
 	for index, value := range values {
 		item := candidateLiveCorrectionResponse{RevisionID: value.RevisionID.String(), RevisionNumber: value.RevisionNumber,
-			EffectiveAt: model.TimeUTC(value.EffectiveAt).Format(time.RFC3339Nano), Summary: value.Summary,
+			EffectiveAt: model.FormatRFC3339(value.EffectiveAt), Summary: value.Summary,
 			ChangedAreas:         append([]model.ExamCorrectionChangedArea(nil), value.ChangedAreas...),
 			AffectedCapabilities: append([]model.CandidateCapability{}, value.AffectedCapabilities...), AcknowledgementRequired: value.AcknowledgementRequired, AcknowledgementState: value.AcknowledgementState}
 		if value.AcknowledgedAt.Valid {
-			at := model.TimeUTC(value.AcknowledgedAt.Time).Format(time.RFC3339Nano)
+			at := model.FormatRFC3339(value.AcknowledgedAt.Time)
 			item.AcknowledgedAt = &at
 		}
 		result[index] = item
@@ -1203,7 +1203,7 @@ func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCap
 		browser.PolicyDigest = value.Browser.PolicyDigest
 	}
 	return candidateRuntimeCapabilitiesResponse{SchemaVersion: value.SchemaVersion,
-		ServerTime: value.ServerTime.Format(time.RFC3339Nano), InteractionState: string(value.InteractionState),
+		ServerTime: model.FormatRFC3339(value.ServerTime), InteractionState: string(value.InteractionState),
 		AttemptConfiguration: candidateAttemptConfigurationResponse{Revision: value.AttemptConfiguration.Revision,
 			Presentation: value.AttemptConfiguration.Presentation, ApprovedCommands: append([]string{}, value.AttemptConfiguration.ApprovedCommands...),
 			ApprovedKeybindings: append([]string{}, value.AttemptConfiguration.ApprovedKeybindings...), Digest: value.AttemptConfiguration.Digest},
@@ -1294,7 +1294,7 @@ func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (
 		response.Entries = append(response.Entries, candidateWorkspaceJournalEntryResponse{Cursor: entry.Cursor,
 			EntryID: entry.EntryID.String(), Kind: string(entry.EntryKind), Operation: string(entry.Operation), OldPath: entry.OldPath,
 			NewPath: entry.NewPath, ContentVersion: entry.ContentVersion.String(),
-			ChangedAt: model.TimeUTC(entry.ChangedAt).Format(time.RFC3339Nano), Recursive: entry.Recursive})
+			ChangedAt: model.FormatRFC3339(entry.ChangedAt), Recursive: entry.Recursive})
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -1353,7 +1353,7 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	response := examSubmissionReceiptResponse{BrowserActivity: receipt.BrowserActivity, SubmissionID: receipt.SubmissionID.String(),
 		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
 		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
-		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
+		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.FormatRFC3339(receipt.SubmittedAt)}
 	return jsonResult(http.StatusCreated, response).withHeaders(noStoreHeaders()), nil
 }
 
@@ -1374,9 +1374,9 @@ func (module examAttemptHTTPModule) getSubmission(request operationRequest) (ope
 		WorkspaceCursor:       submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
 		ManifestEntryCount: submission.ManifestEntryCount, ManifestTotalFileBytes: submission.ManifestTotalFileBytes,
 		IntegrityState: string(submission.IntegrityState),
-		SubmittedAt:    model.TimeUTC(submission.SubmittedAt).Format(time.RFC3339Nano)}
+		SubmittedAt:    model.FormatRFC3339(submission.SubmittedAt)}
 	if submission.IntegrityState == model.SubmissionIntegrityRetired {
-		response.IntegrityRetiredAt = model.TimeUTC(submission.IntegrityRetiredAt.Time).Format(time.RFC3339Nano)
+		response.IntegrityRetiredAt = model.FormatRFC3339(submission.IntegrityRetiredAt.Time)
 	} else {
 		response.FinalFocusLossSequence = &submission.FinalFocusLossSequence
 		response.UnresolvedIntegrityCount = &submission.UnresolvedIntegrityCount
@@ -1721,25 +1721,25 @@ func examAttemptManagerResponseFromView(view application.ExamAttemptManagerView)
 	attempt, workspace := view.Attempt, view.Workspace
 	response := examAttemptManagerResponse{ID: attempt.ID.String(), ExamID: attempt.ExamID.String(), SittingID: attempt.SittingID.String(),
 		CandidateUserID: attempt.CandidateUserID.String(), AdmissionRevisionID: attempt.AdmissionRevisionID.String(), State: string(attempt.State),
-		CreatedAt: model.TimeUTC(attempt.CreatedAt).Format(time.RFC3339Nano), UpdatedAt: model.TimeUTC(attempt.UpdatedAt).Format(time.RFC3339Nano),
+		CreatedAt: model.FormatRFC3339(attempt.CreatedAt), UpdatedAt: model.FormatRFC3339(attempt.UpdatedAt),
 		SubmittedAt: attempt.SubmittedAt.FormatRFC3339(), Revision: attempt.Revision,
 		Workspace: examAttemptWorkspaceResponse{ID: workspace.ID.String(), Cursor: workspace.Cursor,
-			CreatedAt: model.TimeUTC(workspace.CreatedAt).Format(time.RFC3339Nano), UpdatedAt: model.TimeUTC(workspace.UpdatedAt).Format(time.RFC3339Nano)}}
+			CreatedAt: model.FormatRFC3339(workspace.CreatedAt), UpdatedAt: model.FormatRFC3339(workspace.UpdatedAt)}}
 	if participation := view.LatestParticipation; participation != nil {
 		response.LatestParticipation = &examAttemptParticipationResponse{ID: participation.ID.String(), State: string(participation.State),
 			Generation: participation.Generation, RenewalSequence: participation.RenewalSequence,
-			StartedAt: model.TimeUTC(participation.StartedAt).Format(time.RFC3339Nano), UpdatedAt: model.TimeUTC(participation.UpdatedAt).Format(time.RFC3339Nano),
-			LeaseExpiresAt: model.TimeUTC(participation.LeaseExpiresAt).Format(time.RFC3339Nano), EndedAt: participation.EndedAt.FormatRFC3339(), EndReason: string(participation.EndReason)}
+			StartedAt: model.FormatRFC3339(participation.StartedAt), UpdatedAt: model.FormatRFC3339(participation.UpdatedAt),
+			LeaseExpiresAt: model.FormatRFC3339(participation.LeaseExpiresAt), EndedAt: participation.EndedAt.FormatRFC3339(), EndReason: string(participation.EndReason)}
 	}
 	if connection := view.CurrentConnection; connection != nil {
 		response.CurrentConnection = &examAttemptConnectionResponse{ID: connection.ID.String(), State: string(connection.State),
-			OpenedAt: model.TimeUTC(connection.OpenedAt).Format(time.RFC3339Nano), ClosedAt: connection.ClosedAt.FormatRFC3339(), CloseReason: string(connection.CloseReason)}
+			OpenedAt: model.FormatRFC3339(connection.OpenedAt), ClosedAt: connection.ClosedAt.FormatRFC3339(), CloseReason: string(connection.CloseReason)}
 	}
 	if suspension := view.ActiveSuspension; suspension != nil {
 		response.ActiveSuspension = &examAttemptSuspensionResponse{ID: suspension.ID.String(),
 			ParticipationID: suspension.ParticipationID.String(), FlagID: suspension.FlagID.String(), Generation: suspension.Generation,
 			State: string(suspension.State), Source: string(suspension.Source), CandidateReason: string(suspension.CandidateReason),
-			StartedAt: model.TimeUTC(suspension.StartedAt).Format(time.RFC3339Nano), EndedAt: suspension.EndedAt.FormatRFC3339(),
+			StartedAt: model.FormatRFC3339(suspension.StartedAt), EndedAt: suspension.EndedAt.FormatRFC3339(),
 			ReallowedByUserID: suspension.ReallowedByUserID.String(), SuspendedByUserID: suspension.SuspendedByUserID.String()}
 	}
 	return response, nil

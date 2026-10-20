@@ -453,8 +453,8 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("provider connection begin = %d: %s", connect.Code, connect.Body.String())
 	}
 	var connectionStart struct {
-		RedirectURL string `json:"redirect_url"`
-		ExpiresAt   int64  `json:"expires_at"`
+		RedirectURL string    `json:"redirect_url"`
+		ExpiresAt   time.Time `json:"expires_at"`
 	}
 	if err = json.Unmarshal(connect.Body.Bytes(), &connectionStart); err != nil {
 		t.Fatal(err)
@@ -472,8 +472,8 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		context.Background(), model.HashToken(connectionStateToken),
 	)
 	if err != nil || connectionState.ExpiresAt.Sub(connectionState.CreatedAt) != 10*time.Minute ||
-		connectionStart.ExpiresAt != connectionState.ExpiresAt.UnixMilli() {
-		t.Fatalf("provider connection state = %#v response expiry=%d error=%v", connectionState, connectionStart.ExpiresAt, err)
+		!connectionStart.ExpiresAt.Equal(time.UnixMilli(connectionState.ExpiresAt.UnixMilli())) {
+		t.Fatalf("provider connection state = %#v response expiry=%s error=%v", connectionState, connectionStart.ExpiresAt, err)
 	}
 	connectionQuery := connectionService.Query()
 	connectionQuery.Set("ticket", ticket)

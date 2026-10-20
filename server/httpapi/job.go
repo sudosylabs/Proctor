@@ -37,11 +37,11 @@ type jobResponse struct {
 	ID              string               `json:"id"`
 	Type            model.JobType        `json:"type"`
 	Status          model.JobStatus      `json:"status"`
-	CreateAt        int64                `json:"create_at"`
-	UpdateAt        int64                `json:"update_at"`
-	AvailableAt     int64                `json:"available_at"`
-	StartAt         int64                `json:"start_at,omitempty"`
-	CompleteAt      int64                `json:"complete_at,omitempty"`
+	CreatedAt       string               `json:"created_at"`
+	UpdatedAt       string               `json:"updated_at"`
+	AvailableAt     string               `json:"available_at"`
+	StartedAt       string               `json:"started_at,omitempty"`
+	CompletedAt     string               `json:"completed_at,omitempty"`
 	PublicErrorCode string               `json:"public_error_code,omitempty"`
 	AttemptCount    int                  `json:"attempt_count"`
 	MaximumAttempts int                  `json:"maximum_attempts"`
@@ -56,10 +56,10 @@ type jobAttemptResponse struct {
 	ID              string                 `json:"id"`
 	Number          int                    `json:"number"`
 	Status          model.JobAttemptStatus `json:"status"`
-	StartAt         int64                  `json:"start_at"`
-	HeartbeatAt     int64                  `json:"heartbeat_at"`
-	LeaseExpiresAt  int64                  `json:"lease_expires_at"`
-	CompleteAt      int64                  `json:"complete_at,omitempty"`
+	StartedAt       string                 `json:"started_at"`
+	HeartbeatAt     string                 `json:"heartbeat_at"`
+	LeaseExpiresAt  string                 `json:"lease_expires_at"`
+	CompletedAt     string                 `json:"completed_at,omitempty"`
 	PublicErrorCode string                 `json:"public_error_code,omitempty"`
 }
 type jobAttemptListResponse struct {
@@ -68,7 +68,7 @@ type jobAttemptListResponse struct {
 }
 type jobCursor struct {
 	Version   int    `json:"version,omitempty"`
-	CreatedAt int64  `json:"created_at"`
+	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
 type jobAttemptCursor struct {
@@ -112,7 +112,7 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
+		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.FormatRFC3339(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
 			return operationResult{}, unpresentableResult(err)
 		}
@@ -192,7 +192,7 @@ func listJobsQuery(r *http.Request) (application.ListJobsQuery, error) {
 		if err != nil {
 			return query, err
 		}
-		query.BeforeCreatedAt = model.TimeFromMillis(cursor.CreatedAt)
+		query.BeforeCreatedAt, _ = model.ParseRFC3339(cursor.CreatedAt)
 		query.BeforeID = model.JobID(cursor.ID)
 	}
 	for _, raw := range r.URL.Query()["status"] {
@@ -239,7 +239,8 @@ func jobCursorSpec() opaqueCursorSpec[jobCursor] {
 		setVersion:     func(cursor *jobCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
 		validate: func(cursor jobCursor) error {
-			if cursor.CreatedAt <= 0 || !model.JobID(cursor.ID).IsValid() {
+			createdAt, err := model.ParseRFC3339(cursor.CreatedAt)
+			if err != nil || createdAt.IsZero() || !model.JobID(cursor.ID).IsValid() {
 				return errors.New("invalid job keyset")
 			}
 			return nil
@@ -262,12 +263,12 @@ func jobAttemptCursorSpec() opaqueCursorSpec[jobAttemptCursor] {
 	}
 }
 func jobResponseFromApplication(view application.JobView) jobResponse {
-	response := jobResponse{ID: view.ID.String(), Type: view.Type, Status: view.Status, CreateAt: model.MillisFromTime(view.CreatedAt), UpdateAt: model.MillisFromTime(view.UpdatedAt), AvailableAt: model.MillisFromTime(view.AvailableAt), PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts, Revision: view.Revision}
+	response := jobResponse{ID: view.ID.String(), Type: view.Type, Status: view.Status, CreatedAt: model.FormatRFC3339(view.CreatedAt), UpdatedAt: model.FormatRFC3339(view.UpdatedAt), AvailableAt: model.FormatRFC3339(view.AvailableAt), PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts, Revision: view.Revision}
 	if view.StartedAt.Valid {
-		response.StartAt = model.MillisFromTime(view.StartedAt.Time)
+		response.StartedAt = model.FormatRFC3339(view.StartedAt.Time)
 	}
 	if view.CompletedAt.Valid {
-		response.CompleteAt = model.MillisFromTime(view.CompletedAt.Time)
+		response.CompletedAt = model.FormatRFC3339(view.CompletedAt.Time)
 	}
 	if view.Progress != nil {
 		response.Progress = &jobProgressResponse{Current: view.Progress.Current, Total: view.Progress.Total, Stage: view.Progress.Stage}
@@ -275,9 +276,9 @@ func jobResponseFromApplication(view application.JobView) jobResponse {
 	return response
 }
 func jobAttemptResponseFromApplication(view application.JobAttemptView) jobAttemptResponse {
-	response := jobAttemptResponse{ID: view.ID.String(), Number: view.Number, Status: view.Status, StartAt: model.MillisFromTime(view.StartedAt), HeartbeatAt: model.MillisFromTime(view.HeartbeatAt), LeaseExpiresAt: model.MillisFromTime(view.LeaseExpiresAt), PublicErrorCode: view.PublicErrorCode}
+	response := jobAttemptResponse{ID: view.ID.String(), Number: view.Number, Status: view.Status, StartedAt: model.FormatRFC3339(view.StartedAt), HeartbeatAt: model.FormatRFC3339(view.HeartbeatAt), LeaseExpiresAt: model.FormatRFC3339(view.LeaseExpiresAt), PublicErrorCode: view.PublicErrorCode}
 	if view.CompletedAt.Valid {
-		response.CompleteAt = model.MillisFromTime(view.CompletedAt.Time)
+		response.CompletedAt = model.FormatRFC3339(view.CompletedAt.Time)
 	}
 	return response
 }

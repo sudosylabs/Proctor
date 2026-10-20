@@ -39,7 +39,7 @@ func TestAcademicUnitMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{
 				Name: "AcademicUnitMemberResponse", DTO: reflect.TypeOf(academicUnitMemberResponse{}),
-				Required: []string{"id", "create_at", "update_at", "delete_at", "academic_unit_id", "user_id", "start_at"},
+				Required: []string{"id", "created_at", "updated_at", "academic_unit_id", "user_id", "start_at"},
 			},
 			{
 				Name: "CreateAcademicUnitMemberRequest", DTO: reflect.TypeOf(createAcademicUnitMemberRequest{}),

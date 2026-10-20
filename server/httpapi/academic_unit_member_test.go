@@ -33,7 +33,7 @@ type academicUnitMemberHTTPApplication struct {
 func TestAcademicUnitMemberHistoryQueryIncludesEndedMemberships(t *testing.T) {
 	t.Parallel()
 
-	request := httptest.NewRequest("GET", "/api/v1/academic-units/unit/members?active_at=123&history=true", nil)
+	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?active_at=1970-01-01T00:00:00.123Z&history=true", nil)
 	recorder := httptest.NewRecorder()
 	activeAt, ok := queryActiveAt(recorder, request)
 	if !ok {
@@ -60,7 +60,7 @@ func TestAcademicUnitMemberHistoryQueryRejectsInvalidBoolean(t *testing.T) {
 func TestAcademicUnitMemberFalseHistoryQueryUsesActiveAt(t *testing.T) {
 	t.Parallel()
 
-	request := httptest.NewRequest("GET", "/api/v1/academic-units/unit/members?history=false&active_at=123", nil)
+	request := httptest.NewRequestWithContext(t.Context(), "GET", "/api/v1/academic-units/unit/members?history=false&active_at=1970-01-01T00:00:00.123Z", nil)
 	recorder := httptest.NewRecorder()
 	activeAt, ok := queryActiveAt(recorder, request)
 	if !ok || activeAt != 123 {
@@ -90,7 +90,7 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	members := &academicUnitMemberHTTPApplication{result: member}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, academicUnitMemberResource(members))
 
-	create := httptest.NewRequest(http.MethodPost, "/api/v1/academic-units/"+unitID+"/members", strings.NewReader(`{"academic_unit_id":"ignored","user_id":"`+userID+`","start_at":100}`))
+	create := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/academic-units/"+unitID+"/members", strings.NewReader(`{"academic_unit_id":"ignored","user_id":"`+userID+`","start_at":"1970-01-01T00:00:00.1Z"}`))
 	create.Header.Set("Authorization", "Bearer credential")
 	create.Header.Set("Content-Type", "application/json")
 	created := httptest.NewRecorder()

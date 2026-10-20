@@ -31,7 +31,7 @@ func TestUserSettingsChangedEventIsAContentFreeUserTargetedHint(t *testing.T) {
 		event.Action != "" || event.Resource != (model.Resource{}) {
 		t.Fatalf("event target = %#v", event)
 	}
-	if got := string(event.Data); got != `{"revision":"`+revision.String()+`","format_version":1,"changed_at":1786804200123}` {
+	if got := string(event.Data); got != `{"revision":"`+revision.String()+`","format_version":1,"changed_at":"2026-08-15T14:30:00.123Z"}` {
 		t.Fatalf("event data = %s", got)
 	}
 	var fields map[string]any

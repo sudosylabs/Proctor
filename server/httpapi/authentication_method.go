@@ -46,7 +46,7 @@ type authenticationProviderMethodResponse struct {
 }
 type providerConnectionResponse struct {
 	RedirectURL string `json:"redirect_url"`
-	ExpiresAt   int64  `json:"expires_at"`
+	ExpiresAt   string `json:"expires_at"`
 }
 
 func authenticationMethodResource(app authenticationMethodApplication, cookies browserCookies) resource {
@@ -117,7 +117,7 @@ func (m authenticationMethodResourceModule) connect(request operationRequest) (o
 		m.cookies.attachExternalLoginBinding(writer, start.Binding, start.ExpiresAt)
 	})
 	headers.Set("Cache-Control", "no-store")
-	return jsonResult(http.StatusCreated, providerConnectionResponse{RedirectURL: start.RedirectURL, ExpiresAt: start.ExpiresAt}).withHeaders(headers), nil
+	return jsonResult(http.StatusCreated, providerConnectionResponse{RedirectURL: start.RedirectURL, ExpiresAt: wireTimeFromMillis(start.ExpiresAt)}).withHeaders(headers), nil
 }
 
 func (m authenticationMethodResourceModule) unlink(request operationRequest) (operationResult, error) {

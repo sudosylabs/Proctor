@@ -40,11 +40,11 @@ func parseActiveAt(r *http.Request) (int64, error) {
 	if value == "" {
 		return model.GetMillis(), nil
 	}
-	activeAt, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || activeAt <= 0 {
+	activeAt, err := model.ParseRFC3339(value)
+	if err != nil || activeAt.IsZero() {
 		return 0, invalidRequestError(err)
 	}
-	return activeAt, nil
+	return model.MillisFromTime(activeAt), nil
 }
 
 func usesMembershipPaging(request *http.Request) bool {
@@ -69,10 +69,11 @@ func membershipPageQuery(request *http.Request, scope model.Resource) (applicati
 		query.Limit = limit
 	}
 	if values.Has("active_at") {
-		at, err := strconv.ParseInt(values.Get("active_at"), 10, 64)
-		if err != nil || at <= 0 {
+		parsed, err := model.ParseRFC3339(values.Get("active_at"))
+		if err != nil || parsed.IsZero() {
 			return query, cursor, invalidRequestError(err)
 		}
+		at := model.MillisFromTime(parsed)
 		query.ActiveAt = &at
 	}
 	if values.Has("history") {
@@ -119,7 +120,7 @@ func membershipPageHeaders(request *http.Request, limit int, cursor *membershipP
 	if *cursor.ActiveAt == 0 {
 		values.Set("history", "true")
 	} else {
-		values.Set("active_at", strconv.FormatInt(*cursor.ActiveAt, 10))
+		values.Set("active_at", wireTimeFromMillis(*cursor.ActiveAt))
 	}
 	next := url.URL{Path: request.URL.Path, RawQuery: values.Encode()}
 	headers.Set("Link", "<"+next.String()+">; rel=\"next\"")

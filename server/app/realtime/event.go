@@ -42,7 +42,7 @@ const (
 type userSettingsChangedData struct {
 	Revision      string `json:"revision"`
 	FormatVersion int    `json:"format_version"`
-	ChangedAt     int64  `json:"changed_at"`
+	ChangedAt     string `json:"changed_at"`
 }
 
 type collectionInvalidationData struct {
@@ -114,7 +114,7 @@ func NewUserSettingsChangedEvent(
 	}
 	data, err := json.Marshal(userSettingsChangedData{
 		Revision: revision.String(), FormatVersion: formatVersion,
-		ChangedAt: model.TimeUTC(changedAt).UnixMilli(),
+		ChangedAt: model.FormatRFC3339(changedAt),
 	})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode User Settings change event: %w", err)
@@ -314,7 +314,7 @@ func NewExamIntegrityDiscrepancyRecordedEvent(submissionID model.SubmissionID, s
 	}
 	data, err := json.Marshal(managerExamIntegrityDiscrepancyData{SubmissionID: submissionID.String(),
 		ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(),
-		DiscrepancyID: discrepancyID.String(), RecordedAt: model.TimeUTC(recordedAt).Format(time.RFC3339Nano)})
+		DiscrepancyID: discrepancyID.String(), RecordedAt: model.FormatRFC3339(recordedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode manager Integrity Discrepancy event: %w", err)
 	}
@@ -372,7 +372,7 @@ func NewCandidateStudentResultReleasedEvent(fact ExamIntegrityReviewEventFact) (
 	}
 	data, err := json.Marshal(candidateStudentResultReleasedData{SubmissionID: fact.SubmissionID.String(),
 		ExamAttemptID: fact.AttemptID.String(), ReviewID: fact.ReviewID.String(), ReviewState: string(fact.State), Revision: fact.Revision,
-		ReleaseState: string(fact.ReleaseState), ChangedAt: model.TimeUTC(fact.ChangedAt).Format(time.RFC3339Nano)})
+		ReleaseState: string(fact.ReleaseState), ChangedAt: model.FormatRFC3339(fact.ChangedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode candidate Student Result event: %w", err)
 	}
@@ -389,7 +389,7 @@ func newManagerExamIntegrityReviewEvent(name string, fact ExamIntegrityReviewEve
 	data, err := json.Marshal(managerExamIntegrityReviewChangedData{SubmissionID: fact.SubmissionID.String(),
 		ExamAttemptID: fact.AttemptID.String(), CandidateID: fact.CandidateID.String(), ReviewID: fact.ReviewID.String(),
 		ReviewState: string(fact.State), Revision: fact.Revision, ReleaseState: string(fact.ReleaseState),
-		ChangedAt: model.TimeUTC(fact.ChangedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(fact.ChangedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode manager Integrity Review event: %w", err)
 	}
@@ -408,7 +408,7 @@ func NewExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model
 	data, err := json.Marshal(managerExamAttemptSubmittedData{ExamSittingID: sittingID.String(),
 		ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(), SubmissionID: submissionID.String(),
 		State: string(model.ExamAttemptSubmitted), Provenance: string(provenance), WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
-		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
+		SubmittedAt: model.FormatRFC3339(submittedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -428,7 +428,7 @@ func NewCandidateExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemp
 		ExamAttemptID: attemptID.String(), SubmissionID: submissionID.String(), State: string(model.ExamAttemptSubmitted),
 		Provenance:      string(provenance),
 		WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
-		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
+		SubmittedAt: model.FormatRFC3339(submittedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -452,7 +452,7 @@ func NewCandidateExamAttemptFocusLossWarningEvent(sittingID model.ExamSittingID,
 	}
 	data, err := json.Marshal(candidateExamAttemptFocusLossWarningData{ExamSittingID: sittingID.String(),
 		ExamAttemptID: attemptID.String(), WarningCode: "focus_loss_policy_warning",
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -479,7 +479,7 @@ func NewExamAttemptIntegrityFlaggedEvent(sittingID model.ExamSittingID, attemptI
 		ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(), FlagID: flagID.String(),
 		PolicyKind: string(model.IntegrityPolicyFocusLoss), Outcome: string(outcome), RetainedEvidence: retainedEvidence,
 		EvidenceOverflow: evidenceOverflow, EvidenceAvailable: true,
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -500,7 +500,7 @@ func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID,
 	}
 	data, err := json.Marshal(candidateExamAttemptWorkspaceChangedData{ExamSittingID: sittingID.String(),
 		ExamAttemptID: attemptID.String(), EntryID: entryID.String(), Operation: string(operation), Cursor: cursor,
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -534,7 +534,7 @@ func newCandidateExamAttemptAccessEvent(name string, sittingID model.ExamSitting
 		return RealtimeEvent{}, errors.New("candidate Exam Attempt access event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(candidateExamAttemptAccessChangedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
-		State: string(state), ReasonCode: reason, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		State: string(state), ReasonCode: reason, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -556,7 +556,7 @@ func NewExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model
 	}
 	data, err := json.Marshal(managerExamAttemptSuspendedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
 		CandidateID: candidateID.String(), ConnectionID: connectionID.String(), FlagID: flagID.String(),
-		SuspensionID: suspensionID.String(), Revision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		SuspensionID: suspensionID.String(), Revision: revision, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -572,7 +572,7 @@ func NewExamAttemptReallowedEvent(sittingID model.ExamSittingID, attemptID model
 	}
 	data, err := json.Marshal(managerExamAttemptReallowedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
 		CandidateID: candidateID.String(), SuspensionID: suspensionID.String(), Revision: revision,
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, err
 	}
@@ -607,7 +607,7 @@ func newExamAttemptConnectionChangedEvent(name string, sittingID model.ExamSitti
 	}
 	data, err := json.Marshal(examAttemptConnectionChangedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),
 		CandidateID: candidateID.String(), ConnectionID: connectionID.String(), State: string(state), CloseReason: string(reason),
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Attempt Connection event: %w", err)
 	}
@@ -645,7 +645,7 @@ func newExamSittingContentCorrectedEvent(action model.Action, examID model.ExamI
 	}
 	data, err := json.Marshal(examSittingContentCorrectedData{
 		ExamID: examID.String(), ExamSittingID: sittingID.String(), PreviousRevisionID: previousRevisionID.String(),
-		RevisionID: revisionID.String(), SittingRevision: sittingRevision, EffectiveAt: model.TimeUTC(effectiveAt).Format(time.RFC3339Nano),
+		RevisionID: revisionID.String(), SittingRevision: sittingRevision, EffectiveAt: model.FormatRFC3339(effectiveAt),
 	})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting correction event: %w", err)
@@ -682,8 +682,8 @@ func newExamSittingLifecycleChangedEvent(action model.Action, examID model.ExamI
 	}
 	data, err := json.Marshal(examSittingLifecycleChangedData{
 		ExamID: examID.String(), ExamSittingID: sittingID.String(), State: string(state), Revision: revision,
-		ReasonCode: reasonCode, ScheduledEnd: model.TimeUTC(scheduledEndAt).Format(time.RFC3339Nano),
-		ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano),
+		ReasonCode: reasonCode, ScheduledEnd: model.FormatRFC3339(scheduledEndAt),
+		ChangedAt: model.FormatRFC3339(changedAt),
 	})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting lifecycle event: %w", err)
@@ -728,7 +728,7 @@ func newExamSittingChangedEvent(name string, examID model.ExamID, sittingID mode
 		return RealtimeEvent{}, errors.New("Exam Sitting event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(examSittingChangedData{ExamID: examID.String(), ExamSittingID: sittingID.String(), State: string(state),
-		Revision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		Revision: revision, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Sitting event: %w", err)
 	}
@@ -741,7 +741,7 @@ func NewExamRevisionPublishedEvent(revisionID model.ExamRevisionID, examID model
 		return RealtimeEvent{}, errors.New("Exam Revision published event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(examRevisionPublishedData{ExamID: examID.String(), RevisionID: revisionID.String(), Number: number,
-		PolicyDigest: policyDigest, Kind: string(kind), PublishedAt: model.TimeUTC(publishedAt).Format(time.RFC3339Nano)})
+		PolicyDigest: policyDigest, Kind: string(kind), PublishedAt: model.FormatRFC3339(publishedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Revision published event: %w", err)
 	}
@@ -780,7 +780,7 @@ func NewExamStarterWorkspaceChangedEvent(examID model.ExamID, entryID model.Star
 		return RealtimeEvent{}, errors.New("Starter Workspace change event requires valid identities, operation, revision, and time")
 	}
 	data, err := json.Marshal(examStarterWorkspaceChangedData{ExamID: examID.String(), EntryID: entryID.String(), Operation: operation,
-		DraftRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		DraftRevision: revision, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Starter Workspace change event: %w", err)
 	}
@@ -803,7 +803,7 @@ func NewExamArchivedEvent(examID model.ExamID, revision int64, archivedAt time.T
 		return RealtimeEvent{}, errors.New("exam archived event requires a valid identity, revision, and time")
 	}
 	data, err := json.Marshal(examArchivedData{ExamID: examID.String(), ExamRevision: revision,
-		ArchivedAt: model.TimeUTC(archivedAt).Format(time.RFC3339Nano)})
+		ArchivedAt: model.FormatRFC3339(archivedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode exam archived event: %w", err)
 	}
@@ -816,7 +816,7 @@ func NewExamManagerChangedEvent(examID model.ExamID, userID model.UserID, presen
 		return RealtimeEvent{}, errors.New("Exam Manager change event requires valid identities, revision, and time")
 	}
 	data, err := json.Marshal(examManagerChangedData{ExamID: examID.String(), UserID: userID.String(), Present: present,
-		ExamRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ExamRevision: revision, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam Manager change event: %w", err)
 	}
@@ -829,7 +829,7 @@ func NewExamOwnerTransferredEvent(examID model.ExamID, ownerID model.UserID, rev
 		return RealtimeEvent{}, errors.New("Exam owner transfer event requires valid identities, revision, and time")
 	}
 	data, err := json.Marshal(examOwnerTransferredData{ExamID: examID.String(), OwnerUserID: ownerID.String(),
-		ExamRevision: revision, ChangedAt: model.TimeUTC(changedAt).Format(time.RFC3339Nano)})
+		ExamRevision: revision, ChangedAt: model.FormatRFC3339(changedAt)})
 	if err != nil {
 		return RealtimeEvent{}, fmt.Errorf("encode Exam owner transfer event: %w", err)
 	}

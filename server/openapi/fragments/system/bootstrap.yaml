@@ -189,9 +189,9 @@ components:
         - administrator_user_id
       properties:
         initialized_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds at which bootstrap committed.
+          type: string
+          format: date-time
+          description: Time at which bootstrap committed.
         institution_id:
           $ref: '#/components/schemas/ID'
         administrator_user_id:

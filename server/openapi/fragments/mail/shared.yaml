@@ -57,21 +57,21 @@ components:
         state:
           $ref: '#/components/schemas/MailDeliveryState'
         created_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the delivery was created.
+          type: string
+          format: date-time
+          description: Time when the delivery was created.
         updated_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds of the latest durable state change.
+          type: string
+          format: date-time
+          description: Time of the latest durable state change.
         message_date:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds represented by the message Date header.
+          type: string
+          format: date-time
+          description: Time represented by the message Date header.
         deadline:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds after which the message is no longer relevant for delivery.
+          type: string
+          format: date-time
+          description: Time after which the message is no longer relevant for delivery.
         message_id:
           type: string
           maxLength: 900
@@ -81,13 +81,13 @@ components:
           minimum: 0
           maximum: 8
         accepted_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when SMTP accepted the message.
+          type: string
+          format: date-time
+          description: Time when SMTP accepted the message.
         failed_at:
-          type: integer
-          format: int64
-          description: Unix time in milliseconds when the delivery became terminally failed.
+          type: string
+          format: date-time
+          description: Time when the delivery became terminally failed.
         public_failure_code:
           type: string
           maxLength: 128

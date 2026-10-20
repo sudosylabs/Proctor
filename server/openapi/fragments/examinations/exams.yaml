@@ -310,7 +310,6 @@ components:
         - owner_user_id
         - title
         - updated_at
-        - archived_at
         - revision
         - manager_count
         - sitting_count
@@ -336,9 +335,7 @@ components:
           type: string
           format: date-time
         archived_at:
-          type:
-            - string
-            - "null"
+          type: string
           format: date-time
         revision:
           type: integer

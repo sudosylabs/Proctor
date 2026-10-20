@@ -286,8 +286,8 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		ParticipationID: result.Participation.ID.String(), AttemptConnectionID: result.Connection.ID.String(),
 		Generation:             result.Participation.Generation,
 		RenewalIntervalSeconds: int64(model.AttemptParticipationRenewalInterval / time.Second),
-		StartedAt:              result.Participation.StartedAt.Format(time.RFC3339Nano),
-		LeaseExpiresAt:         result.Participation.LeaseExpiresAt.Format(time.RFC3339Nano),
+		StartedAt:              model.FormatRFC3339(result.Participation.StartedAt),
+		LeaseExpiresAt:         model.FormatRFC3339(result.Participation.LeaseExpiresAt),
 		FirstAdmission:         result.FirstAdmission, Replayed: result.Replayed,
 		CandidateRuntimeCapabilities: candidateRuntimeCapabilitiesWire(result.RuntimeCapabilities),
 		BrowserPolicy:                candidateBrowserPolicyWire(result.BrowserPolicy),
@@ -450,7 +450,7 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 		return
 	}
 	encoded, err := json.Marshal(examAttemptRenewResponse{SecurityCoverage: result.SecurityCoverage, Generation: result.Generation, AcceptedSequence: result.AcceptedSequence,
-		DatabaseTime: result.DatabaseTime.Format(time.RFC3339Nano), LeaseExpiresAt: result.LeaseExpiresAt.Format(time.RFC3339Nano), Duplicate: result.Duplicate})
+		DatabaseTime: model.FormatRFC3339(result.DatabaseTime), LeaseExpiresAt: model.FormatRFC3339(result.LeaseExpiresAt), Duplicate: result.Duplicate})
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
@@ -497,7 +497,7 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 		return
 	}
 	encoded, err := json.Marshal(examAttemptFocusLossResponse{Generation: result.Generation,
-		AcceptedSequence: result.AcceptedSequence, ReceivedAt: result.ReceivedAt.Format(time.RFC3339Nano),
+		AcceptedSequence: result.AcceptedSequence, ReceivedAt: model.FormatRFC3339(result.ReceivedAt),
 		Duplicate: result.Duplicate, GapDetected: result.GapDetected, PolicyDisabled: result.PolicyDisabled,
 		WarningCreated: result.CandidateWarningCreated, SuspensionCreated: result.SuspensionCreated,
 		DiscrepancyRecorded: result.DiscrepancyRecorded})

@@ -139,7 +139,7 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now(), MFACompletedAt: model.OptionalTimeFrom(time.Now())}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
 
-	list := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?purpose=student_class&state=pending&email=student%40example.edu&limit=25&created_after=1700000000000&created_before=1900000000000", nil)
+	list := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/invitations?purpose=student_class&state=pending&email=student%40example.edu&limit=25&created_after=2023-11-14T22:13:20Z&created_before=2030-03-17T17:46:40Z", nil)
 	list.Header.Set("Authorization", "Bearer session")
 	listResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listResponse, list)
@@ -366,14 +366,15 @@ func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing
 		ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
 	classID := model.NewClassID().String()
-	body, _ := json.Marshal(map[string]any{"email": "student@example.edu", "start_at": int64(1_800_000_000_000),
-		"end_at": int64(1_810_000_000_000), "suggested_username": "student-one"})
+	body, _ := json.Marshal(map[string]any{"email": "student@example.edu", "start_at": "2027-01-15T08:00:00Z",
+		"end_at": "2027-05-11T01:46:40.5Z", "suggested_username": "student-one"})
 	issue := newJSONRequest(http.MethodPost, "/api/v1/classes/"+classID+"/invitations/student", bytes.NewReader(body))
 	issue.Header.Set("Authorization", "Bearer access")
 	issueResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(issueResponse, issue)
 	if issueResponse.Code != http.StatusCreated || strings.Contains(issueResponse.Body.String(), "student@example.edu") ||
-		strings.Contains(issueResponse.Body.String(), "claim") || applicationFake.issue.ClassID != classID {
+		strings.Contains(issueResponse.Body.String(), "claim") || applicationFake.issue.ClassID != classID ||
+		applicationFake.issue.IntendedStartsAt != 1_800_000_000_000 || applicationFake.issue.IntendedEndsAt != 1_810_000_000_500 {
 		t.Fatalf("issue response=%d %s command=%#v", issueResponse.Code, issueResponse.Body.String(), applicationFake.issue)
 	}
 	raw := model.NewCredentialToken()

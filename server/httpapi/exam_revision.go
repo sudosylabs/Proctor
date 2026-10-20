@@ -12,7 +12,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -188,7 +187,7 @@ func examRevisionResponseFromSummary(summary application.ExamRevisionSummary) ex
 		StarterWorkspaceDigest: summary.StarterWorkspaceDigest, ContentDigest: summary.ContentDigest,
 		ResourceCount: summary.ResourceCount, StarterWorkspaceEntryCount: summary.StarterWorkspaceEntries,
 		StarterWorkspaceTotalBytes: summary.StarterWorkspaceBytes, PublishedByUserID: summary.PublishedByUserID.String(),
-		PublishedAt: model.TimeUTC(summary.PublishedAt).Format(time.RFC3339Nano), BaseRevisionID: summary.BaseRevisionID.String(),
+		PublishedAt: model.FormatRFC3339(summary.PublishedAt), BaseRevisionID: summary.BaseRevisionID.String(),
 		PublicationKind: string(summary.Kind),
 	}
 }

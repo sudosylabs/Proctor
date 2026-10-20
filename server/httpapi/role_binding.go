@@ -19,30 +19,30 @@ type createRoleBindingRequest struct {
 	RoleId    string              `json:"role_id"`
 	ScopeType model.RoleScopeType `json:"scope_type"`
 	ScopeId   string              `json:"scope_id"`
-	StartAt   int64               `json:"start_at"`
-	EndAt     int64               `json:"end_at,omitempty"`
+	StartAt   string              `json:"start_at"`
+	EndAt     string              `json:"end_at,omitempty"`
 }
 
 type roleBindingResponse struct {
-	ID        string              `json:"id"`
-	CreateAt  int64               `json:"create_at"`
-	UpdateAt  int64               `json:"update_at"`
-	DeleteAt  int64               `json:"delete_at"`
-	UserID    string              `json:"user_id"`
-	RoleID    string              `json:"role_id"`
-	ScopeType model.RoleScopeType `json:"scope_type"`
-	ScopeID   string              `json:"scope_id"`
-	StartAt   int64               `json:"start_at"`
-	EndAt     int64               `json:"end_at,omitempty"`
+	ID         string              `json:"id"`
+	CreatedAt  string              `json:"created_at"`
+	UpdatedAt  string              `json:"updated_at"`
+	ArchivedAt string              `json:"archived_at,omitempty"`
+	UserID     string              `json:"user_id"`
+	RoleID     string              `json:"role_id"`
+	ScopeType  model.RoleScopeType `json:"scope_type"`
+	ScopeID    string              `json:"scope_id"`
+	StartAt    string              `json:"start_at"`
+	EndAt      string              `json:"end_at,omitempty"`
 }
 
 func roleBindingResponseFromModel(binding *model.RoleBinding) roleBindingResponse {
 	return roleBindingResponse{
-		ID: binding.ID.String(), CreateAt: model.MillisFromTime(binding.CreatedAt),
-		UpdateAt: model.MillisFromTime(binding.UpdatedAt), DeleteAt: binding.ArchivedAt.Millis(),
+		ID: binding.ID.String(), CreatedAt: model.FormatRFC3339(binding.CreatedAt),
+		UpdatedAt: model.FormatRFC3339(binding.UpdatedAt), ArchivedAt: binding.ArchivedAt.FormatRFC3339(),
 		UserID: binding.UserID.String(), RoleID: binding.RoleID.String(),
 		ScopeType: binding.ScopeType, ScopeID: binding.ScopeID,
-		StartAt: model.MillisFromTime(binding.StartsAt), EndAt: binding.EndsAt.Millis(),
+		StartAt: model.FormatRFC3339(binding.StartsAt), EndAt: binding.EndsAt.FormatRFC3339(),
 	}
 }
 
@@ -97,12 +97,16 @@ func (module roleBindingResourceModule) create(request operationRequest) (operat
 	if err := request.decodeJSON(&input); err != nil {
 		return operationResult{}, err
 	}
+	startAt, endAt, err := wireWindowMillis(input.StartAt, input.EndAt)
+	if err != nil {
+		return operationResult{}, err
+	}
 	saved, err := module.bindings.CreateRoleBinding(
 		request.context,
 		request.invocation(),
 		application.CreateRoleBindingCommand{
 			UserID: input.UserID, RoleID: input.RoleId, ScopeType: input.ScopeType,
-			ScopeID: input.ScopeId, StartAt: input.StartAt, EndAt: input.EndAt,
+			ScopeID: input.ScopeId, StartAt: startAt, EndAt: endAt,
 		},
 	)
 	if err != nil {
