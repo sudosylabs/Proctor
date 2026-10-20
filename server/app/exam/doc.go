@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-// Package exam owns examination use-case policy behind the parent app.App
-// facade. An Exam is the stable authoring identity in one Academic Unit; its
+// Package exam owns examination use-case policy; the parent app.App embeds its
+// services, so their exported use cases are the public surface. An Exam is the stable authoring identity in one Academic Unit; its
 // single Draft is mutable authoring state, an Exam Revision is an immutable
 // published snapshot, and Exam Managers share responsibility with its Owner.
 // A Sitting delivers one Revision to one Class. An Attempt is one candidate's

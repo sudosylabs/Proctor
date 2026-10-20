@@ -60,7 +60,7 @@ func TestSuspendByManagerAuthorizesFirstAndKeepsPrivateReasonOutOfAuditAndEffect
 	reason := "candidate left the examination room"
 	command := ManualSuspensionCommand{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID,
 		ExpectedAttemptRevision: 3, PrivateReason: reason, IdempotencyKey: "kick-key"}
-	result, err := f.service.SuspendByManager(context.Background(), f.invocation, command)
+	result, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestSuspendByManagerReplaySuppressesEffectAndPropagatesOverride(t *testing.
 	f.managerOverride = true
 	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
 	f.persistence.manualSuspensionResult = manualSuspensionResultFixture(t, f, managerID, 3, true)
-	result, err := f.service.SuspendByManager(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+	result, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "override kick",
 		IdempotencyKey: "kick-key"})
 	if err != nil || !result.Replayed || f.effects.kicked != 0 || !f.persistence.manualSuspension.ManagerOverride ||
@@ -103,17 +103,16 @@ func TestSuspendByManagerConcealsSelfAndValidatesBeforeAuthorization(t *testing.
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
-	_, err := f.service.SuspendByManager(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "self", IdempotencyKey: "kick-key"})
-	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
+	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.audit.failedCode != "exam.attempt.not_found" ||
 		f.persistence.manualSuspension != nil || f.effects.kicked != 0 {
 		t.Fatalf("self kick error=%v audit=%#v", err, f.audit)
 	}
 	for _, reason := range []string{"", " padded ", "\xff", strings.Repeat("é", model.AttemptSuspensionPrivateReasonMaximumRunes+1)} {
 		f := newFixture(t)
 		useManagerCall(f)
-		_, err := f.service.SuspendByManager(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+		_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 			SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: reason, IdempotencyKey: "kick-key"})
 		if err == nil || len(f.order) != 0 {
 			t.Fatalf("reason=%q error=%v order=%v", reason, err, f.order)
@@ -129,7 +128,7 @@ func TestSuspendByManagerRejectsInconsistentStoreOutcome(t *testing.T) {
 	stored := manualSuspensionResultFixture(t, f, managerID, 3, false)
 	stored.Suspension.FlagID = model.NewIntegrityFlagID()
 	f.persistence.manualSuspensionResult = stored
-	_, err := f.service.SuspendByManager(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
+	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "kick", IdempotencyKey: "kick-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.kicked != 0 {
@@ -151,7 +150,7 @@ func TestReallowAcceptsClosedManualSuspension(t *testing.T) {
 	stored.Suspension.Source, stored.Suspension.FlagID = model.AttemptSuspensionSourceManual, ""
 	stored.Suspension.SuspendedByUserID = active.SuspendedByUserID
 	f.persistence.reallowResult = stored
-	result, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+	result, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		AttemptID: f.attemptID, SuspensionID: suspensionID, ExpectedAttemptRevision: 2, PrivateReason: "candidate returned",
 		IdempotencyKey: "reallow-key"})
 	if err != nil || result.Suspension.Source != model.AttemptSuspensionSourceManual || f.effects.reallowed != 1 ||

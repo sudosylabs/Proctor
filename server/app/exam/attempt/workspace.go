@@ -96,7 +96,8 @@ type WorkspaceJournalPage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (WorkspaceJournalPage, error) {
+func (service *Service) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (_ WorkspaceJournalPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, query.Access)
 	if err != nil {
 		return WorkspaceJournalPage{}, err
@@ -126,7 +127,8 @@ func (service *Service) ListWorkspaceJournal(ctx context.Context, invocation inv
 		Entries: entries, HasMore: stored.HasMore, RefreshRequired: stored.RefreshRequired}, nil
 }
 
-func (service *Service) CreateWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (WorkspaceMutationResult, error) {
+func (service *Service) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (_ WorkspaceMutationResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
@@ -156,20 +158,23 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, invocation
 	}, idempotency, model.StarterWorkspaceEntryDirectory, "")
 }
 
-func (service *Service) CreateWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (WorkspaceMutationResult, error) {
+func (service *Service) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	entryID := service.deps.NewWorkspaceEntry()
 	return service.stageWorkspaceFile(ctx, invocation, command.Access, entryID, "", command.Path, "",
 		command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationCreateFile)
 }
 
-func (service *Service) ReplaceWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (WorkspaceMutationResult, error) {
+func (service *Service) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (_ WorkspaceMutationResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.stageWorkspaceFile(ctx, invocation, command.Access, command.EntryID, command.ExpectedPath, "",
 		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationReplaceFile)
 }
 
-func (service *Service) MoveWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
+func (service *Service) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
@@ -193,7 +198,8 @@ func (service *Service) MoveWorkspaceEntry(ctx context.Context, invocation invoc
 		DestinationPath: destination}, idempotency, "", "")
 }
 
-func (service *Service) DeleteWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
+func (service *Service) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (_ WorkspaceMutationResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err

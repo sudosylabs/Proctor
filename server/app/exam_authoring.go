@@ -10,10 +10,8 @@ package app
 import (
 	"context"
 	"errors"
-	"slices"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -24,109 +22,15 @@ type ExamView = examengine.View
 
 type CreateExamCommand = examengine.CreateCommand
 
-type GetExamQuery struct{ ExamID model.ExamID }
+type GetExamQuery = examengine.GetQuery
 
 type EditExamDraftTextCommand = examengine.EditDraftTextCommand
 
 type ConfigureExamDraftNativePolicyCommand = examengine.ConfigureDraftNativePolicyCommand
 
-type ConfigureExamDraftFocusLossCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	Enabled               bool
-	MinimumDuration       time.Duration
-	IncidentCount         int
-	Window                time.Duration
-	Outcome               model.IntegrityThresholdOutcome
-	IdempotencyKey        string
-}
+type ConfigureExamDraftFocusLossCommand = examengine.ConfigureDraftFocusLossCommand
 
 type ConfigureExamDraftBrowserPolicyCommand = examengine.ConfigureDraftBrowserPolicyCommand
-
-type examUseCases interface {
-	Create(context.Context, Invocation, examengine.CreateCommand) (examengine.View, error)
-	Get(context.Context, Invocation, model.ExamID) (examengine.View, error)
-	EditDraftText(context.Context, Invocation, examengine.EditDraftTextCommand) (examengine.View, error)
-	ConfigureDraftFocusLoss(context.Context, Invocation, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
-	ConfigureDraftNativePolicy(context.Context, Invocation, examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error)
-	ConfigureDraftBrowserPolicy(context.Context, Invocation, examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error)
-	List(context.Context, Invocation, examengine.ListQuery) (examengine.CatalogPage, error)
-	Archive(context.Context, Invocation, examengine.ArchiveCommand) (model.Exam, error)
-	ListManagers(context.Context, Invocation, examengine.ListManagersQuery) (examengine.ManagerPage, error)
-	AddManager(context.Context, Invocation, examengine.AddManagerCommand) (examengine.ManagerChange, error)
-	RemoveManager(context.Context, Invocation, examengine.RemoveManagerCommand) (examengine.ManagerChange, error)
-	TransferOwner(context.Context, Invocation, examengine.TransferOwnerCommand) (examengine.ManagerChange, error)
-	AuthorizeView(context.Context, Invocation, model.ExamID) error
-}
-
-func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (result ExamView, resultErr error) {
-	defer func() { a.recordOperational("exam", "create", resultErr) }()
-	view, err := a.exams.Create(ctx, invocation, command)
-	if err != nil {
-		return ExamView{}, examError(err, false)
-	}
-	return view, nil
-}
-
-func (a *App) GetExam(ctx context.Context, invocation Invocation, query GetExamQuery) (ExamView, error) {
-	view, err := a.exams.Get(ctx, invocation, query.ExamID)
-	if err != nil {
-		return ExamView{}, examError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, command EditExamDraftTextCommand) (ExamView, error) {
-	view, err := a.exams.EditDraftText(ctx, invocation, command)
-	if err != nil {
-		return ExamView{}, examError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invocation, command ConfigureExamDraftFocusLossCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftFocusLoss(ctx, invocation, examengine.ConfigureDraftFocusLossCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		FocusLoss:      model.FocusLossPolicy{Enabled: command.Enabled, MinimumDuration: command.MinimumDuration, IncidentCount: command.IncidentCount, Window: command.Window, Outcome: command.Outcome},
-		IdempotencyKey: command.IdempotencyKey,
-	})
-	if err != nil {
-		return ExamView{}, examError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftBrowserPolicyCommand) (ExamView, error) {
-	command.Policy = command.Policy.Clone()
-	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, invocation, command)
-	if err != nil {
-		return ExamView{}, examError(err, true)
-	}
-	return view, nil
-}
-
-func examError(err error, conceal bool) error {
-	return presentExamChildError(err, conceal, "exam.unavailable", "exam.not_found")
-}
-
-// presentExamChildError presents a failure returned by an Exam child module.
-// Application errors pass through unchanged; any other failure becomes the
-// family's unavailable code. Concealing callers turn authorization denials and
-// the family's listed absence codes into the generic resource.not_found so a
-// caller without access cannot distinguish a hidden resource from a missing one.
-func presentExamChildError(err error, conceal bool, unavailable apperror.Code, concealed ...apperror.Code) error {
-	if err == nil {
-		return nil
-	}
-	failure, ok := apperror.As(err)
-	if !ok {
-		return apperror.New(unavailable).Wrap(err)
-	}
-	if conceal && (failure.Code() == "authorization.denied" || slices.ContainsFunc(concealed, func(code apperror.Code) bool { return string(code) == failure.Code() })) {
-		return apperror.New("resource.not_found").Wrap(err)
-	}
-	return err
-}
 
 type examAuthorizationAdapter struct{ authorization *accessControlService }
 
@@ -217,12 +121,3 @@ var _ examengine.Authorizer = examAuthorizationAdapter{}
 var _ examengine.Auditor = mutationAuditAdapter{}
 var _ examengine.Effects = examRealtimeEffects{}
 var _ examengine.EffectFailures = examRealtimeEffects{}
-
-func (a *App) ConfigureExamDraftNativePolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftNativePolicyCommand) (ExamView, error) {
-	command.NativePolicy = command.NativePolicy.Clone()
-	view, err := a.exams.ConfigureDraftNativePolicy(ctx, invocation, command)
-	if err != nil {
-		return ExamView{}, examError(err, true)
-	}
-	return view, nil
-}

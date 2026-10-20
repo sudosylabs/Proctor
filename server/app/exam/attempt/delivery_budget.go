@@ -26,7 +26,8 @@ type StopDeliveryDetailsCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) DeliveryBudget(ctx context.Context, invocation invocation.Invocation, query DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+func (service *Service) DeliveryBudget(ctx context.Context, invocation invocation.Invocation, query DeliveryBudgetQuery) (_ *model.DeliveryBudgetSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -48,7 +49,8 @@ func (service *Service) DeliveryBudget(ctx context.Context, invocation invocatio
 	}
 	return value, nil
 }
-func (service *Service) StopDeliveryDetails(ctx context.Context, invocation invocation.Invocation, command StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+func (service *Service) StopDeliveryDetails(ctx context.Context, invocation invocation.Invocation, command StopDeliveryDetailsCommand) (_ *model.StopDeliveryDetailsResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr

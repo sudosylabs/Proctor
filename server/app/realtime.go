@@ -25,7 +25,7 @@ type realtimeDiagnostics interface {
 }
 
 // realtimeService translates the child module's publication failures into
-// parent application errors and retains parent-owned effect facades.
+// parent application errors and retains parent-owned effect adapters.
 type realtimeService struct {
 	delivery    *apprealtime.Service
 	diagnostics realtimeDiagnostics
@@ -207,47 +207,4 @@ func invalidRealtimeRequest(field string) error {
 
 func internalRealtimeError(err error) error {
 	return apperror.New("websocket.internal").Wrap(err)
-}
-
-func (a *App) AuthorizeWebSocketSubscription(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-) (resultErr error) {
-	defer func() { a.recordOperational("realtime", "subscription_authorize", resultErr) }()
-	definition, ok := model.DefinitionForAction(action)
-	if !ok || resource.Validate() != nil || definition.ResourceType != resource.Type {
-		return invalidRealtimeRequest("subscription")
-	}
-	if action == model.ActionExamView && resource.Type == model.ResourceExam {
-		examID, err := model.ParseExamID(resource.ID)
-		if err != nil {
-			return invalidRealtimeRequest("subscription")
-		}
-		if err := a.exams.AuthorizeView(ctx, invocation, examID); err != nil {
-			return examError(err, true)
-		}
-		return nil
-	}
-	if action == model.ActionExamSittingView && resource.Type == model.ResourceExamSitting {
-		sittingID, err := model.ParseExamSittingID(resource.ID)
-		if err != nil {
-			return invalidRealtimeRequest("subscription")
-		}
-		if err := a.examSittings.AuthorizeView(ctx, invocation, sittingID); err != nil {
-			return examSittingError(err, true)
-		}
-		return nil
-	}
-	return a.Authorize(ctx, invocation, action, resource)
-}
-
-func (a *App) ValidateWebSocketPrincipal(
-	ctx context.Context,
-	principal model.Principal,
-) error {
-	err := a.authenticationService.ValidatePrincipal(ctx, principal)
-	a.recordOperational("realtime", "principal_validate", err)
-	return err
 }

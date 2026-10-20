@@ -29,7 +29,7 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
 	command := validConnectCommand(f, credential, "test-key")
-	result, err := f.service.Connect(context.Background(), f.invocation, command)
+	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 		IdempotencyKey: "acknowledge-key",
 	}
 
-	result, err := f.service.AcknowledgeCorrection(context.Background(), f.invocation, command)
+	result, err := f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 	command := AcknowledgeCorrectionCommand{Access: validWorkspaceMutationAccess(f), CorrectionRevisionID: correctionRevisionID,
 		ExpectedCurrentRevisionID: currentRevisionID, IdempotencyKey: "replay-key"}
 
-	result, err := f.service.AcknowledgeCorrection(context.Background(), f.invocation, command)
+	result, err := f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		ChangedAreas:            []model.ExamCorrectionChangedArea{model.ExamCorrectionChangedBrowserPolicy},
 		AffectedCapabilities:    []model.CandidateCapability{model.CandidateCapabilityBrowser},
 		AcknowledgementRequired: true, AcknowledgementState: model.CorrectionAcknowledgementPending}}
-	result, err = f.service.AcknowledgeCorrection(context.Background(), f.invocation, command)
+	result, err = f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
 	if err != nil || result.CurrentRevisionID != laterRevisionID || result.AcknowledgedAt.Time != f.at.Add(-time.Minute) ||
 		result.RuntimeCapabilities.Browser.State != store.CandidateBrowserAcknowledgementRequired ||
 		!result.RuntimeCapabilities.WorkspaceMutationAllowed || !result.RuntimeCapabilities.SubmissionAllowed {
@@ -209,7 +209,7 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		CandidateUserID: f.userID, WorkspaceID: workspaceID,
 		Entry: &store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: model.StarterWorkspaceEntryDirectory, Path: "src"}, Change: change}
 
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.invocation, CreateWorkspaceDirectoryCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+	result, err := f.service.CreateCandidateExamWorkspaceDirectory(context.Background(), f.invocation, CreateWorkspaceDirectoryCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
 		ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
 		Path: "src", IdempotencyKey: "test-key",
 	})
@@ -259,7 +259,7 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 		model.AttemptWorkspaceMutationCreateFile, "", "main.go", version, false)
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
 
-	result, err := f.service.CreateWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
+	result, err := f.service.CreateCandidateExamWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
 		ContinuityCredential: credential}, ParticipationID: participationID, Generation: 2},
 		Path: "main.go", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4,
 		IdempotencyKey: "test-key",
@@ -307,7 +307,7 @@ func TestReplaceWorkspaceFilePassesOwnedIdempotencyToStore(t *testing.T) {
 	command := ReplaceWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "main.go", ExpectedContentVersion: currentVersion, MediaType: "text/plain",
 		ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4, IdempotencyKey: "replace-key"}
-	if _, err := f.service.ReplaceWorkspaceFile(context.Background(), f.invocation, command); err != nil {
+	if _, err := f.service.ReplaceCandidateExamWorkspaceFile(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	want, err := prepareWorkspaceMutationIdempotency(f.invocation, "replace-key", f.attemptID,
@@ -333,7 +333,7 @@ func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
 	f.workspace.proposedVersion = model.NewWorkspaceContentVersion()
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-	_, err := f.service.CreateWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
+	_, err := f.service.CreateCandidateExamWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
 		Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
 	if err != nil || len(f.workspace.reclaimable) != 1 || f.effects.workspaceChanged != 0 ||
@@ -352,7 +352,7 @@ func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *t
 	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, retainedID, model.StarterWorkspaceEntryDirectory,
 		model.AttemptWorkspaceMutationCreateDirectory, "", "src", "", true)
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.invocation, CreateWorkspaceDirectoryCommand{Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key"})
+	result, err := f.service.CreateCandidateExamWorkspaceDirectory(context.Background(), f.invocation, CreateWorkspaceDirectoryCommand{Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key"})
 	if err != nil || result.Entry == nil || result.Entry.EntryID != retainedID || f.workspace.mutation.EntryID != f.workspace.proposedEntryID ||
 		f.workspace.mutation.EntryID == retainedID || f.effects.workspaceChanged != 0 {
 		t.Fatalf("result=%#v mutation=%#v error=%v", result, f.workspace.mutation, err)
@@ -380,7 +380,7 @@ func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcom
 			f.workspace.mutationErr = test.err
 			checksum := strings.Repeat("d", 64)
 			f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-			_, err := f.service.CreateWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.CreateCandidateExamWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key"})
 			var fault *apperror.Error
@@ -400,7 +400,7 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 		check     func(*testing.T, *store.ExamAttemptWorkspaceMutation)
 	}{
 		{name: "move", operation: model.AttemptWorkspaceMutationMoveEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, _ model.WorkspaceContentVersion) error {
-			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.invocation, MoveWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.MoveCandidateExamWorkspaceEntry(context.Background(), f.invocation, MoveWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: id, ExpectedPath: "old", DestinationPath: "new", IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
@@ -409,7 +409,7 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 			}
 		}},
 		{name: "delete_file", operation: model.AttemptWorkspaceMutationDeleteEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, version model.WorkspaceContentVersion) error {
-			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.invocation, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
@@ -468,7 +468,7 @@ func TestConnectRejectsMalformedCredentialAndPATBeforeReads(t *testing.T) {
 	} {
 		f := newFixture(t)
 		mutate(f)
-		_, err := f.service.Connect(context.Background(), f.invocation, ConnectCommand{
+		_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, ConnectCommand{
 			SittingID: f.sitting.ID, ContinuityCredential: "not-canonical", IdempotencyKey: "test-key",
 		})
 		if err == nil || len(f.order) != 0 {
@@ -488,7 +488,7 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 		CandidateUserID: f.invocation.Principal().UserID, ParticipationID: participationID, Generation: 3, AcceptedSequence: 7,
 		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
 	}
-	result, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+	result, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 3, Sequence: 7, ContinuityCredential: credential,
 	})
@@ -515,7 +515,7 @@ func TestDuplicateParticipationRenewalDoesNotRepublishRenewal(t *testing.T) {
 		CandidateUserID: f.invocation.Principal().UserID, ParticipationID: participationID, Generation: 2,
 		AcceptedSequence: 4, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease), Duplicate: true,
 	}
-	_, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+	_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 4, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -541,7 +541,7 @@ func TestRenewParticipationRejectsInvalidPrincipalAndFieldsBeforeStore(t *testin
 		command := RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(), AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: f.connectionID, Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken()}
 		mutate(f, &command)
-		if _, err := f.service.RenewParticipation(context.Background(), f.invocation, command); err == nil || f.persistence.renew != nil {
+		if _, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, command); err == nil || f.persistence.renew != nil {
 			t.Fatalf("RenewParticipation(%#v) error=%v input=%#v", command, err, f.persistence.renew)
 		}
 	}
@@ -554,7 +554,7 @@ func TestRenewParticipationRejectsInconsistentStoreProjection(t *testing.T) {
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), Generation: 1,
 		AcceptedSequence: 1, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease),
 	}
-	_, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+	_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -577,12 +577,11 @@ func TestRenewParticipationMapsStableCandidateFaults(t *testing.T) {
 			t.Parallel()
 			f := newFixture(t)
 			f.persistence.renewErr = store.NewErrConflict("attempt_participation", test.constraint, nil)
-			_, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+			_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 				AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 				Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 			})
-			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != test.code {
+			if !chainHasCode(err, test.code) {
 				t.Fatalf("error = %v, want %s", err, test.code)
 			}
 		})
@@ -596,7 +595,7 @@ func TestLateRenewalUsesExactExpiryTransitionAndReturnsSafeConnectionLoss(t *tes
 	f.persistence.renewErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	f.persistence.resolvedExpiry = &due
 	f.persistence.expireResult = expiryResultFixture(t, f, due, false)
-	_, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+	_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, ConnectionID: f.connectionID,
 		Generation: due.Generation, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -612,7 +611,7 @@ func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.renewErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	f.persistence.resolveExpiryErr = store.NewErrNotFound("attempt_participation", "ended")
-	_, err := f.service.RenewParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
+	_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(),
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
@@ -707,7 +706,7 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
 	f.persistence.reallowResult = reallowResultFixture(t, f, suspensionID, false)
 	reason := "manager verified secure connectivity"
-	result, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+	result, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: reason, IdempotencyKey: "test-key",
 	})
@@ -747,7 +746,7 @@ func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
 	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
 	f.persistence.reallowResult = reallowResultFixtureWithReason(t, f, suspensionID, false,
 		model.AttemptSuspensionCandidateReasonFocusLossPolicy)
-	result, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+	result, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: "manager reviewed the focus loss", IdempotencyKey: "test-key",
 	})
@@ -767,30 +766,30 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 	denied := apperror.New("authorization.denied")
 	operations := map[string]func(*fixture, model.ExamAttemptID) error{
 		"get": func(f *fixture, attemptID model.ExamAttemptID) error {
-			_, err := f.service.GetManaged(context.Background(), f.invocation, GetManagedAttemptQuery{
+			_, err := f.service.GetExamAttempt(context.Background(), f.invocation, GetManagedAttemptQuery{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID})
 			return err
 		},
 		"reallow": func(f *fixture, attemptID model.ExamAttemptID) error {
-			_, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+			_, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, SuspensionID: model.NewAttemptSuspensionID(),
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
 		},
 		"end": func(f *fixture, attemptID model.ExamAttemptID) error {
-			_, err := f.service.EndByManager(context.Background(), f.invocation, ManagerEndCommand{
+			_, err := f.service.EndExamAttemptByManager(context.Background(), f.invocation, ManagerEndCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
 		},
 		"suspend": func(f *fixture, attemptID model.ExamAttemptID) error {
-			_, err := f.service.SuspendByManager(context.Background(), f.invocation, ManualSuspensionCommand{
+			_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
 		},
 		"browser_activity": func(f *fixture, attemptID model.ExamAttemptID) error {
-			_, err := f.service.ListBrowserActivity(context.Background(), f.invocation, BrowserActivityPageQuery{
+			_, err := f.service.ListExamAttemptBrowserActivity(context.Background(), f.invocation, BrowserActivityPageQuery{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, Limit: 10})
 			return err
 		},
@@ -819,7 +818,7 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 					t.Fatalf("existing=%t denied caller reached Attempt state: order=%v audit=%#v", existing, f.order, f.audit.values)
 				}
 			}
-			if codes[0] != codes[1] || codes[0] != denied.Code() {
+			if codes[0] != codes[1] || codes[0] != "resource.not_found" {
 				t.Fatalf("denied responses distinguish Attempt existence: %v", codes)
 			}
 		})
@@ -833,11 +832,10 @@ func TestManagerAttemptMissingAfterAuthorizationCompletesFailedAudit(t *testing.
 	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2,
 		model.NewAttemptSuspensionID())
 	f.persistence.getErr = store.NewErrNotFound("exam_attempt", "missing")
-	_, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+	_, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: model.NewExamAttemptID(), SuspensionID: model.NewAttemptSuspensionID(),
 		ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
-	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
+	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.audit.failedCode != "exam.attempt.not_found" ||
 		f.persistence.reallow != nil {
 		t.Fatalf("error=%v audit=%#v order=%v", err, f.audit, f.order)
 	}
@@ -847,7 +845,7 @@ func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	for _, reason := range []string{"", " padded ", "\xff", strings.Repeat("é", model.AttemptSuspensionPrivateReasonMaximumRunes+1)} {
 		f := newFixture(t)
-		_, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+		_, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 			ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: model.NewAttemptSuspensionID(),
 			ExpectedAttemptRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key",
 		})
@@ -865,7 +863,7 @@ func TestReallowReplaySuppressesEffectAndPropagatesAuthorizedOverride(t *testing
 	suspensionID := model.NewAttemptSuspensionID()
 	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
 	f.persistence.reallowResult = reallowResultFixture(t, f, suspensionID, true)
-	result, err := f.service.Reallow(context.Background(), f.invocation, ReallowCommand{
+	result, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: "authorized override review", IdempotencyKey: "test-key",
 	})
@@ -940,7 +938,7 @@ func TestConnectReplayAfterCorrectionAndPauseSuppressesTransientOpenEvent(t *tes
 	f.persistence.connectionOpened = false
 	f.sitting.State = model.ExamSittingPaused
 	f.sitting.ExamRevisionID = model.NewExamRevisionID()
-	result, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || !result.Replayed || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect" {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -950,7 +948,7 @@ func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
-	result, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || result.FirstAdmission || !result.ConnectionOpened || result.Replayed || f.effects.opened != 1 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -961,7 +959,7 @@ func TestDifferentKeyConvergenceOnExistingOpenConnectionPublishesNoEffect(t *tes
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
 	f.persistence.connectionOpened = false
-	result, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || result.FirstAdmission || result.ConnectionOpened || result.Replayed || f.effects.opened != 0 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -972,7 +970,7 @@ func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.replayed = true
 	f.persistence.connectClosed = true
-	_, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -984,7 +982,7 @@ func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.replayed = true
 	f.persistence.participationEnded = true
-	_, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -995,7 +993,7 @@ func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectionSession = model.NewSessionID()
-	_, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -1006,7 +1004,7 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
-	_, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.sitting_not_open" ||
 		f.audit.failedCode != fault.Code() || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
@@ -1018,7 +1016,7 @@ func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
-	_, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -1038,7 +1036,7 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 		Resources: []store.CandidateExamResource{{ResourceID: model.NewExamResourceID(), DisplayName: "Reference",
 			DescriptionMarkdown: "Read _carefully_. <iframe src=https://evil.test></iframe> [data](data:text/html,bad)", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 4, SHA256: strings.Repeat("a", 64)}},
 	}
-	result, err := f.service.GetPresentation(context.Background(), f.invocation, CandidateAccess{
+	result, err := f.service.GetCandidateExamPresentation(context.Background(), f.invocation, CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: credential,
 	})
 	if err != nil {
@@ -1079,7 +1077,7 @@ func TestProtectedPresentationRejectsInvalidFrozenCapacity(t *testing.T) {
 				AttemptID: f.attemptID, SittingID: f.sitting.ID, Capacity: test.capacity,
 				RuntimeCapabilities: runtimeCapabilitiesFixture(f, f.revision.ID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(f.revision.ID),
 			}
-			_, err := f.service.GetPresentation(context.Background(), f.invocation, CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()})
+			_, err := f.service.GetCandidateExamPresentation(context.Background(), f.invocation, CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()})
 			var fault *apperror.Error
 			if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" {
 				t.Fatalf("invalid capacity was not rejected: %v", err)
@@ -1101,9 +1099,9 @@ func TestStarterOriginWorkspaceFileOpensPinnedStarterBytesWithAttemptObjectIdent
 		StorageOrigin: model.AttemptWorkspaceStorageStarter, StarterObjectID: starterID,
 		AttemptObjectID: attemptObjectID, ContentVersion: version,
 	}
-	opened, err := f.service.OpenWorkspaceFile(context.Background(), f.invocation, CandidateAccess{
+	opened, err := f.service.OpenCandidateExamWorkspaceFile(context.Background(), f.invocation, OpenWorkspaceFileQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
-	}, entryID)
+	}, EntryID: entryID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1120,11 +1118,10 @@ func TestProtectedPresentationRejectsAConnectionFromAnotherSession(t *testing.T)
 	principal := f.invocation.Principal()
 	principal.SessionID = model.NewSessionID()
 	otherSession := invocation.New(principal, f.invocation.RequestMetadata())
-	_, err := f.service.GetPresentation(context.Background(), otherSession, CandidateAccess{
+	_, err := f.service.GetCandidateExamPresentation(context.Background(), otherSession, CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	})
-	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" ||
+	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") ||
 		f.persistence.candidateAccess.SessionID != principal.SessionID {
 		t.Fatalf("error=%v access=%#v", err, f.persistence.candidateAccess)
 	}
@@ -1137,11 +1134,11 @@ func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
 	access := CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()}
 	for _, open := range []func() error{
 		func() error {
-			_, err := f.service.OpenResource(context.Background(), invalidCall, access, model.NewExamResourceID())
+			_, err := f.service.OpenCandidateExamResource(context.Background(), invalidCall, OpenResourceQuery{Access: access, ResourceID: model.NewExamResourceID()})
 			return err
 		},
 		func() error {
-			_, err := f.service.OpenWorkspaceFile(context.Background(), invalidCall, access, model.NewAttemptWorkspaceEntryID())
+			_, err := f.service.OpenCandidateExamWorkspaceFile(context.Background(), invalidCall, OpenWorkspaceFileQuery{Access: access, EntryID: model.NewAttemptWorkspaceEntryID()})
 			return err
 		},
 	} {
@@ -1159,7 +1156,7 @@ func TestWorkspaceListUsesPathFreeSnapshotCursor(t *testing.T) {
 	f.workspace.page = &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: 7,
 		Items: []store.CandidateAttemptWorkspaceItem{{EntryID: model.NewAttemptWorkspaceEntryID(),
 			Kind: model.StarterWorkspaceEntryDirectory, Path: "cmd"}}, HasMore: true}
-	page, err := f.service.ListWorkspace(context.Background(), f.invocation, WorkspaceQuery{Access: CandidateAccess{
+	page, err := f.service.ListCandidateExamWorkspace(context.Background(), f.invocation, WorkspaceQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	}, ExpectedCursor: -1, Limit: 20})
 	if err != nil {
@@ -1182,7 +1179,7 @@ func TestWorkspaceListRejectsUnboundedOrInvalidCursorsBeforeStore(t *testing.T) 
 	} {
 		f := newFixture(t)
 		query.Access.AttemptID, query.Access.ConnectionID = f.attemptID, f.connectionID
-		_, err := f.service.ListWorkspace(context.Background(), f.invocation, query)
+		_, err := f.service.ListCandidateExamWorkspace(context.Background(), f.invocation, query)
 		var fault *apperror.Error
 		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" || f.workspace.lists != 0 {
 			t.Fatalf("query=%#v error=%v calls=%d", query, err, f.workspace.lists)
@@ -1198,7 +1195,7 @@ func TestWorkspaceJournalReturnsOrderedRecoveryWithoutPathsInSelector(t *testing
 		Entries: []model.AttemptWorkspaceJournalEntry{{WorkspaceID: workspaceID, Cursor: 5, EntryID: entryID,
 			EntryKind: model.StarterWorkspaceEntryDirectory, Operation: model.AttemptWorkspaceMutationCreateDirectory,
 			NewPath: "src", ChangedAt: f.at}}}
-	page, err := f.service.ListWorkspaceJournal(context.Background(), f.invocation, WorkspaceJournalQuery{Access: CandidateAccess{
+	page, err := f.service.ListCandidateExamWorkspaceJournal(context.Background(), f.invocation, WorkspaceJournalQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	}, AfterCursor: 4, Limit: 20})
 	if err != nil || page.CurrentCursor != 5 || len(page.Entries) != 1 || f.workspace.journalOptions.AfterCursor != 4 {
@@ -1215,8 +1212,8 @@ func TestOpenAttemptOriginWorkspaceFileUsesOpaqueAttemptObject(t *testing.T) {
 		SizeBytes: 4, SHA256: strings.Repeat("c", 64)}, StorageOrigin: model.AttemptWorkspaceStorageAttempt,
 		AttemptObjectID: objectID, ContentVersion: version}
 	f.content.openAttemptBody = "work"
-	opened, err := f.service.OpenWorkspaceFile(context.Background(), f.invocation, CandidateAccess{AttemptID: f.attemptID,
-		ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()}, entryID)
+	opened, err := f.service.OpenCandidateExamWorkspaceFile(context.Background(), f.invocation, OpenWorkspaceFileQuery{Access: CandidateAccess{AttemptID: f.attemptID,
+		ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()}, EntryID: entryID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1238,7 +1235,7 @@ func TestManagerListAuthorizesBeforeBoundedStoreRead(t *testing.T) {
 		rows[index].Attempt = attempt
 	}
 	f.persistence.managerRows = rows
-	page, err := f.service.ListManaged(context.Background(), f.invocation, ListManagedAttemptsQuery{
+	page, err := f.service.ListExamAttempts(context.Background(), f.invocation, ListManagedAttemptsQuery{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, Limit: 2,
 	})
 	if err != nil {
@@ -1263,7 +1260,7 @@ func TestManagerListValidatesAndDeepClonesActiveSuspension(t *testing.T) {
 		State: model.AttemptSuspensionActive, Source: model.AttemptSuspensionSourcePolicy,
 		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: f.at}
 	f.persistence.managerRows = []store.ExamAttemptManagerSnapshot{{Attempt: attempt, ActiveSuspension: suspension}}
-	page, err := f.service.ListManaged(context.Background(), f.invocation, ListManagedAttemptsQuery{
+	page, err := f.service.ListExamAttempts(context.Background(), f.invocation, ListManagedAttemptsQuery{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, Limit: 1,
 	})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ActiveSuspension == nil || page.Items[0].ActiveSuspension.ID != suspension.ID {
@@ -1279,13 +1276,13 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
-	connected, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, credential, "test-key"))
+	connected, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, credential, "test-key"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.order = nil
 	f.persistence.closeChanged = true
-	closed, err := f.service.CloseConnection(context.Background(), f.invocation, CloseConnectionCommand{
+	closed, err := f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
 		AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 	})
@@ -1294,7 +1291,7 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	}
 	f.order = nil
 	f.persistence.closeChanged = false
-	if _, err = f.service.CloseConnection(context.Background(), f.invocation, CloseConnectionCommand{
+	if _, err = f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
 		AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 	}); err != nil {
@@ -1312,18 +1309,17 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 		func(principal *model.Principal) { principal.SessionID = model.NewSessionID() },
 	} {
 		f := newFixture(t)
-		connected, err := f.service.Connect(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
+		connected, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		principal := f.invocation.Principal()
 		mutate(&principal)
-		_, err = f.service.CloseConnection(context.Background(), invocation.New(principal, f.invocation.RequestMetadata()), CloseConnectionCommand{
+		_, err = f.service.CloseExamAttemptConnection(context.Background(), invocation.New(principal, f.invocation.RequestMetadata()), CloseConnectionCommand{
 			AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 			ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 		})
-		var fault *apperror.Error
-		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.effects.closed != 0 {
+		if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.effects.closed != 0 {
 			t.Fatalf("error=%v effects=%#v", err, f.effects)
 		}
 	}
@@ -1332,7 +1328,7 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 func TestTrustedCloseRejectsUnknownReasonBeforeAudit(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	_, err := f.service.CloseConnection(context.Background(), f.invocation, CloseConnectionCommand{
+	_, err := f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
 		AttemptID: model.NewExamAttemptID(), SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: model.NewAttemptConnectionID(), Reason: "unknown",
 	})
@@ -2170,4 +2166,20 @@ func (fake *attemptStoreFake) DeliveryBudget(context.Context, store.DeliveryBudg
 }
 func (fake *attemptStoreFake) StopDeliveryDetails(context.Context, *store.DeliveryDetailsStop, *store.CommandIdempotency) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
+}
+
+// chainHasCode reports whether any application error in err's chain carries
+// code, so an assertion can see the cause a public concealment wraps.
+func chainHasCode(err error, code string) bool {
+	for err != nil {
+		var failure *apperror.Error
+		if !errors.As(err, &failure) {
+			return false
+		}
+		if failure.Code() == code {
+			return true
+		}
+		err = failure.Unwrap()
+	}
+	return false
 }

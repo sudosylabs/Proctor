@@ -38,7 +38,8 @@ type AppendBrowserActivityCommand struct {
 	Events          []model.BrowserActivityEvent
 }
 
-func (service *Service) StartBrowserActivity(ctx context.Context, invocation invocation.Invocation, command StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
+func (service *Service) StartExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command StartBrowserActivityCommand) (_ model.BrowserSourceStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return model.BrowserSourceStatus{}, admissionErr
@@ -69,7 +70,7 @@ func (service *Service) StartBrowserActivity(ctx context.Context, invocation inv
 	if err != nil {
 		var refusal *store.BrowserSourceRefusal
 		if errors.As(err, &refusal) {
-			presentation, projectionErr := service.GetPresentation(ctx, invocation, command.CandidateAccess)
+			presentation, projectionErr := service.GetCandidateExamPresentation(ctx, invocation, command.CandidateAccess)
 			if projectionErr != nil {
 				return model.BrowserSourceStatus{}, projectionErr
 			}
@@ -84,7 +85,8 @@ func (service *Service) StartBrowserActivity(ctx context.Context, invocation inv
 	return *status, nil
 }
 
-func (service *Service) AppendBrowserActivity(ctx context.Context, invocation invocation.Invocation, command AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
+func (service *Service) AppendExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, command AppendBrowserActivityCommand) (_ model.BrowserActivityAcknowledgement, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := candidateSelector(invocation, command.CandidateAccess)
 	if err != nil || !command.ParticipationID.IsValid() || command.Generation < 1 || !command.SourceSessionID.IsValid() ||
 		len(command.Events) < 1 || len(command.Events) > model.BrowserActivityAppendMaximumEvents {
@@ -161,7 +163,8 @@ type BrowserActivityPage struct {
 	HasMore bool
 }
 
-func (service *Service) ListBrowserActivity(ctx context.Context, invocation invocation.Invocation, query BrowserActivityPageQuery) (BrowserActivityPage, error) {
+func (service *Service) ListExamAttemptBrowserActivity(ctx context.Context, invocation invocation.Invocation, query BrowserActivityPageQuery) (_ BrowserActivityPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.AfterReceivedAt.IsZero() != !query.AfterSourceID.IsValid()) || !query.AfterReceivedAt.IsZero() && query.AfterSequence < 1 {
 		return BrowserActivityPage{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_list")
@@ -224,7 +227,8 @@ func browserSourceSelector(invocation invocation.Invocation, query BrowserSource
 	}
 	return store.BrowserDeliveryAccess{Access: access.Access, SourceSessionID: query.SourceSessionID, ParticipationID: query.ParticipationID}, nil
 }
-func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ *model.BrowserSourceStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -243,7 +247,8 @@ func (service *Service) BrowserSourceStatus(ctx context.Context, invocation invo
 	}
 	return value, nil
 }
-func (service *Service) BrowserSourceList(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+func (service *Service) BrowserSourceList(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery) (_ []model.BrowserSourceStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr

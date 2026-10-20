@@ -50,30 +50,30 @@ func TestBrowserHistoryExportRejectsOverrideAndRechecksBeforeOpeningBytes(t *tes
 			f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID, UserID: f.userID}}
 			persistence.value.Categories = []model.RetentionCategory{model.RetentionCategoryBrowserActivity}
 			query := ExportQuery{Scope: persistence.value.Scope, ExportID: persistence.value.ID}
-			if _, err := service.Get(context.Background(), f.invocation, query); err != nil {
+			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err != nil {
 				t.Fatal(err)
 			}
 			// Unit membership is part of ordinary export authorization;
 			// the independently permitted export override leaves the exact
 			// Browser Activity Manager predicate and permission intact.
 			f.memberships.items = nil
-			if _, err := service.Get(context.Background(), f.invocation, query); err != nil {
+			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err != nil {
 				t.Fatal(err)
 			}
 			f.persistence.actorIsManager = false
-			if _, err := service.Get(context.Background(), f.invocation, query); err == nil || !auth.self {
+			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err == nil || !auth.self {
 				t.Fatal("export metadata retained removed Browser Activity access")
 			}
-			if _, err := service.Open(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
+			if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
 				t.Fatal("unauthorized history reached archive bytes")
 			}
-			_, err := service.Create(context.Background(), f.invocation, CreateExportCommand{Scope: query.Scope, Categories: persistence.value.Categories, IdempotencyKey: "replay"})
+			_, err := service.CreateExamExport(context.Background(), f.invocation, CreateExportCommand{Scope: query.Scope, Categories: persistence.value.Categories, IdempotencyKey: "replay"})
 			if err == nil || persistence.create != nil {
 				t.Fatal("override created browser history export")
 			}
 			auditErr := errors.New("denial audit unavailable")
 			auth.denyErr = auditErr
-			if _, err := service.Get(context.Background(), f.invocation, query); !errors.Is(err, auditErr) {
+			if _, err := service.GetExamExport(context.Background(), f.invocation, query); !errors.Is(err, auditErr) {
 				t.Fatalf("audit failure: %v", err)
 			}
 		})
@@ -239,7 +239,7 @@ func TestExamExportsRequireDedicatedAndEveryOrdinaryReadPermission(t *testing.T)
 			if test.browser {
 				categories = []model.RetentionCategory{model.RetentionCategoryBrowserActivity}
 			}
-			_, err := service.Create(context.Background(), f.invocation, CreateExportCommand{Scope: scope, Categories: categories, IdempotencyKey: "export-key"})
+			_, err := service.CreateExamExport(context.Background(), f.invocation, CreateExportCommand{Scope: scope, Categories: categories, IdempotencyKey: "export-key"})
 			if test.deny != "" {
 				if err == nil || s.create != nil {
 					t.Fatalf("denied action reached persistence: %v", err)
@@ -267,12 +267,12 @@ func TestExamExportsSelfAccessAndMissingAuditFailClosed(t *testing.T) {
 	f, service, s, auth, _ := newExportFixture(t)
 	s.selected[0].CandidateUserID = f.userID
 	command := CreateExportCommand{Scope: s.value.Scope, Categories: s.value.Categories, IdempotencyKey: "export-key"}
-	if _, err := service.Create(context.Background(), f.invocation, command); err == nil || !auth.self || s.create != nil {
+	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || !auth.self || s.create != nil {
 		t.Fatal("candidate exported own manager-only records")
 	}
 	s.selected[0].CandidateUserID = model.NewUserID()
 	f.auditor.err = errors.New("audit unavailable")
-	if _, err := service.Create(context.Background(), f.invocation, command); err == nil || s.create != nil {
+	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || s.create != nil {
 		t.Fatal("creation bypassed required audit")
 	}
 }
@@ -285,7 +285,7 @@ func TestExamExportDownloadRechecksOrdinaryPermissionAndExpiry(t *testing.T) {
 	s.value.ReadyAt = model.OptionalTimeFrom(s.value.CreatedAt)
 	query := ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID}
 	auth.deny = model.ActionSubmissionViewOverride
-	if _, err := service.Open(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
+	if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
 		t.Fatal("download bypassed ordinary read authority")
 	}
 	auth.deny = ""
@@ -293,7 +293,7 @@ func TestExamExportDownloadRechecksOrdinaryPermissionAndExpiry(t *testing.T) {
 	s.value.ExpiresAt = s.value.ExpiresAt.Add(-48 * time.Hour)
 	s.value.SourceExpiresAt = s.value.SourceExpiresAt.Add(-48 * time.Hour)
 	s.value.ReadyAt = model.OptionalTimeFrom(s.value.CreatedAt)
-	if _, err := service.Open(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
+	if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
 		t.Fatal("expired download reached content")
 	}
 }
@@ -311,7 +311,7 @@ func TestExamExportDownloadExpiresDuringStorageOpen(t *testing.T) {
 	body := &exportClosingBody{}
 	content.body = body
 	content.opened = func() { now = s.value.ExpiresAt }
-	_, err := service.Open(context.Background(), f.invocation, ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID})
+	_, err := service.OpenExamExport(context.Background(), f.invocation, ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.export.expired" || !body.closed {
 		t.Fatalf("late storage Open escaped expiry: %v, closed=%v", err, body.closed)
@@ -367,7 +367,7 @@ func TestExamExportReplayUsesCapturedScopeAfterSittingGrowsPastBound(t *testing.
 	s.selected = make([]store.ExamSubmissionAuthorization, model.ExamExportMaximumSubmissions+1)
 	s.value.Scope.SubmissionID = ""
 	command := CreateExportCommand{Scope: s.value.Scope, Categories: s.value.Categories, IdempotencyKey: "retained-export"}
-	if _, err := service.Create(context.Background(), f.invocation, command); err != nil {
+	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err != nil {
 		t.Fatalf("exact replay enumerated the grown Sitting: %v", err)
 	}
 	if s.creationCommand == nil || s.creationCommand.Operation != store.ExamExportCreateOperation || s.create == nil || len(s.create.SubmissionIDs) != 1 || s.create.SubmissionIDs[0] != original[0].SubmissionID {
@@ -375,7 +375,7 @@ func TestExamExportReplayUsesCapturedScopeAfterSittingGrowsPastBound(t *testing.
 	}
 	auth.deny = model.ActionSubmissionViewOverride
 	s.create = nil
-	if _, err := service.Create(context.Background(), f.invocation, command); err == nil || s.create != nil {
+	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || s.create != nil {
 		t.Fatal("replay-aware scope skipped current ordinary read authority")
 	}
 }

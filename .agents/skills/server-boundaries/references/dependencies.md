@@ -92,8 +92,10 @@ limited to `app/exam`, `app/exam/attempt`, `app/exam/correction`,
 fingerprints rather than moving policy into the leaf.
 
 The application error leaf `app/apperror` owns the single transport-neutral
-`Error` type, its `Code` vocabulary, and the declarative `StoreTable` that is
-the only translation of typed Store failures into application errors. It sits
+`Error` type, its `Code` vocabulary, the declarative `StoreTable` that is
+the only translation of typed Store failures into application errors, and the
+declarative `Concealment` through which a protected use case presents its
+failures. It sits
 below the parent application
 so child modules report the same error type without importing their parent;
 transports import it only to read codes and safe fields.

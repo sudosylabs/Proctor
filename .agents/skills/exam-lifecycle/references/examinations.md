@@ -36,7 +36,8 @@ decisions, and effect ordering. Selective `app/exam/resource`,
 resource, workspace, and live-correction mechanics. They may depend inward on
 domain types and narrow capabilities but never on the parent application
 package, transports, SQL, VFS, or concrete infrastructure. The parent
-application remains the public facade. The package comment added with the
+application embeds each Exam service, so the services' exported use cases are
+the public surface. The package comment added with the
 first working slice must state this vocabulary, ownership, exclusions, and
 dependency direction.
 

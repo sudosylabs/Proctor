@@ -7,18 +7,20 @@
 
 // Package app owns Proctor's application use cases and orchestration.
 //
-// App is the public facade. Its constructor projects the bounded root Store
-// into exact per-model and named aggregate contracts, validates security and
-// infrastructure capabilities before they become observable, and retains only
-// focused services and behavioral ports. Identity,
+// App is the public application surface. It embeds the focused services that
+// own the use cases, so each use case is declared once, on its owning
+// service, and App declares none of its own. Its constructor projects the
+// bounded root Store into exact per-model and named aggregate contracts,
+// validates security and infrastructure capabilities before they become
+// observable, and retains only focused services and behavioral ports. Identity,
 // Access Control, academic relationships, durable audit, and Realtime remain
 // cooperating sibling capabilities; none is a service locator for the others.
 //
 // The package owns application policy, authoritative authorization, audit
 // ordering, transaction intent, and post-commit effects. It excludes HTTP and
 // WebSocket wire behavior, SQL and concrete infrastructure, and reusable file
-// content mechanics. Focused service implementations remain unexported behind
-// App and consumer-owned interfaces. The app/job child package is the bounded
+// content mechanics. Focused service implementations remain unexported; their
+// exported methods are the use cases App promotes. The app/job child package is the bounded
 // exception for the generic durable Job execution engine.
 //
 // Uniform audited mutations share a private mutation-attempt runner for the

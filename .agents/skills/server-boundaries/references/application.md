@@ -32,8 +32,8 @@ semantic document as `request.invalid`. No module wraps it in a local
 preparation helper. It does not own any business operation. Each command owner decides whether a key is required,
 defines its stable operation name, normalizes its own semantic inputs, and
 constructs the semantic document whose compatibility is preserved across
-retries. Exam parent facades forward the bounded raw key; the owning Exam
-service prepares the persistence contract beside the command policy.
+retries. The owning Exam service receives the bounded raw key and prepares
+the persistence contract beside the command policy.
 
 The `app/job` child module owns the generic durable execution engine: immutable
 descriptor validation, claiming, leases, fenced transitions, checkpoints,
@@ -89,26 +89,31 @@ Every Exam service is constructed the same way: `New(Dependencies)
 (*Service, error)` in a child package, or `NewX(XDependencies) (*X, error)`
 for each service of the root `app/exam` package. The constructor validates
 every collaborator once and the service keeps them in a single `deps` field;
-no Exam service takes positional collaborators. The parent facade holds each
-Exam service by its concrete type; a parent-side interface remains only where
-a focused facade test substitutes a fake for the child.
+no Exam service takes positional collaborators. `app.App` embeds each Exam
+service by its concrete type, through a parent alias such as
+`examSittingService` that gives the embedded field a distinct name. A parent
+adapter or Job runner names a narrow port only where its test substitutes a
+fake.
 
-Exam command shapes belong to the child service that owns their policy. When
-the public `app.App` entry point accepts or returns the same shape, its
-established name aliases that owned type; the facade never repeats the fields
-or rebuilds the same value field by field. Nested command shapes follow the
-same ownership rule. Sharing a command does not widen a deliberately narrower
-facade result or change optional input presence and collection-copy semantics.
-The facade retains meaningful boundary work: defensive input copies, error
-concealment, and deliberate input or result transformations. Type sharing does
-not move normalization, authorization, audit, or effect timing out of the
-owning use case.
+Each Exam use case is the exported method on its owning service, named as the
+public use case (`ScheduleExamSitting`), with the command, query, and result
+shapes that the transports' ports require. Those shapes belong to the service;
+the parent's established public names alias them and never repeat their
+fields. The service method does all the boundary work: defensive input
+copies, input normalization and defaults, deliberately narrower results, and
+error concealment. Each Exam module declares one `publicFailures`
+`apperror.Concealment`; a use case defers `publicFailures.Conceal` when its
+target's existence is protected, or `Present` when it is not, so a denial or a
+module's not-found code becomes `resource.not_found`. A use case whose outcome
+the operations seam observes records it through the module's optional
+`OperationalRecorder` after concealment.
 
 Every application module, parent or child, reports expected public failures
 with the one `*apperror.Error` type from the `app/apperror` leaf. Children
 construct it directly with `apperror.New(code)` or `apperror.Invalid(code,
-field)`; they declare no local fault type or per-package error helpers, and
-the parent facade passes their errors through, adding only concealment.
+field)`; they declare no local fault type or per-package error helpers. A
+use case's public failures pass through its module's declared
+`apperror.Concealment`, and the parent adds nothing.
 Typed Store failures are translated only through a declared
 `apperror.StoreTable` keyed by Store error kind, entity, and constraint name;
 a use case adds a small function before its table only for a typed Store
@@ -143,8 +148,8 @@ empty architectural placeholder. Its `doc.go` must define the Exam, Draft,
 Revision, Sitting, Attempt, Participation, Resource, Starter Workspace,
 Workspace, Submission, Integrity, and Review vocabulary; state what the
 package owns and excludes; and state its allowed inward dependencies. The
-parent `app.App` remains the public facade and `app.New` remains the sole
-application constructor. Detailed examination boundaries are in
+parent `app.App` embeds its services as the public surface and `app.New`
+remains the sole application constructor. Detailed examination boundaries are in
 [the `exam-lifecycle` reference](../../exam-lifecycle/references/examinations.md).
 
 Realtime receives its required authentication invalidator and diagnostics at
@@ -153,8 +158,11 @@ because the composition graph constructs the application before its WebSocket
 and cluster adapters. The child depends only on the domain model and narrow
 consumer-owned ports; it never imports its parent package or transport
 packages. The parent does not redeclare the child's event, close-reason, sink,
-fan-out, codec, or propagation contracts; its thin publication facade exists
-only to translate typed delivery failures into application errors.
+fan-out, codec, or propagation contracts; its thin publication service exists
+only to translate typed delivery failures into application errors. WebSocket
+admission, principal revalidation and subscription authorization, is one
+focused service that composes the authentication, Exam, Sitting, and Access
+Control decisions.
 
 Operator Job use cases depend on the engine rather than a separate Job Store
 and descriptor catalog. They retain Principal authorization, resource

@@ -19,7 +19,7 @@
 // intent and post-commit effects but neither pages populations nor schedules
 // Jobs. The package does not own HTTP or WebSocket wire contracts, SQL, VFS
 // selection, durable Job execution, or infrastructure lifecycle. The parent
-// exam package remains the public application facade.
+// application embeds the service as part of its surface.
 //
 // The package depends inward on model, the bounded Exam Attempt, Attempt
 // Workspace, and Submission Store contracts, the shared safemarkdown leaf,

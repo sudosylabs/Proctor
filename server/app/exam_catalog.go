@@ -8,33 +8,18 @@
 package app
 
 import (
-	"context"
-	"strings"
-	"time"
-
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ListExamsQuery struct {
-	AcademicUnitID  model.AcademicUnitID
-	Query           string
-	ArchiveFilter   ExamArchiveFilter
-	SittingStates   []model.ExamSittingState
-	EndsAfter       time.Time
-	StartsBefore    time.Time
-	BeforeUpdatedAt time.Time
-	BeforeExamID    model.ExamID
-	Limit           int
-}
+type ListExamsQuery = examengine.ListQuery
 
-type ExamArchiveFilter string
+type ExamArchiveFilter = store.ExamArchiveFilter
 
 const (
-	ExamArchiveActive   ExamArchiveFilter = "active"
-	ExamArchiveArchived ExamArchiveFilter = "archived"
-	ExamArchiveAll      ExamArchiveFilter = "all"
+	ExamArchiveActive   = store.ExamArchiveActive
+	ExamArchiveArchived = store.ExamArchiveArchived
+	ExamArchiveAll      = store.ExamArchiveAll
 )
 
 type ExamSummary = store.ExamSummary
@@ -42,29 +27,3 @@ type ExamSummary = store.ExamSummary
 type ExamCatalogPage = examengine.CatalogPage
 
 type ArchiveExamCommand = examengine.ArchiveCommand
-
-func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListExamsQuery) (ExamCatalogPage, error) {
-	if query.Limit == 0 {
-		query.Limit = 50
-	}
-	if query.ArchiveFilter == "" {
-		query.ArchiveFilter = ExamArchiveActive
-	}
-	page, err := a.exams.List(ctx, invocation, examengine.ListQuery{
-		AcademicUnitID: query.AcademicUnitID, Query: strings.TrimSpace(query.Query), ArchiveFilter: store.ExamArchiveFilter(query.ArchiveFilter),
-		SittingStates: append([]model.ExamSittingState(nil), query.SittingStates...), EndsAfter: query.EndsAfter, StartsBefore: query.StartsBefore,
-		BeforeUpdatedAt: query.BeforeUpdatedAt, BeforeExamID: query.BeforeExamID, Limit: query.Limit,
-	})
-	if err != nil {
-		return ExamCatalogPage{}, examError(err, false)
-	}
-	return page, nil
-}
-
-func (a *App) ArchiveExam(ctx context.Context, invocation Invocation, command ArchiveExamCommand) (model.Exam, error) {
-	exam, err := a.exams.Archive(ctx, invocation, command)
-	if err != nil {
-		return model.Exam{}, examError(err, true)
-	}
-	return exam, nil
-}

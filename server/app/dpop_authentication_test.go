@@ -69,11 +69,11 @@ func TestDPoPAuthenticationAfterMFARecoverySupportsPrincipalRevalidation(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = service.ValidatePrincipal(ctx, *principal); err != nil {
+	if err = service.validatePrincipal(ctx, *principal); err != nil {
 		t.Fatalf("fresh recovered Desktop Session rejected by realtime revalidation: %v", err)
 	}
 	recovery.generation++
-	if err = service.ValidatePrincipal(ctx, *principal); !apperror.Is(err, "authentication.token_invalid") {
+	if err = service.validatePrincipal(ctx, *principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("a subsequent recovery did not invalidate the old Desktop principal: %v", err)
 	}
 	session.MFARecoveryRequired = true

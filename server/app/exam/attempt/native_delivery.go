@@ -58,7 +58,8 @@ func nativeDeliverySelector(invocation invocation.Invocation, query NativeDelive
 	return store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: a.AttemptID, ConnectionID: a.ConnectionID, ContinuityCredentialHash: credentialHash, CandidateUserID: p.UserID, SessionID: p.SessionID, DesktopRegistrationID: p.DesktopRegistrationID, DPoPKeyThumbprint: p.DPoPKeyThumbprint}, StreamID: query.StreamID}, nil
 }
 
-func (service *Service) NativeDeliveryStatus(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+func (service *Service) NativeDeliveryStatus(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery) (_ *model.NativeSecurityStreamStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -77,7 +78,8 @@ func (service *Service) NativeDeliveryStatus(ctx context.Context, invocation inv
 	}
 	return value, nil
 }
-func (service *Service) NativeDeliveryReceipt(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery, sequence int64) (*model.NativeBatchReceipt, error) {
+func (service *Service) NativeDeliveryReceipt(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery, sequence int64) (_ *model.NativeBatchReceipt, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -109,7 +111,8 @@ func (service *Service) beginNativeDeliveryAudit(ctx context.Context, invocation
 	}
 	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID}, nil)
 }
-func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryGapsCommand) (_ *model.DeliveryGapReceipt, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -151,7 +154,8 @@ func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocatio
 	}
 	return value, nil
 }
-func (service *Service) SealNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+func (service *Service) SealNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryFinalCommand) (_ *model.NativeSecurityStreamStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -193,7 +197,8 @@ func (service *Service) SealNativeDelivery(ctx context.Context, invocation invoc
 	}
 	return value, nil
 }
-func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation invocation.Invocation, command NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation invocation.Invocation, command NativeDeliverySummaryCommand) (_ *model.NativeSecurityStreamStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -252,7 +257,8 @@ type NativeDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) AppendNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+func (service *Service) AppendNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryAppendCommand) (_ *model.NativeSecurityAcknowledgement, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := nativeDeliverySelector(invocation, command.Query)
 	if err != nil {
 		return nil, err

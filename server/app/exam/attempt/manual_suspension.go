@@ -48,7 +48,8 @@ type ManualSuspensionResult struct {
 // audits the attempt, and lets the named Store operation end the live
 // generation and open one manual Suspension episode atomically. Effects are
 // published only for a fresh commit.
-func (service *Service) SuspendByManager(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (ManualSuspensionResult, error) {
+func (service *Service) SuspendExamAttempt(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (_ ManualSuspensionResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return ManualSuspensionResult{}, apperror.New("authentication.token_invalid")

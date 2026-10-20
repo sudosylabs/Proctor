@@ -68,7 +68,9 @@ type FocusLossEvaluation struct {
 	DiscrepancyRecorded         bool
 }
 
-func (service *Service) EvaluateFocusLoss(ctx context.Context, invocation invocation.Invocation, command FocusLossCommand) (FocusLossEvaluation, error) {
+func (service *Service) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation invocation.Invocation, command FocusLossCommand) (_ FocusLossEvaluation, resultErr error) {
+	defer func() { service.recordOperational("focus_loss", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := focusLossSelector(invocation, command)
 	if err != nil {
 		return FocusLossEvaluation{}, err

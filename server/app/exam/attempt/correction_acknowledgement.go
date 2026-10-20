@@ -32,7 +32,8 @@ type CorrectionAcknowledgementResult struct {
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 }
 
-func (service *Service) AcknowledgeCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (CorrectionAcknowledgementResult, error) {
+func (service *Service) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (_ CorrectionAcknowledgementResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, command.Access.CandidateAccess)
 	if err != nil || !command.Access.ParticipationID.IsValid() || command.Access.Generation < 1 ||
 		!command.CorrectionRevisionID.IsValid() || !command.ExpectedCurrentRevisionID.IsValid() {
@@ -85,7 +86,7 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, invocation in
 	}
 	// The receipt is immutable; the gates are freshly resolved after commit,
 	// including an exact replay or another correction published in the meantime.
-	presentation, err := service.GetPresentation(ctx, invocation, command.Access.CandidateAccess)
+	presentation, err := service.GetCandidateExamPresentation(ctx, invocation, command.Access.CandidateAccess)
 	if err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}

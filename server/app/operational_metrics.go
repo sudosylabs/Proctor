@@ -46,6 +46,14 @@ func recordOperational(recorder OperationalRecorder, subsystem, event string, er
 	}
 }
 
+// operationalRecorderAdapter lets an Exam module report a use-case outcome
+// through the observability seam without naming its event type.
+type operationalRecorderAdapter struct{ recorder OperationalRecorder }
+
+func (adapter operationalRecorderAdapter) RecordOperational(subsystem, event string, err error) {
+	recordOperational(adapter.recorder, subsystem, event, err)
+}
+
 func operationalEvent(subsystem, event string, err error) OperationalEvent {
 	return OperationalEvent{subsystem: subsystem, event: event, outcome: operationalOutcome(err)}
 }

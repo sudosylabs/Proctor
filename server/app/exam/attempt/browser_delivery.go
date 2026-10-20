@@ -49,7 +49,8 @@ func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, invocatio
 	}
 	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)}, nil)
 }
-func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (_ *model.BrowserDeliveryGapResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -91,7 +92,8 @@ func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocati
 	}
 	return value, nil
 }
-func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (_ *model.BrowserSourceStatus, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -134,7 +136,8 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invo
 	return value, nil
 }
 
-func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (_ *model.BrowserDeliverySummaryResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -168,7 +171,8 @@ func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invoca
 	}
 	return value, nil
 }
-func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (*model.BrowserReceiptPage, error) {
+func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (_ *model.BrowserReceiptPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -200,7 +204,8 @@ func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation 
 	}
 	return value, nil
 }
-func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (_ *model.BrowserActivityAcknowledgement, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
 		return nil, err

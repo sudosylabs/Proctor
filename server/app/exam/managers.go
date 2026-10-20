@@ -48,7 +48,8 @@ type RemoveManagerCommand = AddManagerCommand
 type TransferOwnerCommand = AddManagerCommand
 type ManagerChange = store.ExamManagerCommandResult
 
-func (a *Authoring) ListManagers(ctx context.Context, invocation invocation.Invocation, query ListManagersQuery) (ManagerPage, error) {
+func (a *Authoring) ListExamManagers(ctx context.Context, invocation invocation.Invocation, query ListManagersQuery) (_ ManagerPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeGrantedAt.IsZero() != query.BeforeUserID.IsZero()) {
 		return ManagerPage{}, apperror.Invalid("exam.invalid", "manager_list")
@@ -71,15 +72,18 @@ func (a *Authoring) ListManagers(ctx context.Context, invocation invocation.Invo
 	return page, nil
 }
 
-func (a *Authoring) AddManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (ManagerChange, error) {
+func (a *Authoring) AddExamManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (_ ManagerChange, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerAddition, a.deps.Persistence.AddManager)
 }
 
-func (a *Authoring) RemoveManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (ManagerChange, error) {
+func (a *Authoring) RemoveExamManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (_ ManagerChange, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, managerRemoval, a.deps.Persistence.RemoveManager)
 }
 
-func (a *Authoring) TransferOwner(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (ManagerChange, error) {
+func (a *Authoring) TransferExamOwnership(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (_ ManagerChange, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return a.changeManager(ctx, invocation, command, ownershipTransfer, a.deps.Persistence.TransferOwner)
 }
 

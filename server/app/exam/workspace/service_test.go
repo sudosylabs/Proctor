@@ -26,7 +26,7 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	body := []byte("package main\n")
-	result, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
+	result, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "cmd/main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(body), Size: int64(len(body)), IdempotencyKey: "test-key",
 	})
@@ -59,7 +59,7 @@ func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
 	fixture := newServiceFixture(t)
 	at := time.Date(2026, 8, 14, 10, 0, 0, 123456789, time.UTC)
 	fixture.service.deps.Now = func() time.Time { return at }
-	_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
+	_, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "empty.txt", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(nil), Size: 0, IdempotencyKey: "microsecond-file",
 	})
@@ -78,7 +78,7 @@ func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	fixture := newServiceFixture(t)
 	failure := errors.New("membership unavailable")
 	fixture.service.deps.Memberships = fakeMemberships{err: failure}
-	_, err := fixture.service.CreateDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
+	_, err := fixture.service.CreateExamStarterWorkspaceDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key",
 	})
 	if faultCode(err) != "exam.starter_workspace.unavailable" || !errors.Is(err, failure) {
@@ -93,7 +93,7 @@ func TestServiceDoesNotDeleteOrReclaimAStagedObjectAfterUnknownFinalize(t *testi
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	fixture.persistence.finalizeErr = context.DeadlineExceeded
-	_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
+	_, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
@@ -108,12 +108,12 @@ func TestServiceExactCreateFileRetryReturnsCommittedOutcomeWithoutRepublishing(t
 	command := CreateFileCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Size: 1, IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
-	first, err := fixture.service.CreateFile(context.Background(), fixture.invocation, command)
+	first, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	command.Body = strings.NewReader("x")
-	replayed, err := fixture.service.CreateFile(context.Background(), fixture.invocation, command)
+	replayed, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +133,12 @@ func TestServiceExactReplaceFileRetryReturnsCommittedOutcomeWithoutRepublishing(
 		ExpectedContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/plain", ExpectedSHA256: strings.Repeat("a", 64), Size: 1,
 		IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
-	first, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, command)
+	first, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	command.Body = strings.NewReader("x")
-	replayed, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, command)
+	replayed, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestServiceReplaceRequiresAndCarriesExpectedContentVersion(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	expected := model.WorkspaceContentVersion("wwwwwwwwwwwwwwwwwwwwwwwwww")
-	result, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
+	result, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
 		ExamID: fixture.examID, EntryID: model.StarterWorkspaceEntryID("dddddddddddddddddddddddddd"), ExpectedDraftRevision: 1,
 		ExpectedContentVersion: expected, MediaType: "text/plain", ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 		IdempotencyKey: "test-key",
@@ -179,17 +179,17 @@ func TestMetadataWorkspaceMutationsPassOwnedIdempotencyToStore(t *testing.T) {
 		path      string
 	}{
 		{name: "create directory", operation: idempotencyOperationCreateDirectory, path: "src", invoke: func(f *serviceFixture, _ model.StarterWorkspaceEntryID) error {
-			_, err := f.service.CreateDirectory(context.Background(), f.invocation, CreateDirectoryCommand{ExamID: f.examID,
+			_, err := f.service.CreateExamStarterWorkspaceDirectory(context.Background(), f.invocation, CreateDirectoryCommand{ExamID: f.examID,
 				ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key"})
 			return err
 		}},
 		{name: "move entry", operation: idempotencyOperationMoveEntry, path: "src/main.go", invoke: func(f *serviceFixture, id model.StarterWorkspaceEntryID) error {
-			_, err := f.service.MoveEntry(context.Background(), f.invocation, MoveEntryCommand{ExamID: f.examID, EntryID: id,
+			_, err := f.service.MoveExamStarterWorkspaceEntry(context.Background(), f.invocation, MoveEntryCommand{ExamID: f.examID, EntryID: id,
 				ExpectedDraftRevision: 1, Path: "src/main.go", IdempotencyKey: "test-key"})
 			return err
 		}},
 		{name: "remove entry", operation: idempotencyOperationRemoveEntry, invoke: func(f *serviceFixture, id model.StarterWorkspaceEntryID) error {
-			_, err := f.service.RemoveEntry(context.Background(), f.invocation, RemoveEntryCommand{ExamID: f.examID, EntryID: id,
+			_, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, RemoveEntryCommand{ExamID: f.examID, EntryID: id,
 				ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 			return err
 		}},
@@ -219,7 +219,7 @@ func TestServiceMapsStaleContentVersionAndReclaimsNewObject(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	fixture.persistence.finalizeErr = store.NewErrConflict("exam_starter_workspace_entry", "workspace_content_version", nil)
-	_, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
+	_, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
 		ExamID: fixture.examID, EntryID: model.StarterWorkspaceEntryID("dddddddddddddddddddddddddd"), ExpectedDraftRevision: 1,
 		ExpectedContentVersion: model.WorkspaceContentVersion("wwwwwwwwwwwwwwwwwwwwwwwwww"), MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
@@ -243,7 +243,7 @@ func TestServiceClassifiesInvalidStagedBytesSeparatelyFromBackendFailure(t *test
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newServiceFixture(t)
 			fixture.content.stageErr = test.err
-			_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
+			_, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, CreateFileCommand{
 				ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/plain",
 				ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key",
@@ -263,7 +263,7 @@ func (fakeInvalidWorkspaceContentError) InvalidStarterWorkspaceContent() bool { 
 func TestServiceRejectsInvalidPathsBeforeAuthorizationOrStorage(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	_, err := fixture.service.CreateDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
+	_, err := fixture.service.CreateExamStarterWorkspaceDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "../escape",
 		IdempotencyKey: "test-key",
 	})

@@ -12,7 +12,7 @@ description: Design or change Proctor server packages, dependency direction, app
    stable responsibility rather than symmetry, file size, or speculative reuse.
 2. Read the exact branch reference:
    - package imports or extraction: [dependency reference](references/dependencies.md);
-   - use cases, application children, interfaces, or facade construction:
+   - use cases, application children, interfaces, or the application surface:
      [application reference](references/application.md);
    - root wiring, startup ownership, readiness, or disposal:
      [composition reference](references/composition.md).
@@ -30,8 +30,9 @@ description: Design or change Proctor server packages, dependency direction, app
 
 The module-root `server.New` is the sole composition root. `platform.Service`
 owns infrastructure lifecycle and health and never becomes an application
-service locator. `app.New` is the sole application constructor; `app.App` is a
-use-case facade, not a Store accessor. Concrete backend selection remains in
+service locator. `app.New` is the sole application constructor; `app.App`
+embeds the focused services so each use case is declared once, on its
+owning service, and it is not a Store accessor. Concrete backend selection remains in
 the root server package.
 
 Use direct typed commands, queries, and results. `app.Invocation` carries the

@@ -48,11 +48,11 @@ func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing
 		t.Fatal("control overload reached persistence or lost its code", err)
 	}
 	// Preflight work shares recovery capacity and cannot consume renewal capacity.
-	_, err = f.service.PrepareSecurityPreflight(ctx, other, PrepareSecurityPreflightCommand{})
+	_, err = f.service.PrepareExamSecurityPreflight(ctx, other, PrepareSecurityPreflightCommand{})
 	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("preflight preparation bypassed admission", err)
 	}
-	_, err = f.service.ReportSecurityPreflight(ctx, other, ReportSecurityPreflightCommand{})
+	_, err = f.service.ReportExamSecurityPreflight(ctx, other, ReportSecurityPreflightCommand{})
 	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("preflight report bypassed admission", err)
 	}

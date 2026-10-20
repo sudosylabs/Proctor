@@ -145,12 +145,25 @@ type Dependencies struct {
 	NewWorkspaceObject  func() model.AttemptWorkspaceObjectID
 	NewWorkspaceVersion func() model.WorkspaceContentVersion
 	NewSubmission       func() model.SubmissionID
+	Operational         OperationalRecorder
+}
+
+// OperationalRecorder receives the outcome of each use case the module
+// observes. It is optional; a module built without one records nothing.
+type OperationalRecorder interface {
+	RecordOperational(subsystem, event string, err error)
 }
 
 type Service struct {
 	deps             Dependencies
 	liveControls     controlAdmission
 	deliveryControls controlAdmission
+}
+
+func (service *Service) recordOperational(event string, err error) {
+	if service.deps.Operational != nil {
+		service.deps.Operational.RecordOperational("exam_attempt", event, err)
+	}
 }
 
 func New(deps Dependencies) (*Service, error) {
@@ -169,36 +182,37 @@ type GetManagedAttemptQuery struct {
 	AttemptID model.ExamAttemptID
 }
 
-func (service *Service) GetManaged(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error) {
+func (service *Service) GetExamAttempt(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (_ store.ExamAttemptManagerSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() {
-		return nil, apperror.Invalid("exam.attempt.invalid", "attempt")
+		return store.ExamAttemptManagerSnapshot{}, apperror.Invalid("exam.attempt.invalid", "attempt")
 	}
 	// Authorization precedes every Attempt read so a caller without Sitting
 	// view authority cannot distinguish existing, mismatched, or missing
 	// Attempts; the authorizer records that decision.
 	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
-		return nil, err
+		return store.ExamAttemptManagerSnapshot{}, err
 	}
 	sitting, err := service.deps.Sittings.Resolve(ctx, query.SittingID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return store.ExamAttemptManagerSnapshot{}, storeError(storeErrors, err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != query.SittingID || !sitting.AcademicUnitID.IsValid() {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Attempt Sitting projection"))
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Attempt Sitting projection"))
 	}
 	if sitting.Sitting.ExamID != query.ExamID {
-		return nil, apperror.New("exam.attempt.not_found")
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.not_found")
 	}
 	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return store.ExamAttemptManagerSnapshot{}, storeError(storeErrors, err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil ||
 		snapshot.Attempt.ExamID != query.ExamID || !validActiveSuspension(snapshot.ActiveSuspension, snapshot.Attempt.ID) {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Attempt projection"))
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Attempt projection"))
 	}
 	if snapshot.Attempt.SittingID != query.SittingID {
-		return nil, apperror.New("exam.attempt.not_found")
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.not_found")
 	}
 	if snapshot.Attempt.CandidateUserID == invocation.Principal().UserID {
 		resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
@@ -208,14 +222,18 @@ func (service *Service) GetManaged(ctx context.Context, invocation invocation.In
 				"exam_attempt_id": snapshot.Attempt.ID.String(),
 			}, nil)
 		if auditErr != nil {
-			return nil, auditErr
+			return store.ExamAttemptManagerSnapshot{}, auditErr
 		}
 		if auditErr = service.deps.Auditor.Fail(ctx, auditID, "exam.attempt.not_found"); auditErr != nil {
-			return nil, auditErr
+			return store.ExamAttemptManagerSnapshot{}, auditErr
 		}
-		return nil, apperror.New("exam.attempt.not_found")
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.not_found")
 	}
-	return cloneManagerSnapshot(snapshot), nil
+	clone := cloneManagerSnapshot(snapshot)
+	if clone == nil {
+		return store.ExamAttemptManagerSnapshot{}, apperror.New("exam.attempt.unavailable")
+	}
+	return *clone, nil
 }
 
 type ListManagedAttemptsQuery struct {
@@ -244,7 +262,8 @@ type CandidateActivityPage struct {
 	HasMore    bool
 }
 
-func (service *Service) ListCandidateActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (CandidateActivityPage, error) {
+func (service *Service) ListCandidateExamActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (_ CandidateActivityPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeScheduledStart.IsZero() != query.BeforeSittingID.IsZero()) {
@@ -290,7 +309,8 @@ type SittingCandidateStatusesPage struct {
 
 func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invocation invocation.Invocation,
 	query SittingCandidateStatusesQuery,
-) (SittingCandidateStatusesPage, error) {
+) (_ SittingCandidateStatusesPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid() {
@@ -334,7 +354,8 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invoca
 	return page, nil
 }
 
-func (service *Service) ListManaged(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (ManagedAttemptPage, error) {
+func (service *Service) ListExamAttempts(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (_ ManagedAttemptPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeCreatedAt.IsZero() != query.BeforeAttemptID.IsZero()) {
 		return ManagedAttemptPage{}, apperror.Invalid("exam.attempt.invalid", "attempt_list")
@@ -497,7 +518,8 @@ type ReallowResult struct {
 	Replayed        bool
 }
 
-func (service *Service) Reallow(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (ReallowResult, error) {
+func (service *Service) ReallowExamAttempt(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (_ ReallowResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return ReallowResult{}, apperror.New("authentication.token_invalid")
@@ -713,7 +735,9 @@ func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store
 // RenewParticipation authenticates a continuity renewal independently of the
 // WebSocket transport ping. Store owns the database clock, exclusive expiry
 // boundary, duplicate outcome, and permanent generation fence.
-func (service *Service) RenewParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (ParticipationRenewal, error) {
+func (service *Service) RenewExamAttemptParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (_ ParticipationRenewal, resultErr error) {
+	defer func() { service.recordOperational("renew", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, true)
 	if admissionErr != nil {
 		return ParticipationRenewal{}, admissionErr
@@ -782,7 +806,9 @@ func (service *Service) RenewParticipation(ctx context.Context, invocation invoc
 	return result, nil
 }
 
-func (service *Service) Connect(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (ConnectionResult, error) {
+func (service *Service) ConnectExamAttempt(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (_ ConnectionResult, resultErr error) {
+	defer func() { service.recordOperational("connect", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if command.Security.Validate() != nil {
 		return ConnectionResult{}, apperror.Invalid("exam.attempt.invalid", "security")
 	}
@@ -897,7 +923,9 @@ type ConnectionClosedResult struct {
 	Changed         bool
 }
 
-func (service *Service) CloseConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (ConnectionClosedResult, error) {
+func (service *Service) CloseExamAttemptConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (_ ConnectionClosedResult, resultErr error) {
+	defer func() { service.recordOperational("close", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if invocation.Principal().Validate() != nil || !command.AttemptID.IsValid() || !command.SittingID.IsValid() ||
 		!command.ClassID.IsValid() || !command.ConnectionID.IsValid() || !command.Reason.IsValid() {
 		return ConnectionClosedResult{}, apperror.Invalid("exam.attempt.invalid", "connection")
@@ -959,7 +987,8 @@ type Resource struct {
 	SHA256              string
 }
 
-func (service *Service) GetPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (Presentation, error) {
+func (service *Service) GetCandidateExamPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (_ Presentation, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, access)
 	if err != nil {
 		return Presentation{}, err
@@ -1002,7 +1031,8 @@ type WorkspacePage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (WorkspacePage, error) {
+func (service *Service) ListCandidateExamWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (_ WorkspacePage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
 		return WorkspacePage{}, err
@@ -1034,62 +1064,78 @@ type OpenedContent struct {
 	ContentVersion model.WorkspaceContentVersion
 }
 
-func (service *Service) OpenResource(ctx context.Context, invocation invocation.Invocation, access CandidateAccess, resourceID model.ExamResourceID) (*OpenedContent, error) {
-	selector, err := candidateSelector(invocation, access)
+// OpenResourceQuery names one published Resource through the candidate's
+// Attempt access.
+type OpenResourceQuery struct {
+	Access     CandidateAccess
+	ResourceID model.ExamResourceID
+}
+
+func (service *Service) OpenCandidateExamResource(ctx context.Context, invocation invocation.Invocation, query OpenResourceQuery) (_ OpenedContent, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
-		return nil, err
+		return OpenedContent{}, err
 	}
-	if !resourceID.IsValid() {
-		return nil, apperror.Invalid("exam.attempt.invalid", "exam_resource_id")
+	if !query.ResourceID.IsValid() {
+		return OpenedContent{}, apperror.Invalid("exam.attempt.invalid", "exam_resource_id")
 	}
-	resolved, err := service.deps.Persistence.ResolveCandidateResource(ctx, selector, resourceID)
+	resolved, err := service.deps.Persistence.ResolveCandidateResource(ctx, selector, query.ResourceID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return OpenedContent{}, storeError(storeErrors, err)
 	}
-	if resolved == nil || resolved.Resource.ResourceID != resourceID || !resolved.FileRevisionID.IsValid() || !resolved.RenditionID.IsValid() {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Resource selector"))
+	if resolved == nil || resolved.Resource.ResourceID != query.ResourceID || !resolved.FileRevisionID.IsValid() || !resolved.RenditionID.IsValid() {
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Resource selector"))
 	}
 	body, err := service.deps.Content.OpenExamResource(ctx, resolved.FileRevisionID, resolved.RenditionID)
 	if err != nil {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(err)
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
-	return &OpenedContent{Body: body, MediaType: string(resolved.Resource.MediaType), SizeBytes: resolved.Resource.SizeBytes, SHA256: resolved.Resource.SHA256}, nil
+	return OpenedContent{Body: body, MediaType: string(resolved.Resource.MediaType), SizeBytes: resolved.Resource.SizeBytes, SHA256: resolved.Resource.SHA256}, nil
 }
 
-func (service *Service) OpenWorkspaceFile(ctx context.Context, invocation invocation.Invocation, access CandidateAccess, entryID model.AttemptWorkspaceEntryID) (*OpenedContent, error) {
-	selector, err := candidateSelector(invocation, access)
+// OpenWorkspaceFileQuery names one Workspace file through the candidate's
+// Attempt access.
+type OpenWorkspaceFileQuery struct {
+	Access  CandidateAccess
+	EntryID model.AttemptWorkspaceEntryID
+}
+
+func (service *Service) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenWorkspaceFileQuery) (_ OpenedContent, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
-		return nil, err
+		return OpenedContent{}, err
 	}
-	if !entryID.IsValid() {
-		return nil, apperror.Invalid("exam.attempt.invalid", "attempt_workspace_entry_id")
+	if !query.EntryID.IsValid() {
+		return OpenedContent{}, apperror.Invalid("exam.attempt.invalid", "attempt_workspace_entry_id")
 	}
-	resolved, err := service.deps.Workspace.ResolveFile(ctx, selector, entryID)
+	resolved, err := service.deps.Workspace.ResolveFile(ctx, selector, query.EntryID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return OpenedContent{}, storeError(storeErrors, err)
 	}
-	if resolved == nil || resolved.Entry.EntryID != entryID || resolved.ContentVersion.IsZero() {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Workspace selector"))
+	if resolved == nil || resolved.Entry.EntryID != query.EntryID || resolved.ContentVersion.IsZero() {
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Workspace selector"))
 	}
 	var body io.ReadCloser
 	switch resolved.StorageOrigin {
 	case model.AttemptWorkspaceStorageStarter:
 		if !resolved.StarterObjectID.IsValid() || !resolved.AttemptObjectID.IsValid() {
-			return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent starter Workspace selector"))
+			return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent starter Workspace selector"))
 		}
 		body, err = service.deps.Content.OpenStarterWorkspaceObject(ctx, resolved.StarterObjectID)
 	case model.AttemptWorkspaceStorageAttempt:
 		if !resolved.AttemptObjectID.IsValid() || resolved.StarterObjectID.IsValid() {
-			return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent attempt-origin Workspace selector"))
+			return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent attempt-origin Workspace selector"))
 		}
 		body, err = service.deps.Content.OpenAttemptWorkspaceObject(ctx, resolved.AttemptObjectID)
 	default:
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid candidate Workspace storage origin"))
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid candidate Workspace storage origin"))
 	}
 	if err != nil {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(err)
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
-	return &OpenedContent{Body: body, MediaType: resolved.Entry.MediaType, SizeBytes: resolved.Entry.SizeBytes,
+	return OpenedContent{Body: body, MediaType: resolved.Entry.MediaType, SizeBytes: resolved.Entry.SizeBytes,
 		SHA256: resolved.Entry.SHA256, ContentVersion: resolved.ContentVersion}, nil
 }
 
@@ -1261,6 +1307,13 @@ var deliveryConflictCodes = map[string]apperror.Code{
 	"pending_capacity":        "exam.delivery.pending_capacity",
 	"replay_window_exceeded":  "exam.delivery.replay_window_exceeded",
 	"summary_rate_limited":    "exam.delivery.summary_rate_limited",
+}
+
+// publicFailures presents every Attempt use-case failure: unexpected errors
+// become exam.attempt.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.attempt.unavailable",
+	Concealed:   []apperror.Code{"exam.attempt.not_found", "exam.attempt.continuity_invalid"},
 }
 
 var storeErrors = apperror.StoreTable{

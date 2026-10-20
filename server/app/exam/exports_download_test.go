@@ -47,7 +47,7 @@ func TestExamExportDownloadRechecksAuthorityAfterStorageOpen(t *testing.T) {
 					base.artifactID = model.NewJobAttemptID()
 				}
 			}
-			download, err := service.Open(context.Background(), f.invocation, ExportQuery{Scope: base.value.Scope, ExportID: base.value.ID})
+			download, err := service.OpenExamExport(context.Background(), f.invocation, ExportQuery{Scope: base.value.Scope, ExportID: base.value.ID})
 			if scenario == "unchanged archive" || scenario == "node clock ahead" {
 				if err != nil || download == nil || download.Body != body || body.closed {
 					t.Fatalf("current archive was not available: %#v, %v, closed=%v", download, err, body.closed)

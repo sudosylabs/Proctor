@@ -25,77 +25,8 @@ type EditExamResourceMetadataCommand = examresource.EditMetadataCommand
 type ReorderExamResourcesCommand = examresource.ReorderCommand
 type RemoveExamResourceCommand = examresource.RemoveCommand
 
-type ListExamResourcesQuery struct{ ExamID model.ExamID }
-type OpenExamResourceQuery struct {
-	ExamID     model.ExamID
-	ResourceID model.ExamResourceID
-}
-
-type examResourceUseCases interface {
-	Create(context.Context, Invocation, examresource.CreateCommand) (store.ExamResourceRecord, error)
-	ReplaceContent(context.Context, Invocation, examresource.ReplaceContentCommand) (store.ExamResourceRecord, error)
-	EditMetadata(context.Context, Invocation, examresource.EditMetadataCommand) (store.ExamResourceRecord, error)
-	Reorder(context.Context, Invocation, examresource.ReorderCommand) ([]store.ExamResourceRecord, error)
-	Remove(context.Context, Invocation, examresource.RemoveCommand) (store.ExamResourceRecord, error)
-	List(context.Context, Invocation, model.ExamID) ([]store.ExamResourceRecord, error)
-	Open(context.Context, Invocation, model.ExamID, model.ExamResourceID) (examresource.Opened, error)
-}
-
-func (a *App) CreateExamResource(ctx context.Context, invocation Invocation, c CreateExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Create(ctx, invocation, c)
-	if err != nil {
-		return ExamResourceRecord{}, examResourceError(err, true)
-	}
-	return result, nil
-}
-func (a *App) ReplaceExamResourceContent(ctx context.Context, invocation Invocation, c ReplaceExamResourceContentCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.ReplaceContent(ctx, invocation, c)
-	if err != nil {
-		return ExamResourceRecord{}, examResourceError(err, true)
-	}
-	return result, nil
-}
-func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocation, c EditExamResourceMetadataCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.EditMetadata(ctx, invocation, c)
-	if err != nil {
-		return ExamResourceRecord{}, examResourceError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ReorderExamResources(ctx context.Context, invocation Invocation, c ReorderExamResourcesCommand) ([]ExamResourceRecord, error) {
-	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
-	result, err := a.examResources.Reorder(ctx, invocation, c)
-	if err != nil {
-		return nil, examResourceError(err, true)
-	}
-	return result, nil
-}
-func (a *App) RemoveExamResource(ctx context.Context, invocation Invocation, c RemoveExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Remove(ctx, invocation, c)
-	if err != nil {
-		return ExamResourceRecord{}, examResourceError(err, true)
-	}
-	return result, nil
-}
-func (a *App) ListExamResources(ctx context.Context, invocation Invocation, q ListExamResourcesQuery) ([]ExamResourceRecord, error) {
-	result, err := a.examResources.List(ctx, invocation, q.ExamID)
-	if err != nil {
-		return nil, examResourceError(err, true)
-	}
-	return result, nil
-}
-func (a *App) OpenExamResource(ctx context.Context, invocation Invocation, q OpenExamResourceQuery) (OpenedExamResource, error) {
-	result, err := a.examResources.Open(ctx, invocation, q.ExamID, q.ResourceID)
-	if err != nil {
-		return OpenedExamResource{}, examResourceError(err, true)
-	}
-	return result, nil
-}
-
-func examResourceError(err error, conceal bool) error {
-	return presentExamChildError(err, conceal, "exam.resource.unavailable", "exam.resource.not_found")
-}
+type ListExamResourcesQuery = examresource.ListQuery
+type OpenExamResourceQuery = examresource.OpenQuery
 
 type examResourceRealtimeEffects struct{ realtime *realtimeService }
 

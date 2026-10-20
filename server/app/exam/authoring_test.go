@@ -25,7 +25,7 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-	got, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{
+	got, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{
 		AcademicUnitID: fixture.unitID, Title: "  Algorithms  ", InstructionsMarkdown: "Use **Go**.",
 		IdempotencyKey: "test-key",
 	})
@@ -55,7 +55,7 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 func TestCreateUsesExplicitOverrideWithoutMembership(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestCreateUsesExplicitOverrideWithoutMembership(t *testing.T) {
 func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
@@ -80,7 +80,7 @@ func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) 
 func TestCreateRejectsInvalidDraftBeforeResolutionOrAuthorization(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   ", IdempotencyKey: "test-key"})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   ", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.invalid" {
 		t.Fatalf("error = %v", err)
@@ -96,7 +96,7 @@ func TestCreateReplayDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	command := "test-key"
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: command})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: command})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	fixture := newAuthoringFixture(t)
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" {
 		t.Fatalf("error = %v", err)
@@ -127,7 +127,7 @@ func TestCreateFailedAuditCompletionPreservesStoreFailure(t *testing.T) {
 	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
 	auditErr := errors.New("audit completion unavailable")
 	fixture.auditor.failErr = auditErr
-	_, err := fixture.service.Create(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
+	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" || !errors.Is(err, auditErr) {
 		t.Fatalf("error = %v, want store conflict joined with audit completion failure", err)
@@ -142,7 +142,7 @@ func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.
 	title := "  Distributed Systems  "
 	instructions := "Use **Go** and submit all files."
 	command := "test-key"
-	view, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	view, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1,
 		Title: &title, InstructionsMarkdown: &instructions, IdempotencyKey: command,
 	})
@@ -173,7 +173,7 @@ func TestEditDraftTextNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
 	fixture.persistence.actorIsManager = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	title := "  Test  "
-	_, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	_, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	})
@@ -205,7 +205,7 @@ func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.
 			fixture.persistence.archived = test.archived
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			title := "Changed"
-			_, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+			_, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 				ExamID: fixture.examID, ExpectedDraftRevision: test.expectedRevision, Title: &title,
 				IdempotencyKey: "test-key",
 			})
@@ -227,7 +227,7 @@ func TestEditDraftTextArchivedNoOpStillRejectsAsArchived(t *testing.T) {
 	fixture.persistence.archived = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	title := "  Test  "
-	_, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	_, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	})
@@ -247,7 +247,7 @@ func TestEditDraftTextReplayDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	title := "Changed"
-	if _, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	if _, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	}); err != nil {
@@ -262,7 +262,7 @@ func TestEditDraftTextUsesExplicitOverrideWithoutManagerMembership(t *testing.T)
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	title := "Changed"
-	if _, err := fixture.service.EditDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	if _, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	}); err != nil {
@@ -283,8 +283,8 @@ func TestConfigureDraftFocusLossOwnsAuthorizationAuditPersistenceAndSafeEffect(t
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	focus := model.FocusLossPolicy{Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100, Window: 4 * time.Hour, Outcome: model.IntegrityOutcomeFlagAndSuspend}
 	command := "test-key"
-	view, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
-		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: focus, IdempotencyKey: command,
+	view, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: focus.Enabled, MinimumDuration: focus.MinimumDuration, IncidentCount: focus.IncidentCount, Window: focus.Window, Outcome: focus.Outcome, IdempotencyKey: command,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -311,8 +311,8 @@ func TestConfigureDraftFocusLossNoChangeSkipsAuditPersistenceAndEffect(t *testin
 	fixture := newAuthoringFixture(t)
 	fixture.persistence.actorIsManager = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-	_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
-		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: model.DefaultExamPolicySet().FocusLoss, IdempotencyKey: "test-key",
+	_, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: model.DefaultExamPolicySet().FocusLoss.Enabled, MinimumDuration: model.DefaultExamPolicySet().FocusLoss.MinimumDuration, IncidentCount: model.DefaultExamPolicySet().FocusLoss.IncidentCount, Window: model.DefaultExamPolicySet().FocusLoss.Window, Outcome: model.DefaultExamPolicySet().FocusLoss.Outcome, IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.draft.no_changes" {
@@ -339,8 +339,8 @@ func TestConfigureDraftFocusLossArchivedNoOpAndStaleEditsReachAuditedStoreGuard(
 			fixture.persistence.actorIsManager = true
 			fixture.persistence.archived = test.archived
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-			_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
-				ExamID: fixture.examID, ExpectedDraftRevision: test.revision, FocusLoss: model.DefaultExamPolicySet().FocusLoss, IdempotencyKey: "test-key",
+			_, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
+				ExamID: fixture.examID, ExpectedDraftRevision: test.revision, Enabled: model.DefaultExamPolicySet().FocusLoss.Enabled, MinimumDuration: model.DefaultExamPolicySet().FocusLoss.MinimumDuration, IncidentCount: model.DefaultExamPolicySet().FocusLoss.IncidentCount, Window: model.DefaultExamPolicySet().FocusLoss.Window, Outcome: model.DefaultExamPolicySet().FocusLoss.Outcome, IdempotencyKey: "test-key",
 			})
 			var fault *apperror.Error
 			if !errors.As(err, &fault) || fault.Code() != test.want {
@@ -361,8 +361,8 @@ func TestConfigureDraftFocusLossReplayDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	focus := model.FocusLossPolicy{Enabled: false, MinimumDuration: time.Second, IncidentCount: 2, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag}
-	if _, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
-		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: focus, IdempotencyKey: "test-key",
+	if _, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: focus.Enabled, MinimumDuration: focus.MinimumDuration, IncidentCount: focus.IncidentCount, Window: focus.Window, Outcome: focus.Outcome, IdempotencyKey: "test-key",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestGetSelectsManagerOrOverrideAuthorization(t *testing.T) {
 			if test.manager {
 				fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			}
-			view, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID)
+			view, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -444,7 +444,7 @@ func TestGetRequiresOverrideWhenManagerMembershipWasRevoked(t *testing.T) {
 	fixture.persistence.actorIsManager = true
 	denied := errors.New("override denied")
 	fixture.authorizer.err = denied
-	if _, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID); !errors.Is(err, denied) {
+	if _, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID}); !errors.Is(err, denied) {
 		t.Fatalf("error = %v, want override denial", err)
 	}
 	if fixture.authorizer.action != model.ActionExamViewOverride {
@@ -461,7 +461,7 @@ func TestGetStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	fixture.persistence.actorIsManager = true
 	failure := errors.New("membership unavailable")
 	fixture.memberships.err = failure
-	_, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID)
+	_, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)

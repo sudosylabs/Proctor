@@ -42,7 +42,15 @@ type ArchiveCommand struct {
 	IdempotencyKey       string
 }
 
-func (a *Authoring) List(ctx context.Context, invocation invocation.Invocation, query ListQuery) (CatalogPage, error) {
+func (a *Authoring) ListExams(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ CatalogPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Present(resultErr) }()
+	if query.Limit == 0 {
+		query.Limit = 50
+	}
+	if query.ArchiveFilter == "" {
+		query.ArchiveFilter = store.ExamArchiveActive
+	}
+	query.Query = strings.TrimSpace(query.Query)
 	principal := invocation.Principal()
 	if principal.Validate() != nil || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeUpdatedAt.IsZero() != query.BeforeExamID.IsZero()) ||
@@ -85,7 +93,8 @@ func (a *Authoring) List(ctx context.Context, invocation invocation.Invocation, 
 	return CatalogPage{Items: items}, nil
 }
 
-func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocation, command ArchiveCommand) (model.Exam, error) {
+func (a *Authoring) ArchiveExam(ctx context.Context, invocation invocation.Invocation, command ArchiveCommand) (_ model.Exam, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedExamRevision < 1 {
 		return model.Exam{}, apperror.Invalid("exam.invalid", "exam_revision")

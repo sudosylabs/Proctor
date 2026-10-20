@@ -25,7 +25,7 @@ func TestCreateStagesVerifiedBytesBeforeAuditAndAtomicVisibility(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID, UserID: f.userID}}
-	got, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "  Reference  ", DescriptionMarkdown: "Read **carefully**.", MediaType: model.ExamResourceMediaMarkdown, Body: strings.NewReader("# Notes"), Size: 7, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	got, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "  Reference  ", DescriptionMarkdown: "Read **carefully**.", MediaType: model.ExamResourceMediaMarkdown, Body: strings.NewReader("# Notes"), Size: 7, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestCreateInvalidContentRemainsInvisibleAndUnaudited(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.content.storeErr = testInvalidContentError{}
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaPDF, Body: strings.NewReader("bad"), Size: 3, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaPDF, Body: strings.NewReader("bad"), Size: 3, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.content_invalid" {
 		t.Fatalf("error=%v", err)
@@ -77,11 +77,11 @@ func TestContentCapacityRefusalRemainsInvisibleAndUnaudited(t *testing.T) {
 			f.content.storeErr = testCapacityError{}
 			var err error
 			if operation == "create" {
-				_, err = f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+				_, err = f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 			} else {
 				resourceID := model.NewExamResourceID()
 				f.persistence.items = []store.ExamResourceRecord{testRecord(f.examID, resourceID, model.NewFileEntryID(), model.NewFileRevisionID(), 1)}
-				_, err = f.service.ReplaceContent(context.Background(), f.invocation, ReplaceContentCommand{ExamID: f.examID, ResourceID: resourceID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+				_, err = f.service.ReplaceExamResourceContent(context.Background(), f.invocation, ReplaceContentCommand{ExamID: f.examID, ResourceID: resourceID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 			}
 			var fault *apperror.Error
 			if !errors.As(err, &fault) || fault.Code() != "service.busy" || !errors.Is(err, f.content.storeErr) {
@@ -98,7 +98,7 @@ func TestFinalizeReplayDoesNotRepublish(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.replayed = true
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,14 +113,14 @@ func TestExactCreateRetryRecoversUnknownCommitWithoutRepublishing(t *testing.T) 
 	f.persistence.replayAfterFirst = true
 	command := CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
-	first, err := f.service.Create(context.Background(), f.invocation, command)
+	first, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Simulate a lost success response: the caller retries the exact command
 	// with the original expected Draft revision and a fresh request body.
 	command.Body = strings.NewReader("notes")
-	recovered, err := f.service.Create(context.Background(), f.invocation, command)
+	recovered, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +140,13 @@ func TestExactTenthCreateRetryReachesStoredOutcome(t *testing.T) {
 	f.persistence.replayAfterFirst = true
 	command := CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Last reference", MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
-	first, err := f.service.Create(context.Background(), f.invocation, command)
+	first, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.persistence.items = append(f.persistence.items, first)
 	command.Body = strings.NewReader("notes")
-	recovered, err := f.service.Create(context.Background(), f.invocation, command)
+	recovered, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,14 +163,14 @@ func TestExactReplacementRetryRecoversUnknownCommitWithoutRepublishing(t *testin
 	f.persistence.replayAfterFirst = true
 	command := ReplaceContentCommand{ExamID: f.examID, ResourceID: current.Resource.ID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
-	first, err := f.service.ReplaceContent(context.Background(), f.invocation, command)
+	first, err := f.service.ReplaceExamResourceContent(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Simulate the same lost-success response as Create: the reservation is
 	// disposable and Finalize recovers the durable idempotent outcome.
 	command.Body = strings.NewReader("notes")
-	recovered, err := f.service.ReplaceContent(context.Background(), f.invocation, command)
+	recovered, err := f.service.ReplaceExamResourceContent(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestCreateMapsStorageFailureToUnavailableWithoutSafeBackendDetails(t *testi
 	t.Parallel()
 	f := newFixture(t)
 	f.content.storeErr = errors.New("secret backend bucket and object key")
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.unavailable" || len(fault.Fields()) != 0 {
 		t.Fatalf("error=%v fault=%#v", err, fault)
@@ -201,7 +201,7 @@ func TestOpenUsesExactAuthoritativeRenditionWithoutStorageDiscovery(t *testing.T
 	f := newFixture(t)
 	record := testRecord(f.examID, model.NewExamResourceID(), model.NewFileEntryID(), model.NewFileRevisionID(), 1)
 	f.persistence.items = []store.ExamResourceRecord{record}
-	opened, err := f.service.Open(context.Background(), f.invocation, f.examID, record.Resource.ID)
+	opened, err := f.service.OpenExamResource(context.Background(), f.invocation, OpenQuery{ExamID: f.examID, ResourceID: record.Resource.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,12 +217,12 @@ func TestMetadataAndOrderNoOpsDoNotBeginAudit(t *testing.T) {
 	f := newFixture(t)
 	record := testRecord(f.examID, model.NewExamResourceID(), model.NewFileEntryID(), model.NewFileRevisionID(), 1)
 	f.persistence.items = []store.ExamResourceRecord{record}
-	_, err := f.service.EditMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
+	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.no_changes" || f.auditor.began {
 		t.Fatalf("metadata no-op error=%v audit=%v", err, f.auditor.began)
 	}
-	_, err = f.service.Reorder(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
+	_, err = f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.no_changes" || f.auditor.began {
 		t.Fatalf("reorder no-op error=%v audit=%v", err, f.auditor.began)
 	}
@@ -236,7 +236,7 @@ func TestApparentMetadataNoOpWithStaleDraftReachesAuditedStoreGuard(t *testing.T
 	f.access.draftRevision = 2
 	f.persistence.updateErr = store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
 
-	_, err := f.service.EditMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
+	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.draft.revision_conflict" || !f.auditor.began || f.persistence.updateCalls != 1 {
 		t.Fatalf("error=%v audit=%v update calls=%d", err, f.auditor.began, f.persistence.updateCalls)
@@ -251,7 +251,7 @@ func TestApparentReorderNoOpWithArchivedExamReachesAuditedStoreGuard(t *testing.
 	f.access.archived = true
 	f.persistence.reorderErr = store.NewErrConflict("exam", "exam_archived", nil)
 
-	_, err := f.service.Reorder(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
+	_, err := f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.archived" || !f.auditor.began || f.persistence.reorderCalls != 1 {
 		t.Fatalf("error=%v audit=%v reorder calls=%d", err, f.auditor.began, f.persistence.reorderCalls)
@@ -268,7 +268,7 @@ func TestReorderPublishesCommittedRevisionAndReportsTransientFailure(t *testing.
 	f.persistence.reorderResult = &store.ExamResourceCommandResult{Items: []store.ExamResourceRecord{second, first}, DraftRevision: 7}
 	f.effects.changedErr = errors.New("realtime unavailable")
 
-	items, err := f.service.Reorder(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{second.Resource.ID, first.Resource.ID}, IdempotencyKey: "test-key"})
+	items, err := f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{second.Resource.ID, first.Resource.ID}, IdempotencyKey: "test-key"})
 	if err != nil || len(items) != 2 || f.effects.draftRevision != 7 || f.effects.reportCalls != 1 {
 		t.Fatalf("items=%#v error=%v effect=%#v", items, err, f.effects)
 	}
@@ -284,7 +284,7 @@ func TestRemovePassesOwnedIdempotencyToStore(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	resourceID := model.NewExamResourceID()
-	if _, err := f.service.Remove(context.Background(), f.invocation, RemoveCommand{ExamID: f.examID,
+	if _, err := f.service.RemoveExamResource(context.Background(), f.invocation, RemoveCommand{ExamID: f.examID,
 		ResourceID: resourceID, ExpectedDraftRevision: 1, IdempotencyKey: "remove-key"}); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestMetadataPatchPreservesOmittedFieldsAndAllowsExplicitEmptyDescription(t 
 			record.Resource.DescriptionMarkdown = "Existing"
 			f.persistence.items = []store.ExamResourceRecord{record}
 			f.persistence.updateResult = &store.ExamResourceCommandResult{Value: &record}
-			_, err := f.service.EditMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: test.displayName, DescriptionMarkdown: test.description, IdempotencyKey: "test-key"})
+			_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: test.displayName, DescriptionMarkdown: test.description, IdempotencyKey: "test-key"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -335,7 +335,7 @@ func TestMetadataPatchPreservesOmittedFieldsAndAllowsExplicitEmptyDescription(t 
 func TestMetadataPatchRejectsOmittedFieldsBeforeAudit(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	_, err := f.service.EditMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: model.NewExamResourceID(), ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
+	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: model.NewExamResourceID(), ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.invalid" || f.auditor.began || f.persistence.updateCalls != 0 {
 		t.Fatalf("error=%v audit=%v update calls=%d", err, f.auditor.began, f.persistence.updateCalls)
@@ -345,7 +345,7 @@ func TestMetadataPatchRejectsOmittedFieldsBeforeAudit(t *testing.T) {
 func TestInvalidMetadataIsRejectedBeforeUploadReservation(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "   ", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "   ", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.invalid" {
 		t.Fatalf("error=%v", err)
@@ -361,7 +361,7 @@ func TestCreateUsesExplicitOverrideWhenCurrentManagerMembershipIsAbsent(t *testi
 	t.Parallel()
 	f := newFixture(t)
 	f.memberships.items = []*model.AcademicUnitMember{}
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestCreateStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	f := newFixture(t)
 	failure := errors.New("membership unavailable")
 	f.memberships.err = failure
-	_, err := f.service.Create(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.resource.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)

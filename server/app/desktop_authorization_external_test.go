@@ -26,7 +26,7 @@ func TestDesktopExternalAuthenticationStartUsesBoundTransactionOwner(t *testing.
 		ID: transactionID, State: model.BrowserAuthenticationStateBound,
 	}}
 	service := newDesktopExternalAuthenticationFixture(t, transactions)
-	// The facade has only the external-authentication module. It cannot reach
+	// This App embeds only the external-authentication module. It cannot reach
 	// through a sibling's Store to initiate this purpose-specific handoff.
 	application := &App{externalAuthenticationService: service}
 	result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{

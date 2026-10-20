@@ -463,7 +463,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 		return invalidTokenAppError()
 	}
 	if principal.CredentialType == model.CredentialSessionAccess {
-		return s.authentication.ValidatePrincipal(ctx, principal)
+		return s.authentication.validatePrincipal(ctx, principal)
 	}
 	token, err := s.tokens.Get(ctx, model.PersonalAccessTokenID(principal.CredentialID))
 	if err != nil {

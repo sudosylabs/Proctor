@@ -114,7 +114,7 @@ func (fake *submissionAuthorizationStoreFake) Resolve(context.Context, model.Sub
 }
 
 type submissionAuthorizationSittingFake struct {
-	examSittingUseCases
+	examAttemptSittingAuthorizer
 	invocation   Invocation
 	examID       model.ExamID
 	submissionID model.SubmissionID
@@ -125,27 +125,6 @@ func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ contex
 ) error {
 	fake.invocation, fake.examID, fake.submissionID = invocation, examID, submissionID
 	return nil
-}
-
-func TestExamAttemptFacadeConcealsAccessDenialsAndPassesOtherFailures(t *testing.T) {
-	t.Parallel()
-	for _, childCode := range []apperror.Code{"exam.attempt.not_found", "exam.attempt.continuity_invalid", "authorization.denied"} {
-		if err := examAttemptError(apperror.New(childCode), true); !apperror.Is(err, "resource.not_found") {
-			t.Fatalf("concealed child=%s error=%v", childCode, err)
-		}
-		if err := examAttemptError(apperror.New(childCode), false); !apperror.Is(err, childCode) {
-			t.Fatalf("unconcealed child=%s error=%v", childCode, err)
-		}
-	}
-	if err := examAttemptError(apperror.New("idempotency.key_required"), true); !apperror.Is(err, "idempotency.key_required") {
-		t.Fatalf("idempotency failure = %v", err)
-	}
-	if err := examAttemptError(errors.New("store offline"), true); !apperror.Is(err, "exam.attempt.unavailable") {
-		t.Fatalf("unclassified failure = %v", err)
-	}
-	if err := examAttemptError(nil, true); err != nil {
-		t.Fatalf("nil failure = %v", err)
-	}
 }
 
 func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSuspension(t *testing.T) {

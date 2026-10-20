@@ -25,7 +25,7 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	sha := strings.Repeat("a", 64)
-	got, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
+	got, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: sha, IdempotencyKey: "test-key",
@@ -65,7 +65,7 @@ func TestStageResourceContentReadyReplaySkipsContentWrite(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.returnReady = true
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestStageResourceContentCapacityRefusalLeavesOnlyPendingReservation(t *test
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.content.err = correctionCapacityError{}
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
@@ -104,7 +104,7 @@ func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.stageCreatedAt = f.at.Add(-time.Minute)
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
@@ -121,7 +121,7 @@ func TestStageResourceContentUsesExplicitOverrideWithoutCurrentUnitMembership(t 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.memberships.empty = true
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestStageResourceContentStopsWhenCurrentManagerMembershipCannotBeRead(t *te
 	f := newCorrectionFixture(t)
 	failure := errors.New("membership unavailable")
 	f.memberships.err = failure
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)
@@ -150,7 +150,7 @@ func TestStageReplacementPinsFileEntryFromExactBaseRevision(t *testing.T) {
 	f := newCorrectionFixture(t)
 	resourceID, entryID := model.NewExamResourceID(), model.NewFileEntryID()
 	f.revisions.snapshot = &model.ExamRevision{ID: f.baseRevisionID, ExamID: f.examID, Resources: []model.ExamRevisionResource{{ResourceID: resourceID, FileEntryID: entryID}}}
-	_, err := f.service.StageResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,12 +163,12 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.applyReplayed = true
-	result, err := f.service.Apply(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	result, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.PreviousRevisionID != f.baseRevisionID || result.RevisionID.IsZero() || result.SittingRevision != 4 ||
-		!result.EffectiveAt.Equal(f.at.Add(-time.Minute)) || !result.Replayed {
+		!result.EffectiveAt.Equal(f.at.Add(-time.Minute)) || f.effects.calls != 0 {
 		t.Fatalf("result=%#v", result)
 	}
 	if f.persistence.application == nil || f.persistence.application.InstructionsMarkdown == nil || *f.persistence.application.InstructionsMarkdown != "Updated" || f.persistence.application.PrivateReason == "" {
@@ -197,7 +197,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.effects.err = errors.New("realtime unavailable")
-	_, err := f.service.Apply(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	_, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
-	_, err := f.service.Apply(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", IdempotencyKey: "test-key"})
+	_, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.invalid" || len(f.order) != 0 {
 		t.Fatalf("error=%v order=%v", err, f.order)

@@ -134,6 +134,47 @@ func TestApplicationFacadeDoesNotRetainPersistenceLocator(t *testing.T) {
 	})
 }
 
+// Every use case is declared once, on the focused service that owns it. App
+// embeds those services, so it declares no method of its own beyond the
+// runtime handle composition borrows, and holds no other named field.
+func TestApplicationSurfaceIsTheEmbeddedServices(t *testing.T) {
+	t.Parallel()
+
+	allowedMethods := map[string]struct{}{"Jobs": {}}
+	allowedFields := map[string]struct{}{"jobs": {}}
+	inspectProductionGoFiles(t, []string{"app"}, func(path string, file *ast.File) {
+		for _, declaration := range file.Decls {
+			switch candidate := declaration.(type) {
+			case *ast.FuncDecl:
+				if _, appReceiver := appReceiverNames(candidate); !appReceiver {
+					continue
+				}
+				if _, allowed := allowedMethods[candidate.Name.Name]; !allowed {
+					t.Errorf("App declares method %s in %s; declare the use case on its owning service", candidate.Name.Name, path)
+				}
+			case *ast.GenDecl:
+				for _, specification := range candidate.Specs {
+					typeSpec, ok := specification.(*ast.TypeSpec)
+					if !ok || typeSpec.Name.Name != "App" {
+						continue
+					}
+					structure, ok := typeSpec.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					for _, field := range structure.Fields.List {
+						for _, name := range field.Names {
+							if _, allowed := allowedFields[name.Name]; !allowed {
+								t.Errorf("App holds named field %s in %s; embed the service that owns its use cases", name.Name, path)
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+}
+
 func TestApplicationDoesNotExportFocusedServiceImplementations(t *testing.T) {
 	t.Parallel()
 

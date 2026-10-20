@@ -9,5 +9,6 @@
 // mechanics of an Exam Draft's Starter Workspace. It does not own Attempt
 // workspaces, Exam Resources, publication, HTTP, SQL, VFS selection, or
 // infrastructure lifecycle. Logical paths are PostgreSQL metadata and never
-// object-store keys. The parent exam application remains the public facade.
+// object-store keys. The parent application embeds the service as part of its
+// surface.
 package workspace

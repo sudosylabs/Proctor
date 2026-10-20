@@ -13,6 +13,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -31,7 +32,7 @@ type UpdateExamIntegrityReviewCommand = examreview.UpdateDraftCommand
 
 type FinalizeExamIntegrityReviewCommand = examreview.FinalizeCommand
 
-type ReleaseStudentExamResultCommand = FinalizeExamIntegrityReviewCommand
+type ReleaseStudentExamResultCommand = examreview.ReleaseCommand
 
 type ListExamIntegrityFlagsQuery = examreview.ListFlagsQuery
 
@@ -39,109 +40,9 @@ type ListExamIntegrityEvidenceQuery = examreview.ListEvidenceQuery
 
 type ListExamIntegrityDiscrepanciesQuery = examreview.ListDiscrepanciesQuery
 
-func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocation,
-	command SaveExamIntegrityDecisionCommand,
-) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.SaveDecision(ctx, invocation, command)
-	if err != nil {
-		return ExamIntegrityReviewResult{}, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocation,
-	command UpdateExamIntegrityReviewCommand,
-) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.UpdateDraft(ctx, invocation, command)
-	if err != nil {
-		return ExamIntegrityReviewResult{}, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invocation,
-	command FinalizeExamIntegrityReviewCommand,
-) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Finalize(ctx, invocation, command)
-	if err != nil {
-		return ExamIntegrityReviewResult{}, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ReleaseStudentExamResult(ctx context.Context, invocation Invocation,
-	command ReleaseStudentExamResultCommand,
-) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Release(ctx, invocation, examreview.ReleaseCommand(command))
-	if err != nil {
-		return ExamIntegrityReviewResult{}, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) GetExamIntegrityReview(ctx context.Context, invocation Invocation,
-	submissionID model.SubmissionID,
-) (*ExamSubmissionReviewSnapshot, error) {
-	result, err := a.examReviews.Get(ctx, invocation,
-		examreview.GetReviewQuery{SubmissionID: submissionID})
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ListExamIntegrityFlags(ctx context.Context, invocation Invocation,
-	query ListExamIntegrityFlagsQuery,
-) (*ExamIntegrityFlagPage, error) {
-	result, err := a.examReviews.ListFlags(ctx, invocation,
-		query)
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ListExamIntegrityEvidence(ctx context.Context, invocation Invocation,
-	query ListExamIntegrityEvidenceQuery,
-) (*ExamIntegrityEvidencePage, error) {
-	result, err := a.examReviews.ListEvidence(ctx, invocation,
-		query)
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ListExamIntegrityDiscrepancies(ctx context.Context, invocation Invocation,
-	query ListExamIntegrityDiscrepanciesQuery,
-) (*ExamIntegrityDiscrepancyPage, error) {
-	result, err := a.examReviews.ListDiscrepancies(ctx,
-		invocation, query)
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) GetStudentExamResult(ctx context.Context, invocation Invocation,
-	attemptID model.ExamAttemptID,
-) (*StudentExamResult, error) {
-	result, err := a.examReviews.GetStudentResult(ctx,
-		invocation,
-		examreview.GetStudentResultQuery{AttemptID: attemptID})
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}
-
-func examReviewError(err error, conceal bool) error {
-	return presentExamChildError(err, conceal, "exam.integrity_review.unavailable", "exam.integrity_review.not_found")
-}
-
 type examIntegrityReviewAuthorizationAdapter struct {
 	reviews  store.ExamIntegrityReviewStore
-	sittings examSittingUseCases
+	sittings *examsitting.Service
 	audit    authorizationDecisionAudit
 }
 
@@ -280,11 +181,3 @@ func (effects examIntegrityReviewRealtimeEffects) Report(ctx context.Context, op
 
 type NativeConditionListQuery = examreview.NativeConditionListQuery
 type NativeConditionPage = store.NativeConditionPage
-
-func (a *App) ListNativeConditions(ctx context.Context, invocation Invocation, query NativeConditionListQuery) (*NativeConditionPage, error) {
-	result, err := a.examReviews.ListNativeConditions(ctx, invocation, query)
-	if err != nil {
-		return nil, examReviewError(err, true)
-	}
-	return result, nil
-}

@@ -16,5 +16,11 @@ import (
 // Can exposes the unaudited Access Control predicate to external integration
 // tests; production callers authorize through their use cases.
 func (a *App) Can(ctx context.Context, principal model.Principal, action model.Action, resource model.Resource) (bool, error) {
-	return a.accessControlService.Can(ctx, principal, action, resource)
+	return a.realtimeAdmissionService.authorization.Can(ctx, principal, action, resource)
+}
+
+// Authorize exposes the audited Access Control decision to external
+// integration tests.
+func (a *App) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.realtimeAdmissionService.authorization.Authorize(ctx, invocation, action, resource)
 }

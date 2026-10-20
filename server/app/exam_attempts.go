@@ -50,48 +50,6 @@ type AcknowledgeExamCorrectionCommand = examattempt.AcknowledgeCorrectionCommand
 type ExamCorrectionAcknowledgementResult = examattempt.CorrectionAcknowledgementResult
 type EndExamAttemptByManagerCommand = examattempt.ManagerEndCommand
 
-func (a *App) StartExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
-	result, err := a.examAttempts.StartBrowserActivity(ctx, invocation, command)
-	if err != nil {
-		return model.BrowserSourceStatus{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) AppendExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command AppendBrowserActivityCommand) (BrowserActivityAcknowledgement, error) {
-	result, err := a.examAttempts.AppendBrowserActivity(ctx, invocation, command)
-	if err != nil {
-		return BrowserActivityAcknowledgement{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ListExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, query ListBrowserActivityQuery) (BrowserActivityPage, error) {
-	page, err := a.examAttempts.ListBrowserActivity(ctx, invocation, query)
-	if err != nil {
-		return BrowserActivityPage{}, examAttemptError(err, true)
-	}
-	return page, nil
-}
-
-func (a *App) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation Invocation, command AcknowledgeExamCorrectionCommand) (ExamCorrectionAcknowledgementResult, error) {
-	result, err := a.examAttempts.AcknowledgeCorrection(ctx, invocation, command)
-	if err != nil {
-		return ExamCorrectionAcknowledgementResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) EndExamAttemptByManager(ctx context.Context, invocation Invocation,
-	command EndExamAttemptByManagerCommand,
-) (ExamSubmissionReceipt, error) {
-	result, err := a.examAttempts.EndByManager(ctx, invocation, command)
-	if err != nil {
-		return ExamSubmissionReceipt{}, examAttemptError(err, true)
-	}
-	return result.Receipt, nil
-}
-
 type ConnectExamAttemptCommand = examattempt.ConnectCommand
 
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
@@ -118,15 +76,9 @@ type MoveCandidateExamWorkspaceEntryCommand = examattempt.MoveWorkspaceEntryComm
 
 type DeleteCandidateExamWorkspaceEntryCommand = examattempt.DeleteWorkspaceEntryCommand
 
-type OpenCandidateExamResourceQuery struct {
-	Access     CandidateExamAttemptAccess
-	ResourceID model.ExamResourceID
-}
+type OpenCandidateExamResourceQuery = examattempt.OpenResourceQuery
 
-type OpenCandidateExamWorkspaceFileQuery struct {
-	Access  CandidateExamAttemptAccess
-	EntryID model.AttemptWorkspaceEntryID
-}
+type OpenCandidateExamWorkspaceFileQuery = examattempt.OpenWorkspaceFileQuery
 
 type GetExamAttemptQuery = examattempt.GetManagedAttemptQuery
 
@@ -134,212 +86,21 @@ type ListExamAttemptsQuery = examattempt.ListManagedAttemptsQuery
 
 type ExamAttemptManagerPage = examattempt.ManagedAttemptPage
 
-func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation Invocation,
-	query ListCandidateExamWorkspaceJournalQuery,
-) (CandidateExamWorkspaceJournalPage, error) {
-	result, err := a.examAttempts.ListWorkspaceJournal(ctx, invocation, query)
-	if err != nil {
-		return CandidateExamWorkspaceJournalPage{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
-	command CreateCandidateExamWorkspaceDirectoryCommand,
-) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
-	command CreateCandidateExamWorkspaceFileCommand,
-) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.CreateWorkspaceFile(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
-	command ReplaceCandidateExamWorkspaceFileCommand,
-) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
-	command MoveCandidateExamWorkspaceEntryCommand,
-) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
-	command DeleteCandidateExamWorkspaceEntryCommand,
-) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, command ReallowExamAttemptCommand) (ExamAttemptReallowResult, error) {
-	result, err := a.examAttempts.Reallow(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptReallowResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-// SuspendExamAttempt is an Exam Manager's kick of one active Attempt.
-func (a *App) SuspendExamAttempt(ctx context.Context, invocation Invocation, command SuspendExamAttemptCommand) (ExamAttemptManualSuspensionResult, error) {
-	result, err := a.examAttempts.SuspendByManager(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptManualSuspensionResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invocation, command RenewExamAttemptParticipationCommand) (response ExamAttemptParticipationRenewal, resultErr error) {
-	defer func() { a.recordOperational("exam_attempt", "renew", resultErr) }()
-	result, err := a.examAttempts.RenewParticipation(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptParticipationRenewal{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invocation,
-	command EvaluateExamAttemptFocusLossCommand,
-) (response ExamAttemptFocusLossEvaluation, resultErr error) {
-	defer func() { a.recordOperational("exam_attempt", "focus_loss", resultErr) }()
-	result, err := a.examAttempts.EvaluateFocusLoss(ctx,
-		invocation, command)
-	if err != nil {
-		return ExamAttemptFocusLossEvaluation{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
-	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
-	result, err := a.examAttempts.Connect(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptConnection{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) CloseExamAttemptConnection(ctx context.Context, invocation Invocation, command CloseExamAttemptConnectionCommand) (response ExamAttemptConnectionClosed, resultErr error) {
-	defer func() { a.recordOperational("exam_attempt", "close", resultErr) }()
-	result, err := a.examAttempts.CloseConnection(ctx, invocation, command)
-	if err != nil {
-		return ExamAttemptConnectionClosed{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) GetCandidateExamPresentation(ctx context.Context, invocation Invocation, access CandidateExamAttemptAccess) (CandidateExamPresentation, error) {
-	result, err := a.examAttempts.GetPresentation(ctx, invocation, access)
-	if err != nil {
-		return CandidateExamPresentation{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) ListCandidateExamWorkspace(ctx context.Context, invocation Invocation, query ListCandidateExamWorkspaceQuery) (CandidateExamWorkspacePage, error) {
-	result, err := a.examAttempts.ListWorkspace(ctx, invocation, query)
-	if err != nil {
-		return CandidateExamWorkspacePage{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func (a *App) OpenCandidateExamResource(ctx context.Context, invocation Invocation, query OpenCandidateExamResourceQuery) (OpenedExamAttemptContent, error) {
-	result, err := a.examAttempts.OpenResource(ctx, invocation, query.Access, query.ResourceID)
-	if err != nil {
-		return OpenedExamAttemptContent{}, examAttemptError(err, true)
-	}
-	if result == nil {
-		return OpenedExamAttemptContent{}, apperror.New("exam.attempt.unavailable")
-	}
-	return *result, nil
-}
-
-func (a *App) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation, query OpenCandidateExamWorkspaceFileQuery) (OpenedExamAttemptContent, error) {
-	result, err := a.examAttempts.OpenWorkspaceFile(ctx, invocation, query.Access, query.EntryID)
-	if err != nil {
-		return OpenedExamAttemptContent{}, examAttemptError(err, true)
-	}
-	if result == nil {
-		return OpenedExamAttemptContent{}, apperror.New("exam.attempt.unavailable")
-	}
-	return *result, nil
-}
-
-func (a *App) GetExamAttempt(ctx context.Context, invocation Invocation, query GetExamAttemptQuery) (ExamAttemptManagerView, error) {
-	result, err := a.examAttempts.GetManaged(ctx, invocation, query)
-	if err != nil {
-		return ExamAttemptManagerView{}, examAttemptError(err, true)
-	}
-	if result == nil {
-		return ExamAttemptManagerView{}, apperror.New("exam.attempt.unavailable")
-	}
-	return *result, nil
-}
-
-func (a *App) ListExamAttempts(ctx context.Context, invocation Invocation, query ListExamAttemptsQuery) (ExamAttemptManagerPage, error) {
-	query.States = append([]model.ExamAttemptState(nil), query.States...)
-	result, err := a.examAttempts.ListManaged(ctx, invocation, query)
-	if err != nil {
-		return ExamAttemptManagerPage{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
 type ListCandidateExamActivityQuery = examattempt.CandidateActivityQuery
-
-func (a *App) ListCandidateExamActivity(ctx context.Context, invocation Invocation,
-	query ListCandidateExamActivityQuery,
-) (CandidateExamActivityPage, error) {
-	result, err := a.examAttempts.ListCandidateActivity(ctx,
-		invocation, query)
-	if err != nil {
-		return CandidateExamActivityPage{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
 
 type ListSittingCandidateStatusesQuery = examattempt.SittingCandidateStatusesQuery
 
-func (a *App) ListSittingCandidateStatuses(ctx context.Context, invocation Invocation,
-	query ListSittingCandidateStatusesQuery,
-) (SittingCandidateStatusesPage, error) {
-	result, err := a.examAttempts.ListSittingCandidateStatuses(ctx,
-		invocation, query)
-	if err != nil {
-		return SittingCandidateStatusesPage{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
-func examAttemptError(err error, conceal bool) error {
-	return presentExamChildError(err, conceal, "exam.attempt.unavailable", "exam.attempt.not_found", "exam.attempt.continuity_invalid")
+// examAttemptSittingAuthorizer is the Sitting authorization the Attempt
+// manager adapter composes; its tests substitute a fake.
+type examAttemptSittingAuthorizer interface {
+	AuthorizeView(context.Context, Invocation, model.ExamSittingID) error
+	AuthorizeManage(context.Context, Invocation, model.ExamSittingID) (override bool, err error)
+	AuthorizeBrowserActivityView(context.Context, Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
+	AuthorizeSubmissionView(context.Context, Invocation, model.ExamID, model.SubmissionID) error
 }
 
 type examAttemptManagerAuthorizationAdapter struct {
-	sittings    examSittingUseCases
+	sittings    examAttemptSittingAuthorizer
 	submissions store.ExamSubmissionStore
 	audit       examAttemptAuthorizationDecisionAudit
 }
@@ -671,34 +432,9 @@ type PrepareSecurityPreflightCommand = examattempt.PrepareSecurityPreflightComma
 type ReportSecurityPreflightCommand = examattempt.ReportSecurityPreflightCommand
 type PreparedSecurityPreflight = store.SecurityPreflightPrepared
 
-func (a *App) PrepareExamSecurityPreflight(ctx context.Context, invocation Invocation, command PrepareSecurityPreflightCommand) (*PreparedSecurityPreflight, error) {
-	result, err := a.examAttempts.PrepareSecurityPreflight(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-func (a *App) ReportExamSecurityPreflight(ctx context.Context, invocation Invocation, command ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
-	result, err := a.examAttempts.ReportSecurityPreflight(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
 type RecoveredSecurityPolicy = store.SecurityPolicyRecovery
 
-func (a *App) RecoverExamSecurityPolicy(ctx context.Context, invocation Invocation, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
-	result, err := a.examAttempts.RecoverSecurityPolicy(ctx, invocation, attemptID)
-	if err != nil {
-		return nil, examAttemptError(err, true)
-	}
-	return result, nil
-}
-
 type UpdateSecurityCoverageCommand = examattempt.UpdateSecurityCoverageCommand
-
-func (a *App) UpdateExamSecurityCoverage(ctx context.Context, invocation Invocation, command UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
-	result, err := a.examAttempts.UpdateSecurityCoverage(ctx, invocation, command)
-	if err != nil {
-		return model.SecurityCoverageResult{}, examAttemptError(err, true)
-	}
-	return result, nil
-}
 
 type BrowserSourceQuery = examattempt.BrowserSourceQuery
 
@@ -710,88 +446,15 @@ type NativeDeliveryFinalCommand = examattempt.NativeDeliveryFinalCommand
 
 type NativeDeliverySummaryCommand = examattempt.NativeDeliverySummaryCommand
 
-func (a *App) NativeDeliveryStatus(ctx context.Context, invocation Invocation, query NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
-	result, err := a.examAttempts.NativeDeliveryStatus(ctx, invocation, query)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) NativeDeliveryReceipt(ctx context.Context, invocation Invocation, query NativeDeliveryQuery, sequence int64) (*model.NativeBatchReceipt, error) {
-	result, err := a.examAttempts.NativeDeliveryReceipt(ctx, invocation, query, sequence)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) DeclareNativeDeliveryGaps(ctx context.Context, invocation Invocation, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
-	result, err := a.examAttempts.DeclareNativeDeliveryGaps(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) SealNativeDelivery(ctx context.Context, invocation Invocation, command NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
-	result, err := a.examAttempts.SealNativeDelivery(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) UpdateNativeDeliverySummary(ctx context.Context, invocation Invocation, command NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
-	result, err := a.examAttempts.UpdateNativeDeliverySummary(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
 type NativeDeliveryAppendCommand = examattempt.NativeDeliveryAppendCommand
-
-func (a *App) AppendNativeDelivery(ctx context.Context, invocation Invocation, command NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
-	result, err := a.examAttempts.AppendNativeDelivery(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) BrowserSourceStatus(ctx context.Context, invocation Invocation, query BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
-	result, err := a.examAttempts.BrowserSourceStatus(ctx, invocation, query)
-	return result, examAttemptError(err, true)
-}
-func (a *App) BrowserSourceList(ctx context.Context, invocation Invocation, query BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
-	result, err := a.examAttempts.BrowserSourceList(ctx, invocation, query)
-	return result, examAttemptError(err, true)
-}
 
 type BrowserDeliveryGapsCommand = examattempt.BrowserDeliveryGapsCommand
 type BrowserDeliveryFinalCommand = examattempt.BrowserDeliveryFinalCommand
 type BrowserDeliverySummaryCommand = examattempt.BrowserDeliverySummaryCommand
 type BrowserDeliveryAppendCommand = examattempt.BrowserDeliveryAppendCommand
 
-func (a *App) BrowserDeliveryReceipts(ctx context.Context, invocation Invocation, command BrowserSourceQuery, first int64, limit int) (*model.BrowserReceiptPage, error) {
-	result, err := a.examAttempts.BrowserDeliveryReceipts(ctx, invocation, command, first, limit)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) DeclareBrowserDeliveryGaps(ctx context.Context, invocation Invocation, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
-	result, err := a.examAttempts.DeclareBrowserDeliveryGaps(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) SealBrowserDelivery(ctx context.Context, invocation Invocation, command BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
-	result, err := a.examAttempts.SealBrowserDelivery(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) UpdateBrowserDeliverySummary(ctx context.Context, invocation Invocation, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
-	result, err := a.examAttempts.UpdateBrowserDeliverySummary(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
-func (a *App) AppendHistoricalBrowserDelivery(ctx context.Context, invocation Invocation, command BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
-	result, err := a.examAttempts.AppendHistoricalBrowserDelivery(ctx, invocation, command)
-	return result, examAttemptError(err, true)
-}
-
 type DeliveryBudgetQuery = examattempt.DeliveryBudgetQuery
 type StopDeliveryDetailsCommand = examattempt.StopDeliveryDetailsCommand
-
-func (a *App) DeliveryBudget(ctx context.Context, invocation Invocation, query DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
-	value, err := a.examAttempts.DeliveryBudget(ctx, invocation, query)
-	return value, examAttemptError(err, true)
-}
-func (a *App) StopDeliveryDetails(ctx context.Context, invocation Invocation, command StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
-	value, err := a.examAttempts.StopDeliveryDetails(ctx, invocation, command)
-	return value, examAttemptError(err, true)
-}
 
 // SupportsDeliveryRecovery reports whether a failure can carry delivery repair context.
 func SupportsDeliveryRecovery(code string) bool { return examattempt.SupportsDeliveryRecovery(code) }

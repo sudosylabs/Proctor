@@ -162,7 +162,8 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 	return nil
 }
 
-func (s *Exports) Create(ctx context.Context, invocation invocation.Invocation, command CreateExportCommand) (*model.ExamExport, error) {
+func (s *Exports) CreateExamExport(ctx context.Context, invocation invocation.Invocation, command CreateExportCommand) (_ *model.ExamExport, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.Categories = slices.Clone(command.Categories)
 	if len(command.Categories) == 2 && command.Categories[0] == model.RetentionCategoryIntegrity && command.Categories[1] == model.RetentionCategoryWork {
 		command.Categories[0], command.Categories[1] = command.Categories[1], command.Categories[0]
@@ -235,7 +236,8 @@ func (s *Exports) get(ctx context.Context, invocation invocation.Invocation, q E
 	return result, nil
 }
 
-func (s *Exports) Get(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (*model.ExamExport, error) {
+func (s *Exports) GetExamExport(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (_ *model.ExamExport, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	result, err := s.get(ctx, invocation, q)
 	if err != nil {
 		return nil, err
@@ -243,7 +245,8 @@ func (s *Exports) Get(ctx context.Context, invocation invocation.Invocation, q E
 	return result.Export, nil
 }
 
-func (s *Exports) Open(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (*ExportDownload, error) {
+func (s *Exports) OpenExamExport(ctx context.Context, invocation invocation.Invocation, q ExportQuery) (_ *ExportDownload, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	result, err := s.get(ctx, invocation, q)
 	if err != nil {
 		return nil, err

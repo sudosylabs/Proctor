@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -111,6 +112,27 @@ type Result struct {
 	Replayed                bool
 }
 
+// AppliedCorrection is the public result of applying a live correction. It
+// deliberately omits the replay and acknowledgement facts that only the
+// after-commit effects consume.
+type AppliedCorrection struct {
+	ExamID               model.ExamID
+	SittingID            model.ExamSittingID
+	PreviousRevisionID   model.ExamRevisionID
+	RevisionID           model.ExamRevisionID
+	RevisionNumber       int64
+	SittingState         model.ExamSittingState
+	SittingRevision      int64
+	EffectiveAt          time.Time
+	AffectedCapabilities []model.CandidateCapability
+}
+
+func (r Result) applied() AppliedCorrection {
+	return AppliedCorrection{ExamID: r.ExamID, SittingID: r.SittingID, PreviousRevisionID: r.PreviousRevisionID,
+		RevisionID: r.RevisionID, RevisionNumber: r.RevisionNumber, SittingState: r.SittingState,
+		SittingRevision: r.SittingRevision, EffectiveAt: r.EffectiveAt, AffectedCapabilities: slices.Clone(r.AffectedCapabilities)}
+}
+
 type Service struct{ deps Dependencies }
 
 // Dependencies are the collaborators of Service; New validates them once and the
@@ -143,7 +165,8 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
-func (s *Service) StageResourceContent(ctx context.Context, invocation invocation.Invocation, c StageResourceContentCommand) (ResourceStage, error) {
+func (s *Service) StageExamSittingCorrectionResourceContent(ctx context.Context, invocation invocation.Invocation, c StageResourceContentCommand) (_ ResourceStage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !c.ExamID.IsValid() || !c.SittingID.IsValid() || !c.BaseRevisionID.IsValid() || !c.Target.IsValid() || !c.MediaType.IsValid() || c.Body == nil || c.Size < 0 || c.Size > model.ExamResourceMaximumBytes || !validSHA256(c.ExpectedSHA256) || (c.Target == store.ExamCorrectionResourceAddition && !c.ResourceID.IsZero()) || (c.Target == store.ExamCorrectionResourceReplacement && !c.ResourceID.IsValid()) {
 		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "upload")
 	}
@@ -255,29 +278,34 @@ func projectStage(stage *store.ExamCorrectionResourceStage) ResourceStage {
 	return ResourceStage{StageID: stage.ID, ResourceID: stage.ResourceID, MediaType: model.ExamResourceMediaType(stage.Rendition.MediaType), Size: stage.Rendition.Size, SHA256: stage.Rendition.SHA256, ExpiresAt: stage.ExpiresAt}
 }
 
-func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c ApplyCommand) (Result, error) {
+func (s *Service) ApplyExamSittingCorrection(ctx context.Context, invocation invocation.Invocation, c ApplyCommand) (_ AppliedCorrection, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	manifest := make([]ResourceManifestItem, len(c.Resources))
+	copy(manifest, c.Resources)
+	c.Resources = manifest
+	c.AffectedCapabilities = slices.Clone(c.AffectedCapabilities)
 	if err := validateApply(c); err != nil {
-		return Result{}, err
+		return AppliedCorrection{}, err
 	}
 	c.Resources = append([]ResourceManifestItem(nil), c.Resources...)
 	if c.BrowserPolicy.Present {
 		if err := c.BrowserPolicy.Policy.ValidateInstitutionOrigin(s.deps.InstitutionOrigin); err != nil {
-			return Result{}, apperror.Invalid("exam.sitting.correction.invalid", "browser_policy").Wrap(err)
+			return AppliedCorrection{}, apperror.Invalid("exam.sitting.correction.invalid", "browser_policy").Wrap(err)
 		}
 	}
 	idempotency, err := prepareApplyIdempotency(invocation, c)
 	if err != nil {
-		return Result{}, err
+		return AppliedCorrection{}, err
 	}
 	auth, err := s.authorize(ctx, invocation, c.ExamID, c.SittingID)
 	if err != nil {
-		return Result{}, err
+		return AppliedCorrection{}, err
 	}
 	at := model.TimeUTC(s.deps.Now())
 	value := map[string]any{"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "expected_sitting_revision": c.ExpectedSittingRevision, "expected_current_revision_id": c.ExpectedCurrentRevisionID.String(), "instructions_present": c.Instructions.Present, "browser_policy_present": c.BrowserPolicy.Present, "resource_count": len(c.Resources), "acknowledgement_required": c.AcknowledgementRequired}
 	auditID, err := s.deps.Auditor.BeginAtScope(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
 	if err != nil {
-		return Result{}, err
+		return AppliedCorrection{}, err
 	}
 	var instructions *string
 	if c.Instructions.Present {
@@ -295,18 +323,18 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 	}
 	stored, err := s.deps.Persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.deps.InstitutionOrigin, RevisionID: s.deps.NewExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: invocation.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
-		return Result{}, s.failAudit(ctx, auditID, err)
+		return AppliedCorrection{}, s.failAudit(ctx, auditID, err)
 	}
 	result, err := projectResult(stored, c)
 	if err != nil {
-		return Result{}, err
+		return AppliedCorrection{}, err
 	}
 	if !result.Replayed {
 		if effectErr := s.deps.Effects.Corrected(ctx, result); effectErr != nil {
 			s.deps.EffectFailures.Report(ctx, "exam_sitting_content_corrected", effectErr)
 		}
 	}
-	return result, nil
+	return result.applied(), nil
 }
 
 func validateApply(c ApplyCommand) error {
@@ -414,6 +442,13 @@ func mapContent(err error) error {
 		return apperror.New("exam.sitting.correction.content_invalid").Wrap(err)
 	}
 	return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
+}
+
+// publicFailures presents every live-correction use-case failure: unexpected errors
+// become exam.sitting.correction.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.sitting.correction.unavailable",
+	Concealed:   []apperror.Code{"exam.sitting.correction.not_found"},
 }
 
 var storeErrors = apperror.StoreTable{

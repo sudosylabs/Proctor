@@ -8,15 +8,32 @@
 package app
 
 import (
-	"context"
 	"errors"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
+	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	"github.com/sudosylabs/proctor/server/model"
+)
+
+// Exam services live in child modules whose types share names such as
+// Service; these aliases give each embedded field a distinct name.
+type (
+	examAuthoringService        = examengine.Authoring
+	examPublicationService      = examengine.Publication
+	examRecordsService          = examengine.Records
+	examExportsService          = examengine.Exports
+	examSittingService          = examsitting.Service
+	examAttemptService          = examattempt.Service
+	examReviewService           = examreview.Service
+	examResourceService         = examresource.Service
+	examCorrectionService       = examcorrection.Service
+	examStarterWorkspaceService = examworkspace.Service
 )
 
 // App is the long-lived application surface. It embeds each focused service
@@ -36,7 +53,6 @@ type App struct {
 	*accountTokenService
 	*publicRegistrationService
 	*personalAccessTokenAdministrationService
-	accessControlService *accessControlService
 	*accessPolicyService
 	*retentionPolicyService
 	*desktopCompatibilityService
@@ -52,16 +68,16 @@ type App struct {
 	*classMemberService
 	*invitationService
 	*onboardingImportService
-	exams                examUseCases
-	examRevisions        *examengine.Publication
-	examSittings         examSittingUseCases
-	examRecords          *examengine.Records
-	examExports          *examengine.Exports
-	examAttempts         *examattempt.Service
-	examReviews          *examreview.Service
-	examResources        examResourceUseCases
-	examCorrections      examCorrectionUseCases
-	examStarterWorkspace examStarterWorkspaceUseCases
+	*examAuthoringService
+	*examPublicationService
+	*examSittingService
+	*examRecordsService
+	*examExportsService
+	*examAttemptService
+	*examReviewService
+	*examResourceService
+	*examCorrectionService
+	*examStarterWorkspaceService
 	*userProfileService
 	*userSettingsService
 	*profilePictureService
@@ -73,10 +89,10 @@ type App struct {
 	*bootstrapService
 	*academicAdministrationBatchService
 	*realtimeService
+	*realtimeAdmissionService
 	jobs *jobengine.Engine
 	*jobOperationsService
 	*mailService
-	operational OperationalRecorder
 }
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
@@ -130,25 +146,6 @@ func New(deps Dependencies) (*App, error) {
 		return nil, err
 	}
 	return assembleApplication(deps, foundation, identity, access, examinations, profiles, jobs, administration), nil
-}
-
-// Authorize records the current allow or deny decision durably and fails
-// closed if either policy resolution or decision audit fails.
-func (a *App) Authorize(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-) error {
-	err := a.accessControlService.Authorize(ctx, invocation, action, resource)
-	a.recordOperational("authorization", "decision", err)
-	return err
-}
-
-func (a *App) recordOperational(subsystem, event string, err error) {
-	if a != nil && a.operational != nil {
-		a.operational.RecordOperationalEvent(operationalEvent(subsystem, event, err))
-	}
 }
 
 // ErrAuthenticationCacheMiss and ErrAuthenticationCacheNotStored are the

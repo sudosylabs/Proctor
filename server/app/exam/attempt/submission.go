@@ -70,21 +70,20 @@ type OpenSubmissionFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
-func (service *Service) OpenSubmissionFile(ctx context.Context, invocation invocation.Invocation,
-	query OpenSubmissionFileQuery,
-) (*OpenedContent, error) {
+func (service *Service) OpenExamSubmissionFile(ctx context.Context, invocation invocation.Invocation, query OpenSubmissionFileQuery) (_ OpenedContent, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.EntryID.IsValid() {
-		return nil, apperror.Invalid("exam.attempt.invalid", "submission_entry_id")
+		return OpenedContent{}, apperror.Invalid("exam.attempt.invalid", "submission_entry_id")
 	}
 	if _, err := service.resolveManagedSubmission(ctx, invocation, query.GetSubmissionQuery); err != nil {
-		return nil, err
+		return OpenedContent{}, err
 	}
 	selector, err := service.deps.Submissions.ResolveFile(ctx, query.SubmissionID, query.EntryID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return OpenedContent{}, storeError(storeErrors, err)
 	}
 	if !validSubmissionFileSelector(selector, query.EntryID) {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission file selector"))
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission file selector"))
 	}
 	var body io.ReadCloser
 	switch selector.StorageOrigin {
@@ -93,12 +92,12 @@ func (service *Service) OpenSubmissionFile(ctx context.Context, invocation invoc
 	case model.AttemptWorkspaceStorageAttempt:
 		body, err = service.deps.Content.OpenAttemptWorkspaceObject(ctx, selector.AttemptObjectID)
 	default:
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid Submission file storage origin"))
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid Submission file storage origin"))
 	}
 	if err != nil {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(err)
+		return OpenedContent{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
-	return &OpenedContent{Body: body, MediaType: selector.Entry.MediaType, SizeBytes: selector.Entry.SizeBytes,
+	return OpenedContent{Body: body, MediaType: selector.Entry.MediaType, SizeBytes: selector.Entry.SizeBytes,
 		SHA256: selector.Entry.SHA256, ContentVersion: selector.ContentVersion}, nil
 }
 
@@ -119,9 +118,10 @@ func validSubmissionFileSelector(selector *store.ExamSubmissionFileSelector,
 	}
 }
 
-func (service *Service) ListSubmissionManifest(ctx context.Context, invocation invocation.Invocation,
+func (service *Service) ListExamSubmissionManifest(ctx context.Context, invocation invocation.Invocation,
 	query ListSubmissionManifestQuery,
-) (SubmissionManifestPage, error) {
+) (_ SubmissionManifestPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if query.Limit < 1 || query.Limit > model.ExamSubmissionManifestReadMaximum {
 		return SubmissionManifestPage{}, apperror.Invalid("exam.attempt.invalid", "submission_manifest")
 	}
@@ -177,20 +177,21 @@ func validSubmissionManifestItem(item store.ExamSubmissionManifestItem) bool {
 	}
 }
 
-func (service *Service) GetSubmission(ctx context.Context, invocation invocation.Invocation, query GetSubmissionQuery) (*ManagedSubmission, error) {
+func (service *Service) GetExamSubmission(ctx context.Context, invocation invocation.Invocation, query GetSubmissionQuery) (_ ManagedSubmission, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	authorization, err := service.resolveManagedSubmission(ctx, invocation, query)
 	if err != nil {
-		return nil, err
+		return ManagedSubmission{}, err
 	}
 	submission, err := service.deps.Submissions.Get(ctx, query.SubmissionID)
 	if err != nil {
-		return nil, storeError(storeErrors, err)
+		return ManagedSubmission{}, storeError(storeErrors, err)
 	}
 	if submission == nil || submission.Validate() != nil || submission.ID != query.SubmissionID ||
 		submission.AttemptID != query.AttemptID {
-		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Submission"))
+		return ManagedSubmission{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Submission"))
 	}
-	return &ManagedSubmission{Authorization: *authorization, Submission: *submission}, nil
+	return ManagedSubmission{Authorization: *authorization, Submission: *submission}, nil
 }
 
 func (service *Service) resolveManagedSubmission(ctx context.Context, invocation invocation.Invocation,
@@ -221,18 +222,20 @@ func validSubmissionAuthorization(value *store.ExamSubmissionAuthorization, subm
 		value.AttemptID.IsValid() && value.CandidateUserID.IsValid() && value.AcademicUnitID.IsValid()
 }
 
-func (service *Service) Submit(ctx context.Context, invocation invocation.Invocation, command SubmitCommand) (SubmissionResult, error) {
+func (service *Service) SubmitExamAttempt(ctx context.Context, invocation invocation.Invocation, command SubmitCommand) (_ store.ExamSubmissionReceipt, resultErr error) {
+	defer func() { service.recordOperational("submit", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	workspaceAccess, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
-		return SubmissionResult{}, err
+		return store.ExamSubmissionReceipt{}, err
 	}
 	if !command.ExpectedCurrentRevisionID.IsValid() || command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 {
-		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "submission")
+		return store.ExamSubmissionReceipt{}, apperror.Invalid("exam.attempt.invalid", "submission")
 	}
 	idempotency, err := prepareSubmissionIdempotency(invocation, command.IdempotencyKey, workspaceAccess.AttemptID,
 		command.ExpectedCurrentRevisionID, command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence)
 	if err != nil {
-		return SubmissionResult{}, err
+		return store.ExamSubmissionReceipt{}, err
 	}
 	access := store.ExamSubmissionSealAccess{AttemptID: workspaceAccess.AttemptID,
 		ParticipationID: workspaceAccess.ParticipationID, Generation: workspaceAccess.Generation,
@@ -242,21 +245,21 @@ func (service *Service) Submit(ctx context.Context, invocation invocation.Invoca
 		FinalFocusLossSequence: command.FinalFocusLossSequence}
 	target, err := service.deps.Submissions.ResolveSealTarget(ctx, access)
 	if err != nil {
-		return SubmissionResult{}, storeError(storeErrors, err)
+		return store.ExamSubmissionReceipt{}, storeError(storeErrors, err)
 	}
 	if !validSubmissionTarget(target, access) {
-		return SubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission seal target"))
+		return store.ExamSubmissionReceipt{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission seal target"))
 	}
 	submissionID := service.deps.NewSubmission()
 	if !submissionID.IsValid() {
-		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "submission_id")
+		return store.ExamSubmissionReceipt{}, apperror.Invalid("exam.attempt.invalid", "submission_id")
 	}
 	auditID, err := service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionSealOperation,
 		map[string]any{"exam_attempt_id": access.AttemptID.String()}, nil)
 	if err != nil {
-		return SubmissionResult{}, err
+		return store.ExamSubmissionReceipt{}, err
 	}
 	at := target.SealAt
 	var notice *store.PreparedMail
@@ -270,7 +273,7 @@ func (service *Service) Submit(ctx context.Context, invocation invocation.Invoca
 			if prepareErr == nil {
 				prepareErr = errors.New("invalid Submission receipt mail preparation")
 			}
-			return SubmissionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
+			return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
 		}
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
@@ -278,18 +281,18 @@ func (service *Service) Submit(ctx context.Context, invocation invocation.Invoca
 		Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, err)
+		return store.ExamSubmissionReceipt{}, service.failAudit(ctx, auditID, err)
 	}
 	result, err := projectSubmissionResult(stored, target, access, submissionID)
 	if err != nil {
-		return SubmissionResult{}, err
+		return store.ExamSubmissionReceipt{}, err
 	}
 	if !result.Replayed {
 		if effectErr := service.deps.Effects.AttemptSubmitted(ctx, result); effectErr != nil {
 			service.deps.EffectFailures.Report(ctx, "exam_attempt_submitted", effectErr)
 		}
 	}
-	return result, nil
+	return result.Receipt, nil
 }
 
 func validSubmissionTarget(target *store.ExamSubmissionSealTarget, access store.ExamSubmissionSealAccess) bool {

@@ -43,6 +43,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Now:               time.Now,
 		NewID:             model.NewExamID,
 		InstitutionOrigin: deps.PublicURL,
+		Operational:       operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
 		return examinationConstruction{}, err
@@ -66,6 +67,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Now:               time.Now,
 		NewID:             model.NewExamRevisionID,
 		InstitutionOrigin: deps.PublicURL,
+		Operational:       operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
 		return examinationConstruction{}, err
@@ -85,6 +87,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		Mail:           sittingMailPreparation,
 		Now:            time.Now,
 		NewID:          model.NewExamSittingID,
+		Operational:    operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
 		return examinationConstruction{}, err
@@ -108,6 +111,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		NewWorkspaceEntry: model.NewAttemptWorkspaceEntryID, NewWorkspaceObject: model.NewAttemptWorkspaceObjectID,
 		NewWorkspaceVersion: model.NewWorkspaceContentVersion,
 		NewSubmission:       model.NewSubmissionID,
+		Operational:         operationalRecorderAdapter{recorder: deps.OperationalRecorder},
 	})
 	if err != nil {
 		return examinationConstruction{}, err

@@ -19,7 +19,8 @@ import (
 
 type NativeConditionListQuery = store.NativeConditionListOptions
 
-func (service *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (*store.NativeConditionPage, error) {
+func (service *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (_ *store.NativeConditionPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "native_condition_list")
 	}

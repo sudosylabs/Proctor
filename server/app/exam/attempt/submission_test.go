@@ -43,7 +43,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 		SittingID: f.sitting.ID, ClassID: f.sitting.ClassID, CandidateUserID: f.userID,
 		ParticipationID: participationID, Generation: 3, ConnectionID: f.connectionID}
 
-	result, err := f.service.Submit(context.Background(), f.invocation, SubmitCommand{
+	result, err := f.service.SubmitExamAttempt(context.Background(), f.invocation, SubmitCommand{
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID,
 			ConnectionID: f.connectionID, ContinuityCredential: credential}, ParticipationID: participationID, Generation: 3},
 		ExpectedCurrentRevisionID: revisionID, ExpectedWorkspaceCursor: 11, FinalFocusLossSequence: 7,
@@ -59,7 +59,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 		access.ContinuityCredentialHash != model.HashToken(credential) || access.ExpectedCurrentRevisionID != revisionID ||
 		access.ExpectedWorkspaceCursor != 11 ||
 		access.FinalFocusLossSequence != 7 || f.submissions.seal == nil || !f.submissions.seal.SubmissionID.IsValid() ||
-		!f.submissions.seal.AuditEventID.IsValid() || result.Receipt.SubmissionID != submissionID || f.effects.submitted != 1 {
+		!f.submissions.seal.AuditEventID.IsValid() || result.SubmissionID != submissionID || f.effects.submitted != 1 {
 		t.Fatalf("access=%#v seal=%#v result=%#v effects=%#v", access, f.submissions.seal, result, f.effects)
 	}
 	audit := fmt.Sprintf("%#v", f.audit.values)
@@ -104,14 +104,14 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 		SittingID: f.sitting.ID, ClassID: f.sitting.ClassID, CandidateUserID: f.userID,
 		ParticipationID: access.ParticipationID, Generation: access.Generation, ConnectionID: access.ConnectionID, Replayed: true}
 
-	result, err := f.service.Submit(context.Background(), f.invocation, SubmitCommand{Access: access,
+	result, err := f.service.SubmitExamAttempt(context.Background(), f.invocation, SubmitCommand{Access: access,
 		ExpectedCurrentRevisionID: revisionID, ExpectedWorkspaceCursor: 0, FinalFocusLossSequence: 0,
 		IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Receipt.SubmissionID != retainedID || f.submissions.seal.SubmissionID != proposedID ||
-		!result.Replayed || f.effects.submitted != 0 || f.submissions.seal.Notice != nil ||
+	if result.SubmissionID != retainedID || f.submissions.seal.SubmissionID != proposedID ||
+		f.effects.submitted != 0 || f.submissions.seal.Notice != nil ||
 		f.submissions.seal.ExpectedRecipientRevision != 0 || f.mail.request.SubmissionID.IsValid() {
 		t.Fatalf("result=%#v seal=%#v effects=%#v", result, f.submissions.seal, f.effects)
 	}
@@ -184,13 +184,13 @@ func TestManagerEndSealsWithPrivateReasonOutsideCandidateReceipt(t *testing.T) {
 		ClassID: target.ClassID, CandidateUserID: target.CandidateUserID, ParticipationID: target.ParticipationID,
 		Generation: target.Generation, ConnectionID: target.ConnectionID}, ConnectionClosed: true}
 	privateReason := "candidate requested an assisted early end"
-	result, err := f.service.EndByManager(context.Background(), f.invocation, ManagerEndCommand{ExamID: target.ExamID,
+	result, err := f.service.EndExamAttemptByManager(context.Background(), f.invocation, ManagerEndCommand{ExamID: target.ExamID,
 		SittingID: target.SittingID, AttemptID: target.AttemptID, ExpectedAttemptRevision: 4,
 		PrivateReason: privateReason, IdempotencyKey: "manager-end-once"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Provenance != model.ExamSubmissionManagerEndedAttempt || result.Receipt.SubmissionID != submissionID ||
+	if result.SubmissionID != submissionID ||
 		f.effects.submitted != 1 || f.submissions.managerInput == nil ||
 		f.submissions.managerInput.Request.PrivateReason != privateReason ||
 		f.submissions.managerInput.Request.ActorUserID != managerID ||
@@ -224,7 +224,7 @@ func TestManagerEndConcealsSelfAccessAndFailsClosedOnAuditFailure(t *testing.T) 
 			f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 4, "")
 			f.audit.failErr = test.auditErr
 			privateReason := "manager must never end their own Attempt"
-			_, err := f.service.EndByManager(context.Background(), f.invocation, ManagerEndCommand{
+			_, err := f.service.EndExamAttemptByManager(context.Background(), f.invocation, ManagerEndCommand{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID,
 				ExpectedAttemptRevision: 4, PrivateReason: privateReason, IdempotencyKey: "self-manager-end",
 			})
@@ -233,8 +233,7 @@ func TestManagerEndConcealsSelfAccessAndFailsClosedOnAuditFailure(t *testing.T) 
 					t.Fatalf("EndByManager(audit failure) error = %v", err)
 				}
 			} else {
-				var fault *apperror.Error
-				if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" {
+				if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") {
 					t.Fatalf("EndByManager(self) error = %v", err)
 				}
 			}
@@ -266,10 +265,9 @@ func TestManagedSubmissionNestedOwnershipMismatchIsConcealed(t *testing.T) {
 	submissionID := model.NewSubmissionID()
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submissionID,
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
-	_, err := f.service.GetSubmission(context.Background(), f.invocation, GetSubmissionQuery{ExamID: model.NewExamID(),
+	_, err := f.service.GetExamSubmission(context.Background(), f.invocation, GetSubmissionQuery{ExamID: model.NewExamID(),
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, SubmissionID: submissionID})
-	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" ||
+	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") ||
 		strings.Join(f.order, ",") != "submission.authorize,submission.resolve_owner" {
 		t.Fatalf("error=%v order=%v", err, f.order)
 	}
@@ -288,7 +286,7 @@ func TestOpenSubmissionFileAuthorizesThenStreamsRetainedStarterBytes(t *testing.
 		SizeBytes: 4, SHA256: strings.Repeat("a", 64)}, StorageOrigin: model.AttemptWorkspaceStorageStarter,
 		StarterObjectID: starterID, ContentVersion: version}
 
-	opened, err := f.service.OpenSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
+	opened, err := f.service.OpenExamSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
 		GetSubmissionQuery: GetSubmissionQuery{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 			AttemptID: f.attemptID, SubmissionID: submission.ID}, EntryID: entryID})
 	if err != nil {
@@ -316,7 +314,7 @@ func TestOpenSubmissionFileStreamsRetainedAttemptOriginBytes(t *testing.T) {
 		AttemptObjectID: objectID, ContentVersion: version}
 	f.content.openAttemptBody = "work"
 
-	opened, err := f.service.OpenSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
+	opened, err := f.service.OpenExamSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
 		GetSubmissionQuery: GetSubmissionQuery{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 			AttemptID: f.attemptID, SubmissionID: submission.ID}, EntryID: entryID})
 	if err != nil {
@@ -344,7 +342,7 @@ func TestOpenSubmissionFileFailsClosedOnRetainedSelectorMismatch(t *testing.T) {
 		SHA256: strings.Repeat("b", 64)}, StorageOrigin: model.AttemptWorkspaceStorageAttempt,
 		AttemptObjectID: model.NewAttemptWorkspaceObjectID(), ContentVersion: model.NewWorkspaceContentVersion()}
 
-	_, err := f.service.OpenSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
+	_, err := f.service.OpenExamSubmissionFile(context.Background(), f.invocation, OpenSubmissionFileQuery{
 		GetSubmissionQuery: GetSubmissionQuery{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 			AttemptID: f.attemptID, SubmissionID: submission.ID}, EntryID: entryID})
 	var fault *apperror.Error
@@ -372,7 +370,7 @@ func TestListSubmissionManifestReturnsBoundedEntryIDKeysetAfterAuthorization(t *
 				ContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/x-go", SizeBytes: 4, SHA256: strings.Repeat("a", 64)},
 		}}
 
-	page, err := f.service.ListSubmissionManifest(context.Background(), f.invocation, ListSubmissionManifestQuery{
+	page, err := f.service.ListExamSubmissionManifest(context.Background(), f.invocation, ListSubmissionManifestQuery{
 		GetSubmissionQuery: GetSubmissionQuery{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 			AttemptID: f.attemptID, SubmissionID: submission.ID}, AfterEntryID: ids[0], Limit: 2,
 	})
@@ -394,12 +392,12 @@ func TestGetSubmissionAuthorizesCanonicalResourceBeforeProtectedRead(t *testing.
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	f.submissions.submission = submission
 
-	got, err := f.service.GetSubmission(context.Background(), f.invocation, GetSubmissionQuery{ExamID: f.sitting.ExamID,
+	got, err := f.service.GetExamSubmission(context.Background(), f.invocation, GetSubmissionQuery{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, SubmissionID: submission.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got == nil || got.Authorization != *f.submissions.authorization || got.Submission.ID != submission.ID ||
+	if got.Authorization != *f.submissions.authorization || got.Submission.ID != submission.ID ||
 		f.submissionAuthorizationID != submission.ID {
 		t.Fatalf("got=%#v authorized=%s", got, f.submissionAuthorizationID)
 	}

@@ -85,7 +85,7 @@ func TestSessionPrincipalRevalidationUsesMicrosecondExpiryBoundaries(t *testing.
 						t.Fatalf("establish Principal before expiry: %v", err)
 					}
 					service.now = func() time.Time { return deadline.Add(test.offset) }
-					err = service.ValidatePrincipal(context.Background(), *principal)
+					err = service.validatePrincipal(context.Background(), *principal)
 					if test.expired {
 						if !apperror.Is(err, "authentication.token_invalid") || !session.RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
 							t.Fatalf("Principal validation at %v = %v; revoked at %v", service.now(), err, session.RevokedAt)

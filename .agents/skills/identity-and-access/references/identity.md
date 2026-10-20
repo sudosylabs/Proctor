@@ -115,8 +115,8 @@ recovery-code, and assurance-transition policy.
 External authentication receives Desktop Authorization as a required behavioral
 interface at construction. The Desktop Authorization module resolves the current
 bound transaction from the browser proof and prepares its return path; the
-verified provider callback authenticates only that exact transaction. The public
-facade delegates this collaboration without traversing Desktop persistence or
+verified provider callback authenticates only that exact transaction. The
+External Authentication service delegates this collaboration without traversing Desktop persistence or
 assigning dependencies after construction. Ordinary Web Session issuance,
 provider connection, Invitation admission, and Desktop code exchange retain
 their distinct purposes and owners.
@@ -125,7 +125,7 @@ Focused service constructors validate all required contracts and remain inert.
 Post-commit cache or Realtime failure does not rewrite a successfully committed
 durable result into a transaction failure; it produces bounded diagnostics and
 relies on authoritative reconstruction or revalidation. Internal errors retain
-only the detail needed for policy and safe diagnostics, while facade errors
+only the detail needed for policy and safe diagnostics, while public errors
 preserve enumeration resistance and exclude credentials, tokens, provider
 assertions, recovery secrets, and unnecessary personal data from logs and
 audit.

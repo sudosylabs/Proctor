@@ -100,7 +100,8 @@ type SaveDecisionCommand struct {
 	IdempotencyKey           string
 }
 
-func (service *Service) SaveDecision(ctx context.Context, invocation invocation.Invocation, command SaveDecisionCommand) (Result, error) {
+func (service *Service) SaveExamIntegrityDecision(ctx context.Context, invocation invocation.Invocation, command SaveDecisionCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.SubmissionID.IsValid() || !command.FlagID.IsValid() ||
 		command.ExpectedReviewRevision < 0 || command.ExpectedDecisionRevision < 0 ||
 		(command.ExpectedReviewRevision == 0 && !command.ReviewID.IsZero()) ||
@@ -168,7 +169,8 @@ type UpdateDraftCommand struct {
 	IdempotencyKey         string
 }
 
-func (service *Service) UpdateDraft(ctx context.Context, invocation invocation.Invocation, command UpdateDraftCommand) (Result, error) {
+func (service *Service) UpdateExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, command UpdateDraftCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.SubmissionID.IsValid() || command.ExpectedReviewRevision < 0 ||
 		(command.ExpectedReviewRevision == 0 && !command.ReviewID.IsZero()) ||
 		(command.ExpectedReviewRevision > 0 && !command.ReviewID.IsValid()) {
@@ -239,19 +241,17 @@ const (
 	terminalRelease
 )
 
-func (service *Service) Finalize(ctx context.Context, invocation invocation.Invocation, command FinalizeCommand) (Result, error) {
+func (service *Service) FinalizeExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, command FinalizeCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.terminalMutation(ctx, invocation, command.SubmissionID, command.ReviewID,
 		command.ExpectedReviewRevision, command.IdempotencyKey, terminalFinalize)
 }
 
-type ReleaseCommand struct {
-	SubmissionID           model.SubmissionID
-	ReviewID               model.SubmissionReviewID
-	ExpectedReviewRevision int64
-	IdempotencyKey         string
-}
+// ReleaseCommand names the same target and expected revision as finalization.
+type ReleaseCommand = FinalizeCommand
 
-func (service *Service) Release(ctx context.Context, invocation invocation.Invocation, command ReleaseCommand) (Result, error) {
+func (service *Service) ReleaseStudentExamResult(ctx context.Context, invocation invocation.Invocation, command ReleaseCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.terminalMutation(ctx, invocation, command.SubmissionID, command.ReviewID,
 		command.ExpectedReviewRevision, command.IdempotencyKey, terminalRelease)
 }
@@ -357,20 +357,19 @@ func (service *Service) terminalMutation(ctx context.Context, invocation invocat
 	return result, nil
 }
 
-type GetReviewQuery struct{ SubmissionID model.SubmissionID }
-
-func (service *Service) Get(ctx context.Context, invocation invocation.Invocation, query GetReviewQuery) (*store.ExamSubmissionReviewSnapshot, error) {
-	if !query.SubmissionID.IsValid() {
+func (service *Service) GetExamIntegrityReview(ctx context.Context, invocation invocation.Invocation, submissionID model.SubmissionID) (_ *store.ExamSubmissionReviewSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !submissionID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "submission_id")
 	}
-	if err := service.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
+	if err := service.deps.Authorizer.AuthorizeView(ctx, invocation, submissionID); err != nil {
 		return nil, err
 	}
-	snapshot, err := service.deps.Persistence.Get(ctx, query.SubmissionID)
+	snapshot, err := service.deps.Persistence.Get(ctx, submissionID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
-	if !validSnapshot(snapshot, query.SubmissionID) {
+	if !validSnapshot(snapshot, submissionID) {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Review snapshot"))
 	}
 	return cloneSnapshot(snapshot), nil
@@ -382,7 +381,8 @@ type ListFlagsQuery struct {
 	Limit        int
 }
 
-func (service *Service) ListFlags(ctx context.Context, invocation invocation.Invocation, query ListFlagsQuery) (*store.ExamIntegrityFlagPage, error) {
+func (service *Service) ListExamIntegrityFlags(ctx context.Context, invocation invocation.Invocation, query ListFlagsQuery) (_ *store.ExamIntegrityFlagPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewFlagReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "flag_list")
 	}
@@ -416,7 +416,8 @@ type ListEvidenceQuery struct {
 	Limit           int
 }
 
-func (service *Service) ListEvidence(ctx context.Context, invocation invocation.Invocation, query ListEvidenceQuery) (*store.ExamIntegrityEvidencePage, error) {
+func (service *Service) ListExamIntegrityEvidence(ctx context.Context, invocation invocation.Invocation, query ListEvidenceQuery) (_ *store.ExamIntegrityEvidencePage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || !query.FlagID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewEvidenceReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "evidence_list")
 	}
@@ -449,9 +450,10 @@ type ListDiscrepanciesQuery struct {
 	Limit              int
 }
 
-func (service *Service) ListDiscrepancies(ctx context.Context, invocation invocation.Invocation,
+func (service *Service) ListExamIntegrityDiscrepancies(ctx context.Context, invocation invocation.Invocation,
 	query ListDiscrepanciesQuery,
-) (*store.ExamIntegrityDiscrepancyPage, error) {
+) (_ *store.ExamIntegrityDiscrepancyPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > store.ExamIntegrityReviewDiscrepancyReadMaximum {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "discrepancy_list")
 	}
@@ -470,18 +472,17 @@ func (service *Service) ListDiscrepancies(ctx context.Context, invocation invoca
 	return clone, nil
 }
 
-type GetStudentResultQuery struct{ AttemptID model.ExamAttemptID }
-
-func (service *Service) GetStudentResult(ctx context.Context, invocation invocation.Invocation, query GetStudentResultQuery) (*model.StudentResult, error) {
+func (service *Service) GetStudentExamResult(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (_ *model.StudentResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
-	if !query.AttemptID.IsValid() || principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+	if !attemptID.IsValid() || principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "student_result")
 	}
-	result, err := service.deps.Persistence.GetReleasedStudentResult(ctx, query.AttemptID, principal.UserID)
+	result, err := service.deps.Persistence.GetReleasedStudentResult(ctx, attemptID, principal.UserID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
-	if result == nil || result.ReviewID.IsZero() || result.SubmissionID.IsZero() || result.AttemptID != query.AttemptID ||
+	if result == nil || result.ReviewID.IsZero() || result.SubmissionID.IsZero() || result.AttemptID != attemptID ||
 		result.CandidateUserID != principal.UserID || result.ReleasedAt.IsZero() {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Student Result"))
 	}
@@ -599,6 +600,13 @@ func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventI
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
+}
+
+// publicFailures presents every Integrity Review use-case failure: unexpected errors
+// become exam.integrity_review.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.integrity_review.unavailable",
+	Concealed:   []apperror.Code{"exam.integrity_review.not_found"},
 }
 
 var storeErrors = apperror.StoreTable{

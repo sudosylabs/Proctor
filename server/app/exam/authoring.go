@@ -50,7 +50,11 @@ type EditDraftTextCommand struct {
 type ConfigureDraftFocusLossCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
-	FocusLoss             model.FocusLossPolicy
+	Enabled               bool
+	MinimumDuration       time.Duration
+	IncidentCount         int
+	Window                time.Duration
+	Outcome               model.IntegrityThresholdOutcome
 	IdempotencyKey        string
 }
 
@@ -112,6 +116,12 @@ type ManagerMailPreparer interface {
 
 type Authoring struct{ deps AuthoringDependencies }
 
+// OperationalRecorder receives the outcome of each use case the module
+// observes. It is optional; a module built without one records nothing.
+type OperationalRecorder interface {
+	RecordOperational(subsystem, event string, err error)
+}
+
 // AuthoringDependencies are the collaborators of Authoring; NewAuthoring validates them once and the
 // service retains them unchanged.
 type AuthoringDependencies struct {
@@ -127,6 +137,7 @@ type AuthoringDependencies struct {
 	Now               func() time.Time
 	NewID             func() model.ExamID
 	InstitutionOrigin string
+	Operational       OperationalRecorder
 }
 
 func NewAuthoring(deps AuthoringDependencies) (*Authoring, error) {
@@ -136,7 +147,15 @@ func NewAuthoring(deps AuthoringDependencies) (*Authoring, error) {
 	return &Authoring{deps: deps}, nil
 }
 
-func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (View, error) {
+func (a *Authoring) recordOperational(event string, err error) {
+	if a.deps.Operational != nil {
+		a.deps.Operational.RecordOperational("exam", event, err)
+	}
+}
+
+func (a *Authoring) CreateExam(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (_ View, resultErr error) {
+	defer func() { a.recordOperational("create", resultErr) }()
+	defer func() { resultErr = publicFailures.Present(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return View{}, apperror.Invalid("exam.invalid", "principal")
@@ -208,12 +227,16 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 	return project(result.Value), nil
 }
 
-func (a *Authoring) Get(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) (View, error) {
+// GetQuery names one Exam.
+type GetQuery struct{ ExamID model.ExamID }
+
+func (a *Authoring) GetExam(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ View, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
-	if principal.Validate() != nil || !examID.IsValid() {
+	if principal.Validate() != nil || !query.ExamID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "exam_id")
 	}
-	access, err := a.deps.Persistence.Access(ctx, examID, principal.UserID)
+	access, err := a.deps.Persistence.Access(ctx, query.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -224,10 +247,10 @@ func (a *Authoring) Get(ctx context.Context, invocation invocation.Invocation, e
 	if err != nil {
 		return View{}, err
 	}
-	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: query.ExamID.String()}); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.deps.Persistence.Get(ctx, examID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, query.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -259,7 +282,8 @@ func (a *Authoring) AuthorizeView(ctx context.Context, invocation invocation.Inv
 	return a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }
 
-func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Invocation, command EditDraftTextCommand) (View, error) {
+func (a *Authoring) EditExamDraftText(ctx context.Context, invocation invocation.Invocation, command EditDraftTextCommand) (_ View, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
@@ -353,15 +377,18 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 // ConfigureDraftFocusLoss replaces only the supported Focus Loss rule. The
 // complete policy is reconstructed from authoritative Draft state so callers
 // cannot supply or weaken Connection Loss.
-func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftFocusLossCommand) (View, error) {
+func (a *Authoring) ConfigureExamDraftFocusLoss(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftFocusLossCommand) (_ View, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	focusLoss := model.FocusLossPolicy{Enabled: command.Enabled, MinimumDuration: command.MinimumDuration,
+		IncidentCount: command.IncidentCount, Window: command.Window, Outcome: command.Outcome}
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
 	}
-	command.FocusLoss.MinimumDuration = time.Duration(command.FocusLoss.MinimumDuration.Milliseconds()) * time.Millisecond
-	command.FocusLoss.Window = time.Duration(command.FocusLoss.Window.Milliseconds()) * time.Millisecond
+	focusLoss.MinimumDuration = time.Duration(focusLoss.MinimumDuration.Milliseconds()) * time.Millisecond
+	focusLoss.Window = time.Duration(focusLoss.Window.Milliseconds()) * time.Millisecond
 	policy := model.DefaultExamPolicySet()
-	policy.FocusLoss = command.FocusLoss
+	policy.FocusLoss = focusLoss
 	if err := policy.Validate(); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "focus_loss").Wrap(err)
 	}
@@ -375,8 +402,8 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 		Outcome                     model.IntegrityThresholdOutcome `json:"outcome"`
 	}{
 		ExamID: command.ExamID.String(), ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Enabled: command.FocusLoss.Enabled, MinimumDurationMilliseconds: command.FocusLoss.MinimumDuration.Milliseconds(),
-		IncidentCount: command.FocusLoss.IncidentCount, WindowMilliseconds: command.FocusLoss.Window.Milliseconds(), Outcome: command.FocusLoss.Outcome,
+		Enabled: focusLoss.Enabled, MinimumDurationMilliseconds: focusLoss.MinimumDuration.Milliseconds(),
+		IncidentCount: focusLoss.IncidentCount, WindowMilliseconds: focusLoss.Window.Milliseconds(), Outcome: focusLoss.Outcome,
 	})
 	if err != nil {
 		return View{}, err
@@ -405,7 +432,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
 	}
 	candidate := *snapshot.Draft
-	changed, err := candidate.ApplyFocusLossPolicy(command.FocusLoss, at)
+	changed, err := candidate.ApplyFocusLossPolicy(focusLoss, at)
 	if err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "focus_loss").Wrap(err)
 	}
@@ -421,7 +448,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 	}
 	result, err := a.deps.Persistence.UpdateDraftFocusLoss(ctx, &store.ExamDraftFocusLossUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
-		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: command.FocusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
+		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: focusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
@@ -444,7 +471,9 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 
 // ConfigureDraftBrowserPolicy replaces the complete canonical enforcement
 // value. Publication, rather than this mutable Draft, controls open Sittings.
-func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftBrowserPolicyCommand) (View, error) {
+func (a *Authoring) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftBrowserPolicyCommand) (_ View, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	command.Policy = command.Policy.Clone()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
@@ -551,6 +580,13 @@ func project(snapshot *store.ExamAuthoringSnapshot) View {
 		ResourceCount: snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace}
 }
 
+// publicFailures presents every Exam authoring, publication, records, and export use-case failure: unexpected errors
+// become exam.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.unavailable",
+	Concealed:   []apperror.Code{"exam.not_found"},
+}
+
 var examStoreErrors = apperror.StoreTable{
 	Constraints: map[string]apperror.Code{
 		"exam_archived":                   "exam.archived",
@@ -579,7 +615,9 @@ type ConfigureDraftNativePolicyCommand struct {
 	IdempotencyKey        string
 }
 
-func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftNativePolicyCommand) (View, error) {
+func (a *Authoring) ConfigureExamDraftNativePolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftNativePolicyCommand) (_ View, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	command.NativePolicy = command.NativePolicy.Clone()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")

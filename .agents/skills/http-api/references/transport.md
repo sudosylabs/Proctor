@@ -78,7 +78,7 @@ Principal validation and subscription authorization.
 
 WebSocket reuses stable application error codes and safe fields inside its own
 versioned envelope, not HTTP Problem Details. Ordinary publication failures
-cross the parent application facade as the established public application
+cross the parent application as the established public application
 errors. Security invalidation propagation remains best effort and diagnostic;
 diagnostics identify the failed operation and error category without including
 event payloads, credentials, session identifiers, or other sensitive values.

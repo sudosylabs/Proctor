@@ -28,7 +28,7 @@ func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *test
 	updatedAt := time.Date(2026, 8, 14, 7, 0, 0, 0, time.UTC)
 	fixture.persistence.summaries = []store.ExamSummary{{ID: fixture.examID, AcademicUnitID: fixture.unitID, CreatorUserID: fixture.userID,
 		OwnerUserID: fixture.userID, Title: "Systems", UpdatedAt: updatedAt, Revision: 3, ManagerCount: 2}}
-	page, err := fixture.service.List(context.Background(), fixture.invocation, ListQuery{AcademicUnitID: fixture.unitID, Query: "  Systems  ",
+	page, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{AcademicUnitID: fixture.unitID, Query: "  Systems  ",
 		ArchiveFilter: store.ExamArchiveActive, Limit: 50})
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 	fixture := newAuthoringFixture(t)
 	fixture.persistence.actorIsManager = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-	result, err := fixture.service.Archive(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
+	result, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
 		ExpectedExamRevision: 1, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestArchiveReplayAfterCurrentArchiveDoesNotRepublish(t *testing.T) {
 	fixture.persistence.archived = true
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-	if _, err := fixture.service.Archive(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
+	if _, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
 		ExpectedExamRevision: 1, IdempotencyKey: "test-key"}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +97,24 @@ func TestArchiveNewAttemptRejectsArchivedAndStaleExamThroughAuditedStoreGuard(t 
 			fixture.persistence.actorIsManager = true
 			fixture.persistence.archived = test.archived
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-			_, err := fixture.service.Archive(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
+			_, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
 				ExpectedExamRevision: test.revision, IdempotencyKey: "test-key"})
 			var fault *apperror.Error
 			if !errors.As(err, &fault) || fault.Code() != test.want || fixture.auditor.failedCode != test.want {
 				t.Fatalf("archive error/audit = %v/%s, want %s", err, fixture.auditor.failedCode, test.want)
 			}
 		})
+	}
+}
+
+func TestListExamsDefaultsLimitAndActiveArchiveFilter(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.authorizer.listVisibility = store.ExamListVisibility{ActorUserID: fixture.userID}
+	if _, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{}); err != nil {
+		t.Fatal(err)
+	}
+	if options := fixture.persistence.listOptions; options.Limit != 50 || options.ArchiveFilter != store.ExamArchiveActive {
+		t.Fatalf("list options = %#v, want limit 50 and active archive filter", options)
 	}
 }

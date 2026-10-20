@@ -149,6 +149,12 @@ type EffectFailures interface {
 
 type Service struct{ deps Dependencies }
 
+// OperationalRecorder receives the outcome of each use case the module
+// observes. It is optional; a module built without one records nothing.
+type OperationalRecorder interface {
+	RecordOperational(subsystem, event string, err error)
+}
+
 // Dependencies are the collaborators of Service; New validates them once and the
 // service retains them unchanged.
 type Dependencies struct {
@@ -164,6 +170,7 @@ type Dependencies struct {
 	Mail           ScheduleMailPreparer
 	Now            func() time.Time
 	NewID          func() model.ExamSittingID
+	Operational    OperationalRecorder
 }
 
 func New(deps Dependencies) (*Service, error) {
@@ -174,7 +181,15 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
-func (service *Service) Schedule(ctx context.Context, invocation invocation.Invocation, command ScheduleCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) recordOperational(event string, err error) {
+	if service.deps.Operational != nil {
+		service.deps.Operational.RecordOperational("exam_sitting", event, err)
+	}
+}
+
+func (service *Service) ScheduleExamSitting(ctx context.Context, invocation invocation.Invocation, command ScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { service.recordOperational("schedule", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledStartAt = model.TimeUTC(command.ScheduledStartAt)
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.ExamRevisionID.IsValid() || !command.ClassID.IsValid() ||
@@ -234,16 +249,23 @@ func (service *Service) Schedule(ctx context.Context, invocation invocation.Invo
 	return value, nil
 }
 
-func (service *Service) Get(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID) (store.ExamSittingSnapshot, error) {
-	if !examID.IsValid() || !sittingID.IsValid() {
+// GetQuery names one Sitting of an Exam.
+type GetQuery struct {
+	ExamID    model.ExamID
+	SittingID model.ExamSittingID
+}
+
+func (service *Service) GetExamSitting(ctx context.Context, invocation invocation.Invocation, query GetQuery) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !query.ExamID.IsValid() || !query.SittingID.IsValid() {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "identity")
 	}
 	at := model.TimeUTC(service.deps.Now())
-	if _, err := service.authorize(ctx, invocation, examID, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, at,
+	if _, err := service.authorize(ctx, invocation, query.ExamID, model.Resource{Type: model.ResourceExamSitting, ID: query.SittingID.String()}, at,
 		model.ActionExamSittingView, model.ActionExamSittingViewOverride); err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	snapshot, err := service.deps.Persistence.Get(ctx, examID, sittingID)
+	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.SittingID)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
@@ -251,7 +273,7 @@ func (service *Service) Get(ctx context.Context, invocation invocation.Invocatio
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
-	if value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
+	if value.Sitting.ExamID != query.ExamID || value.Sitting.ID != query.SittingID {
 		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	return value, nil
@@ -401,7 +423,9 @@ func (service *Service) AuthorizeManage(ctx context.Context, invocation invocati
 	return decision.override, nil
 }
 
-func (service *Service) List(ctx context.Context, invocation invocation.Invocation, query ListQuery) (Page, error) {
+func (service *Service) ListExamSittings(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ Page, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	query.States = append([]model.ExamSittingState(nil), query.States...)
 	options, err := listOptions(query)
 	if err != nil {
 		return Page{}, err
@@ -430,7 +454,8 @@ func (service *Service) List(ctx context.Context, invocation invocation.Invocati
 	return page, nil
 }
 
-func (service *Service) UpdateSchedule(ctx context.Context, invocation invocation.Invocation, command UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) UpdateExamSittingSchedule(ctx context.Context, invocation invocation.Invocation, command UpdateScheduleCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledStartAt = canonicalTimePointer(command.ScheduledStartAt)
 	command.ScheduledEndAt = canonicalTimePointer(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 ||
@@ -524,7 +549,8 @@ func (service *Service) UpdateSchedule(ctx context.Context, invocation invocatio
 	return value, nil
 }
 
-func (service *Service) Cancel(ctx context.Context, invocation invocation.Invocation, command CancelCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) CancelExamSitting(ctx context.Context, invocation invocation.Invocation, command CancelCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
 		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "cancellation")
 	}
@@ -581,21 +607,27 @@ func (service *Service) Cancel(ctx context.Context, invocation invocation.Invoca
 	return value, nil
 }
 
-func (service *Service) Pause(ctx context.Context, invocation invocation.Invocation, command PauseCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) PauseExamSitting(ctx context.Context, invocation invocation.Invocation, command PauseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { service.recordOperational("pause", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.runManagerTransition(ctx, invocation, command, "pause", idempotencyOperationPause, store.ExamSittingTransitionManagerPaused, true, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.deps.Persistence.Pause(ctx, input, idempotency)
 		})
 }
 
-func (service *Service) Resume(ctx context.Context, invocation invocation.Invocation, command ResumeCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) ResumeExamSitting(ctx context.Context, invocation invocation.Invocation, command ResumeCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { service.recordOperational("resume", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.runManagerTransition(ctx, invocation, command, "resume", idempotencyOperationResume, store.ExamSittingTransitionManagerResumed, false, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.deps.Persistence.Resume(ctx, input, idempotency)
 		})
 }
 
-func (service *Service) EarlyClose(ctx context.Context, invocation invocation.Invocation, command EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) CloseExamSitting(ctx context.Context, invocation invocation.Invocation, command EarlyCloseCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { service.recordOperational("close", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	return service.runManagerTransition(ctx, invocation, command, "early_close", idempotencyOperationClose, store.ExamSittingTransitionManagerClosed, true, true,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.deps.Persistence.EarlyClose(ctx, input, idempotency)
@@ -653,7 +685,8 @@ func (service *Service) runManagerTransition(ctx context.Context, invocation inv
 	return value, nil
 }
 
-func (service *Service) Extend(ctx context.Context, invocation invocation.Invocation, command ExtendCommand) (store.ExamSittingSnapshot, error) {
+func (service *Service) ExtendExamSitting(ctx context.Context, invocation invocation.Invocation, command ExtendCommand) (_ store.ExamSittingSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || command.ScheduledEndAt.IsZero() ||
 		!validPrivateReason(command.PrivateReason) {
@@ -727,13 +760,21 @@ type NoShowPage struct {
 	HasMore bool
 }
 
-func (service *Service) ListNoShows(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID,
-	after model.UserID, limit int,
-) (NoShowPage, error) {
-	if !examID.IsValid() || !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
+// ListNoShowsQuery pages the enrolled candidates of one Sitting who never
+// started an Attempt.
+type ListNoShowsQuery struct {
+	ExamID               model.ExamID
+	SittingID            model.ExamSittingID
+	AfterCandidateUserID model.UserID
+	Limit                int
+}
+
+func (service *Service) ListExamSittingNoShows(ctx context.Context, invocation invocation.Invocation, query ListNoShowsQuery) (_ NoShowPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || (!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid()) || query.Limit < 1 || query.Limit > 200 {
 		return NoShowPage{}, apperror.Invalid("exam.sitting.invalid", "no_show_list")
 	}
-	snapshot, err := service.Get(ctx, invocation, examID, sittingID)
+	snapshot, err := service.GetExamSitting(ctx, invocation, GetQuery{ExamID: query.ExamID, SittingID: query.SittingID})
 	if err != nil {
 		return NoShowPage{}, err
 	}
@@ -741,19 +782,19 @@ func (service *Service) ListNoShows(ctx context.Context, invocation invocation.I
 		return NoShowPage{}, apperror.New("exam.sitting.state_conflict")
 	}
 	items, err := service.deps.Persistence.ListNoShows(ctx, store.ExamSittingNoShowListOptions{
-		SittingID: sittingID, AfterCandidateUserID: after, Limit: limit + 1,
+		SittingID: query.SittingID, AfterCandidateUserID: query.AfterCandidateUserID, Limit: query.Limit + 1,
 	})
 	if err != nil {
 		return NoShowPage{}, storeErrors.Translate(err)
 	}
-	if len(items) > limit+1 {
+	if len(items) > query.Limit+1 {
 		return NoShowPage{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an oversized no-show page"))
 	}
-	hasMore := len(items) > limit
+	hasMore := len(items) > query.Limit
 	if hasMore {
-		items = items[:limit]
+		items = items[:query.Limit]
 	}
-	previous := after
+	previous := query.AfterCandidateUserID
 	for _, item := range items {
 		if !item.CandidateUserID.IsValid() || (!previous.IsZero() && item.CandidateUserID.String() <= previous.String()) {
 			return NoShowPage{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid no-show page"))
@@ -1017,6 +1058,13 @@ func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventI
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
+}
+
+// publicFailures presents every Sitting use-case failure: unexpected errors
+// become exam.sitting.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.sitting.unavailable",
+	Concealed:   []apperror.Code{"exam.sitting.not_found"},
 }
 
 var storeErrors = apperror.StoreTable{

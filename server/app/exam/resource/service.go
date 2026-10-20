@@ -132,27 +132,39 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
-func (s *Service) List(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) ([]store.ExamResourceRecord, error) {
-	if !examID.IsValid() {
+// ListQuery names the Exam whose Draft Resources are listed.
+type ListQuery struct{ ExamID model.ExamID }
+
+func (s *Service) ListExamResources(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ []store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !query.ExamID.IsValid() {
 		return nil, apperror.Invalid("exam.resource.invalid", "exam_id")
 	}
-	if _, err := s.authorize(ctx, invocation, examID, false); err != nil {
+	if _, err := s.authorize(ctx, invocation, query.ExamID, false); err != nil {
 		return nil, err
 	}
-	items, err := s.deps.Persistence.List(ctx, examID)
+	items, err := s.deps.Persistence.List(ctx, query.ExamID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
 	return items, nil
 }
-func (s *Service) Open(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, resourceID model.ExamResourceID) (Opened, error) {
-	if !examID.IsValid() || !resourceID.IsValid() {
+
+// OpenQuery names one Draft Resource of an Exam.
+type OpenQuery struct {
+	ExamID     model.ExamID
+	ResourceID model.ExamResourceID
+}
+
+func (s *Service) OpenExamResource(ctx context.Context, invocation invocation.Invocation, query OpenQuery) (_ Opened, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !query.ExamID.IsValid() || !query.ResourceID.IsValid() {
 		return Opened{}, apperror.Invalid("exam.resource.invalid", "identity")
 	}
-	if _, err := s.authorize(ctx, invocation, examID, false); err != nil {
+	if _, err := s.authorize(ctx, invocation, query.ExamID, false); err != nil {
 		return Opened{}, err
 	}
-	record, err := s.deps.Persistence.Get(ctx, examID, resourceID)
+	record, err := s.deps.Persistence.Get(ctx, query.ExamID, query.ResourceID)
 	if err != nil {
 		return Opened{}, storeErrors.Translate(err)
 	}
@@ -166,7 +178,8 @@ func (s *Service) Open(ctx context.Context, invocation invocation.Invocation, ex
 	return Opened{Record: *record, Body: body}, nil
 }
 
-func (s *Service) Create(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (store.ExamResourceRecord, error) {
+func (s *Service) CreateExamResource(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (_ store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "upload")
 	}
@@ -217,7 +230,8 @@ func (s *Service) Create(ctx context.Context, invocation invocation.Invocation, 
 	return s.finalize(ctx, invocation, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "add")
 }
 
-func (s *Service) ReplaceContent(ctx context.Context, invocation invocation.Invocation, command ReplaceContentCommand) (store.ExamResourceRecord, error) {
+func (s *Service) ReplaceExamResourceContent(ctx context.Context, invocation invocation.Invocation, command ReplaceContentCommand) (_ store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "upload")
 	}
@@ -292,7 +306,8 @@ func (s *Service) finalize(ctx context.Context, invocation invocation.Invocation
 	return *result.Value, nil
 }
 
-func (s *Service) EditMetadata(ctx context.Context, invocation invocation.Invocation, command EditMetadataCommand) (store.ExamResourceRecord, error) {
+func (s *Service) EditExamResourceMetadata(ctx context.Context, invocation invocation.Invocation, command EditMetadataCommand) (_ store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.DisplayName == nil && command.DescriptionMarkdown == nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "identity")
 	}
@@ -369,7 +384,9 @@ func (s *Service) metadataMutation(ctx context.Context, invocation invocation.In
 	return *result.Value, nil
 }
 
-func (s *Service) Reorder(ctx context.Context, invocation invocation.Invocation, c ReorderCommand) ([]store.ExamResourceRecord, error) {
+func (s *Service) ReorderExamResources(ctx context.Context, invocation invocation.Invocation, c ReorderCommand) (_ []store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
 	if !c.ExamID.IsValid() || c.ExpectedDraftRevision < 1 {
 		return nil, apperror.Invalid("exam.resource.invalid", "identity")
 	}
@@ -441,7 +458,8 @@ func (s *Service) Reorder(ctx context.Context, invocation invocation.Invocation,
 	return result.Items, nil
 }
 
-func (s *Service) Remove(ctx context.Context, invocation invocation.Invocation, c RemoveCommand) (store.ExamResourceRecord, error) {
+func (s *Service) RemoveExamResource(ctx context.Context, invocation invocation.Invocation, c RemoveCommand) (_ store.ExamResourceRecord, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !c.ExamID.IsValid() || !c.ResourceID.IsValid() || c.ExpectedDraftRevision < 1 {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "identity")
 	}
@@ -539,6 +557,13 @@ func mapContent(err error) error {
 		return apperror.New("exam.resource.content_invalid").Wrap(err)
 	}
 	return apperror.New("exam.resource.unavailable").Wrap(err)
+}
+
+// publicFailures presents every Exam Resource use-case failure: unexpected errors
+// become exam.resource.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.resource.unavailable",
+	Concealed:   []apperror.Code{"exam.resource.not_found"},
 }
 
 var storeErrors = apperror.StoreTable{

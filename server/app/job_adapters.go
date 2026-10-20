@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
@@ -131,7 +132,7 @@ func (adapter onboardingImportJobs) Fail(ctx context.Context, id model.Onboardin
 }
 
 type examSittingSealingJobUseCases struct {
-	sittings examSittingUseCases
+	sittings *examsitting.Service
 	attempts *examattempt.Service
 	jobs     store.JobStore
 	now      func() time.Time

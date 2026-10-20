@@ -8,7 +8,9 @@
 // Package apperror owns Proctor's single transport-neutral application error
 // type. The parent application and its child modules share it so every
 // expected public failure carries the same stable code, safe fields, and
-// operator-only cause regardless of which module produced it.
+// operator-only cause regardless of which module produced it. StoreTable
+// translates typed Store failures and Concealment presents a protected use
+// case's failures, so no module writes its own translator or presenter.
 //
 // The package depends only on the standard library. It contains no HTTP
 // status, protocol envelope, localization state, or request metadata; each

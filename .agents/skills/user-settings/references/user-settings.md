@@ -92,13 +92,13 @@ source and maps locations into its editor.
 
 ## Application module and Store seams
 
-One focused User Settings application module exposes only two use cases through
-the `app.App` facade:
+One focused User Settings application module exposes only two use cases, which
+`app.App` promotes:
 
 ~~~text
-ReadOwn(invocation) -> current exact document
-ReplaceOwn(invocation, source, format version, expected revision,
-           idempotency key) -> replacement result
+ReadOwnUserSettings(invocation) -> current exact document
+ReplaceOwnUserSettings(invocation, source, format version, expected revision,
+                       idempotency key) -> replacement result
 ~~~
 
 Both derive the User identity from the immutable Principal. No caller supplies

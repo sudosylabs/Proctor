@@ -56,7 +56,8 @@ func (service *Service) beginPreflightAudit(ctx context.Context, invocation invo
 	}
 	return service.deps.Auditor.BeginAtScope(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()}, nil)
 }
-func (service *Service) PrepareSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
+func (service *Service) PrepareExamSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command PrepareSecurityPreflightCommand) (_ *store.SecurityPreflightPrepared, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -92,7 +93,8 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, invocation
 	}
 	return result, nil
 }
-func (service *Service) ReportSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+func (service *Service) ReportExamSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command ReportSecurityPreflightCommand) (_ *model.SecurityPreflightResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -140,7 +142,8 @@ var securityPreflightStoreErrors = storeErrors.With(
 	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCoverageUnsupported, Code: "exam.security.unsupported_capability"},
 )
 
-func (service *Service) RecoverSecurityPolicy(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+func (service *Service) RecoverExamSecurityPolicy(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (_ *store.SecurityPolicyRecovery, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
@@ -170,7 +173,8 @@ type UpdateSecurityCoverageCommand struct {
 	Coverage        model.SecurityCoverageRenewal
 }
 
-func (service *Service) UpdateSecurityCoverage(ctx context.Context, invocation invocation.Invocation, command UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+func (service *Service) UpdateExamSecurityCoverage(ctx context.Context, invocation invocation.Invocation, command UpdateSecurityCoverageCommand) (_ model.SecurityCoverageResult, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	release, admissionErr := service.enterControl(ctx, invocation, true)
 	if admissionErr != nil {
 		return model.SecurityCoverageResult{}, admissionErr

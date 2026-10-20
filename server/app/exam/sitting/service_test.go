@@ -33,7 +33,7 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	}
 
-	got, err := fixture.service.Schedule(context.Background(), fixture.invocation, command)
+	got, err := fixture.service.ScheduleExamSitting(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestGetAuthorizesExactSittingResource(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
-	got, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID)
+	got, err := fixture.service.GetExamSitting(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID, SittingID: fixture.sittingID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 	fixture.persistence.items = []store.ExamSittingSnapshot{{Sitting: first}, {Sitting: &second}}
 	overlapStart, overlapEnd := testNow.Add(30*time.Minute), testNow.Add(4*time.Hour)
 
-	page, err := fixture.service.List(context.Background(), fixture.invocation, ListQuery{
+	page, err := fixture.service.ListExamSittings(context.Background(), fixture.invocation, ListQuery{
 		ExamID: fixture.examID, ClassID: fixture.classID, States: []model.ExamSittingState{model.ExamSittingScheduled},
 		OverlapStartAt: overlapStart, OverlapEndAt: overlapEnd, Limit: 1,
 	})
@@ -283,7 +283,7 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ScheduledStartAt: &changedStart, ScheduledEndAt: &changedEnd, IdempotencyKey: "test-key",
 	}
-	got, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, command)
+	got, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestUpdateScheduleReturnsCurrentNoChangesOnlyForCurrentActiveScheduledState
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current}
 	revisionID := fixture.revisionID
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
@@ -350,7 +350,7 @@ func TestUpdateScheduleSendsStaleNoOpToStore(t *testing.T) {
 	fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_sitting_revision", nil)
 	revisionID := fixture.revisionID
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
@@ -372,7 +372,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_archived", nil)
 		revisionID := fixture.revisionID
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
@@ -393,7 +393,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 		revisionID := fixture.revisionID
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
@@ -410,7 +410,7 @@ func TestScheduleUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testin
 	fixture.memberships.items = nil
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	_, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
+	_, err := fixture.service.ScheduleExamSitting(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -428,7 +428,7 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 	fixture.authorizer.err = errors.New("denied")
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	_, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
+	_, err := fixture.service.ScheduleExamSitting(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -442,7 +442,7 @@ func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	testFixture := newFixture(t)
 	failure := errors.New("membership unavailable")
 	testFixture.memberships.err = failure
-	_, err := testFixture.service.Schedule(context.Background(), testFixture.invocation, ScheduleCommand{
+	_, err := testFixture.service.ScheduleExamSitting(context.Background(), testFixture.invocation, ScheduleCommand{
 		ExamID: testFixture.examID, ExamRevisionID: testFixture.revisionID, ClassID: testFixture.classID,
 		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
 	})
@@ -465,7 +465,7 @@ func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
 	}
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	got, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
+	got, err := fixture.service.ScheduleExamSitting(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -493,7 +493,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		}
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: updated}, Replayed: true}
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			ScheduledStartAt: &start, ScheduledEndAt: &end, IdempotencyKey: "test-key",
 		})
@@ -515,7 +515,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		}
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: canceled}, Replayed: true}
 
-		_, err := fixture.service.Cancel(context.Background(), fixture.invocation, CancelCommand{
+		_, err := fixture.service.CancelExamSitting(context.Background(), fixture.invocation, CancelCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			PrivateReason: "Manager canceled", IdempotencyKey: "test-key",
 		})
@@ -535,7 +535,7 @@ func TestGetRejectsMismatchedExamOwnership(t *testing.T) {
 	foreign.ExamID = model.NewExamID()
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: foreign}
 
-	_, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID)
+	_, err := fixture.service.GetExamSitting(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID, SittingID: fixture.sittingID})
 	assertFaultCode(t, err, "exam.sitting.unavailable")
 }
 
@@ -628,7 +628,7 @@ func TestUpdateRejectsMismatchedStoreOutcome(t *testing.T) {
 	start := testNow.Add(2 * time.Hour)
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: foreign}}
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ScheduledStartAt: &start, IdempotencyKey: "test-key",
 	})
@@ -652,7 +652,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		PrivateReason: "Room became unavailable", IdempotencyKey: "test-key",
 	}
-	got, err := fixture.service.Cancel(context.Background(), fixture.invocation, command)
+	got, err := fixture.service.CancelExamSitting(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,8 +731,7 @@ func TestListNoShowsAuthorizesClosingSittingAndReturnsBoundedPage(t *testing.T) 
 	ids := []model.UserID{model.NewUserID(), model.NewUserID(), model.NewUserID()}
 	slices.SortFunc(ids, func(left, right model.UserID) int { return strings.Compare(left.String(), right.String()) })
 	fixture.persistence.noShows = []store.ExamSittingNoShow{{CandidateUserID: ids[0]}, {CandidateUserID: ids[1]}, {CandidateUserID: ids[2]}}
-	page, err := fixture.service.ListNoShows(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID,
-		model.UserID(""), 2)
+	page, err := fixture.service.ListExamSittingNoShows(context.Background(), fixture.invocation, ListNoShowsQuery{ExamID: fixture.examID, SittingID: fixture.sittingID, AfterCandidateUserID: model.UserID(""), Limit: 2})
 	if err != nil || len(page.Items) != 2 || !page.HasMore || page.Items[1].CandidateUserID != ids[1] ||
 		fixture.persistence.noShowOptions.Limit != 3 {
 		t.Fatalf("page=%#v options=%#v err=%v", page, fixture.persistence.noShowOptions, err)

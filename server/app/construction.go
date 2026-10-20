@@ -12,7 +12,11 @@ import (
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
+	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
@@ -20,18 +24,18 @@ import (
 )
 
 type examinationConstruction struct {
-	authoring              examUseCases
+	authoring              *examengine.Authoring
 	revisions              *examengine.Publication
-	sittings               examSittingUseCases
+	sittings               *examsitting.Service
 	sittingMail            *appmail.SittingComposer
 	sittingMailPreparation sittingScheduleMailPreparationAdapter
 	attempts               *examattempt.Service
 	reviews                *examreview.Service
 	records                *examengine.Records
 	exports                *examengine.Exports
-	resources              examResourceUseCases
-	corrections            examCorrectionUseCases
-	starterWorkspace       examStarterWorkspaceUseCases
+	resources              *examresource.Service
+	corrections            *examcorrection.Service
+	starterWorkspace       *examworkspace.Service
 }
 
 // applicationFoundation holds the shared mechanics constructed before any
@@ -218,7 +222,6 @@ func assembleApplication(
 		invitationService:                        identity.invitations,
 		onboardingImportService:                  identity.onboardingImports,
 		personalAccessTokenAdministrationService: identity.personalAccessTokenAdministration,
-		accessControlService:                     access.authorization,
 		accessPolicyService:                      access.accessPolicies,
 		retentionPolicyService:                   access.retentionPolicy,
 		desktopCompatibilityService:              access.desktopCompatibility,
@@ -232,16 +235,16 @@ func assembleApplication(
 		affiliationService:                       access.affiliations,
 		academicUnitMemberService:                access.academicUnitMembers,
 		classMemberService:                       access.classMembers,
-		exams:                                    examinations.authoring,
-		examRevisions:                            examinations.revisions,
-		examSittings:                             examinations.sittings,
-		examAttempts:                             examinations.attempts,
-		examReviews:                              examinations.reviews,
-		examRecords:                              examinations.records,
-		examExports:                              examinations.exports,
-		examResources:                            examinations.resources,
-		examCorrections:                          examinations.corrections,
-		examStarterWorkspace:                     examinations.starterWorkspace,
+		examAuthoringService:                     examinations.authoring,
+		examPublicationService:                   examinations.revisions,
+		examSittingService:                       examinations.sittings,
+		examAttemptService:                       examinations.attempts,
+		examReviewService:                        examinations.reviews,
+		examRecordsService:                       examinations.records,
+		examExportsService:                       examinations.exports,
+		examResourceService:                      examinations.resources,
+		examCorrectionService:                    examinations.corrections,
+		examStarterWorkspaceService:              examinations.starterWorkspace,
 		userProfileService:                       profiles.userProfiles,
 		userSettingsService:                      profiles.userSettings,
 		profilePictureService:                    profiles.profilePictures,
@@ -253,9 +256,12 @@ func assembleApplication(
 		bootstrapService:                         administration.bootstrap,
 		academicAdministrationBatchService:       administration.academicAdministrationBatches,
 		realtimeService:                          foundation.realtime,
-		jobs:                                     jobs.runtime,
-		jobOperationsService:                     jobs.operations,
-		mailService:                              jobs.mail,
-		operational:                              deps.OperationalRecorder,
+		realtimeAdmissionService: &realtimeAdmissionService{
+			principals: identity.authentication, exams: examinations.authoring, sittings: examinations.sittings,
+			authorization: access.authorization, operational: deps.OperationalRecorder,
+		},
+		jobs:                 jobs.runtime,
+		jobOperationsService: jobs.operations,
+		mailService:          jobs.mail,
 	}
 }

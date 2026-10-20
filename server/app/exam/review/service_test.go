@@ -22,7 +22,7 @@ import (
 func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
-	result, err := f.service.SaveDecision(context.Background(), f.invocation, SaveDecisionCommand{
+	result, err := f.service.SaveExamIntegrityDecision(context.Background(), f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
@@ -58,7 +58,7 @@ func TestUpdateDraftPassesOwnedIdempotencyToStore(t *testing.T) {
 	f := newReviewFixture(t)
 	command := UpdateDraftCommand{SubmissionID: f.submissionID, ReviewID: f.reviewID, ExpectedReviewRevision: 1,
 		ManagerNotes: "private", StudentRemarksMarkdown: "Visible", IdempotencyKey: "draft-key"}
-	if _, err := f.service.UpdateDraft(context.Background(), f.invocation, command); err != nil {
+	if _, err := f.service.UpdateExamIntegrityReview(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	want, err := prepareDraftIdempotency(f.invocation, command)
@@ -72,7 +72,7 @@ func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.replayed = true
-	result, err := f.service.SaveDecision(context.Background(), f.invocation, SaveDecisionCommand{
+	result, err := f.service.SaveExamIntegrityDecision(context.Background(), f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
@@ -85,7 +85,7 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.mode = "finalize"
-	finalized, err := f.service.Finalize(context.Background(), f.invocation, FinalizeCommand{SubmissionID: f.submissionID,
+	finalized, err := f.service.FinalizeExamIntegrityReview(context.Background(), f.invocation, FinalizeCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 2, IdempotencyKey: "test-key"})
 	if err != nil || finalized.Review.State != model.SubmissionReviewFinalized || f.authorizer.reviewCalls != 1 || f.effects.finalized != 1 {
 		t.Fatalf("finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
@@ -97,7 +97,7 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	}
 	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantFinalize)
 	f.persistence.mode = "release"
-	released, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
+	released, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || released.Review.ReleaseState != model.SubmissionReviewReleased || f.authorizer.releaseCalls != 1 || f.effects.released != 1 {
 		t.Fatalf("released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
@@ -120,7 +120,7 @@ func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
 	f := newReviewFixture(t)
 	f.persistence.mode = "release"
 	f.persistence.prepareErr = store.NewErrConflict("submission_review", "integrity_review_state", nil)
-	_, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
+	_, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.integrity_review.state_conflict" {
@@ -137,7 +137,7 @@ func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.mode, f.persistence.replayed = "release", true
-	released, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
+	released, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || !released.Replayed || f.effects.released != 0 || f.mail.calls != 0 ||
 		f.persistence.release == nil || f.persistence.release.Notice != nil {
@@ -152,7 +152,7 @@ func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T
 	f.persistence.student = &model.StudentResult{ReviewID: f.reviewID, SubmissionID: f.submissionID,
 		AttemptID: f.attemptID, CandidateUserID: f.userID,
 		StudentRemarksMarkdown: "Safe **text** <script>alert(1)</script> ![remote](https://tracker.example/x)", ReleasedAt: f.at}
-	result, err := f.service.GetStudentResult(context.Background(), f.invocation, GetStudentResultQuery{AttemptID: f.attemptID})
+	result, err := f.service.GetStudentExamResult(context.Background(), f.invocation, f.attemptID)
 	if err != nil {
 		t.Fatalf("GetStudentResult() error = %v", err)
 	}
@@ -162,14 +162,14 @@ func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T
 	wrongPrincipal := f.invocation.Principal()
 	wrongPrincipal.UserID = model.NewUserID()
 	wrong := invocation.New(wrongPrincipal, f.invocation.RequestMetadata())
-	if _, err = f.service.GetStudentResult(context.Background(), wrong, GetStudentResultQuery{AttemptID: f.attemptID}); err == nil {
+	if _, err = f.service.GetStudentExamResult(context.Background(), wrong, f.attemptID); err == nil {
 		t.Fatal("GetStudentResult() accepted another candidate")
 	}
 	patPrincipal := f.invocation.Principal()
 	patPrincipal.CredentialType = model.CredentialPersonalAccessToken
 	patPrincipal.SessionID = ""
 	pat := invocation.New(patPrincipal, f.invocation.RequestMetadata())
-	if _, err = f.service.GetStudentResult(context.Background(), pat, GetStudentResultQuery{AttemptID: f.attemptID}); err == nil {
+	if _, err = f.service.GetStudentExamResult(context.Background(), pat, f.attemptID); err == nil {
 		t.Fatal("GetStudentResult() accepted non-Session principal")
 	}
 }

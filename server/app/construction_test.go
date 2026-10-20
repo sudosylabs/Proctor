@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
@@ -228,7 +229,6 @@ type constructionBrowserAuthenticationStoreStub struct {
 }
 type constructionExternalLoginStateStoreStub struct{ store.ExternalLoginStateStore }
 type constructionCommandOutcomeStoreStub struct{}
-type constructionExamSittingUseCasesStub struct{ examSittingUseCases }
 
 func (constructionCommandOutcomeStoreStub) DeleteExpired(context.Context, int) (int64, error) {
 	return 0, nil
@@ -257,7 +257,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		applicationFoundation{},
 		accessAcademicConstruction{},
 		identityConstruction{},
-		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: &examattempt.Service{}},
+		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}},
 		profiles,
 	)
 	if err != nil {
@@ -294,7 +294,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		},
 		applicationFoundation{},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
-		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: &examattempt.Service{}}, profiles,
+		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}}, profiles,
 		appjobs.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
 		newMailHealth(false),
 	)
@@ -417,7 +417,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	}
 }
 
-func TestApplicationAssemblyNamesEveryFacadeField(t *testing.T) {
+func TestApplicationAssemblyNamesEveryAppField(t *testing.T) {
 	t.Parallel()
 
 	source, err := os.ReadFile("app.go")

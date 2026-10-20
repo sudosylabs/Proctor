@@ -612,16 +612,16 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
 	}
-	if err := service.ValidatePrincipal(context.Background(), principal); err != nil {
+	if err := service.validatePrincipal(context.Background(), principal); err != nil {
 		t.Fatalf("valid principal rejected: %v", err)
 	}
 	persistence.userGetErr = errors.New("database unavailable")
-	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.internal") {
+	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.internal") {
 		t.Fatalf("dependency error = %v", err)
 	}
 	persistence.userGetErr = nil
 	session.UserID = model.NewUserID()
-	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
+	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("mismatched session error = %v", err)
 	}
 }
@@ -651,7 +651,7 @@ func TestAuthenticationExpiryEnforcementClosesEstablishedWebSocketSession(t *tes
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
 	}
-	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
+	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("ValidatePrincipal(expired) error = %v", err)
 	}
 	if effects.last != "sessions" || !session.RevokedAt.Valid ||

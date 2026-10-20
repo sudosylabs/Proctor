@@ -15,5 +15,5 @@
 // Attempt admission, candidate delivery, HTTP, SQL, VFS selection, or realtime
 // infrastructure. It depends inward only on domain models, bounded Store
 // contracts, and consumer-owned authorization, audit, content, and effect
-// ports; the parent application remains the public facade.
+// ports; the parent application embeds the service as part of its surface.
 package correction

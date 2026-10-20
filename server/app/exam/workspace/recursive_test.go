@@ -18,12 +18,12 @@ func TestRecursiveRemovalBindsFlagToDraftCommand(t *testing.T) {
 	t.Parallel()
 	f := newServiceFixture(t)
 	command := RemoveEntryCommand{ExamID: f.examID, EntryID: model.NewStarterWorkspaceEntryID(), ExpectedDraftRevision: 1, IdempotencyKey: "remove"}
-	if _, err := f.service.RemoveEntry(context.Background(), f.invocation, command); err != nil {
+	if _, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	ordinary := *f.persistence.idempotency
 	command.Recursive = true
-	if _, err := f.service.RemoveEntry(context.Background(), f.invocation, command); err != nil {
+	if _, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	if !f.persistence.mutation.Recursive || f.persistence.mutation.ExpectedDraftRevision != 1 ||

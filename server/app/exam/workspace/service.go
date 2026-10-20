@@ -146,40 +146,52 @@ func New(deps Dependencies) (*Service, error) {
 	return &Service{deps: deps}, nil
 }
 
-func (service *Service) List(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
-	if _, err := service.authorize(ctx, invocation, examID, false); err != nil {
+// ListQuery names the Exam whose Draft Starter Workspace is listed.
+type ListQuery struct{ ExamID model.ExamID }
+
+func (service *Service) ListExamStarterWorkspace(ctx context.Context, invocation invocation.Invocation, query ListQuery) (_ []store.ExamStarterWorkspaceItem, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if _, err := service.authorize(ctx, invocation, query.ExamID, false); err != nil {
 		return nil, err
 	}
-	items, err := service.deps.Persistence.List(ctx, examID)
+	items, err := service.deps.Persistence.List(ctx, query.ExamID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
 	return items, nil
 }
 
-func (service *Service) OpenFile(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, entryID model.StarterWorkspaceEntryID) (*OpenedFile, error) {
-	if !entryID.IsValid() {
-		return nil, apperror.Invalid("exam.starter_workspace.invalid", "entry_id")
+// OpenFileQuery names one Draft Starter Workspace file of an Exam.
+type OpenFileQuery struct {
+	ExamID  model.ExamID
+	EntryID model.StarterWorkspaceEntryID
+}
+
+func (service *Service) OpenExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, query OpenFileQuery) (_ OpenedFile, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if !query.EntryID.IsValid() {
+		return OpenedFile{}, apperror.Invalid("exam.starter_workspace.invalid", "entry_id")
 	}
-	if _, err := service.authorize(ctx, invocation, examID, false); err != nil {
-		return nil, err
+	if _, err := service.authorize(ctx, invocation, query.ExamID, false); err != nil {
+		return OpenedFile{}, err
 	}
-	item, err := service.deps.Persistence.GetFile(ctx, examID, entryID)
+	item, err := service.deps.Persistence.GetFile(ctx, query.ExamID, query.EntryID)
 	if err != nil {
-		return nil, storeErrors.Translate(err)
+		return OpenedFile{}, storeErrors.Translate(err)
 	}
 	if item == nil || item.Object == nil {
-		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete file metadata"))
+		return OpenedFile{}, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete file metadata"))
 	}
 	body, err := service.deps.Content.OpenStarterWorkspaceObject(ctx, item.Object.ID)
 	if err != nil {
-		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
+		return OpenedFile{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
-	return &OpenedFile{Body: body, MediaType: item.Object.MediaType, SizeBytes: item.Object.SizeBytes,
+	return OpenedFile{Body: body, MediaType: item.Object.MediaType, SizeBytes: item.Object.SizeBytes,
 		SHA256: item.Object.SHA256, ContentVersion: item.Object.ContentVersion}, nil
 }
 
-func (service *Service) CreateDirectory(ctx context.Context, invocation invocation.Invocation, command CreateDirectoryCommand) (Result, error) {
+func (service *Service) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateDirectoryCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
 	if err != nil {
 		return Result{}, err
@@ -204,7 +216,8 @@ func (service *Service) CreateDirectory(ctx context.Context, invocation invocati
 	return service.runMutation(ctx, invocation, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, service.deps.Persistence.CreateDirectory)
 }
 
-func (service *Service) CreateFile(ctx context.Context, invocation invocation.Invocation, command CreateFileCommand) (Result, error) {
+func (service *Service) CreateExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateFileCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
 	if err != nil || command.Body == nil || command.Size < -1 || command.Size > model.StarterWorkspaceMaximumFileBytes || command.MediaType == "" {
 		if err != nil {
@@ -225,7 +238,8 @@ func (service *Service) CreateFile(ctx context.Context, invocation invocation.In
 		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_create", ChangeFileCreated, service.deps.Persistence.CreateFile)
 }
 
-func (service *Service) MoveEntry(ctx context.Context, invocation invocation.Invocation, command MoveEntryCommand) (Result, error) {
+func (service *Service) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveEntryCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	path, err := validateMutation(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Path)
 	if err != nil {
 		return Result{}, err
@@ -246,7 +260,8 @@ func (service *Service) MoveEntry(ctx context.Context, invocation invocation.Inv
 	return service.runMutation(ctx, invocation, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, service.deps.Persistence.MoveEntry)
 }
 
-func (service *Service) ReplaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceFileCommand) (Result, error) {
+func (service *Service) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceFileCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
 		return Result{}, err
 	}
@@ -266,7 +281,8 @@ func (service *Service) ReplaceFile(ctx context.Context, invocation invocation.I
 		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_replace", ChangeFileReplaced, service.deps.Persistence.ReplaceFile)
 }
 
-func (service *Service) RemoveEntry(ctx context.Context, invocation invocation.Invocation, command RemoveEntryCommand) (Result, error) {
+func (service *Service) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command RemoveEntryCommand) (_ Result, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
 		return Result{}, err
 	}
@@ -429,6 +445,13 @@ func validateMutationBase(examID model.ExamID, entryID model.StarterWorkspaceEnt
 		return apperror.Invalid("exam.starter_workspace.invalid", "command")
 	}
 	return nil
+}
+
+// publicFailures presents every Starter Workspace use-case failure: unexpected errors
+// become exam.starter_workspace.unavailable, and protected targets conceal denial and absence.
+var publicFailures = apperror.Concealment{
+	Unavailable: "exam.starter_workspace.unavailable",
+	Concealed:   []apperror.Code{"exam.starter_workspace.not_found"},
 }
 
 var storeErrors = apperror.StoreTable{

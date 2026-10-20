@@ -25,19 +25,11 @@ type ExamSittingPage = examsitting.Page
 
 type ExamSittingNoShowPage = examsitting.NoShowPage
 
-type ListExamSittingNoShowsQuery struct {
-	ExamID               model.ExamID
-	SittingID            model.ExamSittingID
-	AfterCandidateUserID model.UserID
-	Limit                int
-}
+type ListExamSittingNoShowsQuery = examsitting.ListNoShowsQuery
 
 type ScheduleExamSittingCommand = examsitting.ScheduleCommand
 
-type GetExamSittingQuery struct {
-	ExamID    model.ExamID
-	SittingID model.ExamSittingID
-}
+type GetExamSittingQuery = examsitting.GetQuery
 
 type ListExamSittingsQuery = examsitting.ListQuery
 
@@ -48,115 +40,14 @@ type ResumeExamSittingCommand = examsitting.ResumeCommand
 type CloseExamSittingCommand = examsitting.EarlyCloseCommand
 type ExtendExamSittingCommand = examsitting.ExtendCommand
 
-type examSittingUseCases interface {
-	Schedule(context.Context, Invocation, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
-	Get(context.Context, Invocation, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
-	AuthorizeView(context.Context, Invocation, model.ExamSittingID) error
-	AuthorizeBrowserActivityView(context.Context, Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
-	AuthorizeSubmissionView(context.Context, Invocation, model.ExamID, model.SubmissionID) error
-	AuthorizeSubmissionReview(context.Context, Invocation, model.ExamID, model.SubmissionID) (override bool, err error)
-	AuthorizeSubmissionRelease(context.Context, Invocation, model.ExamID, model.SubmissionID) (override bool, err error)
-	AuthorizeManage(context.Context, Invocation, model.ExamSittingID) (override bool, err error)
-	List(context.Context, Invocation, examsitting.ListQuery) (examsitting.Page, error)
-	UpdateSchedule(context.Context, Invocation, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
-	Cancel(context.Context, Invocation, examsitting.CancelCommand) (store.ExamSittingSnapshot, error)
-	Pause(context.Context, Invocation, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
-	Resume(context.Context, Invocation, examsitting.ResumeCommand) (store.ExamSittingSnapshot, error)
-	Extend(context.Context, Invocation, examsitting.ExtendCommand) (store.ExamSittingSnapshot, error)
-	EarlyClose(context.Context, Invocation, examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
+// examSittingLifecycle is the Sitting lifecycle work the lifecycle Job
+// drives; its tests substitute a fake.
+type examSittingLifecycle interface {
 	AdvanceDue(context.Context, appinvocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	FinishSealing(context.Context, appinvocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	ListNoShows(context.Context, Invocation, model.ExamID, model.ExamSittingID, model.UserID, int) (examsitting.NoShowPage, error)
 	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
-func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (result ExamSittingView, resultErr error) {
-	defer func() { a.recordOperational("exam_sitting", "schedule", resultErr) }()
-	view, err := a.examSittings.Schedule(ctx, invocation, command)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) GetExamSitting(ctx context.Context, invocation Invocation, query GetExamSittingQuery) (ExamSittingView, error) {
-	view, err := a.examSittings.Get(ctx, invocation, query.ExamID, query.SittingID)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) ListExamSittings(ctx context.Context, invocation Invocation, query ListExamSittingsQuery) (ExamSittingPage, error) {
-	query.States = append([]model.ExamSittingState(nil), query.States...)
-	page, err := a.examSittings.List(ctx, invocation, query)
-	if err != nil {
-		return ExamSittingPage{}, examSittingError(err, true)
-	}
-	return page, nil
-}
-
-func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
-	query ListExamSittingNoShowsQuery,
-) (ExamSittingNoShowPage, error) {
-	page, err := a.examSittings.ListNoShows(ctx, invocation,
-		query.ExamID, query.SittingID, query.AfterCandidateUserID, query.Limit)
-	if err != nil {
-		return ExamSittingNoShowPage{}, examSittingError(err, true)
-	}
-	return page, nil
-}
-
-func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocation, command UpdateExamSittingScheduleCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.UpdateSchedule(ctx, invocation, command)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) CancelExamSitting(ctx context.Context, invocation Invocation, command CancelExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Cancel(ctx, invocation, command)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) PauseExamSitting(ctx context.Context, invocation Invocation, command PauseExamSittingCommand) (ExamSittingView, error) {
-	return a.runExamSittingManagerTransition(ctx, invocation, "pause", command, a.examSittings.Pause)
-}
-
-func (a *App) ResumeExamSitting(ctx context.Context, invocation Invocation, command ResumeExamSittingCommand) (ExamSittingView, error) {
-	return a.runExamSittingManagerTransition(ctx, invocation, "resume", command, a.examSittings.Resume)
-}
-
-func (a *App) CloseExamSitting(ctx context.Context, invocation Invocation, command CloseExamSittingCommand) (ExamSittingView, error) {
-	return a.runExamSittingManagerTransition(ctx, invocation, "close", command, a.examSittings.EarlyClose)
-}
-
-type examSittingManagerTransitionUseCase func(context.Context, Invocation, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
-
-func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation Invocation, metricEvent string,
-	command PauseExamSittingCommand, run examSittingManagerTransitionUseCase,
-) (result ExamSittingView, resultErr error) {
-	defer func() { a.recordOperational("exam_sitting", metricEvent, resultErr) }()
-	view, err := run(ctx, invocation, command)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-func (a *App) ExtendExamSitting(ctx context.Context, invocation Invocation, command ExtendExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Extend(ctx, invocation, command)
-	if err != nil {
-		return ExamSittingView{}, examSittingError(err, true)
-	}
-	return view, nil
-}
-
-type examSittingLifecycleJobUseCases struct{ sittings examSittingUseCases }
+type examSittingLifecycleJobUseCases struct{ sittings examSittingLifecycle }
 
 func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
 	attemptID model.JobAttemptID,
@@ -171,10 +62,6 @@ func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFro
 
 func (useCases examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJob(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	return useCases.sittings.ListLifecycleDue(ctx, options)
-}
-
-func examSittingError(err error, conceal bool) error {
-	return presentExamChildError(err, conceal, "exam.sitting.unavailable", "exam.sitting.not_found")
 }
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }

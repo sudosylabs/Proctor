@@ -33,7 +33,7 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 		revision                 int64
 		want                     string
 	}{
-		{name: "success", revision: 1}, {name: "replay", replay: true, revision: 1}, {name: "archived", archived: true, revision: 1, want: "exam.archived"}, {name: "stale", revision: 2, want: "exam.draft.revision_conflict"}, {name: "authorization denied", denied: true, revision: 1, want: "denied"},
+		{name: "success", revision: 1}, {name: "replay", replay: true, revision: 1}, {name: "archived", archived: true, revision: 1, want: "exam.archived"}, {name: "stale", revision: 2, want: "exam.draft.revision_conflict"}, {name: "authorization denied", denied: true, revision: 1, want: "exam.unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newAuthoringFixture(t)
@@ -45,7 +45,7 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 				fixture.authorizer.err = errors.New("denied")
 			}
 			policy := nativeObservePolicy(t)
-			view, err := fixture.service.ConfigureDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: test.revision, NativePolicy: policy, IdempotencyKey: "native-key"})
+			view, err := fixture.service.ConfigureExamDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: test.revision, NativePolicy: policy, IdempotencyKey: "native-key"})
 			if test.want != "" {
 				if err == nil || !apperror.Is(err, test.want) && err.Error() != test.want {
 					t.Fatalf("error = %v, want %s", err, test.want)
@@ -86,7 +86,7 @@ func TestConfigureDraftNativePolicyNoOpAndMalformed(t *testing.T) {
 		if invalid {
 			policy.BaselineID = "disabled"
 		}
-		_, err := fixture.service.ConfigureDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, NativePolicy: policy, IdempotencyKey: "native-key"})
+		_, err := fixture.service.ConfigureExamDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, NativePolicy: policy, IdempotencyKey: "native-key"})
 		if err == nil || fixture.persistence.nativePolicyUpdate != nil || fixture.effects.updatedRevision != 0 {
 			t.Fatal("invalid or no-op mutation reached persistence")
 		}
@@ -103,7 +103,7 @@ func TestConfigureBrowserPolicyUsesInstallationPin(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := fixture.service.ConfigureDraftBrowserPolicy(context.Background(), fixture.invocation, ConfigureDraftBrowserPolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, Policy: policy, IdempotencyKey: "browser-pin"})
+			result, err := fixture.service.ConfigureExamDraftBrowserPolicy(context.Background(), fixture.invocation, ConfigureDraftBrowserPolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, Policy: policy, IdempotencyKey: "browser-pin"})
 			if origin == "http://institution.example" {
 				if err != nil || !result.Draft.BrowserPolicy.Enabled {
 					t.Fatalf("matching exception: %#v, %v", result, err)

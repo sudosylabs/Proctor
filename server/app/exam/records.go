@@ -126,7 +126,8 @@ func (r *Records) authorize(ctx context.Context, invocation invocation.Invocatio
 	return resolved, action, nil
 }
 
-func (r *Records) GetCompletion(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
+func (r *Records) GetExamSittingRecords(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID) (_ *store.ExamRecordsCompletionSnapshot, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	scope := model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}
 	if !sittingID.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "exam_sitting_id")
@@ -145,7 +146,8 @@ func (r *Records) GetCompletion(ctx context.Context, invocation invocation.Invoc
 	return value, nil
 }
 
-func (r *Records) FindReviewWaiver(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error) {
+func (r *Records) GetSubmissionReviewWaiver(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope) (_ *model.SubmissionReviewWaiver, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !scope.SubmissionID.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "submission_id")
 	}
@@ -192,7 +194,8 @@ func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, 
 	return mapped
 }
 
-func (r *Records) CompleteRecords(ctx context.Context, invocation invocation.Invocation, command CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error) {
+func (r *Records) CompleteExamSittingRecords(ctx context.Context, invocation invocation.Invocation, command CompleteRecordsCommand) (_ *model.ExamSittingRecordsCompletion, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.Scope.SittingID.IsValid() || !command.Scope.SubmissionID.IsZero() || command.ExpectedRevision < 1 || command.AcknowledgedEvidenceRevision < 0 {
 		return nil, apperror.Invalid("exam.invalid", "records_completion")
 	}
@@ -222,7 +225,8 @@ func (r *Records) CompleteRecords(ctx context.Context, invocation invocation.Inv
 	return result.Completion, nil
 }
 
-func (r *Records) WaiveReview(ctx context.Context, invocation invocation.Invocation, command WaiveReviewCommand) (*model.SubmissionReviewWaiver, error) {
+func (r *Records) WaiveSubmissionReview(ctx context.Context, invocation invocation.Invocation, command WaiveReviewCommand) (_ *model.SubmissionReviewWaiver, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.Scope.SubmissionID.IsValid() || command.ExpectedRevision < 0 || command.ExpectedReviewRevision < 0 ||
 		command.ExpectedDeliveryInventoryRevision < 0 || command.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "review_waiver")
@@ -253,7 +257,8 @@ func (r *Records) WaiveReview(ctx context.Context, invocation invocation.Invocat
 	return result.Waiver, nil
 }
 
-func (r *Records) ListHolds(ctx context.Context, invocation invocation.Invocation, query store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
+func (r *Records) ListRetentionHolds(ctx context.Context, invocation invocation.Invocation, query store.ExamRecordsHoldListOptions) (_ *store.ExamRecordsHoldPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if query.Limit < 1 || query.Limit > 200 || !query.After.IsZero() && !query.After.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "hold_page")
 	}
@@ -275,7 +280,8 @@ func (r *Records) ListHolds(ctx context.Context, invocation invocation.Invocatio
 	return page, nil
 }
 
-func (r *Records) CreateHold(ctx context.Context, invocation invocation.Invocation, command CreateRetentionHoldCommand) (*model.RetentionHold, error) {
+func (r *Records) CreateRetentionHold(ctx context.Context, invocation invocation.Invocation, command CreateRetentionHoldCommand) (_ *model.RetentionHold, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "retention_hold")
 	}
@@ -308,7 +314,8 @@ func (r *Records) CreateHold(ctx context.Context, invocation invocation.Invocati
 	return result.Hold, nil
 }
 
-func (r *Records) ReleaseHold(ctx context.Context, invocation invocation.Invocation, command ReleaseRetentionHoldCommand) (*model.RetentionHold, error) {
+func (r *Records) ReleaseRetentionHold(ctx context.Context, invocation invocation.Invocation, command ReleaseRetentionHoldCommand) (_ *model.RetentionHold, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if !command.HoldID.IsValid() || command.ExpectedRevision < 1 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "retention_hold")
 	}

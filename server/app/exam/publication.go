@@ -59,6 +59,7 @@ type PublicationDependencies struct {
 	Now               func() time.Time
 	NewID             func() model.ExamRevisionID
 	InstitutionOrigin string
+	Operational       OperationalRecorder
 }
 
 func NewPublication(deps PublicationDependencies) (*Publication, error) {
@@ -68,7 +69,15 @@ func NewPublication(deps PublicationDependencies) (*Publication, error) {
 	return &Publication{deps: deps}, nil
 }
 
-func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocation, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
+func (p *Publication) recordOperational(event string, err error) {
+	if p.deps.Operational != nil {
+		p.deps.Operational.RecordOperational("exam", event, err)
+	}
+}
+
+func (p *Publication) PublishExamRevision(ctx context.Context, invocation invocation.Invocation, command PublishRevisionCommand) (_ store.ExamRevisionSummary, resultErr error) {
+	defer func() { p.recordOperational("publish_revision", resultErr) }()
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "publication")
@@ -128,11 +137,18 @@ func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocat
 	return *result.Revision, nil
 }
 
-func (p *Publication) Get(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, revisionID model.ExamRevisionID) (store.ExamRevisionSummary, error) {
-	if err := p.authorizeView(ctx, invocation, examID); err != nil {
+// GetRevisionQuery names one Exam Revision.
+type GetRevisionQuery struct {
+	ExamID     model.ExamID
+	RevisionID model.ExamRevisionID
+}
+
+func (p *Publication) GetExamRevision(ctx context.Context, invocation invocation.Invocation, query GetRevisionQuery) (_ store.ExamRevisionSummary, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
+	if err := p.authorizeView(ctx, invocation, query.ExamID); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	revision, err := p.deps.Persistence.GetSummary(ctx, examID, revisionID)
+	revision, err := p.deps.Persistence.GetSummary(ctx, query.ExamID, query.RevisionID)
 	if err != nil {
 		return store.ExamRevisionSummary{}, examStoreErrors.Translate(err)
 	}
@@ -142,7 +158,8 @@ func (p *Publication) Get(ctx context.Context, invocation invocation.Invocation,
 	return *revision, nil
 }
 
-func (p *Publication) List(ctx context.Context, invocation invocation.Invocation, query ListRevisionsQuery) (RevisionPage, error) {
+func (p *Publication) ListExamRevisions(ctx context.Context, invocation invocation.Invocation, query ListRevisionsQuery) (_ RevisionPage, resultErr error) {
+	defer func() { resultErr = publicFailures.Conceal(resultErr) }()
 	if err := p.authorizeView(ctx, invocation, query.ExamID); err != nil {
 		return RevisionPage{}, err
 	}

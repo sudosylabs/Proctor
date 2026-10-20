@@ -188,10 +188,10 @@ type resolvedAuthentication struct {
 	User       *model.User
 }
 
-// ValidatePrincipal revalidates the authoritative session and user state for
-// a previously established session principal. Long-lived transports call this
-// through the App facade before continuing to trust the principal.
-func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal model.Principal) error {
+// validatePrincipal revalidates the authoritative session and user state for
+// a previously established session principal. Long-lived transports reach it
+// through ValidateWebSocketPrincipal before continuing to trust the principal.
+func (s *authenticationService) validatePrincipal(ctx context.Context, principal model.Principal) error {
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return invalidTokenAppError()
 	}
