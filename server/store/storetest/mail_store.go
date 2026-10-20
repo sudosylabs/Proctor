@@ -325,7 +325,9 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 		}
 		failed, err = ss.Mail().StartDelivery(ctx, retryTarget.ID, retryTarget.Revision, model.NowUTC())
 		requireNoError(t, err)
-		failed, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: failed.ID, ExpectedRevision: failed.Revision, Kind: store.MailDeliveryCompletionFailed, PublicFailureCode: "mail.transport.permanent", At: model.NowUTC()})
+		// The reporting node's clock leads the database; the later operator
+		// retry at PostgreSQL time must not move the delivery backwards.
+		failed, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: failed.ID, ExpectedRevision: failed.Revision, Kind: store.MailDeliveryCompletionFailed, PublicFailureCode: "mail.transport.permanent", At: model.NowUTC().Add(time.Minute)})
 		requireNoError(t, err)
 		_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionPermanentFailure, PublicErrorCode: "mail.transport.permanent"})
 		requireNoError(t, err)

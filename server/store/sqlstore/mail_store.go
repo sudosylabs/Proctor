@@ -760,7 +760,10 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		if !isMailDeliveryJobType(job.Type) || job.DedupeKey != current.ID.String() {
 			return nil, store.NewErrConflict("mail_delivery", "job_mismatch", nil)
 		}
-		updated, updatedJob, err := transition(current, job, databaseNow)
+		// Delivery outcomes carry the reporting node's clock; an operator
+		// transition at PostgreSQL time never records an instant before them.
+		at := latestTime(latestTime(databaseNow, current.UpdatedAt), job.UpdatedAt)
+		updated, updatedJob, err := transition(current, job, at)
 		if err != nil {
 			return nil, store.NewErrConflict("mail_delivery", "invalid_transition", err)
 		}
