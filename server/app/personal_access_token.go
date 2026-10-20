@@ -26,11 +26,7 @@ import (
 )
 
 const (
-	actionPersonalAccessTokenCreate                model.Action = "personal_access_token.create"
-	actionPersonalAccessTokenEnable                model.Action = "personal_access_token.enable"
-	actionPersonalAccessTokenDisable               model.Action = "personal_access_token.disable"
-	actionPersonalAccessTokenRevoke                model.Action = "personal_access_token.revoke"
-	personalAccessTokenMutationPreparationLifetime              = 5 * time.Minute
+	personalAccessTokenMutationPreparationLifetime = 5 * time.Minute
 )
 
 // CreatePersonalAccessTokenCommand creates a new PAT for the interactive caller.
@@ -199,7 +195,7 @@ func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 		return nil, err
 	}
 	auditDraft, appErr := s.audit.Prepare(
-		ctx, principal, actionPersonalAccessTokenCreate, resource, invocation.RequestMetadata(),
+		ctx, principal, model.ActionPersonalAccessTokenCreate, resource, invocation.RequestMetadata(),
 		parameters, nil,
 	)
 	if appErr != nil {
@@ -272,7 +268,7 @@ func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 		return nil, err
 	}
 	auditDraft, appErr := s.audit.Prepare(
-		ctx, principal, actionPersonalAccessTokenRevoke, resource, invocation.RequestMetadata(),
+		ctx, principal, model.ActionPersonalAccessTokenRevoke, resource, invocation.RequestMetadata(),
 		map[string]any{"personal_access_token_id": command.TokenID},
 		current.Auditable(),
 	)
@@ -306,9 +302,9 @@ func (s *personalAccessTokenAdministrationService) SetPersonalAccessTokenDisable
 ) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
 	at := model.TimeUTC(s.now())
-	action := actionPersonalAccessTokenDisable
+	action := model.ActionPersonalAccessTokenDisable
 	if !command.Disabled {
-		action = actionPersonalAccessTokenEnable
+		action = model.ActionPersonalAccessTokenEnable
 	}
 	if err := requireInteractiveSession(
 		principal, !command.Disabled, at, s.recentAuthenticationTTL,

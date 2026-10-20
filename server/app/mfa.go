@@ -39,12 +39,6 @@ const (
 	mfaRecoveryCodeBytes = 15
 	mfaTOTPWindow        = int64(1)
 	mfaSealingPurpose    = "mfa.totp"
-
-	actionMFASetup                   model.Action = "mfa.setup"
-	actionMFAActivate                model.Action = "mfa.activate"
-	actionMFAChallenge               model.Action = "mfa.challenge"
-	actionMFARecoveryCodesRegenerate model.Action = "mfa.recovery_codes.regenerate"
-	actionMFADisable                 model.Action = "mfa.disable"
 )
 
 type mfaMechanics struct {

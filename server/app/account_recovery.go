@@ -26,13 +26,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const (
-	auditEmailVerificationRequest  = "authentication.email_verification.request"
-	auditEmailVerificationComplete = "authentication.email_verification.complete"
-	auditPasswordResetRequest      = "authentication.password_reset.request"
-	auditPasswordResetComplete     = "authentication.password_reset.complete"
-)
-
 type accountRecoveryAttemptOperation uint8
 
 const (
@@ -123,7 +116,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	}
 	token.PrepareCreate(model.NewUserTokenID(), now)
 	event := s.audit.Success(
-		auditEmailVerificationRequest,
+		model.ActionAuthenticationEmailVerificationRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
 		invocation,
@@ -214,7 +207,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	}
 	token.PrepareCreate(model.NewUserTokenID(), now)
 	event := s.audit.Success(
-		auditPasswordResetRequest,
+		model.ActionAuthenticationPasswordResetRequest,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		institution.ID.String(),
 		invocation,
@@ -265,7 +258,7 @@ func (s *accountTokenService) CompleteEmailVerification(
 		return nil, err
 	}
 	event := s.audit.Success(
-		auditEmailVerificationComplete,
+		model.ActionAuthenticationEmailVerificationComplete,
 		model.Resource{Type: model.ResourceUser},
 		institution.ID.String(),
 		invocation,
@@ -315,7 +308,7 @@ func (s *accountTokenService) CompletePasswordReset(
 		return nil, err
 	}
 	event := s.audit.Success(
-		auditPasswordResetComplete,
+		model.ActionAuthenticationPasswordResetComplete,
 		model.Resource{Type: model.ResourceUser},
 		institution.ID.String(),
 		invocation,
@@ -420,7 +413,7 @@ func recoveryCredentialRateIdentity(rawToken string) string {
 }
 
 func recoveryAuditEvent(
-	action string,
+	action model.Action,
 	resource model.Resource,
 	institutionID string,
 	metadata model.RequestMetadata,
@@ -429,7 +422,7 @@ func recoveryAuditEvent(
 	authenticationMethod string,
 ) *model.AuditEvent {
 	event := &model.AuditEvent{
-		Action: action, Resource: resource,
+		Action: string(action), Resource: resource,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
 		Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: nodeID, AuthMethod: authenticationMethod,

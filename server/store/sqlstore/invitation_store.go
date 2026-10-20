@@ -2192,7 +2192,7 @@ func validateExternalInvitationNotice(occurrence *model.MailOccurrence, delivery
 }
 
 func validateExternalInvitationAudit(event *model.AuditEvent, invitation *model.Invitation, provider string) error {
-	if event == nil || invitation == nil || event.Action != "invitation.accept" || event.Status != model.AuditStatusSuccess ||
+	if event == nil || invitation == nil || event.Action != string(model.ActionInvitationAccept) || event.Status != model.AuditStatusSuccess ||
 		event.ScopeType != invitation.ScopeType || event.ScopeID != invitation.ScopeID ||
 		event.ClientType != string(model.SessionClientWeb) || event.AuthMethod == "" {
 		return store.NewErrInvalidInput("invitation", "external_acceptance_audit", nil)
@@ -2413,7 +2413,7 @@ func validateTeacherAcademicUnitInvitationAcceptance(input *store.TeacherAcademi
 	}
 	queued := input.Delivery.State == model.MailDeliveryQueued && len(input.Delivery.EncryptedPayload) > 0 && input.DeliveryJob.Status == model.JobStatusQueued
 	suppressed := input.Delivery.State == model.MailDeliverySuppressed && input.Delivery.PublicFailureCode == model.MailDeliveryDisabledCode && len(input.Delivery.EncryptedPayload) == 0 && input.DeliveryJob.Status == model.JobStatusCanceled
-	if (!queued && !suppressed) || input.AuditEvent.Action != "invitation.accept" || input.AuditEvent.Resource.Type != model.ResourceAcademicUnit || input.AuditEvent.ScopeType != model.RoleScopeAcademicUnit {
+	if (!queued && !suppressed) || input.AuditEvent.Action != string(model.ActionInvitationAccept) || input.AuditEvent.Resource.Type != model.ResourceAcademicUnit || input.AuditEvent.ScopeType != model.RoleScopeAcademicUnit {
 		return store.NewErrInvalidInput("invitation", "acceptance_relationship", nil)
 	}
 	return nil
@@ -2463,7 +2463,7 @@ func validateStudentClassInvitationAcceptance(input *store.StudentClassInvitatio
 		command.DeliveryID != input.Delivery.ID || input.DeliveryJob.DedupeKey != input.Delivery.ID.String() {
 		return store.NewErrInvalidInput("invitation", "acceptance_mail_relationship", err)
 	}
-	if !input.AuditEvent.ID.IsZero() || input.AuditEvent.Status != model.AuditStatusSuccess || input.AuditEvent.Action != "invitation.accept" ||
+	if !input.AuditEvent.ID.IsZero() || input.AuditEvent.Status != model.AuditStatusSuccess || input.AuditEvent.Action != string(model.ActionInvitationAccept) ||
 		input.AuditEvent.Resource.Type != model.ResourceClass || input.AuditEvent.ScopeType != model.RoleScopeClass {
 		return store.NewErrInvalidInput("invitation", "acceptance_audit", nil)
 	}

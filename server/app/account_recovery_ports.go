@@ -111,7 +111,7 @@ func newAccountTokenService(
 type accountTokenAuditRecorder struct{ nodeID string }
 
 func (r accountTokenAuditRecorder) Success(
-	action string,
+	action model.Action,
 	resource model.Resource,
 	institutionID string,
 	invocation Invocation,

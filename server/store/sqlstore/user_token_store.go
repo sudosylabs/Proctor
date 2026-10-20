@@ -33,14 +33,10 @@ type SQLUserTokenStore struct {
 }
 
 const (
-	userTokenAuditEmailVerificationRequest  = "authentication.email_verification.request"
-	userTokenAuditEmailVerificationComplete = "authentication.email_verification.complete"
-	userTokenAuditPasswordResetRequest      = "authentication.password_reset.request"
-	userTokenAuditPasswordResetComplete     = "authentication.password_reset.complete"
-	userEmailChangeTokenLifetimeMinimum     = 5 * time.Minute
-	userEmailChangeTokenLifetimeMaximum     = 30 * 24 * time.Hour
-	userEmailChangeWarningLifetimeMinimum   = time.Minute
-	userEmailChangeWarningLifetimeMaximum   = 24 * time.Hour
+	userEmailChangeTokenLifetimeMinimum   = 5 * time.Minute
+	userEmailChangeTokenLifetimeMaximum   = 30 * 24 * time.Hour
+	userEmailChangeWarningLifetimeMinimum = time.Minute
+	userEmailChangeWarningLifetimeMaximum = 24 * time.Hour
 )
 
 func validateUserEmailMail(userID model.UserID, occurrence *model.MailOccurrence, delivery *model.MailDelivery, job *model.Job, kind model.MailOccurrenceKind, key model.MailTemplateKey) (string, error) {
@@ -445,11 +441,11 @@ func (s SQLUserTokenStore) Issue(
 		candidate.Purpose == model.UserTokenPasswordReset && input.Occurrence.TemplateKey != model.MailTemplateIdentityPasswordReset {
 		return nil, store.NewErrInvalidInput("user_token", "mail_template", nil)
 	}
-	expectedAuditAction := userTokenAuditEmailVerificationRequest
+	expectedAuditAction := model.ActionAuthenticationEmailVerificationRequest
 	if candidate.Purpose == model.UserTokenPasswordReset {
-		expectedAuditAction = userTokenAuditPasswordResetRequest
+		expectedAuditAction = model.ActionAuthenticationPasswordResetRequest
 	}
-	if input.AuditEvent.Action != expectedAuditAction {
+	if input.AuditEvent.Action != string(expectedAuditAction) {
 		return nil, store.NewErrInvalidInput("user_token", "audit_action", nil)
 	}
 	if err := validateRecoveryMail(input.Occurrence, input.Delivery, input.Job); err != nil {
@@ -584,7 +580,7 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		); err != nil {
 			return nil, err
 		}
-		event, err := tokenAuditEvent(auditEvent, token.UserID, userTokenAuditEmailVerificationComplete)
+		event, err := tokenAuditEvent(auditEvent, token.UserID, model.ActionAuthenticationEmailVerificationComplete)
 		if err != nil {
 			return nil, err
 		}
@@ -710,7 +706,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		); err != nil {
 			return nil, err
 		}
-		event, err := tokenAuditEvent(input.AuditEvent, token.UserID, userTokenAuditPasswordResetComplete)
+		event, err := tokenAuditEvent(input.AuditEvent, token.UserID, model.ActionAuthenticationPasswordResetComplete)
 		if err != nil {
 			return nil, err
 		}
@@ -907,9 +903,9 @@ func consumeUserTokens(
 func tokenAuditEvent(
 	event *model.AuditEvent,
 	userID string,
-	expectedAction string,
+	expectedAction model.Action,
 ) (*model.AuditEvent, error) {
-	if event == nil || event.Status != model.AuditStatusSuccess || event.Action != expectedAction ||
+	if event == nil || event.Status != model.AuditStatusSuccess || event.Action != string(expectedAction) ||
 		event.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(event.ScopeID).IsValid() {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}

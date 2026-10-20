@@ -258,6 +258,16 @@ Operational logs and audit records are separate. PostgreSQL audit events are
 authoritative and include the safe actor/principal, action, resource, academic
 scope, outcome, request/node context, time, and approved prior/result data.
 
+Audit action names are declared once, as `model.Action` constants. Every
+permission action is an audit action; event-only actions such as
+`authentication.login`, `invitation.accept`, or `user.search` live in the model
+audit action catalog, are never permissions, and no Role or Personal Access
+Token can grant them. Code outside `model` names an action only through those
+constants, never through a string literal or a local constant. Sets derived
+from the catalog, such as the academic audit actions (declared per action with
+`AcademicAudit`), are never maintained by hand. Architecture and model tests
+enforce both halves.
+
 Authorization decisions fail closed when their durable record cannot be
 written. A critical mutation writes an `attempt` before state changes and that
 attempt transitions once to `success` or `fail`. If terminal completion fails

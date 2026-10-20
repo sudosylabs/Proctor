@@ -136,7 +136,6 @@ func (s SQLUserStore) Create(ctx context.Context, input *store.UserCreation) (*s
 }
 
 const (
-	publicLocalRegistrationAuditAction     = "authentication.public_registration"
 	publicRegistrationTokenLifetimeMinimum = 5 * time.Minute
 	publicRegistrationTokenLifetimeMaximum = 30 * 24 * time.Hour
 	publicRegistrationMailLifetimeMinimum  = time.Minute
@@ -164,7 +163,7 @@ func (s SQLUserStore) RegisterLocal(ctx context.Context, input *store.PublicLoca
 		validateInitialUserSettingsDocument(&user, settings) != nil || validateUserDefaultProfilePictureJob(&user, &defaultJob) != nil ||
 		token.Validate() != nil || token.UserID != user.ID || token.Purpose != model.UserTokenEmailVerification || token.Target != user.Email ||
 		audit == nil || !audit.ID.IsZero() || !audit.CreatedAt.IsZero() || !audit.UpdatedAt.IsZero() ||
-		audit.Action != publicLocalRegistrationAuditAction || audit.ActorID.IsValid() ||
+		audit.Action != string(model.ActionAuthenticationPublicRegistration) || audit.ActorID.IsValid() ||
 		audit.Resource.Type != model.ResourceUser || audit.Resource.ID != user.ID.String() ||
 		audit.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(audit.ScopeID).IsValid() || audit.Status != model.AuditStatusSuccess {
 		return nil, store.NewErrInvalidInput("user", "public_registration", nil)

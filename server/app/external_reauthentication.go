@@ -42,7 +42,7 @@ func (s *externalAuthenticationService) BeginExternalReauthentication(ctx contex
 	default:
 		return nil, apperror.New("authentication.external.request.invalid")
 	}
-	auditID, err := s.mutationAudit.Begin(ctx, invocation, "authentication.reauthenticate", model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()}, "external", map[string]any{"session_id": principal.SessionID.String(), "provider": principal.AuthenticationProviderID, "task": command.Task}, nil)
+	auditID, err := s.mutationAudit.Begin(ctx, invocation, model.ActionAuthenticationReauthenticate, model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()}, "external", map[string]any{"session_id": principal.SessionID.String(), "provider": principal.AuthenticationProviderID, "task": command.Task}, nil)
 	if err != nil {
 		return nil, err
 	}

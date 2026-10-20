@@ -171,7 +171,7 @@ func (s *mfaApplicationService) SetupMFA(
 		return nil, appErr
 	}
 	auditID, appErr := s.audit.Begin(
-		ctx, invocation, actionMFASetup, resource, nil,
+		ctx, invocation, model.ActionMFASetup, resource, nil,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -239,7 +239,7 @@ func (s *mfaApplicationService) ActivateMFA(
 		return nil, appErr
 	}
 	auditID, appErr := s.audit.Begin(
-		ctx, invocation, actionMFAActivate, resource, credential.Auditable(),
+		ctx, invocation, model.ActionMFAActivate, resource, credential.Auditable(),
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -279,7 +279,7 @@ func (s *mfaApplicationService) ChallengeMFA(
 	if appErr != nil {
 		return nil, appErr
 	}
-	auditID, appErr := s.audit.Begin(ctx, invocation, actionMFAChallenge, resource, nil)
+	auditID, appErr := s.audit.Begin(ctx, invocation, model.ActionMFAChallenge, resource, nil)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -342,7 +342,7 @@ func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 		return nil, appErr
 	}
 	auditID, appErr := s.audit.Begin(
-		ctx, invocation, actionMFARecoveryCodesRegenerate, resource, nil,
+		ctx, invocation, model.ActionMFARecoveryCodesRegenerate, resource, nil,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -382,7 +382,7 @@ func (s *mfaApplicationService) DisableMFA(
 	if appErr != nil {
 		return appErr
 	}
-	auditID, appErr := s.audit.Begin(ctx, invocation, actionMFADisable, resource, nil)
+	auditID, appErr := s.audit.Begin(ctx, invocation, model.ActionMFADisable, resource, nil)
 	if appErr != nil {
 		return appErr
 	}

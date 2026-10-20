@@ -146,6 +146,10 @@ type ActionDefinition struct {
 	// SystemAdministratorOnly keeps an action exclusively in the protected
 	// built-in Role. It cannot be delegated through custom Roles or PAT scopes.
 	SystemAdministratorOnly bool
+	// AcademicAudit admits the action's audit events to academic audit
+	// visibility (academic_audit.view), whose closed catalog is
+	// AcademicAuditActions.
+	AcademicAudit bool
 }
 
 // AcceptsResource reports whether the action may authorize the actual target
@@ -188,11 +192,13 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionRoleBindingView, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true,
+		AcademicAudit: true,
 	},
 	ActionRoleBindingManage: {
 		Action: ActionRoleBindingManage, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true,
+		AcademicAudit: true,
 	},
 	ActionAuditView: {
 		Action: ActionAuditView, ResourceType: ResourceInstitution,
@@ -201,10 +207,12 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionAcademicAuditView: {
 		Action: ActionAcademicAuditView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionUserView: {
 		Action: ActionUserView, ResourceType: ResourceUser,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionUserManage: {
 		Action: ActionUserManage, ResourceType: ResourceUser,
@@ -346,69 +354,84 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		CompatibleResourceTypes: []ResourceType{ResourceInstitution},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicUnitManage: {
 		Action: ActionAcademicUnitManage, ResourceType: ResourceAcademicUnit,
 		CompatibleResourceTypes: []ResourceType{ResourceInstitution},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicUnitMembersView: {
 		Action: ActionAcademicUnitMembersView, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicUnitMembersManage: {
 		Action: ActionAcademicUnitMembersManage, ResourceType: ResourceAcademicUnit,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicPeriodView: {
 		Action: ActionAcademicPeriodView, ResourceType: ResourceAcademicPeriod,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicPeriodManage: {
 		Action: ActionAcademicPeriodManage, ResourceType: ResourceAcademicPeriod,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionProgrammeView: {
 		Action: ActionProgrammeView, ResourceType: ResourceProgramme,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionProgrammeManage: {
 		Action: ActionProgrammeManage, ResourceType: ResourceProgramme,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionProgrammeLevelView: {
 		Action: ActionProgrammeLevelView, ResourceType: ResourceProgrammeLevel,
 		CompatibleResourceTypes: []ResourceType{ResourceProgramme},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionProgrammeLevelManage: {
 		Action: ActionProgrammeLevelManage, ResourceType: ResourceProgrammeLevel,
 		CompatibleResourceTypes: []ResourceType{ResourceProgramme},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionClassView: {
 		Action: ActionClassView, ResourceType: ResourceClass,
 		CompatibleResourceTypes: []ResourceType{ResourceProgrammeLevel, ResourceAcademicUnit},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionClassManage: {
 		Action: ActionClassManage, ResourceType: ResourceClass,
 		CompatibleResourceTypes: []ResourceType{ResourceProgrammeLevel},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionClassMembersView: {
 		Action: ActionClassMembersView, ResourceType: ResourceClass,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionClassMembersManage: {
 		Action: ActionClassMembersManage, ResourceType: ResourceClass,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAcademicProgressionManage: {
 		Action: ActionAcademicProgressionManage, ResourceType: ResourceClass,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionAccessPolicyView: {
 		Action: ActionAccessPolicyView, ResourceType: ResourceInstitution,
@@ -446,26 +469,31 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionInvitationView, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionInvitationCreate: {
 		Action: ActionInvitationCreate, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionInvitationManage: {
 		Action: ActionInvitationManage, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionOnboardingBatchView: {
 		Action: ActionOnboardingBatchView, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionOnboardingBatchManage: {
 		Action: ActionOnboardingBatchManage, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+		AcademicAudit: true,
 	},
 	ActionExternalIdentityManage: {
 		Action: ActionExternalIdentityManage, ResourceType: ResourceUser,

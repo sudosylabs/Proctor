@@ -97,7 +97,7 @@ func (a userSettingsAuditAdapter) PrepareReplacement(
 	metadata := input.Invocation.RequestMetadata()
 	return &model.AuditEvent{
 		ActorID: principal.UserID, SessionID: principal.SessionID,
-		Action:    "user.settings.replace",
+		Action:    string(model.ActionUserSettingsReplace),
 		Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
@@ -144,7 +144,7 @@ func (s *auditService) BeginAuthentication(
 	}
 	event := &model.AuditEvent{
 		ActorID: model.UserID(userID),
-		Action:  "authentication.external_login",
+		Action:  string(model.ActionAuthenticationExternalLogin),
 		Resource: model.Resource{
 			Type: model.ResourceUser,
 			ID:   userID,
@@ -166,9 +166,6 @@ func (s *auditService) BeginAuthentication(
 	}
 	return saved, nil
 }
-
-// localLoginAuditAction names every durable local-password login outcome.
-const localLoginAuditAction = "authentication.login"
 
 // BeginLocalLogin persists the attempt for a password login whose credential
 // and second factor were proved, before any Session is issued. The event is
@@ -238,7 +235,7 @@ func localLoginAuditEvent(nodeID, institutionID string, clientType model.Session
 	metadata model.RequestMetadata,
 ) *model.AuditEvent {
 	return &model.AuditEvent{
-		Action:    localLoginAuditAction,
+		Action:    string(model.ActionAuthenticationLogin),
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID,
 		RequestID: metadata.RequestID, NodeID: nodeID,
 		ClientType: string(clientType), AuthMethod: "password",
@@ -267,7 +264,7 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
 	}
 	event := &model.AuditEvent{
-		Action: "authentication.external_login",
+		Action: string(model.ActionAuthenticationExternalLogin),
 		Resource: model.Resource{
 			Type: model.ResourceInstitution,
 			ID:   institutionID,
@@ -556,7 +553,7 @@ func (s *auditService) RecordUserSearchDecision(
 	allowed bool,
 ) error {
 	return s.recordDecision(
-		ctx, principal, "user.search", resource,
+		ctx, principal, string(model.ActionUserSearch), resource,
 		scopeType, scopeID, metadata, allowed,
 	)
 }

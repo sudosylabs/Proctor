@@ -55,7 +55,7 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 		input.VerificationJob.Type != model.JobTypeMailDeliverCredential {
 		t.Fatalf("registration aggregate = %#v", input)
 	}
-	if input.AuditEvent.ActorID.IsValid() || input.AuditEvent.Action != publicRegistrationAuditAction ||
+	if input.AuditEvent.ActorID.IsValid() || input.AuditEvent.Action != string(model.ActionAuthenticationPublicRegistration) ||
 		strings.Contains(string(input.AuditEvent.Parameters), input.User.Email) || strings.Contains(string(input.AuditEvent.Parameters), "correct horse") {
 		t.Fatalf("registration audit leaked private input: %#v", input.AuditEvent)
 	}

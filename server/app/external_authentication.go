@@ -639,7 +639,7 @@ func (s *externalAuthenticationService) complete(
 			return nil, appErr
 		}
 		provisionAudit = &model.AuditEvent{
-			Action:    "authentication.external_provision",
+			Action:    string(model.ActionAuthenticationExternalProvision),
 			ScopeType: model.RoleScopeInstitution,
 			ScopeID:   institution.ID.String(), Status: model.AuditStatusSuccess,
 			RequestID:  metadata.RequestID,

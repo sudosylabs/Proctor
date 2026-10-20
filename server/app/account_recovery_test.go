@@ -239,7 +239,7 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 	if want := now.Add(45 * time.Minute); !tokens.issued.ExpiresAt.Equal(want) {
 		t.Fatalf("token expiry = %s, want %s", tokens.issued.ExpiresAt, want)
 	}
-	if tokens.event == nil || tokens.event.Action != auditPasswordResetRequest {
+	if tokens.event == nil || tokens.event.Action != string(model.ActionAuthenticationPasswordResetRequest) {
 		t.Fatalf("issue audit = %#v", tokens.event)
 	}
 	if len(mailer.messages) != 1 || !strings.Contains(mailer.messages[0], "#token="+accountTokenTestRawToken) {
@@ -367,7 +367,7 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 			if at != now.UnixMilli() {
 				t.Fatalf("consume time = %d, want %d", at, now.UnixMilli())
 			}
-			if event == nil || event.Action != auditPasswordResetComplete {
+			if event == nil || event.Action != string(model.ActionAuthenticationPasswordResetComplete) {
 				t.Fatalf("completion audit = %#v", event)
 			}
 			return &store.PasswordResetResult{

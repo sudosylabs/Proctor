@@ -230,7 +230,7 @@ func (s SQLInstallationStore) ReconcileSystemAdministratorRole(
 
 func validateSystemAdministratorRoleReconciliation(input *store.SystemAdministratorRoleReconciliation) error {
 	if input == nil || input.ReconciledAt <= 0 || input.AuditEvent == nil ||
-		!input.AuditEvent.ID.IsZero() || input.AuditEvent.Action != "role.system_admin.reconcile" ||
+		!input.AuditEvent.ID.IsZero() || input.AuditEvent.Action != string(model.ActionRoleSystemAdminReconcile) ||
 		input.AuditEvent.Status != model.AuditStatusSuccess || input.AuditEvent.NodeID == "" ||
 		!input.AuditEvent.ActorID.IsZero() || !input.AuditEvent.SessionID.IsZero() ||
 		len(input.RequiredPermissions) == 0 {

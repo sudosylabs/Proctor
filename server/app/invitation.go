@@ -1754,7 +1754,7 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 		return nil, apperror.New("invitation.mail_unavailable").Wrap(err)
 	}
 	metadata := invocation.RequestMetadata()
-	event := &model.AuditEvent{ActorID: user.ID, Action: "invitation.accept",
+	event := &model.AuditEvent{ActorID: user.ID, Action: string(model.ActionInvitationAccept),
 		Resource: model.Resource{Type: model.ResourceClass, ID: invitation.ClassID.String()}, ScopeType: model.RoleScopeClass,
 		ScopeID: invitation.ClassID.String(), Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: s.nodeID, ClientType: "web", AuthMethod: "invitation", IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent}
@@ -1831,7 +1831,7 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		return nil, apperror.New("invitation.mail_unavailable").Wrap(err)
 	}
 	metadata := invocation.RequestMetadata()
-	event := &model.AuditEvent{ActorID: user.ID, Action: "invitation.accept",
+	event := &model.AuditEvent{ActorID: user.ID, Action: string(model.ActionInvitationAccept),
 		Resource: model.Resource{Type: model.ResourceAcademicUnit, ID: invitation.AcademicUnitID.String()}, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: invitation.AcademicUnitID.String(), Status: model.AuditStatusSuccess, RequestID: metadata.RequestID,
 		NodeID: s.nodeID, ClientType: "web", AuthMethod: "invitation", IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent}
@@ -1938,7 +1938,7 @@ func (s *invitationService) acceptExternalIdentity(ctx context.Context, state *m
 	if err != nil {
 		return nil, err
 	}
-	input.AuditEvent = &model.AuditEvent{ActorID: user.ID, Action: "invitation.accept", Resource: resource,
+	input.AuditEvent = &model.AuditEvent{ActorID: user.ID, Action: string(model.ActionInvitationAccept), Resource: resource,
 		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, Status: model.AuditStatusSuccess,
 		RequestID: metadata.RequestID, NodeID: s.nodeID, ClientType: "web", AuthMethod: authenticationMethod,
 		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent, Parameters: auditParameters}
@@ -2000,7 +2000,7 @@ func (s *invitationService) acceptScopedRoleByClaimHash(
 		resourceType = model.ResourceInstitution
 	}
 	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{
-		Invocation: invocation, Action: model.Action("invitation.accept"),
+		Invocation: invocation, Action: model.ActionInvitationAccept,
 		Resource:  model.Resource{Type: resourceType, ID: invitation.ScopeID},
 		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID,
 		Operation: "accept_scoped_role_invitation", Value: invitation.Auditable(),

@@ -153,7 +153,7 @@ func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context)
 		RequiredPermissions: model.AllActions(),
 		ReconciledAt:        s.now().UnixMilli(),
 		AuditEvent: &model.AuditEvent{
-			Action: "role.system_admin.reconcile", Status: model.AuditStatusSuccess,
+			Action: string(model.ActionRoleSystemAdminReconcile), Status: model.AuditStatusSuccess,
 			NodeID: s.nodeID, ClientType: "system",
 		},
 	})
@@ -231,7 +231,7 @@ func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation
 		RoleBinding:  &model.RoleBinding{},
 		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), administrator.CreatedAt),
 		AuditEvent: &model.AuditEvent{
-			Action:     "installation.bootstrap",
+			Action:     string(model.ActionInstallationBootstrap),
 			RequestID:  metadata.RequestID,
 			NodeID:     s.nodeID,
 			ClientType: "bootstrap",

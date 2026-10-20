@@ -149,7 +149,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 	if got := fmt.Sprintf("%#v", request); strings.Contains(got, raw) || strings.Contains(got, tokens.candidate.TokenHash) || strings.Contains(got, string(model.ActionClassView)) {
 		t.Fatalf("credential, hash, or full scopes entered mail request: %s", got)
 	}
-	if audit.action != actionPersonalAccessTokenCreate ||
+	if audit.action != model.ActionPersonalAccessTokenCreate ||
 		audit.resource != (model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}) {
 		t.Fatalf("audit action=%q resource=%#v", audit.action, audit.resource)
 	}

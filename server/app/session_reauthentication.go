@@ -71,7 +71,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 		return nil, passwordWorkError(err, "authentication.internal")
 	}
 	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{
-		Invocation: invocation, Action: "authentication.reauthenticate",
+		Invocation: invocation, Action: model.ActionAuthenticationReauthenticate,
 		Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
 		Operation: "password", Value: map[string]any{"session_id": principal.SessionID.String()},
 	}, s.now, func(ctx context.Context, reference mutationAttemptReference) (*store.SessionReauthenticationResult, error) {

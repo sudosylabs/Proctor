@@ -18,8 +18,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const publicRegistrationAuditAction = "authentication.public_registration"
-
 // RegisterLocalUserCommand contains the public, request-only account fields.
 // Password and mailbox values never enter audit data or successful responses.
 type RegisterLocalUserCommand struct {
@@ -146,7 +144,7 @@ func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invoc
 		return registrationUnavailable(err)
 	}
 	audit := recoveryAuditEvent(
-		publicRegistrationAuditAction,
+		model.ActionAuthenticationPublicRegistration,
 		model.Resource{Type: model.ResourceUser, ID: user.ID.String()}, institutionID.String(),
 		invocation.RequestMetadata(), s.nodeID, nil, "anonymous",
 	)

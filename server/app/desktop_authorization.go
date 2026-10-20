@@ -678,7 +678,7 @@ func (a desktopAuthorizationAuditAdapter) PrepareIssue(ctx context.Context, invo
 	}
 	return a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: userID,
 		sessionID: invocation.Principal().SessionID, clientType: model.SessionClientWeb},
-		model.Action("authentication.desktop_authorization"),
+		model.ActionAuthenticationDesktopAuthorization,
 		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
 		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "issue_code"})
 }
@@ -692,7 +692,7 @@ func (a desktopAuthorizationAuditAdapter) PrepareExchange(ctx context.Context, i
 		return nil, apperror.New("audit.unavailable")
 	}
 	return a.audit.BeginAccountActionAtScope(ctx, accountAuditActor{userID: userID, clientType: model.SessionClientDesktop},
-		model.Action("authentication.desktop_session_issue"),
+		model.ActionAuthenticationDesktopSessionIssue,
 		model.Resource{Type: model.ResourceUser, ID: userID.String()}, model.RoleScopeInstitution,
 		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "exchange"})
 }

@@ -109,7 +109,7 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 		if row.PasswordRotated {
 			changedFields = append(changedFields, "password_credential")
 		}
-		action := "authentication.administrator_recovery"
+		action := model.ActionAuthenticationAdministratorRecovery
 		resultFields := map[string]any{
 			"changed_fields":       changedFields,
 			"local_login_enabled":  row.LocalLoginEnabled,
@@ -121,7 +121,7 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 			if !row.MFAGeneration.Valid || row.MFAGeneration.Int64 <= 0 {
 				return nil, store.NewErrConflict("administrator_recovery", "mfa_evidence_invalid", nil)
 			}
-			action = "authentication.administrator_mfa_reset"
+			action = model.ActionAuthenticationAdministratorMFAReset
 			resultFields = map[string]any{
 				"changed_fields": []string{"mfa_credentials", "mfa_recovery_codes", "user_mfa_recovery", "user_access"},
 				"mfa_reset":      true, "mfa_recovery_generation": row.MFAGeneration.Int64, "reenrollment_required": true,
@@ -132,7 +132,7 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 			return nil, err
 		}
 		event := &model.AuditEvent{
-			Action: action, Resource: model.Resource{Type: model.ResourceUser, ID: row.UserID},
+			Action: string(action), Resource: model.Resource{Type: model.ResourceUser, ID: row.UserID},
 			ScopeType: model.RoleScopeInstitution, ScopeID: row.InstitutionID, Status: model.AuditStatusSuccess,
 			NodeID: strings.TrimSpace(input.NodeID), ClientType: "system", Result: result,
 		}

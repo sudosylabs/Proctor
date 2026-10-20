@@ -143,24 +143,8 @@ func (a auditListingAuthorization) AuthorizeList(ctx context.Context, invocation
 	return store.AuditVisibilityScope{
 		AcademicInstitutionWide: academic.InstitutionWide,
 		AcademicUnitRootIDs:     append([]model.AcademicUnitID(nil), academic.AcademicUnitRootIDs...),
-		AllowedActions:          academicAuditActions(),
+		AllowedActions:          model.AcademicAuditActions(),
 	}, nil
-}
-
-func academicAuditActions() []string {
-	return []string{
-		string(model.ActionAcademicAuditView), string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage),
-		string(model.ActionAcademicUnitMembersView), string(model.ActionAcademicUnitMembersManage),
-		string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
-		string(model.ActionProgrammeView), string(model.ActionProgrammeManage),
-		string(model.ActionProgrammeLevelView), string(model.ActionProgrammeLevelManage),
-		string(model.ActionClassView), string(model.ActionClassManage), string(model.ActionClassMembersView),
-		string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
-		string(model.ActionInvitationView), string(model.ActionInvitationCreate), string(model.ActionInvitationManage),
-		string(model.ActionOnboardingBatchView), string(model.ActionOnboardingBatchManage),
-		string(model.ActionRoleBindingView), string(model.ActionRoleBindingManage),
-		string(model.ActionUserView), "user.search",
-	}
 }
 
 func auditListingError(err error) error {

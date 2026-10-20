@@ -251,13 +251,13 @@ func validatePersonalAccessTokenPreparationInput(input *store.PersonalAccessToke
 }
 
 func validatePersonalAccessTokenPreparationAudit(input *store.PersonalAccessTokenMutationPreparation, event *model.AuditEvent) error {
-	expectedAction := map[store.PersonalAccessTokenMutationKind]string{
-		store.PersonalAccessTokenMutationCreate:  "personal_access_token.create",
-		store.PersonalAccessTokenMutationEnable:  "personal_access_token.enable",
-		store.PersonalAccessTokenMutationDisable: "personal_access_token.disable",
-		store.PersonalAccessTokenMutationRevoke:  "personal_access_token.revoke",
+	expectedAction := map[store.PersonalAccessTokenMutationKind]model.Action{
+		store.PersonalAccessTokenMutationCreate:  model.ActionPersonalAccessTokenCreate,
+		store.PersonalAccessTokenMutationEnable:  model.ActionPersonalAccessTokenEnable,
+		store.PersonalAccessTokenMutationDisable: model.ActionPersonalAccessTokenDisable,
+		store.PersonalAccessTokenMutationRevoke:  model.ActionPersonalAccessTokenRevoke,
 	}[input.Kind]
-	if event.ActorID != input.UserID || !event.SessionID.IsValid() || event.Status != model.AuditStatusAttempt || event.Action != expectedAction ||
+	if event.ActorID != input.UserID || !event.SessionID.IsValid() || event.Status != model.AuditStatusAttempt || expectedAction == "" || event.Action != string(expectedAction) ||
 		event.Resource.Type != model.ResourceInstitution || event.ScopeType != model.RoleScopeInstitution || event.Resource.ID != event.ScopeID ||
 		event.ErrorCode != "" || len(event.Result) != 0 {
 		return store.NewErrInvalidInput("personal_access_token", "audit", nil)

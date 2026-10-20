@@ -217,7 +217,7 @@ func validateUserSettingsReplacement(input *store.UserSettingsReplacement, comma
 
 func validateUserSettingsReplacementAudit(input *store.UserSettingsReplacement) error {
 	if input.AuditEvent == nil || !input.AuditEvent.ID.IsZero() ||
-		input.AuditEvent.ActorID != input.UserID || input.AuditEvent.Action != "user.settings.replace" ||
+		input.AuditEvent.ActorID != input.UserID || input.AuditEvent.Action != string(model.ActionUserSettingsReplace) ||
 		input.AuditEvent.Resource != (model.Resource{Type: model.ResourceUser, ID: input.UserID.String()}) ||
 		input.AuditEvent.Status != model.AuditStatusSuccess {
 		return store.NewErrInvalidInput("user_settings_document", "audit_event", nil)
