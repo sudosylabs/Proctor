@@ -257,7 +257,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 		if racedRetirement.Retired != 0 {
 			t.Fatal("hold and retirement both committed")
 		}
-		releaseRace := &store.ExamRecordsHoldRelease{ExamRecordsMutation: recordsMutation(t, ctx, ss, f.unitID, scope, principal, model.ActionRetentionHoldRelease), HoldID: racedHold.Hold.ID, ExpectedRevision: racedHold.Hold.Revision, ReasonCode: "case_closed", RecentAuthenticationTTL: 10 * time.Minute}
+		releaseRace := &store.ExamRecordsHoldRelease{ExamRecordsMutation: recordsMutation(t, ctx, ss, f.unitID, scope, principal, model.ActionRetentionHoldRelease), HoldID: racedHold.Hold.ID, ExpectedRevision: racedHold.Hold.Revision, ReasonCode: "case_closed", PrivateReason: "Concurrent preservation review is finished.", RecentAuthenticationTTL: 10 * time.Minute}
 		_, err = ss.ExamRecords().ReleaseHold(ctx, releaseRace, examCommand(f.manager.ID, store.ExamRecordsReleaseHoldOperation, "release-racing-hold", "release-racing-hold"))
 		requireNoError(t, err)
 		reconcile(store.RetentionReconciliationResult{Scheduled: 2})
