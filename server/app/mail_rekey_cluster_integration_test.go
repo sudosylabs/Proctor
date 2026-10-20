@@ -75,7 +75,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		JobStore: persistence.Job(), MailRekey: persistence.Mail(), MailSealer: oldSealer,
 	}), model.JobTypeMailRekey)
 	oldDescriptor.BaseRetryDelay, oldDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
-	oldDescriptor.LeaseDuration, oldDescriptor.HeartbeatInterval = 100*time.Millisecond, 20*time.Millisecond
+	oldDescriptor.LeaseDuration, oldDescriptor.HeartbeatInterval = mailRekeyClusterLease, mailRekeyClusterHeartbeat
 	oldNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{oldDescriptor},
 		NodeID: "old-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond}})
 	if err != nil {
@@ -102,7 +102,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		JobStore: persistence.Job(), MailRekey: persistence.Mail(), MailSealer: newSealer,
 	}), model.JobTypeMailRekey)
 	newDescriptor.BaseRetryDelay, newDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
-	newDescriptor.LeaseDuration, newDescriptor.HeartbeatInterval = 100*time.Millisecond, 20*time.Millisecond
+	newDescriptor.LeaseDuration, newDescriptor.HeartbeatInterval = mailRekeyClusterLease, mailRekeyClusterHeartbeat
 	newNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{newDescriptor},
 		NodeID: "new-primary-node", Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond}})
 	if err != nil {
@@ -128,11 +128,20 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 	}
 }
 
+// Neither node dies here, so leases only have to survive scheduling delay on a
+// loaded host: a missed heartbeat must not expire a live claim and add an
+// attempt. Convergence is polled against a generous bound for the same reason.
+const (
+	mailRekeyClusterLease       = 10 * time.Second
+	mailRekeyClusterHeartbeat   = time.Second
+	mailRekeyClusterConvergence = 30 * time.Second
+)
+
 func waitForMailRekeyJob(t *testing.T, jobs store.JobStore, jobID model.JobID,
 	ready func(*model.Job, []model.JobAttempt) bool,
 ) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(mailRekeyClusterConvergence)
 	for {
 		job, err := jobs.Get(context.Background(), jobID)
 		if err != nil {
