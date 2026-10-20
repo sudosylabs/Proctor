@@ -302,6 +302,7 @@ const (
 	methodListExpiredParticipations                 methodName = "list_expired_participations"
 	methodExpireParticipation                       methodName = "expire_participation"
 	methodReallowAttempt                            methodName = "reallow_attempt"
+	methodSuspendAttempt                            methodName = "suspend_attempt"
 	methodResolveOrProvision                        methodName = "resolve_or_provision"
 	methodLinkWithAudit                             methodName = "link_with_audit"
 	methodUnlinkWithAudit                           methodName = "unlink_with_audit"

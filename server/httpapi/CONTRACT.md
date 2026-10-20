@@ -1150,6 +1150,7 @@ candidates use Attempt-scoped protected delivery routes:
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity` | principal plus current exact Exam Manager membership and dedicated Browser Activity permission | bounded privacy-minimized activity page |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/end` | principal plus current management authorization and required idempotency key | candidate-safe manager-ended Submission receipt |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow` | principal plus current management authorization and required idempotency key | exact suspension re-allowed |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/suspend` | principal plus current management authorization and required idempotency key | active Attempt suspended by a manager (kick) |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
 | `PUT /api/v1/exam-attempts/{exam_attempt_id}/corrections/{exam_revision_id}/acknowledgement` | bound registered-key Desktop Session plus Attempt credential and Connection; required idempotency | retained correction acknowledgement |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace` | Session plus Attempt credential and Connection | bounded logical Workspace page |
@@ -1367,6 +1368,12 @@ the durable suspension provenance: it is absent from the JSON response,
 ordinary audit values, logs, realtime events, and idempotent command outcome.
 Re-allow creates neither a continuity credential nor a Participation; the
 candidate must establish a fresh authenticated connection generation.
+
+Suspend (kick) requires the expected revision of an Active Attempt and a
+trimmed private manager reason with the same retention and redaction rules.
+It ends the active Participation and its open Connection as `kicked` and opens
+one manual suspension episode (`source` `manual`, safe candidate reason
+`manager_suspended`, no `flag_id`). The same re-allow operation closes it.
 
 The OpenAPI document describes the wire contract only. It does not generate or
 dictate domain models, application commands, persistence rows, or handlers.

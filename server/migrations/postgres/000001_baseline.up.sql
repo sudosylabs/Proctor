@@ -2368,21 +2368,34 @@ CREATE TABLE exam_attempt_focus_loss_pending (
         REFERENCES exam_attempt_participations(id, exam_attempt_id, generation)
 );
 
+-- A policy episode links its one Integrity Flag. A manual episode (an Exam
+-- Manager's kick) links no Flag and retains its actor and private reason in
+-- the dedicated suspension columns; private_reason remains the re-allow
+-- reason for both sources.
 CREATE TABLE exam_attempt_suspensions (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL,
     participation_id varchar(26) NOT NULL,
-    integrity_flag_id varchar(26) NOT NULL UNIQUE,
+    integrity_flag_id varchar(26) UNIQUE,
     generation bigint NOT NULL CHECK (generation > 0),
     suspension_attempt_revision bigint NOT NULL CHECK (suspension_attempt_revision > 1),
     state varchar(16) NOT NULL CHECK (state IN ('active', 'closed')),
-    source varchar(16) NOT NULL CHECK (source = 'policy'),
-    candidate_reason varchar(64) NOT NULL CHECK (candidate_reason IN ('secure_connectivity_lost', 'focus_policy_review_required')),
+    source varchar(16) NOT NULL CHECK (source IN ('policy', 'manual')),
+    candidate_reason varchar(64) NOT NULL CHECK (candidate_reason IN ('secure_connectivity_lost', 'focus_policy_review_required', 'manager_suspended')),
     started_at timestamptz NOT NULL,
     ended_at timestamptz,
     reallowed_by_user_id varchar(26) REFERENCES users(id),
     private_reason text,
+    suspended_by_user_id varchar(26) REFERENCES users(id),
+    suspension_private_reason text,
     UNIQUE (id, exam_attempt_id, participation_id, generation),
+    CONSTRAINT exam_attempt_suspensions_provenance_check CHECK (
+        (source = 'policy' AND integrity_flag_id IS NOT NULL AND suspended_by_user_id IS NULL AND
+         suspension_private_reason IS NULL AND candidate_reason IN ('secure_connectivity_lost', 'focus_policy_review_required')) OR
+        (source = 'manual' AND integrity_flag_id IS NULL AND suspended_by_user_id IS NOT NULL AND
+         candidate_reason = 'manager_suspended' AND suspension_private_reason = btrim(suspension_private_reason) AND
+         char_length(suspension_private_reason) BETWEEN 1 AND 1000 AND octet_length(suspension_private_reason) <= 4000)
+    ),
     CONSTRAINT exam_attempt_suspensions_participation_fkey
         FOREIGN KEY (participation_id, exam_attempt_id, generation)
         REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
@@ -2426,6 +2439,8 @@ BEGIN
        NEW.generation IS DISTINCT FROM OLD.generation OR
        NEW.suspension_attempt_revision IS DISTINCT FROM OLD.suspension_attempt_revision OR NEW.source IS DISTINCT FROM OLD.source OR
        NEW.candidate_reason IS DISTINCT FROM OLD.candidate_reason OR NEW.started_at IS DISTINCT FROM OLD.started_at OR
+       NEW.suspended_by_user_id IS DISTINCT FROM OLD.suspended_by_user_id OR
+       NEW.suspension_private_reason IS DISTINCT FROM OLD.suspension_private_reason OR
        OLD.state = 'closed' THEN
         RAISE EXCEPTION 'Attempt Suspension identity or terminal state changed' USING ERRCODE = '55000';
     END IF;
@@ -4024,8 +4039,9 @@ ALTER TABLE exam_attempt_suspensions
     ADD CONSTRAINT exam_attempt_suspensions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_suspensions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_suspensions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_suspensions_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_suspensions_reallowed_by_user_id_canonical_check CHECK (reallowed_by_user_id IS NULL OR reallowed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_suspensions_integrity_flag_id_canonical_check CHECK (integrity_flag_id IS NULL OR integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_reallowed_by_user_id_canonical_check CHECK (reallowed_by_user_id IS NULL OR reallowed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_suspensions_suspended_by_user_id_canonical_check CHECK (suspended_by_user_id IS NULL OR suspended_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_submissions
     ADD CONSTRAINT exam_submissions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),

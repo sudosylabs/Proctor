@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -21,7 +22,10 @@ test('the tracked search index is current', async () => {
 
 test('search covers authored pages, product areas, and every operation', async () => {
   const entries = await buildSearchIndex();
-  assert.equal(entries.filter((entry) => entry.kind === 'endpoint').length, 278);
+  const openapi = JSON.parse(await readFile(new URL('../../../server/openapi.json', import.meta.url), 'utf8'));
+  const methods = new Set(['get', 'put', 'post', 'delete', 'patch', 'head', 'options', 'trace']);
+  const operations = Object.values(openapi.paths).flatMap((item) => Object.keys(item).filter((key) => methods.has(key)));
+  assert.equal(entries.filter((entry) => entry.kind === 'endpoint').length, operations.length);
   assert.equal(entries.filter((entry) => entry.kind === 'product-area').length, 17);
   assert(entries.some((entry) => entry.href === '/operator/'));
   assert(entries.some((entry) => entry.href === '/glossary/'));

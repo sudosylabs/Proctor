@@ -20,6 +20,7 @@ const (
 	ExamAttemptConnectOperation                   = "exam.attempt.connect.v1"
 	ExamAttemptExpireParticipationOperation       = "exam.attempt.expire_participation.v1"
 	ExamAttemptReallowOperation                   = "exam.attempt.reallow.v1"
+	ExamAttemptSuspendOperation                   = "exam.attempt.suspend.v1"
 	ExamAttemptFocusLossOperation                 = "exam.attempt.focus_loss.record.v1"
 	ExamAttemptFocusLossDiscrepancyOperation      = "exam.attempt.focus_loss.discrepancy.v1"
 	ExamAttemptCorrectionAcknowledgementOperation = "exam.attempt.correction.acknowledge.v1"
@@ -308,6 +309,9 @@ type ExamAttemptSuspensionView struct {
 	StartedAt         time.Time
 	EndedAt           model.OptionalTime
 	ReallowedByUserID model.UserID
+	// SuspendedByUserID identifies the Exam Manager of a manual episode; a
+	// policy episode has none and links FlagID instead.
+	SuspendedByUserID model.UserID
 }
 
 // ExamAttemptParticipationExpiryResult is the retained, safe committed
@@ -365,6 +369,39 @@ type ExamAttemptReallowResult struct {
 	// append-preserving; later admission creates a new generation.
 	FocusLossWindowReset bool
 	Replayed             bool
+}
+
+// ExamAttemptManualSuspension is one exact, revision-fenced Exam Manager kick
+// of an active Attempt. The private trimmed UTF-8 reason is retained only with
+// the Suspension episode; it must not enter ordinary audit data, command
+// outcomes, logs, or realtime. PostgreSQL statement time stamps the episode.
+type ExamAttemptManualSuspension struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	AttemptID               model.ExamAttemptID
+	SuspensionID            model.AttemptSuspensionID
+	ActorUserID             model.UserID
+	ManagerOverride         bool
+	ExpectedAttemptRevision int64
+	PrivateReason           string
+	AuditEventID            string
+	AuditAt                 int64
+}
+
+// ExamAttemptManualSuspensionResult is the committed, private-reason-free
+// kick outcome. Connection is the generation's latest Connection, if any;
+// ConnectionClosed is true when this kick closed it.
+type ExamAttemptManualSuspensionResult struct {
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	ClassID          model.ClassID
+	CandidateUserID  model.UserID
+	Attempt          *model.ExamAttempt
+	Participation    *ExamAttemptParticipationView
+	Connection       *ExamAttemptManagerConnection
+	ConnectionClosed bool
+	Suspension       *ExamAttemptSuspensionView
+	Replayed         bool
 }
 
 type ExamAttemptConnectionClose struct {
@@ -1003,6 +1040,18 @@ type ExamAttemptStore interface {
 	// authority is rechecked. Stable conflicts are exam_attempt_revision,
 	// attempt_suspension_active, exam_attempt_state, and exam_sitting_state.
 	ReallowAttempt(context.Context, *ExamAttemptReallow, *CommandIdempotency) (*ExamAttemptReallowResult, error)
+	// SuspendAttempt applies an Exam Manager's kick. It locks the Attempt and
+	// Sitting, rechecks current Exam management authority unless an
+	// authorized override is explicit, requires the expected revision of an
+	// Active Attempt in an Open or Paused Sitting, ends the active Participation
+	// as kicked, closes its open Connection as kicked, closes native delivery,
+	// opens one manual Suspension episode without an Integrity Flag, and
+	// commits audit and the idempotent outcome atomically using PostgreSQL
+	// time. Exact retries return the retained result after current authority
+	// is rechecked. Stable conflicts are exam_attempt_revision,
+	// exam_attempt_state, and exam_sitting_state; the candidate's own Attempt
+	// and a missing manager relationship are not found.
+	SuspendAttempt(context.Context, *ExamAttemptManualSuspension, *CommandIdempotency) (*ExamAttemptManualSuspensionResult, error)
 	CloseConnection(context.Context, *ExamAttemptConnectionClose) (*ExamAttemptConnectionCloseResult, error)
 	Get(context.Context, model.ExamID, model.ExamAttemptID) (*ExamAttemptManagerSnapshot, error)
 	List(context.Context, ExamAttemptManagerListOptions) ([]ExamAttemptManagerSnapshot, error)

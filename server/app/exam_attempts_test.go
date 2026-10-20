@@ -304,6 +304,39 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	}
 }
 
+func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *testing.T) {
+	t.Parallel()
+	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
+	sink := &recordingRealtimeSink{}
+	if err := realtime.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
+	result := examattempt.ManualSuspensionResult{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		CandidateUserID: model.NewUserID(), Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 3},
+		Connection: &store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
+			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseKicked},
+		ConnectionClosed: true,
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourceManual,
+			CandidateReason: model.AttemptSuspensionCandidateReasonManagerSuspended, StartedAt: at, SuspendedByUserID: model.NewUserID()}}
+	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSuspendedByManager(context.Background(), result); err != nil {
+		t.Fatal(err)
+	}
+	sink.mu.Lock()
+	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	sink.mu.Unlock()
+	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" || events[1].Name != "exam_attempt_suspended" ||
+		events[2].Name != "exam_attempt_access_suspended" || events[2].UserID != result.CandidateUserID.String() ||
+		strings.Contains(string(events[1].Data), "integrity_flag_id") ||
+		!strings.Contains(string(events[0].Data), `"kicked"`) ||
+		!strings.Contains(string(events[2].Data), `"reason_code":"manager_suspended"`) {
+		t.Fatalf("events = %#v", events)
+	}
+}
+
 func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactConnection(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
@@ -510,6 +543,7 @@ func examAttemptPrincipal() model.Principal {
 }
 
 type examAttemptUseCasesFake struct {
+	suspensions          []examattempt.ManualSuspensionCommand
 	connects             []examattempt.ConnectCommand
 	renewals             []examattempt.RenewParticipationCommand
 	renewResult          examattempt.ParticipationRenewal
@@ -544,6 +578,11 @@ func (fake *examAttemptUseCasesFake) EvaluateFocusLoss(_ context.Context, _ exam
 func (fake *examAttemptUseCasesFake) Reallow(_ context.Context, _ examattempt.Call, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {
 	fake.reallows = append(fake.reallows, command)
 	return examattempt.ReallowResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) SuspendByManager(_ context.Context, _ examattempt.Call, command examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error) {
+	fake.suspensions = append(fake.suspensions, command)
+	return examattempt.ManualSuspensionResult{}, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error) {

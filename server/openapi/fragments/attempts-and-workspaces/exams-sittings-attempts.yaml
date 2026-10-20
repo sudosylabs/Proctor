@@ -277,8 +277,90 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: suspendExamAttempt
+      summary: Suspend (kick) one exact active Exam Attempt
+      tags:
+        - Attempts and workspaces
+      description: >-
+        An Exam Manager's immediate manual control. Ends the active Participation generation as kicked,
+        closes its open Connection, and opens one manual suspension episode without an Integrity Flag.
+        The suspended Attempt denies connections, workspace and exam-material access, and candidate
+        submission until an authorized re-allow. The candidate sees only the safe manager_suspended
+        reason; the private manager reason is retained only in suspension provenance.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.revision_conflict
+        - exam.attempt.state_conflict
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/SuspendExamAttempt'
+      responses:
+        '200':
+          $ref: '#/components/responses/ExamAttemptSuspended'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
+    SuspendExamAttempt:
+      required: true
+      description: >-
+        Identifies the expected Attempt revision and the private manager reason required for the audited
+        manual suspension.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuspendExamAttemptRequest'
+          example:
+            expected_attempt_revision: 3
+            reason: Candidate left the examination room without permission.
     ReallowExamAttempt:
       required: true
       description: >-
@@ -293,6 +375,15 @@ components:
             expected_attempt_revision: 4
             reason: Candidate identity was reverified by the invigilator.
   responses:
+    ExamAttemptSuspended:
+      description: Exam Attempt suspended by a manager without exposing the private manager reason
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptSuspendResponse'
     BrowserActivityListOK:
       description: Bounded privacy-minimized Browser Activity page
       headers:
@@ -554,10 +645,12 @@ components:
     ExamAttemptSuspensionResponse:
       type: object
       additionalProperties: false
+      description: >-
+        One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an
+        Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id.
       required:
         - id
         - participation_id
-        - flag_id
         - generation
         - state
         - source
@@ -581,10 +674,15 @@ components:
             - closed
         source:
           type: string
-          const: policy
+          enum:
+            - policy
+            - manual
         candidate_reason:
           type: string
-          const: secure_connectivity_lost
+          enum:
+            - secure_connectivity_lost
+            - focus_policy_review_required
+            - manager_suspended
         started_at:
           type: string
           format: date-time
@@ -592,6 +690,8 @@ components:
           type: string
           format: date-time
         reallowed_by_user_id:
+          $ref: '#/components/schemas/ID'
+        suspended_by_user_id:
           $ref: '#/components/schemas/ID'
     ExamAttemptManagerResponse:
       type: object
@@ -691,9 +791,70 @@ components:
           const: closed
         candidate_reason:
           type: string
-          const: secure_connectivity_lost
+          enum:
+            - secure_connectivity_lost
+            - focus_policy_review_required
+            - manager_suspended
         reallowed_by_user_id:
           $ref: '#/components/schemas/ID'
+    SuspendExamAttemptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_attempt_revision
+        - reason
+      properties:
+        expected_attempt_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Trimmed private manager reason retained only in suspension provenance.
+    ExamAttemptSuspendResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam_attempt_id
+        - exam_sitting_id
+        - state
+        - attempt_revision
+        - suspension_id
+        - suspension_state
+        - source
+        - candidate_reason
+        - suspended_by_user_id
+        - connection_closed
+      properties:
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        state:
+          type: string
+          const: suspended
+        attempt_revision:
+          type: integer
+          format: int64
+          minimum: 2
+        suspension_id:
+          $ref: '#/components/schemas/ID'
+        suspension_state:
+          type: string
+          const: active
+        source:
+          type: string
+          const: manual
+        candidate_reason:
+          type: string
+          const: manager_suspended
+        suspended_by_user_id:
+          $ref: '#/components/schemas/ID'
+        connection_closed:
+          type: boolean
+          description: True when the kick closed the candidate's open Connection.
     ExamAttemptManagerListResponse:
       type: object
       additionalProperties: false

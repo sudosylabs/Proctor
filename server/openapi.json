@@ -2054,6 +2054,21 @@
         "description": "The active Participation generation and final acknowledged client positions required to atomically seal the Attempt Workspace as a Submission.",
         "required": true
       },
+      "SuspendExamAttempt": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_attempt_revision": 3,
+              "reason": "Candidate left the examination room without permission."
+            },
+            "schema": {
+              "$ref": "#/components/schemas/SuspendExamAttemptRequest"
+            }
+          }
+        },
+        "description": "Identifies the expected Attempt revision and the private manager reason required for the audited manual suspension.",
+        "required": true
+      },
       "TerminalExamIntegrityReview": {
         "content": {
           "application/json": {
@@ -3170,6 +3185,21 @@
           }
         },
         "description": "Exam Attempt suspension re-allowed without exposing the private manager reason",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
+      "ExamAttemptSuspended": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExamAttemptSuspendResponse"
+            }
+          }
+        },
+        "description": "Exam Attempt suspended by a manager without exposing the private manager reason",
         "headers": {
           "Cache-Control": {
             "$ref": "#/components/headers/NoStore"
@@ -8493,6 +8523,7 @@
             "enum": [
               "secure_connectivity_lost",
               "focus_policy_review_required",
+              "manager_suspended",
               null
             ],
             "type": [
@@ -12722,7 +12753,11 @@
             "type": "integer"
           },
           "candidate_reason": {
-            "const": "secure_connectivity_lost",
+            "enum": [
+              "secure_connectivity_lost",
+              "focus_policy_review_required",
+              "manager_suspended"
+            ],
             "type": "string"
           },
           "exam_attempt_id": {
@@ -12767,11 +12802,71 @@
         ],
         "type": "string"
       },
-      "ExamAttemptSuspensionResponse": {
+      "ExamAttemptSuspendResponse": {
         "additionalProperties": false,
         "properties": {
+          "attempt_revision": {
+            "format": "int64",
+            "minimum": 2,
+            "type": "integer"
+          },
           "candidate_reason": {
-            "const": "secure_connectivity_lost",
+            "const": "manager_suspended",
+            "type": "string"
+          },
+          "connection_closed": {
+            "description": "True when the kick closed the candidate's open Connection.",
+            "type": "boolean"
+          },
+          "exam_attempt_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "source": {
+            "const": "manual",
+            "type": "string"
+          },
+          "state": {
+            "const": "suspended",
+            "type": "string"
+          },
+          "suspended_by_user_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "suspension_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "suspension_state": {
+            "const": "active",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exam_attempt_id",
+          "exam_sitting_id",
+          "state",
+          "attempt_revision",
+          "suspension_id",
+          "suspension_state",
+          "source",
+          "candidate_reason",
+          "suspended_by_user_id",
+          "connection_closed"
+        ],
+        "type": "object"
+      },
+      "ExamAttemptSuspensionResponse": {
+        "additionalProperties": false,
+        "description": "One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id.",
+        "properties": {
+          "candidate_reason": {
+            "enum": [
+              "secure_connectivity_lost",
+              "focus_policy_review_required",
+              "manager_suspended"
+            ],
             "type": "string"
           },
           "ended_at": {
@@ -12796,7 +12891,10 @@
             "$ref": "#/components/schemas/ID"
           },
           "source": {
-            "const": "policy",
+            "enum": [
+              "policy",
+              "manual"
+            ],
             "type": "string"
           },
           "started_at": {
@@ -12809,12 +12907,14 @@
               "closed"
             ],
             "type": "string"
+          },
+          "suspended_by_user_id": {
+            "$ref": "#/components/schemas/ID"
           }
         },
         "required": [
           "id",
           "participation_id",
-          "flag_id",
           "generation",
           "state",
           "source",
@@ -22171,7 +22271,8 @@
           "candidate_reason": {
             "enum": [
               "secure_connectivity_lost",
-              "focus_policy_review_required"
+              "focus_policy_review_required",
+              "manager_suspended"
             ],
             "type": "string"
           },
@@ -22481,6 +22582,27 @@
           "expected_current_revision_id",
           "expected_workspace_cursor",
           "final_focus_loss_sequence"
+        ],
+        "type": "object"
+      },
+      "SuspendExamAttemptRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_attempt_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Trimmed private manager reason retained only in suspension provenance.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_attempt_revision",
+          "reason"
         ],
         "type": "object"
       },
@@ -35282,6 +35404,102 @@
           "$ref": "#/components/parameters/SubmissionID"
         }
       ]
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/suspend": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ExamID"
+        },
+        {
+          "$ref": "#/components/parameters/ExamSittingID"
+        },
+        {
+          "$ref": "#/components/parameters/ExamAttemptID"
+        }
+      ],
+      "post": {
+        "description": "An Exam Manager's immediate manual control. Ends the active Participation generation as kicked, closes its open Connection, and opens one manual suspension episode without an Integrity Flag. The suspended Attempt denies connections, workspace and exam-material access, and candidate submission until an authorized re-allow. The candidate sees only the safe manager_suspended reason; the private manager reason is retained only in suspension provenance.",
+        "operationId": "suspendExamAttempt",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SuspendExamAttempt"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamAttemptSuspended"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Suspend (kick) one exact active Exam Attempt",
+        "tags": [
+          "Attempts and workspaces"
+        ],
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authentication.csrf.invalid",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.attempt.invalid",
+          "exam.attempt.revision_conflict",
+          "exam.attempt.state_conflict",
+          "exam.attempt.sitting_unavailable",
+          "exam.attempt.conflict",
+          "exam.attempt.unavailable",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/cancel": {
       "parameters": [

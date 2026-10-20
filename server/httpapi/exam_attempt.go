@@ -264,6 +264,7 @@ type ExamAttemptApplication interface {
 	OpenCandidateExamResource(context.Context, application.Invocation, application.OpenCandidateExamResourceQuery) (application.OpenedExamAttemptContent, error)
 	OpenCandidateExamWorkspaceFile(context.Context, application.Invocation, application.OpenCandidateExamWorkspaceFileQuery) (application.OpenedExamAttemptContent, error)
 	ReallowExamAttempt(context.Context, application.Invocation, application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error)
+	SuspendExamAttempt(context.Context, application.Invocation, application.SuspendExamAttemptCommand) (application.ExamAttemptManualSuspensionResult, error)
 	SubmitExamAttempt(context.Context, application.Invocation, application.SubmitExamAttemptCommand) (application.ExamSubmissionReceipt, error)
 	GetExamSubmission(context.Context, application.Invocation, application.GetExamSubmissionQuery) (application.ExamSubmissionManagerView, error)
 	ListExamSubmissionManifest(context.Context, application.Invocation, application.ListExamSubmissionManifestQuery) (application.ExamSubmissionManifestPage, error)
@@ -378,7 +379,7 @@ type examAttemptConnectionResponse struct {
 type examAttemptSuspensionResponse struct {
 	ID                string `json:"id"`
 	ParticipationID   string `json:"participation_id"`
-	FlagID            string `json:"flag_id"`
+	FlagID            string `json:"flag_id,omitempty"`
 	Generation        int64  `json:"generation"`
 	State             string `json:"state"`
 	Source            string `json:"source"`
@@ -386,6 +387,7 @@ type examAttemptSuspensionResponse struct {
 	StartedAt         string `json:"started_at"`
 	EndedAt           string `json:"ended_at,omitempty"`
 	ReallowedByUserID string `json:"reallowed_by_user_id,omitempty"`
+	SuspendedByUserID string `json:"suspended_by_user_id,omitempty"`
 }
 
 type examAttemptManagerListResponse struct {
@@ -434,6 +436,24 @@ type examAttemptReallowResponse struct {
 	SuspensionState   string `json:"suspension_state"`
 	CandidateReason   string `json:"candidate_reason"`
 	ReallowedByUserID string `json:"reallowed_by_user_id"`
+}
+
+type suspendExamAttemptRequest struct {
+	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+	Reason                  string `json:"reason"`
+}
+
+type examAttemptSuspendResponse struct {
+	ExamAttemptID     string `json:"exam_attempt_id"`
+	ExamSittingID     string `json:"exam_sitting_id"`
+	State             string `json:"state"`
+	AttemptRevision   int64  `json:"attempt_revision"`
+	SuspensionID      string `json:"suspension_id"`
+	SuspensionState   string `json:"suspension_state"`
+	Source            string `json:"source"`
+	CandidateReason   string `json:"candidate_reason"`
+	SuspendedByUserID string `json:"suspended_by_user_id"`
+	ConnectionClosed  bool   `json:"connection_closed"`
 }
 
 type candidateExamPresentationResponse struct {
@@ -715,10 +735,15 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	managerSubmissionManifest := appendRoutePath(managerSubmission, literal("manifest"))
 	managerSubmissionContent := appendRoutePath(managerSubmission, literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
 	reallow := appendRoutePath(managerMember, literal("reallow"))
+	suspend := appendRoutePath(managerMember, literal("suspend"))
 	managerErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable")
 	reallowErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
 		"exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+	suspendErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
+		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_unavailable",
+		"exam.attempt.conflict", "exam.attempt.unavailable",
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
 	managerEndErrors := academicMutationErrorCodes("request.invalid", "resource.not_found",
 		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
@@ -751,6 +776,7 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		principalRoute(http.MethodGet, managerBrowserActivity, managerErrors, module.listBrowserActivity),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managerEnd, managerEndErrors, module.endByManager),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, reallow, reallowErrors, module.reallow),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, suspend, suspendErrors, module.suspend),
 		sessionRoute(http.MethodGet, presentation, candidateErrors, module.presentation),
 		sessionRoute(http.MethodGet, workspace, candidateErrors, module.workspace),
 		sessionRoute(http.MethodGet, workspaceChanges, candidateErrors, module.workspaceChanges),
@@ -963,6 +989,33 @@ func (module examAttemptHTTPModule) reallow(request operationRequest) (operation
 		State: string(result.Attempt.State), AttemptRevision: result.Attempt.Revision, SuspensionID: result.Suspension.ID.String(),
 		SuspensionState: string(result.Suspension.State), CandidateReason: string(result.Suspension.CandidateReason),
 		ReallowedByUserID: result.Suspension.ReallowedByUserID.String()}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) suspend(request operationRequest) (operationResult, error) {
+	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body suspendExamAttemptRequest
+	if err = request.decodeJSON(&body); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedAttemptRevision < 1 {
+		return operationResult{}, invalidRequestError(errors.New("expected_attempt_revision must be positive"))
+	}
+	result, err := module.application.SuspendExamAttempt(request.context, request.invocation(), application.SuspendExamAttemptCommand{
+		ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
+		ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examAttemptSuspendResponse{ExamAttemptID: result.Attempt.ID.String(), ExamSittingID: result.SittingID.String(),
+		State: string(result.Attempt.State), AttemptRevision: result.Attempt.Revision, SuspensionID: result.Suspension.ID.String(),
+		SuspensionState: string(result.Suspension.State), Source: string(result.Suspension.Source),
+		CandidateReason: string(result.Suspension.CandidateReason), SuspendedByUserID: result.Suspension.SuspendedByUserID.String(),
+		ConnectionClosed: result.ConnectionClosed}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
@@ -1727,7 +1780,7 @@ func examAttemptManagerResponseFromView(view application.ExamAttemptManagerView)
 			ParticipationID: suspension.ParticipationID.String(), FlagID: suspension.FlagID.String(), Generation: suspension.Generation,
 			State: string(suspension.State), Source: string(suspension.Source), CandidateReason: string(suspension.CandidateReason),
 			StartedAt: model.TimeUTC(suspension.StartedAt).Format(time.RFC3339Nano), EndedAt: suspension.EndedAt.FormatRFC3339(),
-			ReallowedByUserID: suspension.ReallowedByUserID.String()}
+			ReallowedByUserID: suspension.ReallowedByUserID.String(), SuspendedByUserID: suspension.SuspendedByUserID.String()}
 	}
 	return response, nil
 }

@@ -477,35 +477,58 @@ const (
 
 type AttemptSuspensionSource string
 
-const AttemptSuspensionSourcePolicy AttemptSuspensionSource = "policy"
+const (
+	AttemptSuspensionSourcePolicy AttemptSuspensionSource = "policy"
+	// AttemptSuspensionSourceManual is an authorized Exam Manager's kick.
+	AttemptSuspensionSourceManual AttemptSuspensionSource = "manual"
+)
+
+func (source AttemptSuspensionSource) IsValid() bool {
+	return source == AttemptSuspensionSourcePolicy || source == AttemptSuspensionSourceManual
+}
 
 type AttemptSuspensionCandidateReason string
 
 const (
 	AttemptSuspensionCandidateReasonSecureContinuityLost AttemptSuspensionCandidateReason = "secure_connectivity_lost"
 	AttemptSuspensionCandidateReasonFocusLossPolicy      AttemptSuspensionCandidateReason = "focus_policy_review_required"
-	AttemptSuspensionPrivateReasonMaximumRunes                                            = 1000
+	// AttemptSuspensionCandidateReasonManagerSuspended is the only safe
+	// candidate explanation of a manual suspension; the manager's private
+	// reason is never shown to the candidate.
+	AttemptSuspensionCandidateReasonManagerSuspended AttemptSuspensionCandidateReason = "manager_suspended"
 )
 
+const AttemptSuspensionPrivateReasonMaximumRunes = 1000
+
 func (reason AttemptSuspensionCandidateReason) IsValid() bool {
+	return reason.IsPolicy() || reason == AttemptSuspensionCandidateReasonManagerSuspended
+}
+
+// IsPolicy reports whether the reason belongs to automatic policy enforcement.
+func (reason AttemptSuspensionCandidateReason) IsPolicy() bool {
 	return reason == AttemptSuspensionCandidateReasonSecureContinuityLost || reason == AttemptSuspensionCandidateReasonFocusLossPolicy
 }
 
-// AttemptSuspension is one append-preserving blocking episode. PrivateReason
-// is manager-only and must never enter ordinary logs, audit data, or realtime.
+// AttemptSuspension is one append-preserving blocking episode. A policy
+// episode links its Integrity Flag; a manual episode links none and records
+// the suspending manager and their private reason. PrivateReason (re-allow)
+// and SuspensionPrivateReason are manager-only and must never enter ordinary
+// logs, audit data, or realtime.
 type AttemptSuspension struct {
-	ID                AttemptSuspensionID
-	AttemptID         ExamAttemptID
-	ParticipationID   AttemptParticipationID
-	FlagID            IntegrityFlagID
-	Generation        int64
-	State             AttemptSuspensionState
-	Source            AttemptSuspensionSource
-	CandidateReason   AttemptSuspensionCandidateReason
-	StartedAt         time.Time
-	EndedAt           OptionalTime
-	ReallowedByUserID UserID
-	PrivateReason     string
+	ID                      AttemptSuspensionID
+	AttemptID               ExamAttemptID
+	ParticipationID         AttemptParticipationID
+	FlagID                  IntegrityFlagID
+	Generation              int64
+	State                   AttemptSuspensionState
+	Source                  AttemptSuspensionSource
+	CandidateReason         AttemptSuspensionCandidateReason
+	StartedAt               time.Time
+	EndedAt                 OptionalTime
+	ReallowedByUserID       UserID
+	PrivateReason           string
+	SuspendedByUserID       UserID
+	SuspensionPrivateReason string
 }
 
 func NewPolicyAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID, participationID AttemptParticipationID,
@@ -520,12 +543,39 @@ func NewPolicyAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID,
 	return suspension, nil
 }
 
+// NewManualAttemptSuspension records an Exam Manager's kick of the exact
+// active Participation generation. It links no Integrity Flag.
+func NewManualAttemptSuspension(id AttemptSuspensionID, attemptID ExamAttemptID, participationID AttemptParticipationID,
+	generation int64, actorID UserID, privateReason string, at time.Time,
+) (*AttemptSuspension, error) {
+	suspension := &AttemptSuspension{ID: id, AttemptID: attemptID, ParticipationID: participationID,
+		Generation: generation, State: AttemptSuspensionActive, Source: AttemptSuspensionSourceManual,
+		CandidateReason: AttemptSuspensionCandidateReasonManagerSuspended, StartedAt: TimeUTC(at),
+		SuspendedByUserID: actorID, SuspensionPrivateReason: privateReason}
+	if err := suspension.Validate(); err != nil {
+		return nil, err
+	}
+	return suspension, nil
+}
+
 func (suspension *AttemptSuspension) Validate() error {
 	if suspension == nil || !suspension.ID.IsValid() || !suspension.AttemptID.IsValid() || !suspension.ParticipationID.IsValid() ||
-		!suspension.FlagID.IsValid() || suspension.Generation < 1 || suspension.Source != AttemptSuspensionSourcePolicy ||
-		(suspension.CandidateReason != AttemptSuspensionCandidateReasonSecureContinuityLost &&
-			suspension.CandidateReason != AttemptSuspensionCandidateReasonFocusLossPolicy) || suspension.StartedAt.IsZero() {
+		suspension.Generation < 1 || suspension.StartedAt.IsZero() {
 		return fmt.Errorf("model: invalid Attempt Suspension")
+	}
+	switch suspension.Source {
+	case AttemptSuspensionSourcePolicy:
+		if !suspension.FlagID.IsValid() || !suspension.CandidateReason.IsPolicy() || !suspension.SuspendedByUserID.IsZero() ||
+			suspension.SuspensionPrivateReason != "" {
+			return fmt.Errorf("model: invalid policy Attempt Suspension")
+		}
+	case AttemptSuspensionSourceManual:
+		if !suspension.FlagID.IsZero() || suspension.CandidateReason != AttemptSuspensionCandidateReasonManagerSuspended ||
+			!suspension.SuspendedByUserID.IsValid() || !validAttemptSuspensionPrivateReason(suspension.SuspensionPrivateReason) {
+			return fmt.Errorf("model: invalid manual Attempt Suspension")
+		}
+	default:
+		return fmt.Errorf("model: invalid Attempt Suspension source")
 	}
 	switch suspension.State {
 	case AttemptSuspensionActive:

@@ -1172,6 +1172,12 @@ func (s *timedExamAttemptStore) ReallowAttempt(arg0 context.Context, arg1 *store
 	})
 }
 
+func (s *timedExamAttemptStore) SuspendAttempt(arg0 context.Context, arg1 *store.ExamAttemptManualSuspension, arg2 *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodSuspendAttempt), func() (*store.ExamAttemptManualSuspensionResult, error) {
+		return s.next.SuspendAttempt(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAttemptStore) CloseConnection(arg0 context.Context, arg1 *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodCloseConnection), func() (*store.ExamAttemptConnectionCloseResult, error) {
 		return s.next.CloseConnection(arg0, arg1)

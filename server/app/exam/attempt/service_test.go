@@ -778,6 +778,12 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
 			return err
 		},
+		"suspend": func(f *fixture, attemptID model.ExamAttemptID) error {
+			_, err := f.service.SuspendByManager(context.Background(), f.call, ManualSuspensionCommand{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID,
+				ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
+			return err
+		},
 		"browser_activity": func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.ListBrowserActivity(context.Background(), f.call, BrowserActivityPageQuery{
 				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: attemptID, Limit: 10})
@@ -1591,6 +1597,7 @@ type effectsFake struct {
 	workspaceChanged int
 	focusLoss        int
 	submitted        int
+	kicked           int
 }
 
 func (fake *effectsFake) BrowserActivityGapChanged(context.Context, model.ExamID, model.ExamSittingID) error {
@@ -1716,6 +1723,9 @@ type attemptStoreFake struct {
 	reallow                         *store.ExamAttemptReallow
 	reallowResult                   *store.ExamAttemptReallowResult
 	reallowErr                      error
+	manualSuspension                *store.ExamAttemptManualSuspension
+	manualSuspensionResult          *store.ExamAttemptManualSuspensionResult
+	manualSuspensionErr             error
 	correctionAcknowledgementTarget *store.ExamAttemptCorrectionAcknowledgementTarget
 	correctionAcknowledgement       *store.ExamAttemptCorrectionAcknowledgement
 	correctionAcknowledgementResult *store.ExamAttemptCorrectionAcknowledgementResult
@@ -1948,6 +1958,11 @@ func (fake *attemptStoreFake) ReallowAttempt(_ context.Context, input *store.Exa
 	fake.f.order = append(fake.f.order, "reallow")
 	fake.reallow, fake.idempotency = input, command
 	return fake.reallowResult, fake.reallowErr
+}
+func (fake *attemptStoreFake) SuspendAttempt(_ context.Context, input *store.ExamAttemptManualSuspension, command *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
+	fake.f.order = append(fake.f.order, "suspend")
+	fake.manualSuspension, fake.idempotency = input, command
+	return fake.manualSuspensionResult, fake.manualSuspensionErr
 }
 func (fake *attemptStoreFake) CloseConnection(_ context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
 	fake.f.order = append(fake.f.order, "close")

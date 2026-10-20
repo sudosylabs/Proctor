@@ -2716,6 +2716,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suspend (kick) one exact active Exam Attempt
+         * @description An Exam Manager's immediate manual control. Ends the active Participation generation as kicked, closes its open Connection, and opens one manual suspension episode without an Integrity Flag. The suspended Attempt denies connections, workspace and exam-material access, and candidate submission until an authorized re-allow. The candidate sees only the safe manager_suspended reason; the private manager reason is retained only in suspension provenance.
+         */
+        post: operations["suspendExamAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/cancel": {
         parameters: {
             query?: never;
@@ -6073,7 +6100,7 @@ export interface components {
             /** @enum {string} */
             state: "ready" | "active" | "suspended" | "submitted";
             /** @enum {string|null} */
-            suspension_reason_code: "secure_connectivity_lost" | "focus_policy_review_required" | null;
+            suspension_reason_code: "secure_connectivity_lost" | "focus_policy_review_required" | "manager_suspended" | null;
         };
         CandidateExamActivityItemResponse: {
             academic_unit: components["schemas"]["CandidateExamActivityRelationResponse"];
@@ -7177,8 +7204,8 @@ export interface components {
         ExamAttemptReallowResponse: {
             /** Format: int64 */
             attempt_revision: number;
-            /** @constant */
-            candidate_reason: "secure_connectivity_lost";
+            /** @enum {string} */
+            candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required" | "manager_suspended";
             exam_attempt_id: components["schemas"]["ID"];
             exam_sitting_id: components["schemas"]["ID"];
             reallowed_by_user_id: components["schemas"]["ID"];
@@ -7190,23 +7217,43 @@ export interface components {
         };
         /** @enum {string} */
         ExamAttemptState: "ready" | "active" | "suspended" | "submitted";
-        ExamAttemptSuspensionResponse: {
+        ExamAttemptSuspendResponse: {
+            /** Format: int64 */
+            attempt_revision: number;
             /** @constant */
-            candidate_reason: "secure_connectivity_lost";
+            candidate_reason: "manager_suspended";
+            /** @description True when the kick closed the candidate's open Connection. */
+            connection_closed: boolean;
+            exam_attempt_id: components["schemas"]["ID"];
+            exam_sitting_id: components["schemas"]["ID"];
+            /** @constant */
+            source: "manual";
+            /** @constant */
+            state: "suspended";
+            suspended_by_user_id: components["schemas"]["ID"];
+            suspension_id: components["schemas"]["ID"];
+            /** @constant */
+            suspension_state: "active";
+        };
+        /** @description One suspension episode. A policy episode links its Integrity Flag in flag_id; a manual episode (an Exam Manager's kick) links no Flag and names its manager in suspended_by_user_id. */
+        ExamAttemptSuspensionResponse: {
+            /** @enum {string} */
+            candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required" | "manager_suspended";
             /** Format: date-time */
             ended_at?: string;
-            flag_id: components["schemas"]["ID"];
+            flag_id?: components["schemas"]["ID"];
             /** Format: int64 */
             generation: number;
             id: components["schemas"]["ID"];
             participation_id: components["schemas"]["ID"];
             reallowed_by_user_id?: components["schemas"]["ID"];
-            /** @constant */
-            source: "policy";
+            /** @enum {string} */
+            source: "policy" | "manual";
             /** Format: date-time */
             started_at: string;
             /** @enum {string} */
             state: "active" | "closed";
+            suspended_by_user_id?: components["schemas"]["ID"];
         };
         ExamAttemptWorkspaceResponse: {
             /** Format: date-time */
@@ -9828,7 +9875,7 @@ export interface components {
         };
         SittingCandidateSuspensionResponse: {
             /** @enum {string} */
-            candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required";
+            candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required" | "manager_suspended";
             id: components["schemas"]["ID"];
             reallow_available: boolean;
         };
@@ -9928,6 +9975,12 @@ export interface components {
             generation: number;
             /** @description The active Participation identifier returned by the successful Attempt connection. */
             participation_id: components["schemas"]["ID"];
+        };
+        SuspendExamAttemptRequest: {
+            /** Format: int64 */
+            expected_attempt_revision: number;
+            /** @description Trimmed private manager reason retained only in suspension provenance. */
+            reason: string;
         };
         /** @description Safe product availability and compatibility projection for one declared Desktop build. */
         SystemPingResponse: {
@@ -10882,6 +10935,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["ExamAttemptReallowResponse"];
+            };
+        };
+        /** @description Exam Attempt suspended by a manager without exposing the private manager reason */
+        ExamAttemptSuspended: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ExamAttemptSuspendResponse"];
             };
         };
         /** @description Retained acknowledgement for the exact required correction */
@@ -13967,6 +14030,18 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["SubmitExamAttemptRequest"];
+            };
+        };
+        /** @description Identifies the expected Attempt revision and the private manager reason required for the audited manual suspension. */
+        SuspendExamAttempt: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_attempt_revision": 3,
+                 *       "reason": "Candidate left the examination room without permission."
+                 *     }
+                 */
+                "application/json": components["schemas"]["SuspendExamAttemptRequest"];
             };
         };
         /** @description Exact existing Review identity and revision to finalize or release. */
@@ -17760,6 +17835,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    suspendExamAttempt: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["SuspendExamAttempt"];
+        responses: {
+            200: components["responses"]["ExamAttemptSuspended"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

@@ -26,6 +26,8 @@ type ExamAttemptConnectionClosed = examattempt.ConnectionClosedResult
 type ExamAttemptParticipationRenewal = examattempt.ParticipationRenewal
 type ExamAttemptFocusLossEvaluation = examattempt.FocusLossEvaluation
 type ExamAttemptReallowResult = examattempt.ReallowResult
+type ExamAttemptManualSuspensionResult = examattempt.ManualSuspensionResult
+type SuspendExamAttemptCommand = examattempt.ManualSuspensionCommand
 type CandidateExamAttemptAccess = examattempt.CandidateAccess
 type CandidateExamPresentation = examattempt.Presentation
 type CandidateExamWorkspaceItem = store.CandidateAttemptWorkspaceItem
@@ -236,6 +238,7 @@ type examAttemptUseCases interface {
 	RenewParticipation(context.Context, examattempt.Call, examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error)
 	EvaluateFocusLoss(context.Context, examattempt.Call, examattempt.FocusLossCommand) (examattempt.FocusLossEvaluation, error)
 	Reallow(context.Context, examattempt.Call, examattempt.ReallowCommand) (examattempt.ReallowResult, error)
+	SuspendByManager(context.Context, examattempt.Call, examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error)
 	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
 	ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error)
 	CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
@@ -344,6 +347,15 @@ func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, com
 	})
 	if err != nil {
 		return ExamAttemptReallowResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+// SuspendExamAttempt is an Exam Manager's kick of one active Attempt.
+func (a *App) SuspendExamAttempt(ctx context.Context, invocation Invocation, command SuspendExamAttemptCommand) (ExamAttemptManualSuspensionResult, error) {
+	result, err := a.examAttempts.SuspendByManager(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return ExamAttemptManualSuspensionResult{}, examAttemptError(err, true)
 	}
 	return result, nil
 }
@@ -711,6 +723,38 @@ func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, 
 	}
 	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
 		effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
+}
+
+// AttemptSuspendedByManager publishes a committed kick: the closed live
+// Connection, if any, the manager and candidate suspension facts, operational
+// invalidations, and removal of the exact live Connection binding.
+func (effects examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.Context, result examattempt.ManualSuspensionResult) error {
+	var connectionID model.AttemptConnectionID
+	if result.Connection != nil {
+		connectionID = result.Connection.ID
+	}
+	managerEvent, err := apprealtime.NewExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID, result.CandidateUserID,
+		connectionID, "", result.Suspension.ID, result.Attempt.Revision, result.Suspension.StartedAt)
+	if err != nil {
+		return err
+	}
+	candidateEvent, err := apprealtime.NewCandidateExamAttemptSuspendedEvent(result.SittingID, result.Attempt.ID,
+		result.CandidateUserID, result.Suspension.CandidateReason, result.Suspension.StartedAt)
+	if err != nil {
+		return err
+	}
+	if !result.ConnectionClosed || result.Connection == nil {
+		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
+	}
+	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
+		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
+	if err != nil {
+		return err
+	}
+	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
+		effects.realtime.Publish(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
+			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
 func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result examattempt.WorkspaceMutationResult) error {

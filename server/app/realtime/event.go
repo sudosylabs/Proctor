@@ -216,8 +216,8 @@ type managerExamAttemptSuspendedData struct {
 	ExamSittingID string `json:"exam_sitting_id"`
 	ExamAttemptID string `json:"exam_attempt_id"`
 	CandidateID   string `json:"candidate_user_id"`
-	ConnectionID  string `json:"attempt_connection_id"`
-	FlagID        string `json:"integrity_flag_id"`
+	ConnectionID  string `json:"attempt_connection_id,omitempty"`
+	FlagID        string `json:"integrity_flag_id,omitempty"`
 	SuspensionID  string `json:"suspension_id"`
 	Revision      int64  `json:"attempt_revision"`
 	ChangedAt     string `json:"changed_at"`
@@ -512,8 +512,7 @@ func NewCandidateExamAttemptWorkspaceChangedEvent(sittingID model.ExamSittingID,
 func NewCandidateExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, reason model.AttemptSuspensionCandidateReason, changedAt time.Time,
 ) (RealtimeEvent, error) {
-	if reason != model.AttemptSuspensionCandidateReasonSecureContinuityLost &&
-		reason != model.AttemptSuspensionCandidateReasonFocusLossPolicy {
+	if !reason.IsValid() {
 		return RealtimeEvent{}, errors.New("candidate Exam Attempt suspension event requires a safe reason")
 	}
 	return newCandidateExamAttemptAccessEvent("exam_attempt_access_suspended", sittingID, attemptID, candidateID,
@@ -543,12 +542,16 @@ func newCandidateExamAttemptAccessEvent(name string, sittingID model.ExamSitting
 		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
 }
 
+// NewExamAttemptSuspendedEvent announces a suspension to Sitting viewers. A
+// policy episode names its Integrity Flag; a manual episode (an Exam Manager's
+// kick) has none, and a kicked reconnecting candidate has no Connection.
 func NewExamAttemptSuspendedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID, candidateID model.UserID,
 	connectionID model.AttemptConnectionID, flagID model.IntegrityFlagID, suspensionID model.AttemptSuspensionID,
 	revision int64, changedAt time.Time,
 ) (RealtimeEvent, error) {
-	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !connectionID.IsValid() ||
-		!flagID.IsValid() || !suspensionID.IsValid() || revision < 1 || changedAt.IsZero() {
+	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() ||
+		(!connectionID.IsValid() && !connectionID.IsZero()) || (!flagID.IsValid() && !flagID.IsZero()) ||
+		!suspensionID.IsValid() || revision < 1 || changedAt.IsZero() {
 		return RealtimeEvent{}, errors.New("manager Exam Attempt suspension event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(managerExamAttemptSuspendedData{ExamSittingID: sittingID.String(), ExamAttemptID: attemptID.String(),

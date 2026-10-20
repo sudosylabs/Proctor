@@ -843,11 +843,14 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		EndedAt             sql.NullTime   `db:"ended_at"`
 		ReallowedByUserID   sql.NullString `db:"reallowed_by_user_id"`
 		PrivateReason       sql.NullString `db:"private_reason"`
+		SuspendedByUserID   sql.NullString `db:"suspended_by_user_id"`
+		SuspensionReason    sql.NullString `db:"suspension_private_reason"`
 	}
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.admission_revision_id,
 		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,
-		a.revision AS attempt_revision,su.participation_id,su.integrity_flag_id AS flag_id,su.state AS suspension_state,
-		su.source,su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason
+		a.revision AS attempt_revision,su.participation_id,COALESCE(su.integrity_flag_id,'') AS flag_id,su.state AS suspension_state,
+		su.source,su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason,
+		su.suspended_by_user_id,su.suspension_private_reason
 		FROM exam_attempt_suspensions su JOIN exam_attempts a ON a.id=su.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id WHERE su.id=? AND su.exam_attempt_id=? FOR UPDATE OF su`,
 		input.SuspensionID.String(), input.AttemptID.String())
@@ -879,9 +882,10 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err != nil {
 		return zero, invalidPersistedState("attempt_suspension", "participation_id", err)
 	}
-	flagID, err := model.ParseIntegrityFlagID(row.FlagID)
+	flagID, suspendedBy, err := suspensionProvenance(model.AttemptSuspensionSource(row.Source),
+		model.AttemptSuspensionCandidateReason(row.CandidateReason), row.FlagID, row.SuspendedByUserID.String)
 	if err != nil {
-		return zero, invalidPersistedState("attempt_suspension", "integrity_flag_id", err)
+		return zero, err
 	}
 	attempt := &model.ExamAttempt{ID: attemptID, ExamID: input.ExamID, SittingID: input.SittingID, CandidateUserID: candidateID,
 		AdmissionRevisionID: revisionID, State: model.ExamAttemptState(row.AttemptState), CreatedAt: model.TimeUTC(row.AttemptCreatedAt),
@@ -889,7 +893,8 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	suspension := &model.AttemptSuspension{ID: input.SuspensionID, AttemptID: attemptID, ParticipationID: participationID,
 		FlagID: flagID, Generation: row.Generation, State: model.AttemptSuspensionState(row.SuspensionState),
 		Source: model.AttemptSuspensionSource(row.Source), CandidateReason: model.AttemptSuspensionCandidateReason(row.CandidateReason),
-		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt)}
+		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
+		SuspendedByUserID: suspendedBy, SuspensionPrivateReason: row.SuspensionReason.String}
 	if err = attempt.Validate(); err != nil {
 		return zero, invalidPersistedState("exam_attempt", "value", err)
 	}
@@ -979,11 +984,14 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 		EndedAt             sql.NullTime `db:"ended_at"`
 		ReallowedByUserID   string       `db:"reallowed_by_user_id"`
 		PrivateReason       string       `db:"private_reason"`
+		SuspendedByUserID   string       `db:"suspended_by_user_id"`
+		SuspensionReason    string       `db:"suspension_private_reason"`
 	}
 	err := s.GetMaster().Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.id AS attempt_id,a.admission_revision_id,
 		a.state AS attempt_state,a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
-		su.id AS suspension_id,su.participation_id,su.integrity_flag_id AS flag_id,su.state AS suspension_state,su.source,
-		su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason
+		su.id AS suspension_id,su.participation_id,COALESCE(su.integrity_flag_id,'') AS flag_id,su.state AS suspension_state,su.source,
+		su.candidate_reason,su.generation,su.started_at,su.ended_at,su.reallowed_by_user_id,su.private_reason,
+		COALESCE(su.suspended_by_user_id,'') AS suspended_by_user_id,COALESCE(su.suspension_private_reason,'') AS suspension_private_reason
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id JOIN exam_attempt_suspensions su ON su.exam_attempt_id=a.id
 		WHERE a.id=? AND su.id=?`, value.AttemptID, value.SuspensionID)
 	if err != nil {
@@ -1021,9 +1029,10 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 	if err != nil {
 		return nil, invalidPersistedState("attempt_suspension", "participation_id", err)
 	}
-	flagID, err := model.ParseIntegrityFlagID(row.FlagID)
+	flagID, suspendedBy, err := suspensionProvenance(model.AttemptSuspensionSource(row.Source),
+		model.AttemptSuspensionCandidateReason(row.CandidateReason), row.FlagID, row.SuspendedByUserID)
 	if err != nil {
-		return nil, invalidPersistedState("attempt_suspension", "integrity_flag_id", err)
+		return nil, err
 	}
 	reallowedID, err := model.ParseUserID(row.ReallowedByUserID)
 	if err != nil {
@@ -1039,7 +1048,8 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 		FlagID: flagID, Generation: row.Generation, State: model.AttemptSuspensionState(row.SuspensionState),
 		Source: model.AttemptSuspensionSource(row.Source), CandidateReason: model.AttemptSuspensionCandidateReason(row.CandidateReason),
 		StartedAt: model.TimeUTC(row.StartedAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
-		ReallowedByUserID: reallowedID, PrivateReason: row.PrivateReason}
+		ReallowedByUserID: reallowedID, PrivateReason: row.PrivateReason,
+		SuspendedByUserID: suspendedBy, SuspensionPrivateReason: row.SuspensionReason}
 	if err = domainSuspension.Validate(); err != nil {
 		return nil, invalidPersistedState("attempt_suspension", "value", err)
 	}
@@ -1048,7 +1058,8 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 		Suspension: &store.ExamAttemptSuspensionView{ID: domainSuspension.ID, AttemptID: domainSuspension.AttemptID,
 			ParticipationID: domainSuspension.ParticipationID, FlagID: domainSuspension.FlagID, Generation: domainSuspension.Generation,
 			State: domainSuspension.State, Source: domainSuspension.Source, CandidateReason: domainSuspension.CandidateReason,
-			StartedAt: domainSuspension.StartedAt, EndedAt: domainSuspension.EndedAt, ReallowedByUserID: domainSuspension.ReallowedByUserID}}, nil
+			StartedAt: domainSuspension.StartedAt, EndedAt: domainSuspension.EndedAt, ReallowedByUserID: domainSuspension.ReallowedByUserID,
+			SuspendedByUserID: domainSuspension.SuspendedByUserID}}, nil
 }
 
 func (s *sqlExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect) (examAttemptConnectOutcomeV1, error) {
@@ -1926,6 +1937,7 @@ type examAttemptManagerRow struct {
 	SuspensionStartedAt       sql.NullTime   `db:"suspension_started_at"`
 	SuspensionEndedAt         sql.NullTime   `db:"suspension_ended_at"`
 	SuspensionReallowedBy     sql.NullString `db:"suspension_reallowed_by"`
+	SuspensionSuspendedBy     sql.NullString `db:"suspension_suspended_by"`
 }
 
 const examAttemptManagerSelect = `SELECT a.id AS attempt_id,a.exam_id,a.exam_sitting_id,a.candidate_user_id,a.admission_revision_id,
@@ -1936,14 +1948,14 @@ const examAttemptManagerSelect = `SELECT a.id AS attempt_id,a.exam_id,a.exam_sit
 	su.id AS suspension_id,su.participation_id AS suspension_participation_id,su.integrity_flag_id AS suspension_flag_id,
 	su.generation AS suspension_generation,su.state AS suspension_state,su.source AS suspension_source,
 	su.candidate_reason AS suspension_reason,su.started_at AS suspension_started_at,su.ended_at AS suspension_ended_at,
-	su.reallowed_by_user_id AS suspension_reallowed_by
+	su.reallowed_by_user_id AS suspension_reallowed_by,su.suspended_by_user_id AS suspension_suspended_by
 	FROM exam_attempts a JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
 	LEFT JOIN LATERAL (SELECT id,state,generation,renewal_sequence,started_at,updated_at,lease_expires_at,ended_at,end_reason
 		FROM exam_attempt_participations WHERE exam_attempt_id=a.id ORDER BY generation DESC LIMIT 1) p ON true
 	LEFT JOIN LATERAL (SELECT id,state,opened_at,closed_at,close_reason FROM exam_attempt_connections
 		WHERE exam_attempt_id=a.id AND state='open' ORDER BY opened_at DESC,id DESC LIMIT 1) c ON true
-	LEFT JOIN LATERAL (SELECT id,participation_id,integrity_flag_id,generation,state,source,candidate_reason,started_at,ended_at,reallowed_by_user_id
-		FROM exam_attempt_suspensions WHERE exam_attempt_id=a.id AND state='active' LIMIT 1) su ON true`
+	LEFT JOIN LATERAL (SELECT id,participation_id,integrity_flag_id,generation,state,source,candidate_reason,started_at,ended_at,reallowed_by_user_id,
+		suspended_by_user_id FROM exam_attempt_suspensions WHERE exam_attempt_id=a.id AND state='active' LIMIT 1) su ON true`
 
 func (s *sqlExamAttemptStore) Get(ctx context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
 	if !examID.IsValid() || !attemptID.IsValid() {
@@ -2054,9 +2066,11 @@ func (row examAttemptManagerRow) snapshot() (*store.ExamAttemptManagerSnapshot, 
 		if e != nil {
 			return nil, invalidPersistedState("attempt_suspension", "participation_id", e)
 		}
-		flagID, e := model.ParseIntegrityFlagID(row.SuspensionFlagID.String)
+		source := model.AttemptSuspensionSource(row.SuspensionSource.String)
+		reason := model.AttemptSuspensionCandidateReason(row.SuspensionReason.String)
+		flagID, suspendedBy, e := suspensionProvenance(source, reason, row.SuspensionFlagID.String, row.SuspensionSuspendedBy.String)
 		if e != nil {
-			return nil, invalidPersistedState("attempt_suspension", "integrity_flag_id", e)
+			return nil, e
 		}
 		var actorID model.UserID
 		if row.SuspensionReallowedBy.Valid {
@@ -2065,19 +2079,15 @@ func (row examAttemptManagerRow) snapshot() (*store.ExamAttemptManagerSnapshot, 
 				return nil, invalidPersistedState("attempt_suspension", "reallowed_by_user_id", e)
 			}
 		}
-		domainSuspension, e := model.NewPolicyAttemptSuspension(id, attemptID, participationID, flagID,
-			row.SuspensionGeneration.Int64, model.AttemptSuspensionCandidateReason(row.SuspensionReason.String), row.SuspensionStartedAt.Time)
-		if e != nil {
-			return nil, invalidPersistedState("attempt_suspension", "value", e)
-		}
-		if model.AttemptSuspensionState(row.SuspensionState.String) != model.AttemptSuspensionActive ||
+		if !participationID.IsValid() || row.SuspensionGeneration.Int64 < 1 || row.SuspensionStartedAt.Time.IsZero() ||
+			model.AttemptSuspensionState(row.SuspensionState.String) != model.AttemptSuspensionActive ||
 			row.SuspensionEndedAt.Valid || !actorID.IsZero() {
 			return nil, invalidPersistedState("attempt_suspension", "value", errors.New("invalid active Attempt Suspension projection"))
 		}
-		result.ActiveSuspension = &store.ExamAttemptSuspensionView{ID: domainSuspension.ID, AttemptID: domainSuspension.AttemptID,
-			ParticipationID: domainSuspension.ParticipationID, FlagID: domainSuspension.FlagID, Generation: domainSuspension.Generation,
-			State: domainSuspension.State, Source: domainSuspension.Source, CandidateReason: domainSuspension.CandidateReason,
-			StartedAt: domainSuspension.StartedAt}
+		result.ActiveSuspension = &store.ExamAttemptSuspensionView{ID: id, AttemptID: attemptID,
+			ParticipationID: participationID, FlagID: flagID, Generation: row.SuspensionGeneration.Int64,
+			State: model.AttemptSuspensionActive, Source: source, CandidateReason: reason,
+			StartedAt: model.TimeUTC(row.SuspensionStartedAt.Time), SuspendedByUserID: suspendedBy}
 	}
 	return result, nil
 }
@@ -2454,4 +2464,29 @@ func boundedParticipationLease(now, end time.Time) time.Time {
 		deadline = end
 	}
 	return deadline
+}
+
+// suspensionProvenance validates the source-specific links of one persisted
+// Suspension episode without loading any private reason: a policy episode
+// links exactly one Integrity Flag, and a manual episode links its suspending
+// Exam Manager instead.
+func suspensionProvenance(source model.AttemptSuspensionSource, reason model.AttemptSuspensionCandidateReason,
+	flag, suspendedBy string,
+) (model.IntegrityFlagID, model.UserID, error) {
+	switch {
+	case source == model.AttemptSuspensionSourcePolicy && reason.IsPolicy() && suspendedBy == "":
+		flagID, err := model.ParseIntegrityFlagID(flag)
+		if err != nil {
+			return "", "", invalidPersistedState("attempt_suspension", "integrity_flag_id", err)
+		}
+		return flagID, "", nil
+	case source == model.AttemptSuspensionSourceManual && reason == model.AttemptSuspensionCandidateReasonManagerSuspended && flag == "":
+		actorID, err := model.ParseUserID(suspendedBy)
+		if err != nil {
+			return "", "", invalidPersistedState("attempt_suspension", "suspended_by_user_id", err)
+		}
+		return "", actorID, nil
+	default:
+		return "", "", invalidPersistedState("attempt_suspension", "source", errors.New("inconsistent Attempt Suspension provenance"))
+	}
 }

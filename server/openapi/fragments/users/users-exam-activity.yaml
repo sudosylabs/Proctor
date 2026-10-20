@@ -130,6 +130,7 @@ components:
           enum:
             - secure_connectivity_lost
             - focus_policy_review_required
+            - manager_suspended
             - null
     CandidateExamActivitySubmissionResponse:
       type: object

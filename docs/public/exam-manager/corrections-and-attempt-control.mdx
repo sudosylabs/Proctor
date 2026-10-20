@@ -58,6 +58,10 @@ to the Attempt and survives reconnect or re-allow.
 | manager end | seals any unfinished Ready, Active, or Suspended Attempt | last acknowledged Workspace and `manager_ended_attempt` Submission provenance |
 | Sitting close | seals every unfinished created Attempt at deadline or early close | `sitting_closed` Submission provenance and prior continuity cause |
 
+Kick requires the expected Attempt revision and a private bounded reason. It
+ends the candidate's live generation and Connection immediately and creates no
+Integrity Flag; the candidate sees only that a manager suspended the Attempt.
+
 Re-allow requires the exact Suspension, expected Attempt revision, and a
 private bounded reason. Fresh admission creates a new Participation generation;
 old credentials cannot revive it. Reset only the triggering evaluation window,

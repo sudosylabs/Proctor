@@ -186,7 +186,8 @@
         "resumeExamSitting", "extendExamSitting", "cancelExamSitting",
         "closeExamSitting", "listExamSittingNoShows",
         "listExamSittingCandidateStatuses", "stageExamSittingCorrectionResourceContent",
-        "applyExamSittingCorrection", "endExamAttemptByManager", "reallowExamAttempt"
+        "applyExamSittingCorrection", "endExamAttemptByManager", "reallowExamAttempt",
+        "suspendExamAttempt"
       ]
     },
     {

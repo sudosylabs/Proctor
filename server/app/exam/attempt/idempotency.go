@@ -74,6 +74,17 @@ func prepareReallowIdempotency(call Call, command ReallowCommand) (*store.Comman
 	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(), command.SuspensionID.String(), command.ExpectedAttemptRevision, command.PrivateReason})
 }
 
+func prepareManualSuspensionIdempotency(call Call, command ManualSuspensionCommand) (*store.CommandIdempotency, error) {
+	return prepareIdempotency(call, store.ExamAttemptSuspendOperation, command.IdempotencyKey, struct {
+		ExamID                  string `json:"exam_id"`
+		SittingID               string `json:"exam_sitting_id"`
+		AttemptID               string `json:"exam_attempt_id"`
+		ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+		PrivateReason           string `json:"private_reason"`
+	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(),
+		command.ExpectedAttemptRevision, command.PrivateReason})
+}
+
 func prepareManagerEndIdempotency(call Call, command ManagerEndCommand) (*store.CommandIdempotency, error) {
 	return prepareIdempotency(call, store.ExamSubmissionManagerEndOperation, command.IdempotencyKey, struct {
 		ExamID                  string `json:"exam_id"`

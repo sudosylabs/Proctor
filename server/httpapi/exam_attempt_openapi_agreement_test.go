@@ -24,6 +24,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	managerBrowserActivity := managerMember + "/browser-activity"
 	managerEnd := managerMember + "/end"
 	reallow := managerMember + "/reallow"
+	suspend := managerMember + "/suspend"
 	candidateBase := "/api/v1/exam-attempts/{exam_attempt_id}"
 	presentation := candidateBase + "/presentation"
 	workspace := candidateBase + "/workspace"
@@ -42,6 +43,10 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	reallowCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
 		"exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+	suspendCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
+		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_unavailable",
+		"exam.attempt.conflict", "exam.attempt.unavailable",
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	managerEndCodes := principalMutationContractCodes("request.invalid", "resource.not_found",
 		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
@@ -85,6 +90,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamSubmissionReceiptOK",
 				SuccessSchema: "ExamSubmissionReceiptResponse", PublicErrorCodes: managerEndCodes},
 			{Key: "POST " + reallow, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/ReallowExamAttempt", RequestSchema: "ReallowExamAttemptRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptReallowed", SuccessSchema: "ExamAttemptReallowResponse", PublicErrorCodes: reallowCodes},
+			{Key: "POST " + suspend, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/SuspendExamAttempt", RequestSchema: "SuspendExamAttemptRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptSuspended", SuccessSchema: "ExamAttemptSuspendResponse", PublicErrorCodes: suspendCodes},
 			{Key: "GET " + presentation, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamPresentationOK", SuccessSchema: "CandidateExamPresentationResponse", PublicErrorCodes: candidateCodes},
 			{Key: "GET " + workspace, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamWorkspaceListOK", SuccessSchema: "CandidateExamWorkspaceListResponse", PublicErrorCodes: candidateCodes},
 			{Key: "GET " + workspaceChanges, Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateWorkspaceJournalOK", SuccessSchema: "CandidateWorkspaceJournalResponse", PublicErrorCodes: candidateCodes},
@@ -122,10 +128,12 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "ExamAttemptWorkspaceResponse", DTO: reflect.TypeOf(examAttemptWorkspaceResponse{}), Required: []string{"id", "cursor", "created_at", "updated_at"}},
 			{Name: "ExamAttemptParticipationResponse", DTO: reflect.TypeOf(examAttemptParticipationResponse{}), Required: []string{"id", "state", "generation", "renewal_sequence", "started_at", "updated_at", "lease_expires_at"}},
 			{Name: "ExamAttemptConnectionResponse", DTO: reflect.TypeOf(examAttemptConnectionResponse{}), Required: []string{"id", "state", "opened_at"}},
-			{Name: "ExamAttemptSuspensionResponse", DTO: reflect.TypeOf(examAttemptSuspensionResponse{}), Required: []string{"id", "participation_id", "flag_id", "generation", "state", "source", "candidate_reason", "started_at"}},
+			{Name: "ExamAttemptSuspensionResponse", DTO: reflect.TypeOf(examAttemptSuspensionResponse{}), Required: []string{"id", "participation_id", "generation", "state", "source", "candidate_reason", "started_at"}},
 			{Name: "ExamAttemptManagerListResponse", DTO: reflect.TypeOf(examAttemptManagerListResponse{}), Required: []string{"items"}},
 			{Name: "ReallowExamAttemptRequest", DTO: reflect.TypeOf(reallowExamAttemptRequest{}), Required: []string{"suspension_id", "expected_attempt_revision", "reason"}},
 			{Name: "EndExamAttemptByManagerRequest", DTO: reflect.TypeOf(endExamAttemptByManagerRequest{}), Required: []string{"expected_attempt_revision", "reason"}},
+			{Name: "SuspendExamAttemptRequest", DTO: reflect.TypeOf(suspendExamAttemptRequest{}), Required: []string{"expected_attempt_revision", "reason"}},
+			{Name: "ExamAttemptSuspendResponse", DTO: reflect.TypeOf(examAttemptSuspendResponse{}), Required: []string{"exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "source", "candidate_reason", "suspended_by_user_id", "connection_closed"}},
 			{Name: "ExamAttemptReallowResponse", DTO: reflect.TypeOf(examAttemptReallowResponse{}), Required: []string{"exam_attempt_id", "exam_sitting_id", "state", "attempt_revision", "suspension_id", "suspension_state", "candidate_reason", "reallowed_by_user_id"}},
 			{Name: "CandidateExamPresentationResponse", DTO: reflect.TypeOf(candidateExamPresentationResponse{}), Required: []string{"attempt_id", "exam_sitting_id", "title", "instructions_markdown", "capacity", "candidate_runtime_capabilities", "browser_policy", "live_corrections", "resources"}, Nullable: []string{"browser_policy"}, NonNullable: []string{"live_corrections.acknowledged_at"}},
 			{Name: "CandidateBrowserPolicy", DTO: reflect.TypeOf(candidateBrowserPolicyResponse{}), Required: []string{"enabled", "policy_revision_id", "policy_revision_number", "policy_digest", "browser_activity_disclosure"}},

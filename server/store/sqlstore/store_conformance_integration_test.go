@@ -1679,6 +1679,10 @@ func TestSessionExpiryAttemptFence(t *testing.T) {
 	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestSessionExpiryAttemptFence)
 }
 
+func TestExamAttemptManualSuspensionStore(t *testing.T) {
+	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestExamAttemptManualSuspensionStore)
+}
+
 func TestAdministratorRecoveryStore(t *testing.T) {
 	PristineStoreTest(t, func(t *testing.T, persistence store.Store) {
 		sqlPersistence := persistence.(*SQLStore)

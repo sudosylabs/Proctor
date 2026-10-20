@@ -588,6 +588,40 @@ func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReaso
 	}
 }
 
+func TestManagerSuspendExamAttemptUsesRevisionFenceAndNeverReturnsPrivateReason(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+		"/attempts/" + fake.attempt.ID.String() + "/suspend"
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":2,"reason":"candidate left the room"}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "kick-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	if fake.suspend.AttemptID != fake.attempt.ID || fake.suspend.ExpectedAttemptRevision != 2 ||
+		fake.suspend.PrivateReason != "candidate left the room" || fake.suspend.IdempotencyKey != "kick-once" {
+		t.Fatalf("suspend command = %#v", fake.suspend)
+	}
+	body := response.Body.String()
+	if strings.Contains(body, "candidate left the room") || strings.Contains(body, "private") || strings.Contains(body, "replayed") ||
+		!strings.Contains(body, `"source":"manual"`) || !strings.Contains(body, `"candidate_reason":"manager_suspended"`) ||
+		!strings.Contains(body, `"connection_closed":true`) {
+		t.Fatalf("suspend response = %s", body)
+	}
+	missing := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":0,"reason":"x"}`))
+	missing.Header.Set("Authorization", "Bearer credential")
+	missing.Header.Set("Idempotency-Key", "kick-invalid")
+	invalid := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalid, missing)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid revision status = %d body=%s", invalid.Code, invalid.Body.String())
+	}
+}
+
 func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *testing.T) {
 	t.Parallel()
 	fake := newExamAttemptHTTPFake(t)
@@ -865,6 +899,7 @@ type examAttemptHTTPFake struct {
 	managerGet                application.GetExamAttemptQuery
 	workspaceOpen             application.OpenCandidateExamWorkspaceFileQuery
 	reallow                   application.ReallowExamAttemptCommand
+	suspend                   application.SuspendExamAttemptCommand
 	journalQuery              application.ListCandidateExamWorkspaceJournalQuery
 	journalPage               application.CandidateExamWorkspaceJournalPage
 	workspaceDirectory        application.CreateCandidateExamWorkspaceDirectoryCommand
@@ -1051,6 +1086,18 @@ func (fake *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocatio
 			State: model.AttemptSuspensionClosed, Source: model.AttemptSuspensionSourcePolicy,
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: attempt.CreatedAt,
 			EndedAt: model.OptionalTimeFrom(attempt.UpdatedAt), ReallowedByUserID: invocation.Principal().UserID}}, nil
+}
+
+func (fake *examAttemptHTTPFake) SuspendExamAttempt(_ context.Context, invocation application.Invocation, command application.SuspendExamAttemptCommand) (application.ExamAttemptManualSuspensionResult, error) {
+	fake.suspend = command
+	attempt := *fake.attempt
+	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptSuspended, attempt.UpdatedAt.Add(time.Minute), command.ExpectedAttemptRevision+1
+	return application.ExamAttemptManualSuspensionResult{ExamID: attempt.ExamID, SittingID: attempt.SittingID,
+		ClassID: model.NewClassID(), CandidateUserID: attempt.CandidateUserID, Attempt: attempt, ConnectionClosed: true,
+		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: attempt.ID,
+			ParticipationID: model.NewAttemptParticipationID(), Generation: 1, State: model.AttemptSuspensionActive,
+			Source: model.AttemptSuspensionSourceManual, CandidateReason: model.AttemptSuspensionCandidateReasonManagerSuspended,
+			StartedAt: attempt.UpdatedAt, SuspendedByUserID: invocation.Principal().UserID}}, nil
 }
 
 func (fake *examAttemptHTTPFake) GetCandidateExamPresentation(_ context.Context, _ application.Invocation, access application.CandidateExamAttemptAccess) (application.CandidateExamPresentation, error) {

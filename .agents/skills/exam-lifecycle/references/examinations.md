@@ -453,7 +453,14 @@ A manual Kick and an automatic policy Suspension have the same blocking effect
 but distinct provenance. Both deny connections, workspace and exam-material
 access and student submission. One append-preserving suspension
 episode records source, safe candidate reason, private manager reason, linked
-flag where applicable, and re-allow decision. Re-allow requires the exact
+flag where applicable, and re-allow decision. A Kick is an authorized Exam
+Manager's revision-fenced decision on an Active Attempt: one named Store
+operation, under PostgreSQL time, ends the active Participation and its open
+Connection as `kicked`, closes native delivery, and opens a `manual` episode
+with the `manager_suspended` candidate reason, the suspending manager, and the
+private reason, but no Integrity Flag or evidence: a Kick is a manager
+control, not suspicion of a violation. The candidate's own Attempt is
+concealed, and exact retry replays the original outcome. Re-allow requires the exact
 Suspension, the expected Attempt revision, and a private trimmed UTF-8 reason
 of 1 to 1,000 characters. It preserves flags and evidence, closes only the
 active episode, resets only the triggering evaluation window, and allows later

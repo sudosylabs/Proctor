@@ -194,6 +194,7 @@ components:
           enum:
             - secure_connectivity_lost
             - focus_policy_review_required
+            - manager_suspended
         reallow_available:
           type: boolean
     SittingCandidateStatusItemResponse:

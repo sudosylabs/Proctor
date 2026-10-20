@@ -389,6 +389,15 @@ func (s *examAttemptStore) ListExpiredParticipations(ctx context.Context, limit 
 	})
 }
 
+func (s *examAttemptStore) SuspendAttempt(ctx context.Context, input *store.ExamAttemptManualSuspension, command *store.CommandIdempotency) (*store.ExamAttemptManualSuspensionResult, error) {
+	if command == nil {
+		return s.ExamAttemptStore.SuspendAttempt(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.ExamAttemptManualSuspensionResult, error) {
+		return s.ExamAttemptStore.SuspendAttempt(ctx, input, command)
+	})
+}
+
 func (s *examAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow, command *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
 	if command == nil {
 		return s.ExamAttemptStore.ReallowAttempt(ctx, input, command)

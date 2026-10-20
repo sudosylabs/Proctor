@@ -103,6 +103,7 @@ type Effects interface {
 	ParticipationRenewed(context.Context, ParticipationRenewal) error
 	ParticipationExpired(context.Context, ParticipationExpiry) error
 	AttemptReallowed(context.Context, ReallowResult) error
+	AttemptSuspendedByManager(context.Context, ManualSuspensionResult) error
 	WorkspaceChanged(context.Context, WorkspaceMutationResult) error
 	FocusLossEvaluated(context.Context, FocusLossEvaluation) error
 	BrowserActivityGapChanged(context.Context, model.ExamID, model.ExamSittingID) error
@@ -446,9 +447,8 @@ func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 	if view == nil {
 		return true
 	}
-	return view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
-		view.Generation > 0 && view.State == model.AttemptSuspensionActive && view.Source == model.AttemptSuspensionSourcePolicy &&
-		reallowableSuspensionReason(view.CandidateReason) && !view.StartedAt.IsZero() &&
+	return view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && validSuspensionProvenance(view) &&
+		view.Generation > 0 && view.State == model.AttemptSuspensionActive && !view.StartedAt.IsZero() &&
 		!view.EndedAt.Valid && view.ReallowedByUserID.IsZero()
 }
 
@@ -641,10 +641,24 @@ func reallowableSuspensionReason(reason model.AttemptSuspensionCandidateReason) 
 		reason == model.AttemptSuspensionCandidateReasonFocusLossPolicy
 }
 
+// validSuspensionProvenance accepts a policy episode that links its Flag or a
+// manual episode (an Exam Manager's kick) that links its suspending manager.
+// Every re-allowable episode passes it in both its active and closed state.
+func validSuspensionProvenance(view *store.ExamAttemptSuspensionView) bool {
+	switch view.Source {
+	case model.AttemptSuspensionSourcePolicy:
+		return view.FlagID.IsValid() && reallowableSuspensionReason(view.CandidateReason) && view.SuspendedByUserID.IsZero()
+	case model.AttemptSuspensionSourceManual:
+		return view.FlagID.IsZero() && view.CandidateReason == model.AttemptSuspensionCandidateReasonManagerSuspended &&
+			view.SuspendedByUserID.IsValid()
+	default:
+		return false
+	}
+}
+
 func validClosedSuspension(view *store.ExamAttemptSuspensionView, attemptID model.ExamAttemptID, actorID model.UserID) bool {
-	return view != nil && view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && view.FlagID.IsValid() &&
-		view.Generation > 0 && view.State == model.AttemptSuspensionClosed && view.Source == model.AttemptSuspensionSourcePolicy &&
-		reallowableSuspensionReason(view.CandidateReason) && !view.StartedAt.IsZero() &&
+	return view != nil && view.ID.IsValid() && view.AttemptID == attemptID && view.ParticipationID.IsValid() && validSuspensionProvenance(view) &&
+		view.Generation > 0 && view.State == model.AttemptSuspensionClosed && !view.StartedAt.IsZero() &&
 		view.EndedAt.Valid && !view.EndedAt.Time.Before(view.StartedAt) && view.ReallowedByUserID == actorID
 }
 
