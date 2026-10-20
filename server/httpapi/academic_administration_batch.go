@@ -12,7 +12,6 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -23,7 +22,7 @@ type AcademicAdministrationBatchApplication interface {
 type unavailableAcademicAdministrationBatchApplication struct{}
 
 func (unavailableAcademicAdministrationBatchApplication) RunAcademicAdministrationBatch(context.Context, application.Invocation, application.RunAcademicAdministrationBatchCommand) (application.AcademicAdministrationBatchResult, error) {
-	return application.AcademicAdministrationBatchResult{}, apperror.New("administration.unavailable")
+	return application.AcademicAdministrationBatchResult{}, errUnpresentableResult
 }
 
 type academicAdministrationBatchItemRequest struct {

@@ -131,7 +131,10 @@ apperror.Error for an expected public failure
 HTTP Problem Details or WebSocket protocol error
 ~~~
 
-HTTP and WebSocket each maintain exhaustive mappings. Unknown failures become generic correlated internal errors. Unexpected failures preserve their cause and are logged once at the outer operational boundary.
+Transports never mint domain codes: `httpapi` mints only `request.*`, the
+authentication, CSRF, DPoP, and idempotency kernel codes, `service.busy`, and
+routing codes, and presents an application result it cannot serialize as the
+generic internal problem. HTTP and WebSocket each maintain exhaustive mappings. Unknown failures become generic correlated internal errors. Unexpected failures preserve their cause and are logged once at the outer operational boundary.
 
 HTTP negotiates presentation language from `Accept-Language` against the
 embedded server catalogs. Problem `type`, `code`, `status`, fields, and request

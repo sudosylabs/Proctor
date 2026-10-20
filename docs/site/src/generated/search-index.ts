@@ -1530,7 +1530,7 @@ export const searchEntries = [
     "href": "/api/reference/list-audit-events",
     "method": "GET",
     "path": "/api/v1/audits",
-    "searchText": "listauditevents list authorized institution or academic unit audit history lists bounded durable audit facts visible through the caller's institution or academic unit authority. the projection omits raw parameters, prior state, result payloads, credentials, protected content, and unsafe internal failures. roles and access get /api/v1/audits principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.query.invalid audit.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
+    "searchText": "listauditevents list authorized institution or academic unit audit history lists bounded durable audit facts visible through the caller's institution or academic unit authority. the projection omits raw parameters, prior state, result payloads, credentials, protected content, and unsafe internal failures. roles and access get /api/v1/audits principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.query.invalid request.invalid audit.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
   },
   {
     "id": "operation:startBrowserInvitation",
@@ -3202,7 +3202,7 @@ export const searchEntries = [
     "href": "/api/reference/list-jobs",
     "method": "GET",
     "path": "/api/v1/jobs",
-    "searchText": "listjobs list allowlisted durable jobs lists only job types deliberately exposed through the public administration contract and authorized for the current principal. private payloads, claims, worker identities, and infrastructure errors are omitted from every projection. jobs get /api/v1/jobs principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.unavailable job.query.invalid job.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
+    "searchText": "listjobs list allowlisted durable jobs lists only job types deliberately exposed through the public administration contract and authorized for the current principal. private payloads, claims, worker identities, and infrastructure errors are omitted from every projection. jobs get /api/v1/jobs principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.unavailable job.query.invalid request.invalid job.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
   },
   {
     "id": "operation:getJob",
@@ -3224,7 +3224,7 @@ export const searchEntries = [
     "href": "/api/reference/list-job-attempts",
     "method": "GET",
     "path": "/api/v1/jobs/{job_id}/attempts",
-    "searchText": "listjobattempts list ordered execution attempts for one job returns the bounded execution history for an authorized, allowlisted job in attempt-number order. the projection exposes safe status and public failure information, never worker leases, private payloads, stack traces, or infrastructure diagnostics. jobs get /api/v1/jobs/{job_id}/attempts principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.unavailable job.query.invalid resource.not_found job.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
+    "searchText": "listjobattempts list ordered execution attempts for one job returns the bounded execution history for an authorized, allowlisted job in attempt-number order. the projection exposes safe status and public failure information, never worker leases, private payloads, stack traces, or infrastructure diagnostics. jobs get /api/v1/jobs/{job_id}/attempts principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable audit.unavailable job.query.invalid request.invalid resource.not_found job.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
   },
   {
     "id": "operation:cancelJob",
@@ -3257,7 +3257,7 @@ export const searchEntries = [
     "href": "/api/reference/list-mail-deliveries",
     "method": "GET",
     "path": "/api/v1/mail/deliveries",
-    "searchText": "listmaildeliveries list safe mail delivery metadata lists authorized durable delivery metadata for the allowlisted template and filters. recipient addresses remain masked and the response never exposes encrypted payloads, rendered message bodies, smtp credentials, or provider diagnostics. mail get /api/v1/mail/deliveries principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable mail.query.invalid mail.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
+    "searchText": "listmaildeliveries list safe mail delivery metadata lists authorized durable delivery metadata for the allowlisted template and filters. recipient addresses remain masked and the response never exposes encrypted payloads, rendered message bodies, smtp credentials, or provider diagnostics. mail get /api/v1/mail/deliveries principal_required none authentication.required authentication.invalid_token authentication.credential_ambiguous authorization.denied authorization.request.invalid authorization.unavailable mail.query.invalid request.invalid mail.unavailable authentication.dpop.invalid authentication.dpop.replayed authentication.dpop.use_nonce authentication.dpop.unavailable"
   },
   {
     "id": "operation:getMailDelivery",

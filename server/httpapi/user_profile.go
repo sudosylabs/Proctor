@@ -17,7 +17,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -228,7 +227,7 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 	}
 	if page.HasMore {
 		if len(page.Items) == 0 {
-			return operationResult{}, apperror.New("exam.attempt.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeOpaqueCursor(candidateExamActivityCursor{
@@ -236,7 +235,7 @@ func (module userProfileResourceModule) examActivity(request operationRequest) (
 			ExamSittingID: last.SittingID.String(),
 		}, candidateExamActivityCursorSpec())
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil

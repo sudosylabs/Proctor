@@ -12,7 +12,6 @@ import (
 	"strconv"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -90,7 +89,7 @@ func (m examAttemptHTTPModule) nativeDeliveryReceipt(request operationRequest) (
 		return operationResult{}, err
 	}
 	if value == nil || value.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -141,7 +140,7 @@ func (m examAttemptHTTPModule) updateNativeDeliverySummary(request operationRequ
 }
 func nativeDeliveryStatusResult(value *model.NativeSecurityStreamStatus) (operationResult, error) {
 	if value == nil || value.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -165,7 +164,7 @@ func (m examAttemptHTTPModule) appendNativeDelivery(request operationRequest) (o
 		return operationResult{}, err
 	}
 	if value == nil || value.Receipt.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }

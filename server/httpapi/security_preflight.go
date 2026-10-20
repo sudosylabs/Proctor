@@ -16,7 +16,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -99,12 +98,12 @@ func (m examAttemptHTTPModule) prepareSecurityPreflight(request operationRequest
 		return operationResult{}, err
 	}
 	if prepared == nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	result := securityPolicyResponse{ServerTime: prepared.ServerTime, Policy: prepared.Resolved.Policy, PolicyContentDigest: prepared.Resolved.PolicyContentDigest, CapabilityMatrixDigest: prepared.Resolved.CapabilityMatrixDigest, CatalogBindings: prepared.Resolved.CatalogBindings, PreflightChallenge: prepared.Challenge, FrozenAttemptConfiguration: prepared.FrozenAttemptConfiguration, BrowserActivityDisclosure: prepared.BrowserActivityDisclosure}
 	encoded, err := json.Marshal(result)
 	if err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, result), nil
 }
@@ -122,7 +121,7 @@ func (m examAttemptHTTPModule) reportSecurityPreflight(request operationRequest)
 		return operationResult{}, err
 	}
 	if result == nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, result), nil
 }
@@ -149,7 +148,7 @@ func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (
 		return operationResult{}, err
 	}
 	if recovered == nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	result := securityPolicyRecoveryResponse{
 		CurrentSources: recovered.CurrentSources, CurrentCoverage: recovered.CurrentCoverage, SourceResetReceipts: recovered.SourceResetReceipts,
@@ -157,7 +156,7 @@ func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, result), nil
 }

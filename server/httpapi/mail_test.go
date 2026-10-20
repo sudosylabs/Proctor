@@ -126,7 +126,7 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 		t.Fatalf("cursor=%#v err=%v", decoded, err)
 	}
 	request, _ = http.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?state=not-a-state", nil)
-	if _, err = module.listDeliveries(operationRequest{request: request}); !apperror.Is(err, "mail.query.invalid") || fake.lists != 1 {
+	if _, err = module.listDeliveries(operationRequest{request: request}); !apperror.Is(err, "request.invalid") || fake.lists != 1 {
 		t.Fatalf("invalid filter err=%v lists=%d", err, fake.lists)
 	}
 	request, _ = http.NewRequest(http.MethodPost, "/api/v1/mail/deliveries/"+id.String()+"/retry", bytes.NewBufferString(`{"body":"forbidden"}`))
@@ -158,7 +158,7 @@ func TestMailDeliveryEndpointForwardsExactCursorAndMapsMalformedCursor(t *testin
 	malformed.Header.Set("Authorization", "Bearer credential")
 	malformedResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(malformedResponse, malformed)
-	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "mail.query.invalid")
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 }
 
 func TestMailMetricsProjectsOnlyBoundedOperationalDimensions(t *testing.T) {

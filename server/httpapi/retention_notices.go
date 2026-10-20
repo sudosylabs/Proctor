@@ -11,7 +11,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -71,13 +70,13 @@ func (m retentionHTTPModule) notices(request operationRequest) (operationResult,
 		return operationResult{}, err
 	}
 	if page == nil || len(page.Items) > limit || (page.HasMore && len(page.Items) == 0) {
-		return operationResult{}, apperror.New("retention.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	response := retentionNoticesResponse{Items: make([]retentionNoticeResponse, 0, len(page.Items))}
 	previous := after
 	for _, n := range page.Items {
 		if !n.RetirementID.IsValid() || n.RetirementID <= previous || n.RecipientUserID != request.invocation().Principal().UserID {
-			return operationResult{}, apperror.New("retention.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 		response.Items = append(response.Items, retentionNoticeResponse{RetirementID: n.RetirementID.String(), ExamID: n.Scope.ExamID.String(), SittingID: n.Scope.SittingID.String(), SubmissionID: n.Scope.SubmissionID.String(), Category: string(n.Category), State: string(n.State), CreatedAt: retentionTime(n.CreatedAt), RetireAfter: retentionTime(n.RetireAfter), CancelledAt: retentionOptionalTime(n.CancelledAt), DeliveryState: n.DeliveryState, DeliveryErrorCode: n.DeliveryErrorCode})
 		previous = n.RetirementID
@@ -85,7 +84,7 @@ func (m retentionHTTPModule) notices(request operationRequest) (operationResult,
 	if page.HasMore {
 		response.NextCursor, err = encodeOpaqueCursor(retentionNoticeCursor{After: previous.String()}, retentionNoticeCursorSpec())
 		if err != nil {
-			return operationResult{}, apperror.New("retention.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(privateNoStoreHeaders()), nil

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -79,7 +78,7 @@ func (m examAttemptHTTPModule) browserSourceStatus(request operationRequest) (op
 		return operationResult{}, err
 	}
 	if value == nil || value.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -93,11 +92,11 @@ func (m examAttemptHTTPModule) browserSourceList(request operationRequest) (oper
 		return operationResult{}, err
 	}
 	if values == nil || len(values) > model.BrowserSourceMaximumPerParticipation {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	for _, value := range values {
 		if value.Validate() != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 	}
 	return jsonResult(http.StatusOK, browserSourceListResponse{Sources: values}).withHeaders(noStoreHeaders()), nil
@@ -129,7 +128,7 @@ func (m examAttemptHTTPModule) browserDeliveryReceipts(request operationRequest)
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -147,7 +146,7 @@ func (m examAttemptHTTPModule) declareBrowserDeliveryGaps(request operationReque
 		return operationResult{}, err
 	}
 	if value == nil || value.Status.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -165,7 +164,7 @@ func (m examAttemptHTTPModule) sealBrowserDelivery(request operationRequest) (op
 		return operationResult{}, err
 	}
 	if value == nil || value.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -183,7 +182,7 @@ func (m examAttemptHTTPModule) updateBrowserDeliverySummary(request operationReq
 		return operationResult{}, err
 	}
 	if value == nil || value.Status.Validate() != nil || value.Summary.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -204,14 +203,14 @@ func (m examAttemptHTTPModule) appendHistoricalBrowserDelivery(request operation
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	progress := model.BrowserDeliveryProgress{HighestContiguous: value.HighestContiguous, SettledThrough: value.SettledThrough, HighestSeen: value.HighestSeen, AllocatedThrough: value.AllocatedThrough, TerminalMissingThrough: value.TerminalMissingThrough, MissingRanges: []model.SequenceRange{}, MissingRangesTruncated: value.MissingRangesTruncated}
 	for _, r := range value.MissingRanges {
 		progress.MissingRanges = append(progress.MissingRanges, model.SequenceRange{First: r.First, Last: r.Last})
 	}
 	if progress.Validate() != nil {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, browserDeliveryAcknowledgementResponse{BrowserDeliveryProgress: progress, SourceSessionID: value.SourceSessionID, Receipts: value.Receipts, ServerTime: value.ServerTime}).withHeaders(noStoreHeaders()), nil
 }

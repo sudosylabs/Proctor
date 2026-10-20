@@ -23,6 +23,7 @@ paths:
         - authorization.request.invalid
         - authorization.unavailable
         - mail.query.invalid
+        - request.invalid
         - mail.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed

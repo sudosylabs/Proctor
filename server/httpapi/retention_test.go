@@ -148,7 +148,7 @@ func TestRetentionHTTPNoticeProjectionIsRecipientOnlyAndBounded(t *testing.T) {
 	notice.RecipientUserID = model.NewUserID()
 	app.noticePage = &application.RetentionNoticePage{Items: []model.RetentionNotice{notice}}
 	r = serveRetentionHTTP(api, "GET", "/api/v1/users/me/retention-notices", "", "")
-	if r.Code != 503 {
+	if r.Code != 500 {
 		t.Fatal("wrong recipient response exposed")
 	}
 }

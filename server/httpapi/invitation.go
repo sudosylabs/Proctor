@@ -217,46 +217,46 @@ type invitationResourceModule struct{ invitations InvitationApplication }
 type unavailableInvitationApplication struct{}
 
 func (unavailableInvitationApplication) IssueStudentClassInvitation(context.Context, application.Invocation, application.IssueStudentClassInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) AcceptStudentClassInvitation(context.Context, application.Invocation, application.AcceptStudentClassInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 func (unavailableInvitationApplication) IssueTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.IssueTeacherAcademicUnitInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) AcceptTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.AcceptTeacherAcademicUnitInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 func (unavailableInvitationApplication) IssueAcademicUnitRoleInvitation(context.Context, application.Invocation, application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) AcceptAcademicUnitRoleInvitation(context.Context, application.Invocation, application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 func (unavailableInvitationApplication) IssueInstitutionRoleInvitation(context.Context, application.Invocation, application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) AcceptInstitutionRoleInvitation(context.Context, application.Invocation, application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 func (unavailableInvitationApplication) ListInvitations(context.Context, application.Invocation, application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
-	return application.InvitationAdministrationPage{}, apperror.New("invitation.unavailable")
+	return application.InvitationAdministrationPage{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) GetInvitation(context.Context, application.Invocation, string) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationAdministrationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) ResendInvitation(context.Context, application.Invocation, application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationAdministrationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) RevokeInvitation(context.Context, application.Invocation, application.RevokeInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationAdministrationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) ReplaceInvitation(context.Context, application.Invocation, application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
+	return application.InvitationAdministrationView{}, errUnpresentableResult
 }
 func (unavailableInvitationApplication) RunInvitationBatch(context.Context, application.Invocation, application.RunInvitationBatchCommand) (application.InvitationBatchResult, error) {
-	return application.InvitationBatchResult{}, apperror.New("invitation.unavailable")
+	return application.InvitationBatchResult{}, errUnpresentableResult
 }
 
 func invitationResource(invitations InvitationApplication) resource {
@@ -328,7 +328,7 @@ func (m invitationResourceModule) batch(request operationRequest) (operationResu
 func (m invitationResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := invitationListQuery(request.request)
 	if err != nil {
-		return operationResult{}, apperror.New("invitation.query.invalid").Wrap(err)
+		return operationResult{}, apperror.Invalid("request.invalid", "query").Wrap(err)
 	}
 	page, err := m.invitations.ListInvitations(request.context, request.invocation(), query)
 	if err != nil {
@@ -339,14 +339,14 @@ func (m invitationResourceModule) list(request operationRequest) (operationResul
 		response.Items = append(response.Items, invitationAdministrationResponseFromView(item))
 	}
 	if page.More && len(page.Items) == 0 {
-		return operationResult{}, apperror.New("invitation.unavailable").Wrap(errors.New("invitation page made no progress"))
+		return operationResult{}, unpresentableResult(errors.New("invitation page made no progress"))
 	}
 	if page.More {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeInvitationCursor(invitationCursor{
 			CreatedAt: model.TimeUTC(last.CreatedAt).Format(time.RFC3339Nano), ID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, apperror.New("invitation.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil

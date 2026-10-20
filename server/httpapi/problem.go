@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -91,6 +92,21 @@ func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 		return
 	}
 	WriteProblem(writer, internalProblem(request))
+}
+
+// errUnpresentableResult reports an application result or capability that the
+// transport cannot present: a missing or malformed result, a result that
+// exceeds its wire bound, or a cursor that cannot be encoded. It is a server
+// fault, never a public application condition, so the transport mints no
+// application code for it: the kernel answers with the generic correlated
+// internal problem and logs the cause once.
+var errUnpresentableResult = errors.New("application result cannot be presented")
+
+func unpresentableResult(cause error) error {
+	if cause == nil {
+		return errUnpresentableResult
+	}
+	return fmt.Errorf("%w: %w", errUnpresentableResult, cause)
 }
 
 func internalProblem(request *http.Request) Problem {

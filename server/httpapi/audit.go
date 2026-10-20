@@ -83,14 +83,14 @@ func auditResource(audits AuditListingApplication) resource {
 	return newResource(
 		"audits",
 		principalRoute(http.MethodGet, apiPath(literal("audits")),
-			operatorReadErrorCodes("audit.query.invalid", "audit.unavailable"), module.list),
+			operatorReadErrorCodes("audit.query.invalid", "audit.unavailable", "request.invalid"), module.list),
 	)
 }
 
 func (module auditResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := auditQueryFromRequest(request.request)
 	if err != nil {
-		return operationResult{}, apperror.New("audit.query.invalid")
+		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
 	events, listErr := module.audits.ListAuditEvents(
 		request.context,
@@ -111,7 +111,7 @@ func (module auditResourceModule) list(request operationRequest) (operationResul
 			Id:       last.ID.String(),
 		})
 		if err != nil {
-			return operationResult{}, apperror.New("audit.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

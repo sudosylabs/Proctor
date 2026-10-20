@@ -29,6 +29,13 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   intentionally open;
 - document stable application error codes in `x-proctor-error-codes`, map each
   code to a declared HTTP response, and return RFC 9457 Problem Details;
+- mint only transport and kernel codes in `httpapi`: `request.*` for encoding,
+  shape, and query-parameter failures, the authentication, CSRF, DPoP, and
+  idempotency kernel codes, `service.busy`, and the routing codes. Every domain
+  code comes from the application. A result the transport cannot present
+  (missing, malformed, over its wire bound, or not encodable as a cursor) is a
+  server fault answered with the generic `internal` problem, never a domain
+  `*.unavailable` code;
 - add an agreement test that compares registered route/auth metadata, DTO JSON
   fields, success schemas, and public errors with OpenAPI;
 - preserve characterized behavior deliberately. Before the first supported

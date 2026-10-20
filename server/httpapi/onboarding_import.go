@@ -15,7 +15,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -183,17 +182,17 @@ func onboardingImportResponseFromView(view application.OnboardingImportView, row
 type unavailableOnboardingImportApplication struct{}
 
 func (unavailableOnboardingImportApplication) UploadOnboardingImport(context.Context, application.Invocation, application.UploadOnboardingImportCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
+	return application.OnboardingImportView{}, errUnpresentableResult
 }
 func (unavailableOnboardingImportApplication) GetOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	return application.OnboardingImportView{}, nil, apperror.New("onboarding_import.unavailable")
+	return application.OnboardingImportView{}, nil, errUnpresentableResult
 }
 func (unavailableOnboardingImportApplication) CommitOnboardingImport(context.Context, application.Invocation, application.CommitOnboardingImportCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
+	return application.OnboardingImportView{}, errUnpresentableResult
 }
 func (unavailableOnboardingImportApplication) CancelOnboardingImport(context.Context, application.Invocation, string) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
+	return application.OnboardingImportView{}, errUnpresentableResult
 }
 func (unavailableOnboardingImportApplication) OnboardingImportReport(context.Context, application.Invocation, string, io.Writer) error {
-	return apperror.New("onboarding_import.unavailable")
+	return errUnpresentableResult
 }

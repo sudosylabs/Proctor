@@ -41,7 +41,7 @@ func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/jobs", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobListOK", SuccessSchema: "JobListResponse",
-				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "job.unavailable"),
+				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "job.unavailable", "request.invalid"),
 			},
 			{
 				Key: "GET /api/v1/jobs/{job_id}", Auth: AuthPrincipalRequired,
@@ -51,7 +51,7 @@ func TestJobOperationsOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/jobs/{job_id}/attempts", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/JobAttemptListOK", SuccessSchema: "JobAttemptListResponse",
-				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "resource.not_found", "job.unavailable"),
+				PublicErrorCodes: principalContractCodes("audit.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"),
 			},
 			{
 				Key: "POST /api/v1/jobs/{job_id}/cancel", Auth: AuthPrincipalRequired,

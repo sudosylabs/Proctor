@@ -162,7 +162,7 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 		t.Fatalf("second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
 	}
 	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?cursor=not-a-cursor", "", true)
-	assertHTTPProblem(t, malformed, http.StatusBadRequest, "audit.query.invalid")
+	assertHTTPProblem(t, malformed, http.StatusBadRequest, "request.invalid")
 
 	audits.err = apperror.New("audit.unavailable")
 	errorResponse := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits", "", true)
@@ -234,7 +234,7 @@ func TestJobResourcePreservesPrivateProjectionAndBoundedControls(t *testing.T) {
 		t.Fatalf("job cursor forwarding = %d query=%#v body=%s", page.Code, jobs.listQuery, page.Body.String())
 	}
 	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs?cursor=not-a-cursor", "", true)
-	assertHTTPProblem(t, malformed, http.StatusBadRequest, "job.query.invalid")
+	assertHTTPProblem(t, malformed, http.StatusBadRequest, "request.invalid")
 
 	attemptCursor, err := encodeJobAttemptCursor(7)
 	if err != nil {
@@ -245,7 +245,7 @@ func TestJobResourcePreservesPrivateProjectionAndBoundedControls(t *testing.T) {
 		t.Fatalf("job attempt cursor forwarding = %d query=%#v body=%s", attempts.Code, jobs.attemptQuery, attempts.Body.String())
 	}
 	malformedAttempts := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs/"+jobID.String()+"/attempts?cursor=not-a-cursor", "", true)
-	assertHTTPProblem(t, malformedAttempts, http.StatusBadRequest, "job.query.invalid")
+	assertHTTPProblem(t, malformedAttempts, http.StatusBadRequest, "request.invalid")
 	for _, action := range []string{"cancel", "retry"} {
 		response := serveOperatorRequest(httpAPI, http.MethodPost, "/api/v1/jobs/"+jobID.String()+"/"+action, "", true)
 		if response.Code != http.StatusOK {

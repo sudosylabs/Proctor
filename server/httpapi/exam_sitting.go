@@ -20,7 +20,6 @@ import (
 	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -265,12 +264,12 @@ func (module examSittingHTTPModule) listNoShows(request operationRequest) (opera
 		response.Items = append(response.Items, examSittingNoShowResponse{CandidateUserID: item.CandidateUserID.String()})
 	}
 	if page.HasMore && len(page.Items) == 0 {
-		return operationResult{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("no-show page made no progress"))
+		return operationResult{}, unpresentableResult(errors.New("no-show page made no progress"))
 	}
 	if page.HasMore {
 		response.NextCursor, err = encodeExamSittingNoShowCursor(page.Items[len(page.Items)-1].CandidateUserID)
 		if err != nil {
-			return operationResult{}, apperror.New("exam.sitting.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -450,16 +449,16 @@ func (module examSittingHTTPModule) list(request operationRequest) (operationRes
 		response.Items = append(response.Items, examSittingResponseFromView(view))
 	}
 	if page.HasMore && len(page.Items) == 0 {
-		return operationResult{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("sitting page made no progress"))
+		return operationResult{}, unpresentableResult(errors.New("sitting page made no progress"))
 	}
 	if page.HasMore {
 		last := page.Items[len(page.Items)-1].Sitting
 		if last == nil {
-			return operationResult{}, apperror.New("exam.sitting.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 		response.NextCursor, err = encodeExamSittingCursor(examSittingCursor{StartAt: last.ScheduledStartAt, ID: last.ID})
 		if err != nil {
-			return operationResult{}, apperror.New("exam.sitting.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

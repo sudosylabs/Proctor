@@ -14,7 +14,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -175,7 +174,7 @@ func (m examRecordsHTTPModule) getCompletion(request operationRequest) (operatio
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, examRecordsSnapshotResponse{Completion: recordsCompletionResponse(value.Completion), SittingState: string(value.SittingState), SubmissionCount: value.SubmissionCount, PendingReviews: value.PendingReviews}).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -202,7 +201,7 @@ func (m examRecordsHTTPModule) complete(request operationRequest) (operationResu
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, recordsCompletionResponse(*value)).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -254,7 +253,7 @@ func (m examRecordsHTTPModule) waive(request operationRequest) (operationResult,
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, submissionReviewWaiverEnvelope{Waiver: recordsWaiverResponse(value)}).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -280,7 +279,7 @@ func (m examRecordsHTTPModule) createHold(request operationRequest) (operationRe
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusCreated, recordsHoldResponse(*value)).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -318,7 +317,7 @@ func (m examRecordsHTTPModule) releaseHold(request operationRequest) (operationR
 		return operationResult{}, err
 	}
 	if value == nil {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, recordsHoldResponse(*value)).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -367,7 +366,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 		return operationResult{}, err
 	}
 	if page == nil || len(page.Holds) > limit || page.HasMore && len(page.Holds) == 0 {
-		return operationResult{}, apperror.New("exam.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	response := retentionHoldPageResponse{Items: make([]retentionHoldResponse, 0, len(page.Holds))}
 	for _, hold := range page.Holds {
@@ -377,7 +376,7 @@ func (m examRecordsHTTPModule) listHolds(request operationRequest) (operationRes
 		response.NextCursor, err = encodeOpaqueCursor(recordsHoldCursor{ExamID: scope.ExamID.String(), SittingID: scope.SittingID.String(), SubmissionID: scope.SubmissionID.String(), IncludeReleased: includeReleased,
 			AfterID: page.Holds[len(page.Holds)-1].ID.String()}, recordsHoldCursorSpec(scope, includeReleased))
 		if err != nil {
-			return operationResult{}, apperror.New("exam.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(privateNoStoreHeaders()), nil

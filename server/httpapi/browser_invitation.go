@@ -12,7 +12,6 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 type BrowserInvitationApplication interface {
@@ -55,15 +54,15 @@ type browserInvitationResourceModule struct {
 type unavailableBrowserInvitationApplication struct{}
 
 func (unavailableBrowserInvitationApplication) StartBrowserInvitation(context.Context, application.Invocation, application.StartBrowserInvitationCommand) (*application.BrowserInvitationStart, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 
 func (unavailableBrowserInvitationApplication) AcceptBrowserInvitation(context.Context, application.Invocation, application.BrowserInvitationAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 
 func (unavailableBrowserInvitationApplication) AcceptBrowserInvitationWithSession(context.Context, application.Invocation, application.BrowserInvitationSessionAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, apperror.New("invitation.unavailable")
+	return nil, errUnpresentableResult
 }
 
 func browserInvitationResource(application BrowserInvitationApplication, cookies browserCookies) resource {
@@ -129,10 +128,7 @@ func (module browserInvitationResourceModule) accept(request operationRequest) (
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	proof, err := module.proof(request.request)
-	if err != nil {
-		return operationResult{}, err
-	}
+	proof := module.proof(request.request)
 	accepted, err := module.application.AcceptBrowserInvitation(
 		request.context,
 		request.invocation(),
@@ -153,10 +149,7 @@ func (module browserInvitationResourceModule) acceptWithSession(request operatio
 	if err := request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	proof, err := module.proof(request.request)
-	if err != nil {
-		return operationResult{}, err
-	}
+	proof := module.proof(request.request)
 	accepted, err := module.application.AcceptBrowserInvitationWithSession(
 		request.context,
 		request.invocation(),
@@ -170,12 +163,15 @@ func (module browserInvitationResourceModule) acceptWithSession(request operatio
 	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)).withHeaders(module.successHeaders()), nil
 }
 
-func (module browserInvitationResourceModule) proof(request *http.Request) (string, error) {
+// proof returns the browser proof cookie, or "" when it is absent or
+// ambiguous. The application owns the decision and rejects a missing proof as
+// invitation.invalid.
+func (module browserInvitationResourceModule) proof(request *http.Request) string {
 	proof, err := singleCookieValue(request, BrowserInvitationProofCookieName)
-	if err != nil || proof == "" {
-		return "", apperror.New("invitation.invalid")
+	if err != nil {
+		return ""
 	}
-	return proof, nil
+	return proof
 }
 
 func (module browserInvitationResourceModule) successHeaders() http.Header {

@@ -125,7 +125,7 @@ func TestInvitationAdministrationRejectsNoProgressPage(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer session")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable {
+	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("no-progress status=%d body=%s", response.Code, response.Body.String())
 	}
 }
@@ -266,7 +266,7 @@ func TestInvitationAdministrationHTTPRejectsMalformedCursor(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer pat")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invitation.query.invalid") {
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "request.invalid") {
 		t.Fatalf("malformed Invitation cursor = %d %s logs=%s", response.Code, response.Body.String(), logs.String())
 	}
 }

@@ -85,11 +85,11 @@ func jobResource(jobs JobOperationsApplication) resource {
 	return newResource(
 		"jobs",
 		principalRoute(http.MethodGet, apiPath(literal("jobs")),
-			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "job.unavailable"), module.list),
+			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "job.unavailable", "request.invalid"), module.list),
 		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id")),
 			operatorReadErrorCodes("audit.unavailable", "resource.not_found", "job.unavailable"), module.get),
 		principalRoute(http.MethodGet, apiPath(literal("jobs"), canonicalID("job_id"), literal("attempts")),
-			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "resource.not_found", "job.unavailable"), module.listAttempts),
+			operatorReadErrorCodes("audit.unavailable", "job.query.invalid", "request.invalid", "resource.not_found", "job.unavailable"), module.listAttempts),
 		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("cancel")),
 			operatorMutationErrorCodes("resource.not_found", "job.cancel.unsupported", "job.conflict", "job.unavailable"), module.cancel),
 		principalRoute(http.MethodPost, apiPath(literal("jobs"), canonicalID("job_id"), literal("retry")),
@@ -100,7 +100,7 @@ func jobResource(jobs JobOperationsApplication) resource {
 func (module jobResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := listJobsQuery(request.request)
 	if err != nil {
-		return operationResult{}, apperror.New("job.query.invalid")
+		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
 	page, appErr := module.jobs.ListJobs(request.context, request.invocation(), query)
 	if appErr != nil {
@@ -114,7 +114,7 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, apperror.New("job.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -137,7 +137,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	}
 	limit, before, err := attemptPagination(request.request)
 	if err != nil {
-		return operationResult{}, apperror.New("job.query.invalid")
+		return operationResult{}, apperror.Invalid("request.invalid", "query")
 	}
 	page, appErr := module.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: model.JobID(jobID), BeforeNumber: before, Limit: limit})
 	if appErr != nil {
@@ -150,7 +150,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	if len(page.Items) == limit {
 		response.NextCursor, err = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
 		if err != nil {
-			return operationResult{}, apperror.New("job.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

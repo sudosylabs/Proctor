@@ -19,7 +19,6 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -858,7 +857,7 @@ func (module examAttemptHTTPModule) acknowledgeCorrection(request operationReque
 		return operationResult{}, err
 	}
 	if !result.AcknowledgedAt.Valid {
-		return operationResult{}, apperror.New("exam.attempt.unavailable")
+		return operationResult{}, errUnpresentableResult
 	}
 	return jsonResult(http.StatusOK, acknowledgeExamCorrectionResponse{RevisionID: result.CorrectionRevisionID.String(),
 		CurrentRevisionID: result.CurrentRevisionID.String(), RuntimeCapabilities: candidateRuntimeCapabilitiesFromStore(result.RuntimeCapabilities),
@@ -925,13 +924,13 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 	}
 	if page.HasMore {
 		if len(page.Items) == 0 {
-			return operationResult{}, apperror.New("exam.attempt.unavailable")
+			return operationResult{}, errUnpresentableResult
 		}
 		response.NextCursor, err = encodeOpaqueCursor(sittingCandidateStatusCursor{
 			Kind: sittingCandidateStatusCursorKind, CandidateUserID: page.Items[len(page.Items)-1].Candidate.UserID.String(),
 		}, sittingCandidateStatusCursorSpec())
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -1091,7 +1090,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 		last := page.Items[len(page.Items)-1].Attempt
 		response.NextCursor, err = encodeExamAttemptManagerCursor(examAttemptManagerCursor{CreatedAt: last.CreatedAt, ID: last.ID})
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -1141,7 +1140,7 @@ func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest
 		response.NextCursor, err = encodeBrowserActivityCursor(browserActivityCursor{ReceivedAt: last.Event.ReceivedAt,
 			SourceSessionID: last.SourceSessionID, Sequence: last.Event.Sequence})
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -1263,7 +1262,7 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: page.Cursor, ID: last.EntryID})
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -1430,7 +1429,7 @@ func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequ
 		}
 		response.NextCursor, err = encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: page.Items[len(page.Items)-1].EntryID})
 		if err != nil {
-			return operationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
+			return operationResult{}, unpresentableResult(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil

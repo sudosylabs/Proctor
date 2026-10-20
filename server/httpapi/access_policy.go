@@ -27,16 +27,16 @@ type AccessPolicyApplication interface {
 type unavailableAccessPolicyApplication struct{}
 
 func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, application.Invocation) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, apperror.New("access_policy.unavailable")
+	return application.AccessPolicyView{}, errUnpresentableResult
 }
 func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, application.Invocation, application.PreflightAccessPolicyCommand) (application.AccessPolicyPreflightResult, error) {
-	return application.AccessPolicyPreflightResult{}, apperror.New("access_policy.unavailable")
+	return application.AccessPolicyPreflightResult{}, errUnpresentableResult
 }
 func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, application.Invocation, application.ReplaceAccessPolicyCommand) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, apperror.New("access_policy.unavailable")
+	return application.AccessPolicyView{}, errUnpresentableResult
 }
 func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (application.PublicAccessDiscovery, error) {
-	return application.PublicAccessDiscovery{}, apperror.New("access_policy.unavailable")
+	return application.PublicAccessDiscovery{}, errUnpresentableResult
 }
 
 type accessPolicySettingsRequest struct {

@@ -34,7 +34,7 @@ func (unavailableDesktopCompatibilityApplication) GetDesktopCompatibilityPolicy(
 	context.Context,
 	application.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
-	return nil, apperror.New("desktop_compatibility_policy.unavailable")
+	return nil, errUnpresentableResult
 }
 
 func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPolicy(
@@ -42,7 +42,7 @@ func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPol
 	application.Invocation,
 	application.ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
-	return nil, apperror.New("desktop_compatibility_policy.unavailable")
+	return nil, errUnpresentableResult
 }
 
 type desktopCompatibilityPolicyRequest struct {

@@ -21,7 +21,7 @@ func TestAuditListingOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/audits", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/AuditListOK", SuccessSchema: "AuditListResponse",
-				PublicErrorCodes: principalContractCodes("audit.query.invalid", "audit.unavailable"),
+				PublicErrorCodes: principalContractCodes("audit.query.invalid", "audit.unavailable", "request.invalid"),
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

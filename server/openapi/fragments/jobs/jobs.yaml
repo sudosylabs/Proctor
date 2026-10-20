@@ -24,6 +24,7 @@ paths:
         - authorization.unavailable
         - audit.unavailable
         - job.query.invalid
+        - request.invalid
         - job.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed

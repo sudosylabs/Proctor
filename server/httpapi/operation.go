@@ -432,11 +432,15 @@ func writeRouteApplicationError(
 	writeApplicationError(writer, request, logger, err)
 }
 
+// routeErrorAllowed reports whether a route may present err. Every route may
+// fail with an oversized body or an unexpected internal fault, which carry no
+// application code; an application error must be declared by the route.
 func routeErrorAllowed(policy routeErrorPolicy, err error) bool {
-	if policy == nil || requestBodyTooLarge(err) {
+	var failure applicationFailure
+	if policy == nil || requestBodyTooLarge(err) || !errors.As(err, &failure) {
 		return true
 	}
-	_, allowed := policy[applicationErrorCode(err)]
+	_, allowed := policy[failure.Code()]
 	return allowed
 }
 
