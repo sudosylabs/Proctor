@@ -118,8 +118,8 @@ jobs:
       - name: Verify archives and prepare the image context
         if: needs.metadata.outputs.server == 'true'
         run: |
+          node build/ci/release.mjs verify-checksums "$RELEASE_ASSETS"
           cd "$RELEASE_ASSETS"
-          sha256sum --check --strict SHA256SUMS
           for arch in amd64 arm64; do
             mkdir -p "$RUNNER_TEMP/release-image/$arch"
             tar -xzf "proctor-$RELEASE_VERSION-linux-$arch.tar.gz" -C "$RUNNER_TEMP/release-image/$arch"

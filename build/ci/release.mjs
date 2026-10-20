@@ -48,6 +48,52 @@ export async function releaseMetadata(env = process.env, cwd = process.cwd()) {
   return { ...metadata, image: `ghcr.io/${env.GITHUB_REPOSITORY.toLowerCase()}` };
 }
 
+async function sha256File(path) {
+  const hash = createHash("sha256");
+  for await (const bytes of createReadStream(path)) hash.update(bytes);
+  return hash.digest("hex");
+}
+
+async function requireArtifactFile(path) {
+  const stat = await lstat(path);
+  if (!stat.isFile()) throw new Error("Release artifacts must be regular files");
+  if (stat.size === 0) throw new Error("Release artifacts must not be empty");
+  return stat;
+}
+
+const checksumLine = /^([a-f0-9]{64}) {2}([^/\\\n]+)$/;
+
+// One portable SHA-256 manifest implementation for macOS and Linux hosts: the
+// archive build writes it and the publishing job verifies it with the same
+// strict line format that `sha256sum --check --strict` accepts.
+export async function writeChecksums(directory, names) {
+  if (names.length === 0) throw new Error("At least one artifact is required");
+  const sorted = [...new Set(names)].sort();
+  const lines = [];
+  for (const name of sorted) {
+    if (!checksumLine.test(`${"0".repeat(64)}  ${name}`)) throw new Error(`Invalid artifact name: ${name}`);
+    await requireArtifactFile(join(directory, name));
+    lines.push(`${await sha256File(join(directory, name))}  ${name}\n`);
+  }
+  await writeFile(join(directory, "SHA256SUMS"), lines.join(""));
+}
+
+export async function verifyChecksums(directory) {
+  const manifest = await readFile(join(directory, "SHA256SUMS"), "utf8");
+  if (!manifest.endsWith("\n")) throw new Error("SHA256SUMS must end with a newline");
+  const lines = manifest.slice(0, -1).split("\n");
+  const seen = new Set();
+  for (const line of lines) {
+    const match = checksumLine.exec(line);
+    if (!match) throw new Error("SHA256SUMS contains an improperly formatted line");
+    const [, expected, name] = match;
+    if (seen.has(name)) throw new Error(`SHA256SUMS lists ${name} more than once`);
+    seen.add(name);
+    await requireArtifactFile(join(directory, name));
+    if (await sha256File(join(directory, name)) !== expected) throw new Error(`SHA-256 mismatch for ${name}`);
+  }
+}
+
 // This is signed release metadata, not a claim of a particular SLSA level.
 // It binds delivered bytes to their source and the exact CI execution.
 export async function writeReleaseProvenance(directory, env = process.env) {
@@ -63,9 +109,7 @@ export async function writeReleaseProvenance(directory, env = process.env) {
   const artifacts = [];
   for (const name of names) {
     const path = join(directory, name);
-    const stat = await lstat(path);
-    if (!stat.isFile()) throw new Error("Release artifacts must be regular files");
-    if (stat.size === 0) throw new Error("Release artifacts must not be empty");
+    const stat = await requireArtifactFile(path);
     if (name === "image-digest.txt") {
       const digest = await readFile(path, "utf8");
       const prefix = `ghcr.io/${env.GITHUB_REPOSITORY.toLowerCase()}@sha256:`;
@@ -73,9 +117,7 @@ export async function writeReleaseProvenance(directory, env = process.env) {
         throw new Error("Image identity must be this repository's immutable SHA-256 digest");
       }
     }
-    const hash = createHash("sha256");
-    for await (const bytes of createReadStream(path)) hash.update(bytes);
-    artifacts.push({ name, sha256: hash.digest("hex"), size: stat.size });
+    artifacts.push({ name, sha256: await sha256File(path), size: stat.size });
   }
   const provenance = JSON.stringify({
     schema_version: 1,
@@ -100,6 +142,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       await appendFile(process.env.GITHUB_OUTPUT, Object.entries(metadata).map(([key, value]) => `${key}=${value}\n`).join(""));
     } else if (process.argv[2] === "provenance" && process.argv[3]) {
       await writeReleaseProvenance(resolve(process.argv[3]));
-    } else throw new Error("usage: node build/ci/release.mjs metadata|provenance DIRECTORY");
+    } else if (process.argv[2] === "checksums" && process.argv[3] && process.argv.length > 4) {
+      await writeChecksums(resolve(process.argv[3]), process.argv.slice(4));
+    } else if (process.argv[2] === "verify-checksums" && process.argv[3] && process.argv.length === 4) {
+      await verifyChecksums(resolve(process.argv[3]));
+    } else throw new Error("usage: node build/ci/release.mjs metadata | provenance DIRECTORY | checksums DIRECTORY FILE... | verify-checksums DIRECTORY");
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

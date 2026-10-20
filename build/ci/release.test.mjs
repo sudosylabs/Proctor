@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { parseReleaseTag, releaseMetadata, verifyReleaseCommit, writeReleaseProvenance } from "./release.mjs";
+import { parseReleaseTag, releaseMetadata, verifyChecksums, verifyReleaseCommit, writeChecksums, writeReleaseProvenance } from "./release.mjs";
 
 test("release tags select precisely one module and preserve prereleases", () => {
   for (const module of ["server", "packages/cache", "packages/mail", "packages/vfs"]) {
@@ -138,4 +138,27 @@ test("the local and release images share one package recipe and Dockerfile", asy
   assert.match(container, /\$\(call package-linux,/);
   const dockerfiles = await readdir(new URL("../docker/", import.meta.url));
   assert.deepEqual(dockerfiles.filter((name) => name !== "Dockerfile.buildenv").sort(), ["Dockerfile.release"]);
+});
+
+test("checksum manifests are written and strictly verified without platform tools", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "proctor-checksums-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "b.tar.gz"), "second");
+  await writeFile(join(directory, "a.tar.gz"), "first");
+  await writeChecksums(directory, ["b.tar.gz", "a.tar.gz"]);
+  const sha = (value) => createHash("sha256").update(value).digest("hex");
+  assert.equal(await readFile(join(directory, "SHA256SUMS"), "utf8"), `${sha("first")}  a.tar.gz\n${sha("second")}  b.tar.gz\n`);
+  await verifyChecksums(directory);
+
+  await writeFile(join(directory, "a.tar.gz"), "tampered");
+  await assert.rejects(verifyChecksums(directory), /mismatch for a.tar.gz/);
+  await writeFile(join(directory, "a.tar.gz"), "first");
+  for (const manifest of [`${sha("first")} a.tar.gz\n`, `${sha("first")}  ../a.tar.gz\n`, `${sha("first")}  a.tar.gz`,
+    `${sha("first")}  a.tar.gz\n${sha("first")}  a.tar.gz\n`, `${sha("first")}  missing.tar.gz\n`]) {
+    await writeFile(join(directory, "SHA256SUMS"), manifest);
+    await assert.rejects(verifyChecksums(directory));
+  }
+  await writeFile(join(directory, "empty.tar.gz"), "");
+  await assert.rejects(writeChecksums(directory, ["empty.tar.gz"]), /must not be empty/);
+  await assert.rejects(writeChecksums(directory, ["../a.tar.gz"]), /Invalid artifact name/);
 });

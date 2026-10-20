@@ -362,7 +362,7 @@ before extracting or executing anything (Cosign v3):
 ```sh
 cosign verify-blob --key /trusted/path/proctor-release.pub \
   --insecure-ignore-tlog --bundle SHA256SUMS.sigstore.json SHA256SUMS
-sha256sum --check --strict SHA256SUMS
+sha256sum --check --strict SHA256SUMS   # macOS: shasum -a 256 --check --strict SHA256SUMS
 # Server releases also publish a signature for the immutable image index:
 cosign verify --key /trusted/path/proctor-release.pub \
   --insecure-ignore-tlog "$(cat image-digest.txt)"

@@ -52,7 +52,8 @@ dist: package-linux-amd64 package-linux-arm64 ## Create deterministic Linux arch
 		--source "$(DIST_DIR)/proctor-linux-arm64" \
 		--output "$(DIST_DIR)/proctor-$(VERSION)-linux-arm64.tar.gz" \
 		--prefix proctor --epoch '$(SOURCE_DATE_EPOCH)'
-	cd "$(DIST_DIR)" && shasum -a 256 proctor-$(VERSION)-linux-*.tar.gz > SHA256SUMS
+	node "$(ROOT_DIR)/build/ci/release.mjs" checksums "$(DIST_DIR)" \
+		proctor-$(VERSION)-linux-amd64.tar.gz proctor-$(VERSION)-linux-arm64.tar.gz
 
 clean-dist: ## Remove release output only.
 	@test "$(DIST_DIR)" = "$(ROOT_DIR)/dist"
