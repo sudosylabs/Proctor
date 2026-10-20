@@ -25,9 +25,7 @@ func (unavailableDesktopCompatibilityApplication) EvaluateDesktopCompatibility(
 	context.Context,
 	application.DesktopCompatibilityQuery,
 ) (application.DesktopCompatibilityResult, error) {
-	return application.DesktopCompatibilityResult{}, apperror.New(
-		"desktop_compatibility_policy.unavailable",
-	)
+	return application.DesktopCompatibilityResult{}, errUnpresentableResult
 }
 
 func (unavailableDesktopCompatibilityApplication) GetDesktopCompatibilityPolicy(

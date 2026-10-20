@@ -47,7 +47,6 @@ paths:
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
         - exam.delivery.sequence_limit
-        - exam.delivery.missing_interval_limit
         - exam.delivery.detail_budget_exhausted
         - exam.delivery.metadata_capacity
         - exam.delivery.control_rate_limited
@@ -132,7 +131,6 @@ paths:
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
         - exam.delivery.sequence_limit
-        - exam.delivery.missing_interval_limit
         - exam.delivery.detail_budget_exhausted
         - exam.delivery.metadata_capacity
         - exam.delivery.control_rate_limited

@@ -62,13 +62,13 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		},
 		{
 			name: "not found preserves safe fields",
-			err: apperror.New("academic_unit.not_found").
-				WithField("academic_unit_id", "unit123").
+			err: apperror.New("resource.not_found").
+				WithField("resource", "academic_unit").
 				Wrap(errors.New("sql: no rows")),
 			wantStatus: http.StatusNotFound,
-			wantCode:   "academic_unit.not_found",
-			wantField:  "academic_unit_id",
-			wantValue:  "unit123",
+			wantCode:   "resource.not_found",
+			wantField:  "resource",
+			wantValue:  "academic_unit",
 		},
 		{
 			name:       "conflict",
@@ -266,9 +266,6 @@ func TestApplicationErrorMappingCoversEveryRegisteredCode(t *testing.T) {
 		}
 		if code == "" || code == "internal" {
 			t.Fatalf("registry contains reserved or empty code %q", code)
-		}
-		if key := httpapi.LocalizationKey(code); key != code {
-			t.Fatalf("LocalizationKey(%q) = %q, want code default", code, key)
 		}
 		response := writeErrorResponse(t, apperror.New(apperror.Code(code)))
 		if response.Code != status {

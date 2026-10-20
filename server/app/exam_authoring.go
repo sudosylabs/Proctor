@@ -151,7 +151,7 @@ func presentExamChildError(err error, conceal bool, unavailable apperror.Code, c
 	if !ok {
 		return apperror.New(unavailable).Wrap(err)
 	}
-	if conceal && (failure.Code() == "authorization.denied" || slices.Contains(concealed, apperror.Code(failure.Code()))) {
+	if conceal && (failure.Code() == "authorization.denied" || slices.ContainsFunc(concealed, func(code apperror.Code) bool { return string(code) == failure.Code() })) {
 		return apperror.New("resource.not_found").Wrap(err)
 	}
 	return err

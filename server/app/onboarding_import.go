@@ -1356,7 +1356,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 			return model.OnboardingImportRowNoOp, "", item.ResourceID, "", nil
 		}
 		if onboardingImportRetryablePublicCode(item.ErrorCode) {
-			return "", "", "", "", apperror.New(apperror.Code(item.ErrorCode))
+			return "", "", "", "", apperror.New(onboardingImportRetryableCodes[item.ErrorCode])
 		}
 		return model.OnboardingImportRowFailed, "", "", item.ErrorCode, nil
 	}
@@ -1378,7 +1378,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 		return model.OnboardingImportRowNoOp, item.InvitationID, "", "", nil
 	}
 	if onboardingImportRetryablePublicCode(item.ErrorCode) {
-		return "", "", "", "", apperror.New(apperror.Code(item.ErrorCode))
+		return "", "", "", "", apperror.New(onboardingImportRetryableCodes[item.ErrorCode])
 	}
 	return model.OnboardingImportRowFailed, "", "", item.ErrorCode, nil
 }
@@ -1388,14 +1388,24 @@ func onboardingImportRetryableError(err error) bool {
 	return ok && onboardingImportRetryablePublicCode(appErr.Code())
 }
 
+// onboardingImportRetryableCodes are the public failure codes after which a
+// row is retried instead of recorded as failed. A recorded batch item code is
+// re-presented through this table so every presented code stays a constant.
+var onboardingImportRetryableCodes = map[string]apperror.Code{
+	"administration.unavailable":    "administration.unavailable",
+	"audit.unavailable":             "audit.unavailable",
+	"authentication.internal":       "authentication.internal",
+	"authorization.unavailable":     "authorization.unavailable",
+	"idempotency.in_progress":       "idempotency.in_progress",
+	"invitation.mail_unavailable":   "invitation.mail_unavailable",
+	"invitation.unavailable":        "invitation.unavailable",
+	"mail.unavailable":              "mail.unavailable",
+	"onboarding_import.unavailable": "onboarding_import.unavailable",
+}
+
 func onboardingImportRetryablePublicCode(code string) bool {
-	switch code {
-	case "administration.unavailable", "authorization.unavailable", "audit.unavailable", "dependency.unavailable",
-		"authentication.internal", "idempotency.in_progress", "invitation.mail_unavailable", "invitation.unavailable", "mail.unavailable", "onboarding_import.unavailable":
-		return true
-	default:
-		return false
-	}
+	_, ok := onboardingImportRetryableCodes[code]
+	return ok
 }
 
 func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, row store.OnboardingImportRow) error {

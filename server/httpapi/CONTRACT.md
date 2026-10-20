@@ -29,6 +29,14 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   intentionally open;
 - document stable application error codes in `x-proctor-error-codes`, map each
   code to a declared HTTP response, and return RFC 9457 Problem Details;
+- list every public code once, with its status and meaning, in
+  [`error_catalog.yaml`](error_catalog.yaml). `go run ./cmd/ptool errors
+  generate` renders the generated `error_mapping.go` from it, and the catalog
+  check in `make -C server check` fails when the mapping is stale, when source
+  mints a code the catalog lacks or converts a non-constant string to
+  `apperror.Code`, when the transport mints an application-only code, or when
+  a listed code is never minted. Route error lists may name only catalog
+  codes;
 - mint only transport and kernel codes in `httpapi`: `request.*` for encoding,
   shape, and query-parameter failures, the authentication, CSRF, DPoP, and
   idempotency kernel codes, `service.busy`, and the routing codes. Every domain

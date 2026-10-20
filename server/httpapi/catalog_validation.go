@@ -15,11 +15,6 @@ import (
 	"strings"
 )
 
-var transportProblemCodes = map[string]struct{}{
-	"not_live":  {},
-	"not_ready": {},
-}
-
 func validateResourceCatalog(apiPrefix string, resources []resource) error {
 	resourceNames := make(map[string]struct{}, len(resources))
 	routeShapes := make(map[string]string)

@@ -22,7 +22,11 @@ description: Add or change Proctor HTTP routes, handlers, DTOs, credential or as
 4. Declare every route's accepted credential and assurance requirement
    explicitly. Completion: cookie, bearer, desktop, WebSocket, and public
    routes cannot inherit accidental authentication behavior.
-5. Update route, mapping, Problem Details, OpenAPI agreement, upload/download,
+5. Add or change a public error code only in
+   `server/httpapi/error_catalog.yaml`, run `make -C server errors-generate`,
+   and mint domain codes only in the application. Completion: the catalog
+   check passes and no transport code path constructs a domain code.
+6. Update route, mapping, Problem Details, OpenAPI agreement, upload/download,
    WebSocket, and concealment tests, then run the focused HTTP/OpenAPI checks
    and `make -C server architecture`.
 

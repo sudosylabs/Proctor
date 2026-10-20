@@ -22,12 +22,18 @@ GOPRIVATE ?= github.com/sudosylabs/proctor
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT GOPRIVATE
 
-.PHONY: check architecture i18n-check openapi-build openapi-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
+.PHONY: check architecture errors-generate errors-check i18n-check openapi-build openapi-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
-check: architecture i18n-check openapi-agreement test test-race vet
+check: architecture errors-check i18n-check openapi-agreement test test-race vet
 
 architecture:
 	$(GO_TEST) ./architecture
+
+errors-generate:
+	go run ./cmd/ptool errors generate
+
+errors-check:
+	go run ./cmd/ptool errors check
 
 i18n-check:
 	go run ./cmd/ptool i18n check

@@ -18,7 +18,7 @@ app/exam/manageraccess ← {app/exam, app/exam/resource, app/exam/workspace, app
 secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
 {localization, app/mail, cmd/proctor/commands, httpapi, websocket} ← cmd/ptool
-internal/openapidoc ← cmd/ptool
+{internal/openapidoc, internal/errorcatalog} ← cmd/ptool
 cmd/ptool/devseed ← cmd/ptool/commands
 logging ← platform
 {config, store/timerlayer, store/localcachelayer} ← metrics ← server
@@ -69,12 +69,13 @@ inside `app/` are application-owned modules, not transports.
 | `internal/weborigin` | Standard-library URL parsing | Domain models, application, persistence, transports, configuration |
 | `internal/autocert` | Standard library, `x/crypto/acme`, and `x/net/idna` | Product policy, application, persistence, transports, unrelated third-party libraries |
 | `internal/openapidoc` | Caller-supplied filesystems, OpenAPI/YAML parsing and validation, standard-library encoding | Process filesystem selection, runtime policy, application, persistence, transports |
+| `internal/errorcatalog` | Caller-supplied catalog bytes and minted-code inventories, YAML parsing, standard-library rendering | Process filesystem and toolchain access, application, persistence, transports |
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor-healthcheck` | Standard-library HTTP readiness probing | Server packages, application state, configuration, persistence, and third-party libraries |
 | `cmd/proctor` | `cmd/proctor/commands` and standard-library process lifecycle | Server, application, persistence, and concrete infrastructure |
 | `cmd/proctor/commands` | Module-root `server`, `localization`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
-| `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket`; `internal/openapidoc` behind the local-filesystem build/check adapter | runtime composition and concrete infrastructure construction |
+| `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket`; `internal/openapidoc` and `internal/errorcatalog` behind the local-filesystem build/check adapters, which also type-check production packages to inventory minted error codes | runtime composition and concrete infrastructure construction |
 | `cmd/ptool/devseed` | Standard-library HTTP, synthetic fixture construction, and private local journal I/O | Application packages, persistence, runtime composition, concrete server adapters |
 
 Tests and `testlib` may cross production boundaries for verification. Ordered,

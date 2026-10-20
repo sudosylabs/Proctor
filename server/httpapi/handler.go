@@ -44,7 +44,7 @@ func (a *API) newHandlerWithErrorPolicy(
 	))
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !a.browserRequests.allows(request) {
-			code := "authentication.csrf.invalid"
+			code := apperror.Code("authentication.csrf.invalid")
 			if requirement == AuthPublic {
 				code = "request.invalid"
 			}
@@ -185,8 +185,8 @@ func writeDPoPApplicationError(writer http.ResponseWriter, request *http.Request
 	writeRouteApplicationError(writer, request, logger, policy, err)
 }
 
-func applicationError(code string) error {
-	return apperror.New(apperror.Code(code))
+func applicationError(code apperror.Code) error {
+	return apperror.New(code)
 }
 
 func requirePrincipalAssurance(

@@ -22,7 +22,7 @@ import (
 
 // Code is a stable machine-readable application failure code. Codes are
 // lowercase dotted `<domain>[.<subdomain>].<condition>` names whose segments
-// are snake_case, such as "academic_unit.not_found". Every code is listed in
+// are snake_case, such as "exam.sitting.not_found". Every code is listed in
 // the HTTP error catalog; constant codes are verified against it.
 type Code string
 
