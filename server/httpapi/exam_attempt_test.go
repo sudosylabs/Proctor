@@ -143,11 +143,8 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 		string(payload["state"]) != `"submitted"` || string(payload["workspace_cursor"]) != "4" {
 		t.Fatalf("receipt=%v error=%v", payload, err)
 	}
-	for _, forbidden := range []string{"participation", "generation", "connection", "credential", "integrity", "gap", "path", "content", "evidence"} {
-		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
-			t.Fatalf("receipt contains %q: %s", forbidden, response.Body.String())
-		}
-	}
+	assertNoForbiddenJSONTerms(t, response.Body.Bytes(),
+		"participation", "generation", "connection", "credential", "integrity", "gap", "path", "content", "evidence")
 }
 
 func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T) {
@@ -179,11 +176,8 @@ func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T
 		string(payload["acknowledgement_state"]) != `"acknowledged"` {
 		t.Fatalf("acknowledgement response = %v, %v", payload, err)
 	}
-	for _, forbidden := range []string{"credential", "connection", "participation", "generation", "audit", "private"} {
-		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
-			t.Fatalf("acknowledgement response contains %q: %s", forbidden, response.Body.String())
-		}
-	}
+	assertNoForbiddenJSONTerms(t, response.Body.Bytes(),
+		"credential", "connection", "participation", "generation", "audit", "private")
 
 	invalidFake := newExamAttemptHTTPFake(t)
 	invalidAPI := newExamAttemptFocusedAPI(t, invalidFake)
@@ -1255,4 +1249,42 @@ func (fake *examAttemptHTTPFake) DeliveryBudget(context.Context, application.Inv
 }
 func (fake *examAttemptHTTPFake) StopDeliveryDetails(context.Context, application.Invocation, application.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
+}
+
+// assertNoForbiddenJSONTerms rejects forbidden terms in member names and in
+// non-identifier string values. Random opaque IDs are skipped because their
+// base32 text can spell a forbidden word by chance.
+func assertNoForbiddenJSONTerms(t *testing.T, body []byte, forbidden ...string) {
+	t.Helper()
+	var document any
+	if err := json.Unmarshal(body, &document); err != nil {
+		t.Fatalf("decode %s: %v", body, err)
+	}
+	var texts []string
+	var walk func(any)
+	walk = func(value any) {
+		switch typed := value.(type) {
+		case map[string]any:
+			for key, member := range typed {
+				texts = append(texts, key)
+				walk(member)
+			}
+		case []any:
+			for _, item := range typed {
+				walk(item)
+			}
+		case string:
+			if !model.IsValidOpaqueID(typed) {
+				texts = append(texts, typed)
+			}
+		}
+	}
+	walk(document)
+	for _, text := range texts {
+		for _, term := range forbidden {
+			if strings.Contains(strings.ToLower(text), term) {
+				t.Fatalf("response exposes %q in %q: %s", term, text, body)
+			}
+		}
+	}
 }
