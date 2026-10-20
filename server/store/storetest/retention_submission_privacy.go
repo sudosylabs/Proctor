@@ -108,7 +108,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 		ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID,
 		ExpectedWorkspaceCursor: connected.Workspace.Cursor, FinalFocusLossSequence: 2},
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, f.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "privacy-seal", "privacy-seal"))
 	requireNoError(t, err)
 	subID := sealed.Receipt.SubmissionID

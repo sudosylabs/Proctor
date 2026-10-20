@@ -549,7 +549,7 @@ func newIntegrityReviewFixtureWithFinalSequence(t *testing.T, ctx context.Contex
 	sealInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID,
 		AuditAt:      model.MillisFromTime(sealTarget.SealAt)}
-	attachSubmissionReceipt(t, fixture.candidate, sealInput)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, sealInput)
 	sealed, err := ss.ExamSubmission().Seal(ctx, sealInput, examCommand(fixture.candidate.ID,
 		store.ExamSubmissionSealOperation, prefix+"-seal", prefix+"-seal"))
 	requireNoError(t, err)

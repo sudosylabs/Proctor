@@ -33,7 +33,7 @@ func TestBrowserExhaustionSettlement(t *testing.T, ss store.Store, mode string, 
 		requireNoError(t, err)
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, f.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "exhaustion-seal", "exhaustion-seal"))
 	requireNoError(t, err)
 	access.ConnectionID = ""

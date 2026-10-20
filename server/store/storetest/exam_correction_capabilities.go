@@ -111,7 +111,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash,
 				ExpectedCurrentRevisionID: corrected.Revision.ID, ExpectedWorkspaceCursor: cursor},
 				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-			attachSubmissionReceipt(t, fixture.candidate, seal)
+			attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 			_, err = ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "correction-submit", "correction-submit"))
 			if blocked(model.CandidateCapabilitySubmission) {
 				assertSubmissionConflict(t, err, "exam_correction_acknowledgement_required")

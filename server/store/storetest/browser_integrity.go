@@ -64,7 +64,7 @@ func TestBrowserIntegrityStore(t *testing.T, ss store.Store) {
 		t.Fatalf("bounded evidence budget=%#v", budget)
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, f.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "browser-evidence-submit", "browser-evidence-submit"))
 	requireNoError(t, err)
 	access.ConnectionID = ""
@@ -268,7 +268,7 @@ func TestBrowserIntegrityGroupCapacity(t *testing.T, ss store.Store) {
 		t.Fatalf("group limit=%#v", budget)
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, f.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "group-seal", "group-seal"))
 	requireNoError(t, err)
 	snapshot, err := ss.ExamIntegrityReview().Get(ctx, sealed.Receipt.SubmissionID)
@@ -333,7 +333,7 @@ func TestBrowserIntegrityCopyBoundaries(t *testing.T, ss store.Store, seed func(
 			_, err = appendBrowserActivityFixture(t, ctx, ss, batch)
 			requireNoError(t, err)
 			seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-			attachSubmissionReceipt(t, f.candidate, seal)
+			attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 			sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "copy-seal", "copy-seal"))
 			requireNoError(t, err)
 			sub := sealed.Receipt.SubmissionID

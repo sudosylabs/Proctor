@@ -209,7 +209,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-activity-seal", "browser-activity-seal"))
 	requireNoError(t, err)
@@ -243,7 +243,7 @@ func testCompleteBrowserActivitySubmission(t *testing.T, ss store.Store) {
 
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := ss.ExamSubmission().Seal(ctx, input, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-complete-submit", "browser-complete-submit"))
 	requireNoError(t, err)
 	header, err := ss.ExamSubmission().Get(ctx, sealed.Receipt.SubmissionID)

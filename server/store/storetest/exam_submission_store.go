@@ -35,8 +35,16 @@ type SubmissionIntegrityPersistence struct {
 	UnresolvedMissing int64
 }
 
-func attachSubmissionReceipt(t *testing.T, candidate *model.User, input *store.ExamSubmissionSeal) {
+// attachSubmissionReceipt stamps the seal with the PostgreSQL action instant
+// that ResolveSealTarget reserves, as the application does, then attaches the
+// receipt notice for that instant. An application-clock instant can lead the
+// database clock and be refused as a future seal time. A selector that cannot
+// resolve keeps the caller's instant so Seal reports its own refusal.
+func attachSubmissionReceipt(t *testing.T, ctx context.Context, ss store.Store, candidate *model.User, input *store.ExamSubmissionSeal) {
 	t.Helper()
+	if target, err := ss.ExamSubmission().ResolveSealTarget(ctx, input.Access); err == nil && !target.SealAt.IsZero() {
+		input.AuditAt = model.MillisFromTime(target.SealAt)
+	}
 	input.Notice = submissionReceiptNotice(t, candidate, input.SubmissionID, input.AuditAt,
 		model.MailTemplateExamSubmissionReceived)
 	input.ExpectedRecipientRevision = candidate.Revision
@@ -144,7 +152,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.MillisFromTime(target.SealAt)}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-seal", "submission-seal")
 	sealed, err := submissions.Seal(ctx, input, command)
 	requireNoError(t, err)
@@ -390,7 +398,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		blockedAccess := submissionAccess(focusAccess, second.Revision.ID, connected.Workspace.Cursor, 0)
 		blockedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		attachSubmissionReceipt(t, fixture.candidate, blockedSubmission)
+		attachSubmissionReceipt(t, ctx, ss, fixture.candidate, blockedSubmission)
 		_, err = submissions.Seal(ctx, blockedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-blocked-submission", "correction-acknowledgement-blocked-submission"))
@@ -501,7 +509,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 
 		pausedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		attachSubmissionReceipt(t, fixture.candidate, pausedSubmission)
+		attachSubmissionReceipt(t, ctx, ss, fixture.candidate, pausedSubmission)
 		_, err = submissions.Seal(ctx, pausedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-paused-submission", "correction-acknowledgement-paused-submission"))
@@ -546,7 +554,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		blockedAccess.ExpectedCurrentRevisionID = third.Revision.ID
 		terminalInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		attachSubmissionReceipt(t, fixture.candidate, terminalInput)
+		attachSubmissionReceipt(t, ctx, ss, fixture.candidate, terminalInput)
 		sealed, err := submissions.Seal(ctx, terminalInput,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"correction-acknowledgement-terminal-submission", "correction-acknowledgement-terminal-submission"))
@@ -669,7 +677,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		submittedSealAccess := submissionAccess(submittedAccess, submittedFixture.sitting.ExamRevisionID, submitted.Workspace.Cursor, 0)
 		submittedInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: submittedSealAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, submittedFixture).ID, AuditAt: model.GetMillis()}
-		attachSubmissionReceipt(t, submittedFixture.candidate, submittedInput)
+		attachSubmissionReceipt(t, ctx, ss, submittedFixture.candidate, submittedInput)
 		alreadySubmitted, err := submissions.Seal(ctx, submittedInput,
 			examCommand(submittedFixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"automatic-existing-submission", "automatic-existing-submission"))
@@ -965,7 +973,7 @@ func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Stor
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-rollback", "submission-rollback")
 	if _, err := submissions.Seal(ctx, input, command); err == nil {
 		t.Fatal("Seal(with missing audit) succeeded")
@@ -1016,7 +1024,7 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 5)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-gapped", "submission-gapped"))
 	requireNoError(t, err)
@@ -1084,7 +1092,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 	}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-history-seal", "submission-history-seal"))
 	requireNoError(t, err)
@@ -1217,7 +1225,7 @@ func testIndependentExamSubmissionReplay(t *testing.T, ctx context.Context, ss s
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, input)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 		"submission-peer-replay", "submission-peer-replay")
 	sealed, err := first.Seal(ctx, input, command)
@@ -1246,7 +1254,7 @@ func testConcurrentExamSubmission(t *testing.T, ctx context.Context, ss store.St
 	for index := range inputs {
 		inputs[index] = &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-		attachSubmissionReceipt(t, fixture.candidate, inputs[index])
+		attachSubmissionReceipt(t, ctx, ss, fixture.candidate, inputs[index])
 		commands[index] = examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 			"submission-concurrent-"+string(rune('a'+index)), "submission-concurrent-"+string(rune('a'+index)))
 	}

@@ -31,7 +31,7 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 	_, err = ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: native, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewId(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.NativeDeliveryGapsOperation, "expiry-gap", "expiry-gap"))
 	requireNoError(t, err)
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, f.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "expiry-seal", "expiry-seal"))
 	requireNoError(t, err)
 	due, err := ss.ExamAttempt().ListExpiredDeliveries(ctx, 200)

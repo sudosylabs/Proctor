@@ -129,7 +129,7 @@ func TestNativeDeliveryAppendStore(t *testing.T, ss store.Store, probes ...Nativ
 		t.Fatal("candidate absent from board")
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "native-review-submit", "native-review-submit"))
 	requireNoError(t, err)
 	sub := sealed.Receipt.SubmissionID
@@ -261,7 +261,7 @@ func TestNativeMaximumRecordStore(t *testing.T, ss store.Store) {
 		t.Fatal("large legal native record failed exact acknowledgement/replay")
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: deliveryAccess.Access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
-	attachSubmissionReceipt(t, fixture.candidate, seal)
+	attachSubmissionReceipt(t, ctx, ss, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "maximum-seal", "maximum-seal"))
 	requireNoError(t, err)
 	page, err := ss.ExamIntegrityReview().ListNativeConditions(ctx, store.NativeConditionListOptions{SubmissionID: sealed.Receipt.SubmissionID, Limit: 10})
