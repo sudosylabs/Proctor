@@ -101,7 +101,7 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 	if persistence.createInput == nil ||
 		persistence.createInput.Level.ProgrammeID.String() != programmeID ||
 		persistence.createInput.Level.ID.String() != levelID ||
-		persistence.createInput.AuditEventID != auditID {
+		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	wantResource := model.Resource{Type: model.ResourceProgramme, ID: programmeID}

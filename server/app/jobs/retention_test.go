@@ -63,11 +63,14 @@ type retentionJobAuditFake struct {
 	err           error
 }
 
-func (a *retentionJobAuditFake) BeginRetention(context.Context, model.InstitutionID, model.SubmissionID) (string, error) {
+func (a *retentionJobAuditFake) BeginRetention(context.Context, model.InstitutionID, model.SubmissionID) (model.AuditEventID, error) {
 	a.begun++
-	return model.NewId(), a.err
+	return model.NewAuditEventID(), a.err
 }
-func (a *retentionJobAuditFake) FailRetention(context.Context, string) error { a.failed++; return nil }
+func (a *retentionJobAuditFake) FailRetention(context.Context, model.AuditEventID) error {
+	a.failed++
+	return nil
+}
 
 type retentionJobPurgerFake struct {
 	calls int

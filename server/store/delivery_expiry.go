@@ -30,6 +30,6 @@ func (d DeliveryExpiryDue) Valid() bool {
 
 type DeliveryExpiry struct {
 	Due          DeliveryExpiryDue
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }

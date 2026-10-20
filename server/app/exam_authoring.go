@@ -199,10 +199,10 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 
 type examAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examAuditAdapter) Begin(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
+func (a examAuditAdapter) Begin(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
 }
-func (a examAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (a examAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)
 }
 

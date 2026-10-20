@@ -27,7 +27,7 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 	}
 	command := ExamSubmissionSeal{
 		SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: model.NewAuditEventID().String(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	}
 	target := ExamSubmissionSealTarget{
 		ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ClassID: model.NewClassID(),

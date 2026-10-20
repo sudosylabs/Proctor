@@ -24,7 +24,7 @@ type ExamRevisionPublication struct {
 	ExpectedDraftRevision int64
 	Kind                  model.ExamRevisionPublicationKind
 	PublishedAt           time.Time
-	AuditEventID          string
+	AuditEventID          model.AuditEventID
 	AuditAt               int64
 }
 

@@ -45,7 +45,7 @@ func (r browserSourceRefusalRecord) Validate() error {
 }
 
 func (s *sqlExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
-	if input == nil || input.Declaration().Validate() != nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Declaration().Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_activity", "source_start", nil)
 	}
 	canonical, _ := input.Declaration().Canonical()

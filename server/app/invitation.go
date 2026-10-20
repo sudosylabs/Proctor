@@ -388,13 +388,13 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 
 type invitationAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a invitationAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (string, error) {
+func (a invitationAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.Begin(ctx, invocation, action, resource, operation, value, prior)
 }
-func (a invitationAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
+func (a invitationAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
 }
-func (a invitationAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {
+func (a invitationAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
 	return a.audit.Fail(ctx, auditID, errorCode)
 }
 

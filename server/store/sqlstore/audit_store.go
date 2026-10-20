@@ -142,24 +142,17 @@ func insertAuditEventBetween(
 	return candidate, nil
 }
 
-func (s SQLAuditStore) Get(ctx context.Context, id string) (*model.AuditEvent, error) {
+func (s SQLAuditStore) Get(ctx context.Context, id model.AuditEventID) (*model.AuditEvent, error) {
 	var row auditRow
 	if err := s.GetMaster().GetBuilder(
 		ctx, &row, s.auditsQuery.Where(sq.Eq{"audit_events.id": id}),
 	); err != nil {
-		return nil, translateError("audit_event", id, err)
+		return nil, translateError("audit_event", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLAuditStore) Complete(
-	ctx context.Context,
-	id string,
-	status model.AuditStatus,
-	errorCode string,
-	result []byte,
-	updateAt int64,
-) (*model.AuditEvent, error) {
+func (s SQLAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt int64) (*model.AuditEvent, error) {
 	return completeAuditEvent(
 		ctx, s.GetMaster(), id, status, errorCode, result, updateAt,
 	)
@@ -168,7 +161,7 @@ func (s SQLAuditStore) Complete(
 func completeAuditEvent(
 	ctx context.Context,
 	executor sqlxExecutor,
-	id string,
+	id model.AuditEventID,
 	status model.AuditStatus,
 	errorCode string,
 	result []byte,
@@ -192,7 +185,7 @@ func completeAuditEvent(
 		          ip_address, user_agent, error_code, parameters, prior_state, result`,
 		model.TimeFromMillis(updateAt), status, errorCode, nullableJSON(result), id)
 	if err != nil {
-		return nil, translateError("audit_event", id, err)
+		return nil, translateError("audit_event", id.String(), err)
 	}
 	return row.model()
 }

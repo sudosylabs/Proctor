@@ -98,7 +98,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
@@ -123,7 +123,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	mutation, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{
 		Access: workspaceAccess, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: attemptEntryID,
 		DestinationPath: "answer.txt", ObjectID: object.ID,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 	}, examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "submission-file", "submission-file"))
 	requireNoError(t, err)
 
@@ -143,7 +143,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	}
 
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.MillisFromTime(target.SealAt)}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.MillisFromTime(target.SealAt)}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-seal", "submission-seal")
 	sealed, err := submissions.Seal(ctx, input, command)
@@ -264,7 +264,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 
 	replay := *input
 	replay.SubmissionID = model.NewSubmissionID()
-	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayed, err := submissions.Seal(ctx, &replay, command)
 	requireNoError(t, err)
 	if replayed == nil || !replayed.Replayed || replayed.Receipt != sealed.Receipt ||
@@ -290,7 +290,7 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 
 	different := *input
 	different.SubmissionID = model.NewSubmissionID()
-	different.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	different.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	if _, err = submissions.Seal(ctx, &different,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-second", "submission-second")); err == nil {
 		t.Fatal("Seal(different key after terminal state) succeeded")
@@ -343,7 +343,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &firstInstructions,
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The first correction changes the instructions.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
-			AuditEventID: firstAudit.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: firstAudit.ID, AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-first", "correction-acknowledgement-first"))
 		requireNoError(t, err)
 		secondInstructions := "Second corrected instructions"
@@ -354,7 +354,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &secondInstructions,
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The second correction changes the instructions again.", AcknowledgementRequired: true,
 			PrivateReason: "exercise ordered acknowledgement", AppliedAt: model.NowUTC(),
-			AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: secondAudit.ID, AuditAt: model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1", "correction-acknowledgement-second", "correction-acknowledgement-second"))
 		requireNoError(t, err)
 
@@ -389,7 +389,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 
 		blockedAccess := submissionAccess(focusAccess, second.Revision.ID, connected.Workspace.Cursor, 0)
 		blockedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		attachSubmissionReceipt(t, fixture.candidate, blockedSubmission)
 		_, err = submissions.Seal(ctx, blockedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
@@ -399,7 +399,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: second.Sitting.Sitting.Revision,
 			PrivateReason: "prove acknowledgement remains allowed while paused", ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "correction-acknowledgement-pause", "correction-acknowledgement-pause"))
 		requireNoError(t, err)
 		firstInputs := [2]*store.ExamAttemptCorrectionAcknowledgement{
@@ -500,7 +500,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		}
 
 		pausedSubmission := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		attachSubmissionReceipt(t, fixture.candidate, pausedSubmission)
 		_, err = submissions.Seal(ctx, pausedSubmission,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
@@ -509,7 +509,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 			PrivateReason: "finish correction acknowledgement conformance", ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "correction-acknowledgement-resume", "correction-acknowledgement-resume"))
 		requireNoError(t, err)
 		if resumed.Value.Sitting.State != model.ExamSittingOpen {
@@ -522,7 +522,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 			ActorUserID: fixture.manager.ID, InstructionsMarkdown: &thirdInstructions,
 			AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "A later correction changes the instructions without requiring acknowledgement.",
 			PrivateReason: "prove retained acknowledgement replay after a later correction", AppliedAt: model.NowUTC(),
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis(),
 		}, examCommand(fixture.manager.ID, "exam.correction.apply.v1",
 			"correction-acknowledgement-third", "correction-acknowledgement-third"))
@@ -545,7 +545,7 @@ func testExamCorrectionAcknowledgement(t *testing.T, ctx context.Context, ss sto
 		}
 		blockedAccess.ExpectedCurrentRevisionID = third.Revision.ID
 		terminalInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: blockedAccess,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		attachSubmissionReceipt(t, fixture.candidate, terminalInput)
 		sealed, err := submissions.Seal(ctx, terminalInput,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
@@ -588,7 +588,7 @@ func testManagerEndedExamSubmission(t *testing.T, ctx context.Context, ss store.
 		}
 		audit := saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID)
 		input := &store.ExamSubmissionManagerEnd{Request: request, Target: preparation.Target,
-			SubmissionID: model.NewSubmissionID(), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(preparation.SealAt)}
+			SubmissionID: model.NewSubmissionID(), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(preparation.SealAt)}
 		attachManagerEndedSubmissionReceipt(t, fixture.candidate, input)
 		command := examCommand(fixture.manager.ID, store.ExamSubmissionManagerEndOperation, "manager-end-once", "manager-end-once")
 		ended, err := submissions.EndByManager(ctx, input, command)
@@ -630,7 +630,7 @@ func testManagerEndedExamSubmission(t *testing.T, ctx context.Context, ss store.
 		}
 		replay := &store.ExamSubmissionManagerEnd{Request: request, Target: replayPreparation.Target,
 			SubmissionID: model.NewSubmissionID(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID,
-				fixture.examID, fixture.unitID).ID.String(), AuditAt: model.MillisFromTime(replayPreparation.SealAt)}
+				fixture.examID, fixture.unitID).ID, AuditAt: model.MillisFromTime(replayPreparation.SealAt)}
 		replayed, err := submissions.EndByManager(ctx, replay, command)
 		requireNoError(t, err)
 		if replayed == nil || !replayed.Replayed || replayed.ConnectionClosed || replayed.Receipt != ended.Receipt {
@@ -668,7 +668,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		submitted, submittedAccess := connectFocusLossFixture(t, ctx, ss, submittedFixture, "automatic-submitted-connect")
 		submittedSealAccess := submissionAccess(submittedAccess, submittedFixture.sitting.ExamRevisionID, submitted.Workspace.Cursor, 0)
 		submittedInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: submittedSealAccess,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, submittedFixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, submittedFixture).ID, AuditAt: model.GetMillis()}
 		attachSubmissionReceipt(t, submittedFixture.candidate, submittedInput)
 		alreadySubmitted, err := submissions.Seal(ctx, submittedInput,
 			examCommand(submittedFixture.candidate.ID, store.ExamSubmissionSealOperation,
@@ -689,7 +689,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
 			PrivateReason: "finish every acknowledged Attempt", ChangedAt: closeAt,
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "automatic-close", "automatic-close"))
 		requireNoError(t, err)
@@ -700,7 +700,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		assertExamAttemptConflict(t, err, "exam_sitting_state")
 
 		unfinished, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
-			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID.String(),
+			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()})
 		requireNoError(t, err)
 		if unfinished.Changed || unfinished.Value.Sitting.State != model.ExamSittingClosing {
@@ -751,7 +751,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			t.Fatalf("PrepareAutomaticSeal(suspended) = %#v", suspendedPreparation)
 		}
 		rollbackInput := &store.ExamSubmissionAutomaticSeal{Target: suspendedTarget, SubmissionID: model.NewSubmissionID(),
-			AuditEventID: model.NewAuditEventID().String(), AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
+			AuditEventID: model.NewAuditEventID(), AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, rollbackInput)
 		if _, rollbackErr := submissions.SealForSittingClose(ctx, rollbackInput); rollbackErr == nil {
 			t.Fatal("automatic Seal(with missing audit) succeeded")
@@ -760,7 +760,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			t.Fatalf("automatic rolled-back receipt = %#v, %v", delivery, deliveryErr)
 		}
 		suspendedInput := &store.ExamSubmissionAutomaticSeal{
-			Target: suspendedTarget, SubmissionID: model.NewSubmissionID(), AuditEventID: suspendedAudit.ID.String(),
+			Target: suspendedTarget, SubmissionID: model.NewSubmissionID(), AuditEventID: suspendedAudit.ID,
 			AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, suspendedInput)
 		suspendedResult, err := submissions.SealForSittingClose(ctx, suspendedInput)
@@ -774,7 +774,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		if len(automaticReceipts) != 2 {
 			t.Fatalf("automatic receipt deliveries=%#v", automaticReceipts)
 		}
-		requireSuccessfulAudit(t, ctx, ss, suspendedAudit.ID.String())
+		requireSuccessfulAudit(t, ctx, ss, suspendedAudit.ID)
 
 		for _, result := range []*store.ExamSubmissionAutomaticSealResult{activeResult, suspendedResult} {
 			header, getErr := submissions.Get(ctx, result.Receipt.SubmissionID)
@@ -820,7 +820,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 			t.Fatalf("remaining automatic seal targets = %#v", remaining)
 		}
 		closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: fixture.sitting.ID,
-			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID.String(),
+			AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID).ID,
 			AuditAt:      model.GetMillis()})
 		requireNoError(t, err)
 		if !closed.Changed || closed.Transition != store.ExamSittingTransitionSealingCompleted ||
@@ -877,7 +877,7 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 			t.Fatalf("PrepareAutomaticSeal(fresh) = %#v", preparation)
 		}
 		inputs[index] = &store.ExamSubmissionAutomaticSeal{Target: target, SubmissionID: model.NewSubmissionID(),
-			AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(preparation.SealAt)}
+			AuditEventID: audit.ID, AuditAt: model.MillisFromTime(preparation.SealAt)}
 		attachAutomaticSubmissionReceipt(t, candidate, inputs[index])
 	}
 	start := make(chan struct{})
@@ -964,7 +964,7 @@ func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Stor
 	connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-rollback-connect")
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: model.NewAuditEventID().String(), AuditAt: model.GetMillis()}
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-rollback", "submission-rollback")
 	if _, err := submissions.Seal(ctx, input, command); err == nil {
@@ -986,7 +986,7 @@ func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Stor
 		manager.CurrentConnection.State != model.AttemptConnectionOpen {
 		t.Fatalf("Attempt changed despite rolled-back seal = %#v", manager)
 	}
-	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	retried, err := submissions.Seal(ctx, input, command)
 	requireNoError(t, err)
 	if retried == nil || retried.Replayed || retried.Receipt.SubmissionID != input.SubmissionID {
@@ -1006,7 +1006,7 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	}
 	stale := store.ExamSubmissionSealAccess(submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 1))
 	staleInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: stale,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	if _, err := submissions.Seal(ctx, staleInput,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-stale-focus", "submission-stale-focus")); err == nil {
 		t.Fatal("Seal(with final Focus Loss sequence behind accepted high-water) succeeded")
@@ -1015,7 +1015,7 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	}
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 5)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-gapped", "submission-gapped"))
@@ -1055,7 +1055,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: crossed.Suspension.ID,
 		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
 		PrivateReason: "verify Submission retains uncertainty across Participation generations",
-		AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "submission-history-reallow", "submission-history-reallow"))
 	requireNoError(t, err)
 	if reallowed.Attempt.State != model.ExamAttemptReady || !reallowed.FocusLossWindowReset {
@@ -1068,7 +1068,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 		AttemptID:   model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: secondCredentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, reconnect)
 	reconnected, err := ss.ExamAttempt().Connect(ctx, reconnect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "submission-history-reconnect", "submission-history-reconnect"))
@@ -1083,7 +1083,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID, FinalFocusLossSequence: 2,
 	}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-history-seal", "submission-history-seal"))
@@ -1104,7 +1104,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-stale-cursor-connect")
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor+1, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err := submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-stale-cursor", "submission-stale-cursor"))
 		assertSubmissionConflict(t, err, "attempt_workspace_cursor")
@@ -1116,12 +1116,12 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		_, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{
 			ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 			Reason:       model.AttemptConnectionCloseTransport,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-closed", "submission-closed"))
 		assertSubmissionConflict(t, err, "attempt_connection_closed")
@@ -1133,12 +1133,12 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		_, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 			PrivateReason: "verify voluntary Submission rejects Paused Sitting", ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "submission-pause", "submission-pause"))
 		requireNoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-paused", "submission-paused"))
 		assertSubmissionConflict(t, err, "exam_sitting_state")
@@ -1152,12 +1152,12 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
 			PrivateReason: "verify voluntary Submission rejects Closing Sitting", ChangedAt: closeAt,
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "submission-close", "submission-close"))
 		requireNoError(t, err)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		_, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-closing", "submission-closing"))
 		assertSubmissionConflict(t, err, "exam_sitting_state")
@@ -1177,7 +1177,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		}
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 1)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		if _, err := submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-suspended", "submission-suspended")); err == nil {
 			t.Fatal("Seal(Suspended Attempt) succeeded")
@@ -1200,7 +1200,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 		time.Sleep(100 * time.Millisecond)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 		input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		if _, err = submissions.Seal(ctx, input,
 			examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-membership", "submission-membership")); !store.IsNotFound(err) {
 			t.Fatalf("Seal(after membership loss) error = %v", err)
@@ -1216,7 +1216,7 @@ func testIndependentExamSubmissionReplay(t *testing.T, ctx context.Context, ss s
 	connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-peer-replay-connect")
 	access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 		"submission-peer-replay", "submission-peer-replay")
@@ -1224,7 +1224,7 @@ func testIndependentExamSubmissionReplay(t *testing.T, ctx context.Context, ss s
 	requireNoError(t, err)
 	replay := *input
 	replay.SubmissionID = model.NewSubmissionID()
-	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayed, err := second.Seal(ctx, &replay, command)
 	requireNoError(t, err)
 	if replayed == nil || !replayed.Replayed || replayed.Receipt != sealed.Receipt ||
@@ -1245,7 +1245,7 @@ func testConcurrentExamSubmission(t *testing.T, ctx context.Context, ss store.St
 	commands := [2]*store.CommandIdempotency{}
 	for index := range inputs {
 		inputs[index] = &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		attachSubmissionReceipt(t, fixture.candidate, inputs[index])
 		commands[index] = examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 			"submission-concurrent-"+string(rune('a'+index)), "submission-concurrent-"+string(rune('a'+index)))

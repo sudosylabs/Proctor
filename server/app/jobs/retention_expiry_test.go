@@ -45,10 +45,13 @@ func (f *expiryWorkerFake) ReconcileExpiry(_ context.Context, i *store.Retention
 	}
 	return &store.RetentionExpiryResult{Scheduled: true}, nil
 }
-func (f *expiryWorkerFake) BeginRetentionExpiry(context.Context, model.InstitutionID, model.RetentionExpiryKind, string) (string, error) {
-	return model.NewId(), nil
+func (f *expiryWorkerFake) BeginRetentionExpiry(context.Context, model.InstitutionID, model.RetentionExpiryKind, string) (model.AuditEventID, error) {
+	return model.NewAuditEventID(), nil
 }
-func (f *expiryWorkerFake) FailRetention(context.Context, string) error { f.failedAudits++; return nil }
+func (f *expiryWorkerFake) FailRetention(context.Context, model.AuditEventID) error {
+	f.failedAudits++
+	return nil
+}
 
 func expiryWorkerFixture(t *testing.T) (retentionExpiryHandler, *expiryWorkerFake, *jobHistoryCleanerFake, *model.Job) {
 	t.Helper()

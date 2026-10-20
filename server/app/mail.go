@@ -94,8 +94,8 @@ func (a mailAuthorizationAdapter) Authorize(ctx context.Context, invocation Invo
 
 type mailAuditPreparer interface {
 	PrepareTest(context.Context, Invocation, model.Resource, model.MailDeliveryID) (*model.AuditEvent, error)
-	PrepareControl(context.Context, Invocation, model.Resource, *model.MailDelivery, string) (string, error)
-	Fail(context.Context, string, string) error
+	PrepareControl(context.Context, Invocation, model.Resource, *model.MailDelivery, string) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 type mailService struct {

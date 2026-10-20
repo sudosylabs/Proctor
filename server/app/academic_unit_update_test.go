@@ -119,7 +119,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		persistence.updateInput.Unit.ParentID.String() != newParentID ||
 		persistence.updateInput.Unit.DisplayName != "Applied Computing" ||
 		!persistence.updateInput.Unit.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
-		persistence.updateInput.AuditEventID != auditor.beginID {
+		persistence.updateInput.AuditEventID != model.AuditEventID(auditor.beginID) {
 		t.Fatalf("update input = %#v", persistence.updateInput)
 	}
 	assertAcademicUnitCreateEvents(
@@ -239,7 +239,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 	}
 	if persistence.archiveInput == nil || persistence.archiveInput.ID != model.AcademicUnitID(unitID) ||
 		persistence.archiveInput.ArchiveAt != 500 ||
-		persistence.archiveInput.AuditEventID != auditor.beginID {
+		persistence.archiveInput.AuditEventID != model.AuditEventID(auditor.beginID) {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)
 	}
 	assertAcademicUnitCreateEvents(

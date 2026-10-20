@@ -200,7 +200,7 @@ func prepareDesktopCompatibilityPolicyAttemptForActor(
 		AuthMethod: "password",
 	})
 	requireNoError(t, err)
-	replacement.AuditEventID = event.ID.String()
+	replacement.AuditEventID = event.ID
 	replacement.AuditAt = model.MillisFromTime(event.CreatedAt)
 }
 
@@ -208,7 +208,7 @@ func assertDesktopCompatibilityPolicyAuditIsSafe(
 	t *testing.T,
 	ctx context.Context,
 	stores store.Store,
-	eventID string,
+	eventID model.AuditEventID,
 	settings model.DesktopCompatibilityPolicySettings,
 ) {
 	t.Helper()

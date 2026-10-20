@@ -23,7 +23,7 @@ func testMailRekeyStore(t *testing.T, ctx context.Context, ss store.Store, user 
 	oldDelivery, err := ss.Mail().EnqueueTest(ctx, oldInput)
 	requireNoError(t, err)
 	rollback := newMailRekeyStartFixture(t, "22222222222222222222222222222222", "11111111111111111111111111111111")
-	rollback.AuditEventID, rollback.AuditAt = model.NewAuditEventID().String(), model.GetMillis()
+	rollback.AuditEventID, rollback.AuditAt = model.NewAuditEventID(), model.GetMillis()
 	if _, err = ss.Mail().StartRekey(ctx, rollback); err == nil {
 		t.Fatal("invalid rekey audit did not abort start")
 	}
@@ -210,7 +210,7 @@ func assertMailRekeyStartAudit(t *testing.T, ctx context.Context, ss store.Store
 	}
 }
 
-func assertMailRekeyAttemptPending(t *testing.T, ctx context.Context, ss store.Store, auditID string) {
+func assertMailRekeyAttemptPending(t *testing.T, ctx context.Context, ss store.Store, auditID model.AuditEventID) {
 	t.Helper()
 	event, err := ss.Audit().Get(ctx, auditID)
 	requireNoError(t, err)
@@ -227,7 +227,7 @@ func mailRekeyStartFixture(t *testing.T, ctx context.Context, ss store.Store, us
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	requireNoError(t, err)
-	input.AuditEventID, input.AuditAt = attempt.ID.String(), model.GetMillis()
+	input.AuditEventID, input.AuditAt = attempt.ID, model.GetMillis()
 	return input
 }
 

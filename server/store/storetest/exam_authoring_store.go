@@ -78,7 +78,7 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	if err := json.Unmarshal(replayAudit.Result, &replayResult); err != nil {
 		t.Fatalf("decode replay audit result: %v", err)
 	}
-	if replayResult["idempotency_replayed"] != true || replayResult["original_audit_event_id"] != creation.AuditEventID {
+	if replayResult["idempotency_replayed"] != true || replayResult["original_audit_event_id"] != creation.AuditEventID.String() {
 		t.Fatalf("replay audit result = %#v", replayResult)
 	}
 
@@ -110,7 +110,7 @@ func testExamAuthoringAuditAtomicity(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "exam-rollback-unit")
 	creator := saveUser(t, ctx, ss)
 	creation := newExamAuthoringCreation(t, ctx, ss, unit.ID, creator.ID, model.NowUTC())
-	creation.AuditEventID = model.NewId()
+	creation.AuditEventID = model.NewAuditEventID()
 	command := &store.CommandIdempotency{
 		UserID: creator.ID, Operation: "exam.create.v1", KeyDigest: sha256.Sum256([]byte("rollback-key")),
 		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("rollback-command")), OutcomeVersion: 1,
@@ -228,7 +228,7 @@ func newExamDraftFocusLossUpdate(t *testing.T, ctx context.Context, ss store.Sto
 	requireNoError(t, err)
 	return &store.ExamDraftFocusLossUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, FocusLoss: focus,
-		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	}
 }
 
@@ -246,7 +246,7 @@ func newExamDraftTextUpdate(t *testing.T, ctx context.Context, ss store.Store, e
 	return &store.ExamDraftTextUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
 		Title: title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(at),
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	}
 }
 
@@ -275,7 +275,7 @@ func newExamAuthoringCreation(t *testing.T, ctx context.Context, ss store.Store,
 	requireNoError(t, err)
 	return &store.ExamAuthoringCreation{
 		Exam: exam, Draft: draft, Manager: manager,
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	}
 }
 
@@ -330,7 +330,7 @@ func newExamDraftNativePolicyUpdate(t *testing.T, ctx context.Context, ss store.
 	requireNoError(t, err)
 	return &store.ExamDraftNativePolicyUpdate{
 		ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision, NativePolicy: native,
-		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+		UpdatedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	}
 }
 

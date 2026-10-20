@@ -135,7 +135,7 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 		Replayed: stored.Replayed}, ConnectionClosed: stored.ConnectionClosed}, nil
 }
 
-func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
+func (service *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	code := apperror.CodeOf(err, "exam.attempt.unavailable")
 	if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(err, auditErr)

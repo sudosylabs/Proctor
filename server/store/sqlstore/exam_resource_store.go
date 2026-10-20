@@ -184,7 +184,7 @@ func lockExamResourceDraft(ctx context.Context, tx *sqlxTxWrapper, examID model.
 }
 
 func (s SQLExamResourceStore) FinalizeUpload(ctx context.Context, input *store.ExamResourceUploadFinalization, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	if input == nil || input.Resource == nil || input.Rendition == nil || command == nil || input.Resource.Validate() != nil || input.Rendition.Validate() != nil || !input.LeaseID.IsValid() || input.ExpectedDraftRevision < 1 || !input.ActorUserID.IsValid() || input.Resource.ExamID != input.ExamID || input.Resource.SelectedFileRevisionID != input.Rendition.RevisionID || input.Rendition.Name != "original" || !model.ExamResourceMediaType(input.Rendition.MediaType).IsValid() || input.Rendition.Size < 0 || input.Rendition.Size > model.ExamResourceMaximumBytes || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || input.ChangedAt.IsZero() {
+	if input == nil || input.Resource == nil || input.Rendition == nil || command == nil || input.Resource.Validate() != nil || input.Rendition.Validate() != nil || !input.LeaseID.IsValid() || input.ExpectedDraftRevision < 1 || !input.ActorUserID.IsValid() || input.Resource.ExamID != input.ExamID || input.Resource.SelectedFileRevisionID != input.Rendition.RevisionID || input.Rendition.Name != "original" || !model.ExamResourceMediaType(input.Rendition.MediaType).IsValid() || input.Rendition.Size < 0 || input.Rendition.Size > model.ExamResourceMaximumBytes || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.ChangedAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_resource", "finalization", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam resource upload finalization", idempotentMutation[*store.ExamResourceRecord]{command: command, auditEventID: input.AuditEventID,
@@ -336,7 +336,7 @@ func decodeExamResourceOutcome(version int, data []byte) (*store.ExamResourceRec
 	}
 	return row.record()
 }
-func completeExamResourceReplay(ctx context.Context, tx *sqlxTxWrapper, auditID string, auditAt int64, value *store.ExamResourceRecord, original string) error {
+func completeExamResourceReplay(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, auditAt int64, value *store.ExamResourceRecord, original string) error {
 	data, err := model.EncodeAuditData(map[string]any{"exam_id": value.Resource.ExamID.String(), "exam_resource_id": value.Resource.ID.String(), "draft_revision": value.DraftRevision, "idempotency_replayed": true, "original_audit_event_id": original})
 	if err != nil {
 		return err
@@ -346,7 +346,7 @@ func completeExamResourceReplay(ctx context.Context, tx *sqlxTxWrapper, auditID 
 }
 
 func (s SQLExamResourceStore) UpdateMetadata(ctx context.Context, input *store.ExamResourceMetadataUpdate, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.ResourceID.IsValid() || input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.ResourceID.IsValid() || input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_resource", "metadata_update", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam resource metadata update", idempotentMutation[*store.ExamResourceRecord]{command: command, auditEventID: input.AuditEventID,
@@ -398,7 +398,7 @@ func (s SQLExamResourceStore) UpdateMetadata(ctx context.Context, input *store.E
 }
 
 func (s SQLExamResourceStore) Reorder(ctx context.Context, input *store.ExamResourceReorder, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedDraftRevision < 1 || len(input.ResourceIDs) > model.ExamResourceMaximumCount || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedDraftRevision < 1 || len(input.ResourceIDs) > model.ExamResourceMaximumCount || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_resource", "reorder", nil)
 	}
 	seen := map[model.ExamResourceID]bool{}
@@ -502,7 +502,7 @@ func (s SQLExamResourceStore) Reorder(ctx context.Context, input *store.ExamReso
 }
 
 func (s SQLExamResourceStore) Remove(ctx context.Context, input *store.ExamResourceRemoval, command *store.CommandIdempotency) (*store.ExamResourceCommandResult, error) {
-	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.ResourceID.IsValid() || input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.ResourceID.IsValid() || input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_resource", "removal", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "exam resource removal", idempotentMutation[*store.ExamResourceRecord]{command: command, auditEventID: input.AuditEventID,

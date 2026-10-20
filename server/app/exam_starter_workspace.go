@@ -110,10 +110,10 @@ func (a examStarterWorkspaceAuthorizationAdapter) Authorize(ctx context.Context,
 
 type examStarterWorkspaceAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examStarterWorkspaceAuditAdapter) Begin(ctx context.Context, call examworkspace.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
+func (a examStarterWorkspaceAuditAdapter) Begin(ctx context.Context, call examworkspace.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
 }
-func (a examStarterWorkspaceAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (a examStarterWorkspaceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)
 }
 

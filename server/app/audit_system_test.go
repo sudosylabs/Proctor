@@ -57,7 +57,7 @@ func TestExamSittingSystemAuditAdapterRetainsJobIdentityAtAcademicUnitScope(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if audits.saved == nil || id != audits.saved.ID.String() || !audits.saved.ActorID.IsZero() || !audits.saved.SessionID.IsZero() ||
+	if audits.saved == nil || id != audits.saved.ID || !audits.saved.ActorID.IsZero() || !audits.saved.SessionID.IsZero() ||
 		audits.saved.ScopeType != model.RoleScopeAcademicUnit || audits.saved.ScopeID != unitID.String() {
 		t.Fatalf("system audit = %#v", audits.saved)
 	}

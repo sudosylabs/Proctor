@@ -124,7 +124,7 @@ func validateExamCorrectionStageReservation(input *store.ExamCorrectionResourceS
 	if input == nil || command == nil || !input.StageID.IsValid() || !input.ExamID.IsValid() || !input.SittingID.IsValid() ||
 		!input.BaseRevisionID.IsValid() || !input.Target.IsValid() || !input.ResourceID.IsValid() || !input.FileEntryID.IsValid() ||
 		input.Revision == nil || input.Lease == nil || !input.RenditionID.IsValid() || !input.ActorUserID.IsValid() ||
-		input.CreatedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.CreatedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_correction", "resource_stage_reservation", nil)
 	}
 	if input.Revision.FileEntryID != input.FileEntryID || input.Revision.Availability != model.FileAvailabilityPending ||
@@ -416,7 +416,7 @@ func (s SQLExamCorrectionStore) Apply(ctx context.Context, input *store.ExamCorr
 func validateExamCorrectionApplication(input *store.ExamCorrectionApplication, command *store.CommandIdempotency) error {
 	if input == nil || command == nil || !input.RevisionID.IsValid() || !input.ExamID.IsValid() || !input.SittingID.IsValid() ||
 		!input.CurrentRevisionID.IsValid() || input.ExpectedSittingRevision < 1 || !input.ActorUserID.IsValid() ||
-		!validExamSittingPrivateReason(input.PrivateReason) || input.AppliedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!validExamSittingPrivateReason(input.PrivateReason) || input.AppliedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_correction", "application", nil)
 	}
 	if input.BrowserPolicy != nil && input.BrowserPolicy.ValidateInstitutionOrigin(input.InstitutionOrigin) != nil {

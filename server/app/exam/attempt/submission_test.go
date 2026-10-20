@@ -58,7 +58,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 		access.ContinuityCredentialHash != model.HashToken(credential) || access.ExpectedCurrentRevisionID != revisionID ||
 		access.ExpectedWorkspaceCursor != 11 ||
 		access.FinalFocusLossSequence != 7 || f.submissions.seal == nil || !f.submissions.seal.SubmissionID.IsValid() ||
-		!model.IsValidId(f.submissions.seal.AuditEventID) || result.Receipt.SubmissionID != submissionID || f.effects.submitted != 1 {
+		!f.submissions.seal.AuditEventID.IsValid() || result.Receipt.SubmissionID != submissionID || f.effects.submitted != 1 {
 		t.Fatalf("access=%#v seal=%#v result=%#v effects=%#v", access, f.submissions.seal, result, f.effects)
 	}
 	audit := fmt.Sprintf("%#v", f.audit.values)

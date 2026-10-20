@@ -185,10 +185,10 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				if audit.attempt.Operation != operation || audit.attempt.Resource.ID != principal.UserID.String() || audit.attempt.Action != model.ActionSessionManage {
 					t.Fatalf("audit context = %#v", audit.attempt)
 				}
-				if input := persistence.revocation; input != nil && (input.AuditEventID != audit.beginID || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
+				if input := persistence.revocation; input != nil && (input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
 					t.Fatalf("single revocation audit/notice = %#v", input)
 				}
-				if input := persistence.allRevocation; input != nil && (input.AuditEventID != audit.beginID || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
+				if input := persistence.allRevocation; input != nil && (input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
 					t.Fatalf("all revocation audit/notice = %#v", input)
 				}
 			})

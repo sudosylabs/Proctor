@@ -55,19 +55,19 @@ type ManagerAuthorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
 	Prepare(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (*model.AuditEvent, error)
 	RecordAuthorizationDecision(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, bool) error
-	Fail(context.Context, string, string) error
-	Complete(context.Context, string, map[string]any) error
+	Fail(context.Context, model.AuditEventID, string) error
+	Complete(context.Context, model.AuditEventID, map[string]any) error
 }
 
 // SystemAuditor creates actor-less audit attempts for trusted periodic
 // continuity enforcement. A runtime scanner must never manufacture a User
 // Principal merely to persist this system decision.
 type SystemAuditor interface {
-	Begin(context.Context, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 type Effects interface {
@@ -1153,11 +1153,15 @@ func projectConnection(stored *store.ExamAttemptConnectResult, classID model.Cla
 		!validCandidateLiveCorrections(stored.RuntimeCapabilities, stored.LiveCorrections) {
 		return ConnectionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Exam Attempt configuration outcome"))
 	}
+	var revokedSessionIDs []string
+	for _, id := range stored.RevokedSessionIDs {
+		revokedSessionIDs = append(revokedSessionIDs, id.String())
+	}
 	return ConnectionResult{Security: stored.Security, Attempt: *stored.Attempt, Workspace: *stored.Workspace, Participation: *stored.Participation,
 		Connection: *stored.Connection, ClassID: classID, FirstAdmission: stored.FirstAdmission,
 		Configuration: stored.Configuration.Clone(), RuntimeCapabilities: stored.RuntimeCapabilities,
 		BrowserPolicy: cloneCandidateBrowserPolicy(stored.BrowserPolicy), LiveCorrections: model.CloneCandidateLiveCorrections(stored.LiveCorrections),
-		ConnectionOpened: stored.ConnectionOpened, RevokedSessionIDs: append([]string(nil), stored.RevokedSessionIDs...),
+		ConnectionOpened: stored.ConnectionOpened, RevokedSessionIDs: revokedSessionIDs,
 		RevokedAccessTokenDigests: append([]string(nil), stored.RevokedAccessTokenDigests...), Replayed: stored.Replayed}, nil
 }
 
@@ -1217,7 +1221,7 @@ func validParticipationView(view *store.ExamAttemptParticipationView) bool {
 	}
 }
 
-func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
+func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := err
 	code := "exam.attempt.unavailable"
 	var fault *apperror.Error

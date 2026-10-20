@@ -21,7 +21,7 @@ const (
 
 type RetentionMutation struct {
 	Principal               model.Principal
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 	RecentAuthenticationTTL time.Duration
 }
@@ -68,7 +68,7 @@ type RetentionRecordPage struct {
 // state; neither the worker nor a preview supplies eligibility assertions.
 type RetentionReconciliation struct {
 	SubmissionID model.SubmissionID
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

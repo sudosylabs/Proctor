@@ -141,7 +141,7 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 		SessionID: f.session.ID, DesktopRegistrationID: f.session.DesktopRegistrationID, DPoPKeyThumbprint: f.session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credential,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect, examCommand(f.candidate.ID, store.ExamAttemptConnectOperation, "recursive-connect", "recursive-connect"))
 	requireNoError(t, err)
@@ -151,7 +151,7 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credential}
 	prepare := func(kind model.AttemptWorkspaceMutationKind, label string) (*store.ExamAttemptWorkspaceMutation, *store.CommandIdempotency) {
 		input := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: kind, EntryID: model.NewAttemptWorkspaceEntryID(),
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 		command := examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, label, label)
 		command.Retention = time.Millisecond
 		return input, command
@@ -251,7 +251,7 @@ func testAttemptWorkspaceRecursiveDeletion(t *testing.T, ss store.Store, workspa
 		t.Fatalf("recursive acknowledgement=%#v", removed)
 	}
 	replay := *deletion
-	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	replay.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	replayed, err := workspace.ApplyMutation(ctx, &replay, deleteCommand)
 	requireNoError(t, err)
 	if !replayed.Replayed || replayed.Change != removed.Change {

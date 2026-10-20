@@ -34,13 +34,13 @@ type scopedMutationAuditor interface {
 	BeginAtScope(
 		context.Context, Invocation, model.Action, model.Resource,
 		model.RoleScopeType, string, string, map[string]any, map[string]any,
-	) (string, error)
+	) (model.AuditEventID, error)
 }
 
 // mutationAttemptReference is the complete audit input a named Store mutation
 // needs to commit durable state and successful audit completion atomically.
 type mutationAttemptReference struct {
-	ID               string
+	ID               model.AuditEventID
 	MutationAtMillis int64
 }
 
@@ -57,7 +57,7 @@ func runAuditedMutation[T any](
 	mapError func(error) error,
 ) (T, error) {
 	var zero T
-	var auditID string
+	var auditID model.AuditEventID
 	var err error
 	if attempt.ScopeType != "" || attempt.ScopeID != "" {
 		scoped, ok := auditor.(scopedMutationAuditor)

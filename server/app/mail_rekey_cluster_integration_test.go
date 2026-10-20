@@ -67,7 +67,7 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		t.Fatal(err)
 	}
 	if _, err = persistence.Mail().StartRekey(ctx, &store.MailRekeyStart{PrimaryKeyID: newSealer.PrimaryKeyID(),
-		RetiringKeyID: oldSealer.PrimaryKeyID(), Job: rekeyJob, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}); err != nil {
+		RetiringKeyID: oldSealer.PrimaryKeyID(), Job: rekeyJob, AuditEventID: audit.ID, AuditAt: model.GetMillis()}); err != nil {
 		t.Fatal(err)
 	}
 

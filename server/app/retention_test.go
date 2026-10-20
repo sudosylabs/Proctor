@@ -77,7 +77,7 @@ func TestRetentionApprovalPassesExactReviewedPolicyAndCredential(t *testing.T) {
 		t.Fatalf("approval = %+v, %v", value, err)
 	}
 	if lifecycle.change.ExpectedPolicyRevision != 7 || lifecycle.change.PreviewID != control.ApprovedPreviewID ||
-		lifecycle.change.Principal.CredentialID != fixture.invocation.Principal().CredentialID || lifecycle.change.AuditEventID != fixture.audit.beginID ||
+		lifecycle.change.Principal.CredentialID != fixture.invocation.Principal().CredentialID || lifecycle.change.AuditEventID != model.AuditEventID(fixture.audit.beginID) ||
 		lifecycle.change.RecentAuthenticationTTL <= 0 || lifecycle.command.Operation != store.RetentionControlOperation {
 		t.Fatalf("lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
 	}

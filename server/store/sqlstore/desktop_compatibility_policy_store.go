@@ -280,7 +280,7 @@ func validateDesktopCompatibilityPolicyReplacement(
 	command *store.CommandIdempotency,
 ) error {
 	if input == nil || !input.ActorID.IsValid() || input.ExpectedRevision < 1 ||
-		input.Settings.Validate() != nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.Settings.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		command == nil || command.UserID != input.ActorID ||
 		command.Operation != "desktop_compatibility_policy.replace.v1" ||
 		command.FingerprintVersion != 1 || command.OutcomeVersion != 1 ||

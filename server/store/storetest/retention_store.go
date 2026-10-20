@@ -67,7 +67,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	mutation := func(action model.Action) store.RetentionMutation {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: f.institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-test"})
 		requireNoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID.String(), AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
+		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
 	}
 	preview := func(key string) *model.RetentionPreview {
 		p, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView), PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: policy.Revision}, examCommand(f.manager.ID, store.RetentionPreviewOperation, key, key))
@@ -92,7 +92,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 		}
 		keyValue := examCommand(f.manager.ID, store.RetentionControlOperation, key, key)
 		missing := *input
-		missing.AuditEventID = model.NewId()
+		missing.AuditEventID = model.NewAuditEventID()
 		if _, err = ss.Retention().ChangeControl(ctx, &missing, keyValue); err == nil {
 			t.Fatal("control committed without critical audit")
 		}
@@ -115,7 +115,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	reconcile := func(expected store.RetentionReconciliationResult) {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceSubmission, ID: subID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-job"})
 		requireNoError(t, err)
-		result, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: a.ID.String(), AuditAt: model.GetMillis()})
+		result, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: a.ID, AuditAt: model.GetMillis()})
 		requireNoError(t, err)
 		if result == nil || *result != expected {
 			t.Fatalf("reconcile=%#v expected=%#v", result, expected)
@@ -245,7 +245,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	}
 	go func() {
 		<-startRace
-		r, e := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: raceAudit.ID.String(), AuditAt: model.GetMillis()})
+		r, e := peer.ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: raceAudit.ID, AuditAt: model.GetMillis()})
 		retireResult <- r
 		retireError <- e
 	}()
@@ -286,7 +286,7 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	if _, err = ss.ExamIntegrityReview().Get(ctx, subID); !store.IsNotFound(err) && !store.IsConflict(err) {
 		t.Fatalf("retired integrity remained readable: %v", err)
 	}
-	sealInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	sealInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	sealInput.AuditAt = model.GetMillis()
 	if result, err := ss.ExamSubmission().Seal(ctx, sealInput, sealKey); err == nil && result != nil {
 		t.Fatal("seal retry exposed a retired receipt")
@@ -334,12 +334,12 @@ func newRetentionFixture(t *testing.T, ctx context.Context, ss store.Store) (exa
 	requireNoError(t, err)
 	_, err = ss.ExamAttemptWorkspace().MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access, ObjectID: object.ID, ContentVersion: model.NewWorkspaceContentVersion(), Content: model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 12, SHA256: strings.Repeat("a", 64)}})
 	requireNoError(t, err)
-	created, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "private-answer.txt", ObjectID: object.ID, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "retention-file", "retention-file"))
+	created, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "private-answer.txt", ObjectID: object.ID, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "retention-file", "retention-file"))
 	requireNoError(t, err)
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: focus.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.sitting.ExamRevisionID, ExpectedWorkspaceCursor: created.Change.Cursor}
 	target, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
 	requireNoError(t, err)
-	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.MillisFromTime(target.SealAt)}
+	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.MillisFromTime(target.SealAt)}
 	attachSubmissionReceipt(t, f.candidate, input)
 	key := examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "retention-seal", "retention-seal")
 	sealed, err := ss.ExamSubmission().Seal(ctx, input, key)

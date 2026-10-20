@@ -662,7 +662,9 @@ func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, Invocation,
 func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
-func (desktopAuthorizationAuditorFake) Fail(context.Context, string, string) error { return nil }
+func (desktopAuthorizationAuditorFake) Fail(context.Context, model.AuditEventID, string) error {
+	return nil
+}
 
 type recordingDesktopAuthorizationAuditor struct {
 	desktopAuthorizationAuditorFake
@@ -685,8 +687,8 @@ func (a *recordingDesktopAuthorizationAuditor) PrepareExchange(_ context.Context
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 
-func (a *recordingDesktopAuthorizationAuditor) Fail(_ context.Context, auditID, errorCode string) error {
-	a.auditID, a.failureCode = auditID, errorCode
+func (a *recordingDesktopAuthorizationAuditor) Fail(_ context.Context, auditID model.AuditEventID, errorCode string) error {
+	a.auditID, a.failureCode = auditID.String(), errorCode
 	return nil
 }
 

@@ -158,7 +158,7 @@ func clusteredMailRekeyStart(t *testing.T, ctx context.Context, persistence stor
 		t.Fatal(err)
 	}
 	return &store.MailRekeyStart{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID, Job: job,
-		AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: attempt.ID, AuditAt: model.GetMillis()}
 }
 
 func clusteredMailRekeyClaimToken(t *testing.T) model.JobClaimToken {

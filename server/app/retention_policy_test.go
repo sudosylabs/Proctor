@@ -148,7 +148,7 @@ func TestRetentionPolicyReplacementPassesAtomicAuditAndIdempotency(t *testing.T)
 	}
 	input, idempotency := fixture.policies.replaceInput, fixture.policies.command
 	if input == nil || !reflect.DeepEqual(input.Principal, fixture.invocation.Principal()) || input.RecentAuthenticationTTL != fixture.service.recentAuthenticationTTL || input.ExpectedRevision != 1 ||
-		input.Settings != command.Settings || input.AuditEventID != fixture.audit.beginID || input.AuditAt != fixture.at.UnixMilli() ||
+		input.Settings != command.Settings || input.AuditEventID != model.AuditEventID(fixture.audit.beginID) || input.AuditAt != fixture.at.UnixMilli() ||
 		idempotency == nil || idempotency.UserID != input.Principal.UserID || idempotency.Operation != "retention_policy.replace.v1" ||
 		idempotency.FingerprintVersion != 1 || idempotency.OutcomeVersion != 1 {
 		t.Fatalf("atomic input = %#v; idempotency = %#v", input, idempotency)
@@ -172,7 +172,7 @@ func TestRetentionPolicyReplacementReplayAndNoOpUseStoreOutcome(t *testing.T) {
 		command.Settings = model.RetentionPolicySettings{}
 		result, err := fixture.service.Replace(t.Context(), fixture.invocation, command)
 		if err != nil || result == nil || !reflect.DeepEqual(result, retained) || fixture.policies.getCalls != 0 ||
-			fixture.policies.replaceInput.AuditEventID != fixture.audit.beginID || fixture.authorization.calls != 1 {
+			fixture.policies.replaceInput.AuditEventID != model.AuditEventID(fixture.audit.beginID) || fixture.authorization.calls != 1 {
 			t.Fatalf("replayed=%t: result=%#v, %v", replay, result, err)
 		}
 	}

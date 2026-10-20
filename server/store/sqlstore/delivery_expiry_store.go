@@ -49,7 +49,7 @@ func (s *sqlExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit i
 	return result, nil
 }
 func (s *sqlExamAttemptStore) ExpireDelivery(ctx context.Context, input *store.DeliveryExpiry) (bool, error) {
-	if input == nil || !input.Due.Valid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.Due.Valid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return false, store.NewErrInvalidInput("delivery_expiry", "input", nil)
 	}
 	d := input.Due

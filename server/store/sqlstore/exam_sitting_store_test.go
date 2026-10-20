@@ -45,7 +45,7 @@ func TestValidateExamSittingListOptions(t *testing.T) {
 
 func TestPrepareExamSittingCancellationBoundsPrivateReason(t *testing.T) {
 	valid := &store.ExamSittingCancellation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
-		ExpectedRevision: 1, PrivateReason: "é", AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		ExpectedRevision: 1, PrivateReason: "é", AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 		Mail: &store.ExamSittingMailFanout{}}
 	if err := prepareExamSittingCancellation(valid); err != nil {
 		t.Fatalf("valid cancellation: %v", err)
@@ -134,7 +134,7 @@ func TestValidateExamSittingLifecycleJob(t *testing.T) {
 
 func TestPrepareExamSittingManagerTransitionRequiresPhaseSpecificFinalizeJob(t *testing.T) {
 	base := &store.ExamSittingManagerTransition{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
-		ExpectedRevision: 2, PrivateReason: "manager reason", ChangedAt: model.NowUTC(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		ExpectedRevision: 2, PrivateReason: "manager reason", ChangedAt: model.NowUTC(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	if err := prepareExamSittingManagerTransition(base, false); err != nil {
 		t.Fatalf("pause/resume transition: %v", err)
 	}

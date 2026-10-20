@@ -51,7 +51,7 @@ type DesktopAuthorizationPolicy struct {
 type desktopAuthorizationAuditor interface {
 	PrepareIssue(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
 	PrepareExchange(context.Context, Invocation, model.UserID, model.InstitutionID) (*model.AuditEvent, error)
-	Fail(context.Context, string, string) error
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 type desktopAuthorizationAttemptLimiter interface {
@@ -464,18 +464,18 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 		BindingHash: model.HashToken(command.Binding), StateHash: model.HashToken(command.State),
 		CodeHash: model.HashToken(code), ExpectedUserID: current.UserID,
 		CodeLifetime: s.policy.CodeLifetime,
-		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(),
+		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
 	})
 	if err != nil {
 		failure := desktopAuthorizationStoreErrors.Translate(err)
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
+		if auditErr := s.audit.Fail(ctx, audit.ID, apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
 	}
 	if issued == nil || model.ValidateDesktopAuthorizationCallback(issued.CallbackURL) != nil || issued.CodeExpiresAt.IsZero() {
 		failure := apperror.New("authentication.desktop_authorization.unavailable")
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
+		if auditErr := s.audit.Fail(ctx, audit.ID, failure.Code()); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
@@ -574,11 +574,11 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		AccessLifetime: s.sessionPolicy.AccessTTL, RefreshLifetime: s.sessionPolicy.RefreshTTL,
 		IdleLifetime: s.sessionPolicy.IdleTTL, AbsoluteLifetime: s.sessionPolicy.AbsoluteTTL,
 		MaximumActive: s.sessionPolicy.MaximumPerUser, Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
-		AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(),
+		AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
 	})
 	if err != nil {
 		failure := desktopAuthorizationStoreErrors.Translate(err)
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
+		if auditErr := s.audit.Fail(ctx, audit.ID, apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
@@ -588,7 +588,7 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 	}
 	if !validDesktopAuthorizationExchangeResult(result, s.sessionPolicy) {
 		failure := apperror.New("authentication.desktop_authorization.unavailable")
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
+		if auditErr := s.audit.Fail(ctx, audit.ID, failure.Code()); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
@@ -732,7 +732,7 @@ func (a desktopAuthorizationAuditAdapter) PrepareExchange(ctx context.Context, i
 		institutionID.String(), invocation.RequestMetadata(), map[string]any{"operation": "exchange"})
 }
 
-func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {
+func (a desktopAuthorizationAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
 	if a.audit == nil {
 		return apperror.New("audit.unavailable")
 	}

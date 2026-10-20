@@ -42,7 +42,7 @@ func (s *sqlExamAttemptStore) lockBrowserDeclaration(ctx context.Context, tx *sq
 	}
 	return browserDeclarationOwner{SourceSessionID: access.SourceSessionID, ParticipationID: status.ParticipationID.String(), Allocated: status.AllocatedThrough, TerminalThrough: status.TerminalMissingThrough, DeclarationRevision: status.DeclarationRevision, SummaryOnly: status.DetailMode == "summary_only", Closure: status.Closure, Now: status.ServerTime}, nil
 }
-func completeBrowserDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id string, at int64, source model.BrowserSourceSessionID, replayed bool) error {
+func completeBrowserDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id model.AuditEventID, at int64, source model.BrowserSourceSessionID, replayed bool) error {
 	data, err := model.EncodeAuditData(map[string]any{"source_session_id": string(source), "idempotency_replayed": replayed})
 	if err != nil {
 		return err
@@ -124,12 +124,12 @@ func (s *sqlExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *st
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*browserDeclarationOutcome, error) {
+func (s *sqlExamAttemptStore) declareBrowserDelivery(ctx context.Context, access store.BrowserDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*browserDeclarationOutcome, error) {
 	expectedOperation := store.BrowserDeliveryFinalOperation
 	if record.Gaps != nil {
 		expectedOperation = store.BrowserDeliveryGapsOperation
 	}
-	if command == nil || command.Operation != expectedOperation || command.UserID != access.Access.CandidateUserID || !model.IsValidId(auditID) || auditAt <= 0 {
+	if command == nil || command.Operation != expectedOperation || command.UserID != access.Access.CandidateUserID || !auditID.IsValid() || auditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "declaration", nil)
 	}
 	declarationID := ""
@@ -409,7 +409,7 @@ func (s *sqlExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, acces
 	})
 }
 func (s *sqlExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, input *store.BrowserDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
-	if input == nil || input.Summary.Validate() != nil || command == nil || command.Operation != store.BrowserDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Summary.Validate() != nil || command == nil || command.Operation != store.BrowserDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "summary", nil)
 	}
 	hydrate := func(ctx context.Context, tx *sqlxTxWrapper, value *model.BrowserDeliverySummaryResult) (*model.BrowserDeliverySummaryResult, error) {

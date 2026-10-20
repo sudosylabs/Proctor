@@ -119,7 +119,7 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 				WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 				VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-				AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(before),
+				AuditEventID: audit.ID, AuditAt: model.MillisFromTime(before),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -251,7 +251,7 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
 	removal := &store.PasswordCredentialRemoval{
 		UserID: user.ID, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
-		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
 	}
 	type removalOutcome struct {
@@ -281,7 +281,7 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID); !store.IsNotFound(err) {
 		t.Fatalf("password remained active after removal: %v", err)
 	}
-	terminal, err := persistence.Audit().Get(ctx, audit.ID.String())
+	terminal, err := persistence.Audit().Get(ctx, audit.ID)
 	if err != nil || terminal.Status != model.AuditStatusSuccess {
 		t.Fatalf("removal audit = %#v, %v", terminal, err)
 	}
@@ -773,7 +773,7 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: changeAudit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: changeAudit.ID, AuditAt: model.GetMillis()}
 	go func() {
 		_, updateErr := persistence.UserToken().ChangeEmail(ctx, change)
 		updated <- updateErr
@@ -845,7 +845,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: changeAudit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: changeAudit.ID, AuditAt: model.GetMillis()}
 	disableAt := model.GetMillis()
 	disableAudit := authenticationPolicyTestAudit("user.disable", user.ID.String(), institution.ID.String())
 	disableAudit.Status = model.AuditStatusAttempt
@@ -855,7 +855,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	}
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
-		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: disableAt,
 	})
 
 	controller, err := persistence.GetMaster().DB().Conn(ctx)

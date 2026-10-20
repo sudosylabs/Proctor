@@ -669,7 +669,7 @@ func (s SQLMailStore) RetryDelivery(ctx context.Context, input *store.MailDelive
 }
 
 func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.MailDeliveryMutation, operation string, transition func(*model.MailDelivery, *model.Job, time.Time) (*model.MailDelivery, *model.Job, error)) (*model.MailDelivery, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("mail_delivery", operation, nil)
 	}
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error { return err }), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
@@ -785,7 +785,7 @@ func isMailDeliveryJobType(jobType model.JobType) bool {
 	return jobType == model.JobTypeMailDeliver || jobType == model.JobTypeMailDeliverCredential
 }
 
-func validateMailMutationAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, deliveryID model.MailDeliveryID) error {
+func validateMailMutationAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, deliveryID model.MailDeliveryID) error {
 	var audit struct {
 		Action       string             `db:"action"`
 		ResourceType model.ResourceType `db:"resource_type"`
@@ -793,7 +793,7 @@ func validateMailMutationAudit(ctx context.Context, tx *sqlxTxWrapper, auditID s
 		Status       model.AuditStatus  `db:"status"`
 	}
 	if err := tx.Get(ctx, &audit, `SELECT action, resource_type, resource_id, status FROM audit_events WHERE id = ? FOR UPDATE`, auditID); err != nil {
-		return translateError("audit_event", auditID, err)
+		return translateError("audit_event", auditID.String(), err)
 	}
 	if audit.Action != string(model.ActionMailManage) || audit.ResourceType != model.ResourceMailDelivery ||
 		audit.ResourceID != deliveryID.String() || audit.Status != model.AuditStatusAttempt {

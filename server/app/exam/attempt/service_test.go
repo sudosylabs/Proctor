@@ -220,7 +220,7 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID || access.ConnectionID != f.connectionID ||
 		access.ContinuityCredentialHash != model.HashToken(credential) || f.workspace.mutation == nil ||
 		f.workspace.mutation.EntryID != entryID || f.workspace.mutation.DestinationPath != "src" ||
-		f.workspace.mutation.Operation != model.AttemptWorkspaceMutationCreateDirectory || !model.IsValidId(f.workspace.mutation.AuditEventID) ||
+		f.workspace.mutation.Operation != model.AttemptWorkspaceMutationCreateDirectory || !f.workspace.mutation.AuditEventID.IsValid() ||
 		result.Change.Cursor != 9 || f.effects.workspaceChanged != 1 {
 		t.Fatalf("access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
 	}
@@ -633,7 +633,7 @@ func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *tes
 	if result.Due != 1 || result.Completed != 1 || result.Replayed != 0 || input == nil ||
 		input.AttemptID != due.AttemptID || input.ParticipationID != due.ParticipationID || input.Generation != due.Generation ||
 		!input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt < 1 || f.effects.expired != 1 ||
+		!input.AuditEventID.IsValid() || input.AuditAt < 1 || f.effects.expired != 1 ||
 		strings.Join(f.order, ",") != "expiry.list,system.audit,expiry.commit,effect.expire" {
 		t.Fatalf("scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
 	}
@@ -1547,22 +1547,22 @@ type systemAuditFake struct {
 	failedCode string
 }
 
-func (fake *systemAuditFake) Begin(_ context.Context, _ model.Action, _ model.Resource, _ model.RoleScopeType, _ string, _ string, values map[string]any) (string, error) {
+func (fake *systemAuditFake) Begin(_ context.Context, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values map[string]any) (model.AuditEventID, error) {
 	fake.f.order = append(fake.f.order, "system.audit")
 	fake.values = values
-	return model.NewId(), nil
+	return model.NewAuditEventID(), nil
 }
-func (fake *systemAuditFake) Fail(_ context.Context, _ string, code string) error {
+func (fake *systemAuditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	fake.f.order = append(fake.f.order, "system.audit.fail")
 	fake.failedCode = code
 	return nil
 }
 
-func (fake *auditFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values map[string]any) (string, error) {
+func (fake *auditFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values map[string]any) (model.AuditEventID, error) {
 	fake.f.order = append(fake.f.order, "audit")
 	fake.values = values
 	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
-	return model.NewId(), nil
+	return model.NewAuditEventID(), nil
 }
 func (fake *auditFake) Prepare(_ context.Context, _ Call, action model.Action, resource model.Resource,
 	scopeType model.RoleScopeType, scopeID, operation string, values map[string]any,
@@ -1579,12 +1579,12 @@ func (fake *auditFake) RecordAuthorizationDecision(_ context.Context, _ Call, _ 
 	fake.f.order = append(fake.f.order, "audit.authorization")
 	return nil
 }
-func (fake *auditFake) Fail(_ context.Context, _ string, code string) error {
+func (fake *auditFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	fake.f.order = append(fake.f.order, "audit.fail")
 	fake.failedCode = code
 	return fake.failErr
 }
-func (fake *auditFake) Complete(_ context.Context, _ string, _ map[string]any) error {
+func (fake *auditFake) Complete(_ context.Context, _ model.AuditEventID, _ map[string]any) error {
 	fake.f.order = append(fake.f.order, "audit.complete")
 	return nil
 }

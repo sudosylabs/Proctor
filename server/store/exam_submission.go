@@ -60,7 +60,7 @@ type ExamSubmissionSealTarget struct {
 type ExamSubmissionSeal struct {
 	SubmissionID              model.SubmissionID
 	Access                    ExamSubmissionSealAccess
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Notice                    *PreparedMail
 	ExpectedRecipientRevision int64
@@ -131,7 +131,7 @@ type ExamSubmissionAutomaticSealTarget struct {
 type ExamSubmissionAutomaticSeal struct {
 	Target                    ExamSubmissionAutomaticSealTarget
 	SubmissionID              model.SubmissionID
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Notice                    *PreparedMail
 	ExpectedRecipientRevision int64
@@ -169,7 +169,7 @@ type ExamSubmissionManagerEnd struct {
 	Request                   ExamSubmissionManagerEndRequest
 	Target                    ExamSubmissionAutomaticSealTarget
 	SubmissionID              model.SubmissionID
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Notice                    *PreparedMail
 	ExpectedRecipientRevision int64

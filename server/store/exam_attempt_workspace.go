@@ -85,7 +85,7 @@ type ExamAttemptWorkspaceMutation struct {
 	Recursive               bool
 	ExpectedWorkspaceCursor *int64
 	ObjectID                model.AttemptWorkspaceObjectID
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 }
 

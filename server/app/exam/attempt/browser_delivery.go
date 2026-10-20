@@ -37,7 +37,7 @@ type BrowserDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, call Call, access store.BrowserDeliveryAccess, operation string) (string, error) {
+func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, call Call, access store.BrowserDeliveryAccess, operation string) (model.AuditEventID, error) {
 	target, err := service.deps.Persistence.ResolveBrowserDeliveryTarget(ctx, access)
 	if err != nil {
 		return "", deliveryStoreError(err)

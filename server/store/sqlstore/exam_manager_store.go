@@ -130,7 +130,7 @@ func (s SQLExamAuthoringStore) runManagerMutation(ctx context.Context, label str
 func prepareExamManagerMutation(input *store.ExamManagerMutation) (*store.ExamManagerMutation, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.TargetUserID.IsValid() ||
 		input.ExpectedRevision < 1 || input.ChangedAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_manager", "mutation", nil)
 	}
 	prepared := *input

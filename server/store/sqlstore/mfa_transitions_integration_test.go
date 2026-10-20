@@ -83,7 +83,7 @@ func TestMFAEnrollmentRechecksDeadlinesAfterSessionRowLock(t *testing.T) {
 			if err = s.GetMaster().Get(ctx, &count, `SELECT count(*) FROM mfa_credentials WHERE user_id=?`, f.target.ID.String()); err != nil || count != 0 {
 				t.Fatalf("rejected enrollment persisted a factor: count=%d error=%v", count, err)
 			}
-			storedAudit, err := s.Audit().Get(ctx, audit.ID.String())
+			storedAudit, err := s.Audit().Get(ctx, audit.ID)
 			if err != nil || storedAudit.Status != model.AuditStatusAttempt {
 				t.Fatalf("rejected enrollment completed its audit: %#v %v", storedAudit, err)
 			}

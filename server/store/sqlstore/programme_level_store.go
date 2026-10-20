@@ -67,7 +67,7 @@ func newSQLProgrammeLevelStore(sqlStore *SQLStore) store.ProgrammeLevelStore {
 }
 
 func (s SQLProgrammeLevelStore) Create(ctx context.Context, input *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
-	if input == nil || input.Level == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "creation", nil)
 	}
 	if !input.Level.ID.IsValid() {
@@ -266,7 +266,7 @@ func (s SQLProgrammeLevelStore) updateProgrammeLevel(ctx context.Context, candid
 }
 
 func (s SQLProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
-	if input == nil || input.Level == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
 	}
 	candidate := *input.Level
@@ -284,7 +284,7 @@ func (s SQLProgrammeLevelStore) Archive(ctx context.Context, id model.ProgrammeL
 }
 
 func (s SQLProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)
 	}
 	return s.archiveProgrammeLevel(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})

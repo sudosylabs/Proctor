@@ -207,7 +207,7 @@ type retentionExpiryAuditResult struct {
 }
 
 func (s *SQLRetentionStore) ReconcileExpiry(ctx context.Context, input *store.RetentionExpiryReconciliation) (*store.RetentionExpiryResult, error) {
-	if input == nil || !input.Kind.IsValid() || !model.IsValidId(input.RecordID) || !model.IsValidId(input.AuditEventID) || input.RecordID == input.AuditEventID || input.AuditAt <= 0 {
+	if input == nil || !input.Kind.IsValid() || !model.IsValidId(input.RecordID) || !input.AuditEventID.IsValid() || input.RecordID == input.AuditEventID.String() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("retention_expiry", "reconciliation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "retention expiry", func(ctx context.Context, tx *sqlxTxWrapper) (*store.RetentionExpiryResult, error) {

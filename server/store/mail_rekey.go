@@ -18,7 +18,7 @@ type MailRekeyStart struct {
 	PrimaryKeyID  string
 	RetiringKeyID string
 	Job           *model.Job
-	AuditEventID  string
+	AuditEventID  model.AuditEventID
 	AuditAt       int64
 }
 

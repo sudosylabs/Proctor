@@ -147,7 +147,7 @@ func (s *SQLExamSubmissionStore) SealForSittingClose(ctx context.Context,
 	input *store.ExamSubmissionAutomaticSeal,
 ) (*store.ExamSubmissionAutomaticSealResult, error) {
 	if input == nil || !validAutomaticExamSubmissionTarget(input.Target) || !input.SubmissionID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_submission", "automatic_seal", nil)
 	}
 	prepared := *input

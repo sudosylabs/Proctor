@@ -69,7 +69,7 @@ func (s SQLAcademicUnitStore) Create(
 	if input == nil || input.Unit == nil {
 		return nil, store.NewErrInvalidInput("academic_unit", "creation", nil)
 	}
-	if !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "audit", nil)
 	}
 	if !input.Unit.ID.IsValid() {
@@ -88,7 +88,7 @@ func (s SQLAcademicUnitStore) Create(
 }
 
 func (s SQLAcademicUnitStore) CreateIdempotently(ctx context.Context, input *store.AcademicUnitCreation, command *store.CommandIdempotency) (*store.AcademicUnitCommandResult, error) {
-	if input == nil || input.Unit == nil || command == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Unit == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "idempotent_creation", nil)
 	}
 	candidate := *input.Unit
@@ -306,7 +306,7 @@ func (s SQLAcademicUnitStore) UpdateWithAudit(
 	input *store.AcademicUnitUpdate,
 ) (*model.AcademicUnit, error) {
 	if input == nil || input.Unit == nil ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "update", nil)
 	}
 	candidate := *input.Unit
@@ -388,7 +388,7 @@ func (s SQLAcademicUnitStore) ArchiveWithAudit(
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "archive", nil)
 	}
 	return s.archiveAcademicUnit(

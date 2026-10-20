@@ -86,7 +86,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	mutation := func(action model.Action) store.RetentionMutation {
 		a, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(action), Resource: model.Resource{Type: model.ResourceInstitution, ID: installed.Institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: installed.Institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-expiry-test"})
 		requireNoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID.String(), AuditAt: model.GetMillis(), RecentAuthenticationTTL: time.Hour}
+		return store.RetentionMutation{Principal: principal, AuditEventID: a.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: time.Hour}
 	}
 	preview := func(key string) *model.RetentionPreview {
 		p, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView), PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: policy.Revision}, examCommand(principal.UserID, store.RetentionPreviewOperation, key, key))
@@ -107,7 +107,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 		a, saveErr := ss.Audit().Save(ctx, &model.AuditEvent{Action: "audit.view", Resource: model.Resource{Type: model.ResourceInstitution, ID: installed.Institution.ID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: installed.Institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "retention-expiry-test"})
 		requireNoError(t, saveErr)
 		if status != model.AuditStatusAttempt {
-			a, err = ss.Audit().Complete(ctx, a.ID.String(), status, "", nil, model.GetMillis())
+			a, err = ss.Audit().Complete(ctx, a.ID, status, "", nil, model.GetMillis())
 			requireNoError(t, err)
 		}
 		probe.AgeAudit(t, ctx, a.ID.String())
@@ -115,7 +115,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	}
 	makeInput := func(id string) *store.RetentionExpiryReconciliation {
 		a := saveExpirySystemAudit(t, ctx, ss, installed.Institution.ID)
-		return &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID.String(), AuditAt: model.GetMillis()}
+		return &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID, AuditAt: model.GetMillis()}
 	}
 	reconcile := func(id string, expected store.RetentionExpiryResult) {
 		r, err := ss.Retention().ReconcileExpiry(ctx, makeInput(id))
@@ -142,7 +142,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 		t.Fatalf("audit preview=%#v", p.Audit)
 	}
 	missing := makeInput(target.ID.String())
-	missing.AuditEventID = model.NewId()
+	missing.AuditEventID = model.NewAuditEventID()
 	if _, err = ss.Retention().ReconcileExpiry(ctx, missing); err == nil {
 		t.Fatal("expiry scheduled without required audit")
 	}
@@ -178,12 +178,12 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	reconcile(target.ID.String(), store.RetentionExpiryResult{Scheduled: true})
 	probe.ExpireGrace(t, ctx, model.RetentionExpiryAudit, target.ID.String())
 	bad := makeInput(target.ID.String())
-	release := probe.RejectCompletion(t, ctx, bad.AuditEventID)
+	release := probe.RejectCompletion(t, ctx, bad.AuditEventID.String())
 	if _, err = ss.Retention().ReconcileExpiry(ctx, bad); err == nil {
 		t.Fatal("expiry committed without atomic audit completion")
 	}
 	release()
-	if _, err = ss.Audit().Get(ctx, target.ID.String()); err != nil {
+	if _, err = ss.Audit().Get(ctx, target.ID); err != nil {
 		t.Fatal("failed audit completion removed target")
 	}
 	if r := expiryRecord(t, ctx, ss, model.RetentionExpiryAudit, target.ID.String()); !r.ScheduledAt.Valid {
@@ -214,7 +214,7 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 	if expired != 1 {
 		t.Fatalf("concurrent expiry count=%d", expired)
 	}
-	if _, err = ss.Audit().Get(ctx, target.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.Audit().Get(ctx, target.ID); !store.IsNotFound(err) {
 		t.Fatal("expired audit remained readable")
 	}
 	// Same audit retry returns its committed outcome even after the target left.
@@ -226,12 +226,12 @@ func TestRetentionExpiryStore(t *testing.T, ss store.Store, probe RetentionExpir
 		t.Fatal("unknown commit replay changed its result")
 	}
 	reconcile(target.ID.String(), store.RetentionExpiryResult{})
-	if _, err = ss.Audit().Get(ctx, pending.ID.String()); err != nil {
+	if _, err = ss.Audit().Get(ctx, pending.ID); err != nil {
 		t.Fatal("unfinished audit removed")
 	}
 	// Worker-generated audit belongs to its own event age and was not swept
 	// merely because its target was old.
-	if r := expiryRecord(t, ctx, ss, model.RetentionExpiryAudit, first.AuditEventID); r.Blocker != model.RetentionExpiryDeadline {
+	if r := expiryRecord(t, ctx, ss, model.RetentionExpiryAudit, first.AuditEventID.String()); r.Blocker != model.RetentionExpiryDeadline {
 		t.Fatalf("cleanup audit did not get its own age: %#v", r)
 	}
 }
@@ -258,8 +258,8 @@ func TestRetentionReceiptExpiryStore(t *testing.T, ss store.Store, retentionProb
 	}
 	reconcile := func(id model.RetentionRetirementID, expected store.RetentionExpiryResult) {
 		a := saveExpirySystemAudit(t, ctx, ss, policy.InstitutionID)
-		r, err := ss.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryReceipt, RecordID: id.String(), AuditEventID: a.ID.String(), AuditAt: model.GetMillis()})
-		requireNoError(t, err)
+		r, reconcileErr := ss.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryReceipt, RecordID: id.String(), AuditEventID: a.ID, AuditAt: model.GetMillis()})
+		requireNoError(t, reconcileErr)
 		if r == nil || *r != expected {
 			t.Fatalf("receipt expiry=%#v want=%#v", r, expected)
 		}
@@ -338,7 +338,7 @@ func TestRetentionCleanupAuditExpiryStore(t *testing.T, ss store.Store, probe Re
 	}
 	scan := func() int {
 		before := probe.DatabaseTime(t, ctx)
-		after := ""
+		var after model.AuditEventID
 		changed := 0
 		passes := 0
 		for {

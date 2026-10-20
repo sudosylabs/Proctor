@@ -27,12 +27,12 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 			institution, err := ss.Institution().GetSingleton(ctx)
 			requireNoError(t, err)
 			action := map[model.ResourceType]model.Action{model.ResourceAcademicUnit: model.ActionAcademicUnitManage, model.ResourceProgramme: model.ActionProgrammeManage, model.ResourceProgrammeLevel: model.ActionProgrammeLevelManage, model.ResourceAcademicPeriod: model.ActionAcademicPeriodManage, model.ResourceClass: model.ActionClassManage}[kind]
-			attempt := func() string {
+			attempt := func() model.AuditEventID {
 				audit, err := ss.Audit().Save(ctx, &model.AuditEvent{Action: string(action), Resource: resource, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 				requireNoError(t, err)
-				return audit.ID.String()
+				return audit.ID
 			}
-			assertAttempt := func(id string, status model.AuditStatus) {
+			assertAttempt := func(id model.AuditEventID, status model.AuditStatus) {
 				audit, err := ss.Audit().Get(ctx, id)
 				requireNoError(t, err)
 				if audit.Status != status {
@@ -55,7 +55,7 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 				t.Fatalf("stale archive = %v", err)
 			}
 			assertAttempt(staleID, model.AuditStatusAttempt)
-			if err := archive(3, model.NewId()); err == nil {
+			if err = archive(3, model.NewAuditEventID()); err == nil {
 				t.Fatal("archive committed without its pending audit")
 			}
 			revision, name, err := get()
@@ -64,7 +64,7 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 				t.Fatalf("failed mutations changed resource: %d %s", revision, name)
 			}
 
-			ids := []string{attempt(), attempt()}
+			ids := []model.AuditEventID{attempt(), attempt()}
 			results := make([]error, 2)
 			start := make(chan struct{})
 			var workers sync.WaitGroup
@@ -108,11 +108,11 @@ func TestAcademicLifecycleRevisionConformance(t *testing.T, ss store.Store) {
 	}
 }
 
-func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss store.Store, resource model.Resource) (func(int64, string, string) error, func(int64, string) error, func() (int64, string, error)) {
+func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss store.Store, resource model.Resource) (func(int64, string, model.AuditEventID) error, func(int64, model.AuditEventID) error, func() (int64, string, error)) {
 	t.Helper()
 	switch resource.Type {
 	case model.ResourceAcademicUnit:
-		return func(revision int64, display, auditID string) error {
+		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.AcademicUnit().Get(ctx, model.AcademicUnitID(resource.ID))
 				if err != nil {
 					return err
@@ -125,7 +125,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				current.PrepareUpdate(model.NowUTC())
 				_, err = ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{Unit: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
-			}, func(revision int64, auditID string) error {
+			}, func(revision int64, auditID model.AuditEventID) error {
 				_, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{ID: model.AcademicUnitID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
 			}, func() (int64, string, error) {
@@ -136,7 +136,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				return current.Revision, current.DisplayName, nil
 			}
 	case model.ResourceProgramme:
-		return func(revision int64, display, auditID string) error {
+		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.Programme().Get(ctx, model.ProgrammeID(resource.ID))
 				if err != nil {
 					return err
@@ -149,7 +149,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				current.PrepareUpdate(model.NowUTC())
 				_, err = ss.Programme().UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
-			}, func(revision int64, auditID string) error {
+			}, func(revision int64, auditID model.AuditEventID) error {
 				_, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: model.ProgrammeID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
 			}, func() (int64, string, error) {
@@ -160,7 +160,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				return current.Revision, current.DisplayName, nil
 			}
 	case model.ResourceProgrammeLevel:
-		return func(revision int64, display, auditID string) error {
+		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.ProgrammeLevel().Get(ctx, model.ProgrammeLevelID(resource.ID))
 				if err != nil {
 					return err
@@ -173,7 +173,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				current.PrepareUpdate(model.NowUTC())
 				_, err = ss.ProgrammeLevel().UpdateWithAudit(ctx, &store.ProgrammeLevelUpdate{Level: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
-			}, func(revision int64, auditID string) error {
+			}, func(revision int64, auditID model.AuditEventID) error {
 				_, err := ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: model.ProgrammeLevelID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
 			}, func() (int64, string, error) {
@@ -184,7 +184,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				return current.Revision, current.DisplayName, nil
 			}
 	case model.ResourceAcademicPeriod:
-		return func(revision int64, display, auditID string) error {
+		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.AcademicPeriod().Get(ctx, model.AcademicPeriodID(resource.ID))
 				if err != nil {
 					return err
@@ -197,7 +197,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				current.PrepareUpdate(model.NowUTC())
 				_, err = ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: current, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
-			}, func(revision int64, auditID string) error {
+			}, func(revision int64, auditID model.AuditEventID) error {
 				_, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: model.AcademicPeriodID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis()})
 				return err
 			}, func() (int64, string, error) {
@@ -210,7 +210,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 	case model.ResourceClass:
 		unitID, err := ss.Class().GetAcademicUnitID(ctx, model.ClassID(resource.ID))
 		requireNoError(t, err)
-		return func(revision int64, display, auditID string) error {
+		return func(revision int64, display string, auditID model.AuditEventID) error {
 				current, err := ss.Class().Get(ctx, model.ClassID(resource.ID))
 				if err != nil {
 					return err
@@ -223,7 +223,7 @@ func academicLifecycleRevisionOperations(t *testing.T, ctx context.Context, ss s
 				current.PrepareUpdate(model.NowUTC())
 				_, err = ss.Class().UpdateWithAudit(ctx, &store.ClassUpdate{Class: current, AuditEventID: auditID, AuditAt: model.GetMillis(), ExpectedRevision: revision, ExpectedAcademicUnitID: unitID})
 				return err
-			}, func(revision int64, auditID string) error {
+			}, func(revision int64, auditID model.AuditEventID) error {
 				_, err := ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{ID: model.ClassID(resource.ID), ExpectedRevision: revision, ArchiveAt: model.GetMillis() + 1000, AuditEventID: auditID, AuditAt: model.GetMillis(), ExpectedAcademicUnitID: unitID})
 				return err
 			}, func() (int64, string, error) {

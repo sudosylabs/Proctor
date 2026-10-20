@@ -92,7 +92,7 @@ func (s *SQLExamSubmissionStore) EndByManager(ctx context.Context, input *store.
 	if input == nil || !validManagerEndRequest(input.Request) || !validAutomaticExamSubmissionTarget(input.Target) ||
 		input.Target.ExamID != input.Request.ExamID || input.Target.SittingID != input.Request.SittingID ||
 		input.Target.AttemptID != input.Request.AttemptID || !input.SubmissionID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || command == nil ||
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil ||
 		command.Operation != store.ExamSubmissionManagerEndOperation || command.OutcomeVersion != 1 ||
 		command.UserID != input.Request.ActorUserID {
 		return nil, store.NewErrInvalidInput("exam_submission", "manager_end", nil)

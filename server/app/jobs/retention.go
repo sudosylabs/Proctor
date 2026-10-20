@@ -33,8 +33,8 @@ type RetentionContentPurger interface {
 }
 
 type RetentionSystemAuditor interface {
-	BeginRetention(context.Context, model.InstitutionID, model.SubmissionID) (string, error)
-	FailRetention(context.Context, string) error
+	BeginRetention(context.Context, model.InstitutionID, model.SubmissionID) (model.AuditEventID, error)
+	FailRetention(context.Context, model.AuditEventID) error
 }
 
 type RetentionCommandV1 struct {

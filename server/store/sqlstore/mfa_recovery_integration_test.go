@@ -94,7 +94,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	oldCode := model.HashToken(model.NewCredentialToken())
 	activationAt := model.NowUTC().Truncate(time.Millisecond)
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, activationAt.UnixMilli())
-	_, err = s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: mfaSQLPrincipal(f.targetSession, f.targetCredential), RecentAuthenticationTTL: time.Hour, CredentialID: pending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: oldCode}}, SessionID: f.targetSession.ID, At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
+	_, err = s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: mfaSQLPrincipal(f.targetSession, f.targetCredential), RecentAuthenticationTTL: time.Hour, CredentialID: pending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: oldCode}}, SessionID: f.targetSession.ID, At: activationAt, AuditEventID: audit.ID, AuditAt: activationAt.UnixMilli(), Notice: notice})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	if err != nil || len(patAudits) != 1 || patAudits[0].Status != model.AuditStatusFail || patAudits[0].ErrorCode != "authentication.mfa.reenrollment_required" {
 		t.Fatalf("unfinished PAT proof lacks its terminal audit: %#v %v", patAudits, err)
 	}
-	retiredAudit, err := s.Audit().Get(ctx, linkAudit.ID.String())
+	retiredAudit, err := s.Audit().Get(ctx, linkAudit.ID)
 	if err != nil || retiredAudit.Status != model.AuditStatusFail {
 		t.Fatalf("unfinished provider proof audit not terminal: %#v %v", retiredAudit, err)
 	}
@@ -199,7 +199,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	}
 	activationAt = model.NowUTC().Truncate(time.Millisecond)
 	audit, notice = mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, activationAt.UnixMilli())
-	activated, err := s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, CredentialID: newPending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}}, SessionID: freshSession.ID, At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
+	activated, err := s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, CredentialID: newPending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}}, SessionID: freshSession.ID, At: activationAt, AuditEventID: audit.ID, AuditAt: activationAt.UnixMilli(), Notice: notice})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,12 +233,12 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = requireMFARecoveryAuthenticationMethodSource(ctx, s.GetMaster(), f.target.ID, audit.ID.String())
+		err = requireMFARecoveryAuthenticationMethodSource(ctx, s.GetMaster(), f.target.ID, audit.ID)
 		if (err == nil) != source.permitted {
 			t.Fatalf("%s credential change authority: %v", source.name, err)
 		}
 		if !source.permitted {
-			_, err = s.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{Credential: &model.PasswordCredential{UserID: f.target.ID, PasswordHash: "new-primary"}, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+			_, err = s.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{Credential: &model.PasswordCredential{UserID: f.target.ID, PasswordHash: "new-primary"}, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 			if !store.IsNotFound(err) {
 				t.Fatalf("old request reached password enrollment: %v", err)
 			}
@@ -248,7 +248,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	if err = requireSessionIssuanceRecovery(ctx, s.GetMaster(), &model.Session{UserID: f.target.ID, AuthenticationGeneration: 1, AuthenticationMethod: "oidc", AuthenticationProviderID: "campus", ClientType: model.SessionClientWeb}, oldState.ID); !errors.Is(err, store.ErrAuthenticationGenerationChanged) {
 		t.Fatalf("pre-reset unknown-User provider proof returned: %v", err)
 	}
-	storedAudit, err := s.Audit().Get(ctx, input.AuditEventID.String())
+	storedAudit, err := s.Audit().Get(ctx, input.AuditEventID)
 	if err != nil || storedAudit.Status != model.AuditStatusSuccess {
 		t.Fatal("reset audit did not commit")
 	}

@@ -131,7 +131,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		Principal: mfaSQLPrincipal(session, sessionCredentials[0]), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
-		SessionID:     session.ID, At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
+		SessionID:     session.ID, At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID, AuditAt: activationAt, Notice: notice,
 	})
 	var persisted *persistedStateError
 	if !errors.As(err, &persisted) || persisted.Entity != "mfa_credential" || persisted.Field != "encrypted_secret" {

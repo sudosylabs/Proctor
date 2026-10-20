@@ -165,7 +165,7 @@ func (s SQLDesktopRegistrationStore) RevokeWithAudit(
 	input *store.DesktopRegistrationRevocation,
 ) (*store.DesktopRegistrationRevocationResult, error) {
 	if input == nil || !input.RegistrationID.IsValid() || !input.UserID.IsValid() ||
-		input.RevokedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.RevokedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("desktop_registration", "revocation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "revoke Desktop Registration", func(

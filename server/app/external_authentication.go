@@ -100,7 +100,7 @@ type ExternalAuthenticationPolicy struct {
 type externalAuthenticationAudit interface {
 	BeginAuthentication(context.Context, string, string, string, model.SessionClientType, model.RequestMetadata, string) (*model.AuditEvent, error)
 	RecordExternalAuthenticationFailure(context.Context, string, string, model.RequestMetadata, string, string) error
-	CompleteCriticalAction(context.Context, string, model.AuditStatus, string, any) (*model.AuditEvent, error)
+	CompleteCriticalAction(context.Context, model.AuditEventID, model.AuditStatus, string, any) (*model.AuditEvent, error)
 }
 
 type externalAuthenticationService struct {
@@ -329,7 +329,7 @@ func (s *externalAuthenticationService) beginWithInvitationClaim(
 func (s *externalAuthenticationService) beginForPurpose(
 	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
 	deviceID, deviceName, source string, purpose model.ExternalAuthenticationPurpose, targetUserID model.UserID,
-	auditEventID, invitationClaim string, browserTransactionID model.BrowserAuthenticationTransactionID,
+	auditEventID model.AuditEventID, invitationClaim string, browserTransactionID model.BrowserAuthenticationTransactionID,
 	reauthentication *model.Principal,
 ) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
@@ -402,7 +402,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	state := &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
-		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID,
+		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID.String(),
 		BrowserAuthenticationTransactionID: browserTransactionID,
 		BindingHash:                        model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
@@ -781,7 +781,7 @@ func (s *externalAuthenticationService) complete(
 		legacy := sessionErr
 		if _, completionErr := s.audit.CompleteCriticalAction(
 			ctx,
-			auditEvent.ID.String(),
+			auditEvent.ID,
 			model.AuditStatusFail,
 			func() string {
 				if f, ok := apperror.As(legacy); ok {
@@ -797,7 +797,7 @@ func (s *externalAuthenticationService) complete(
 	}
 	if _, appErr := s.audit.CompleteCriticalAction(
 		ctx,
-		auditEvent.ID.String(),
+		auditEvent.ID,
 		model.AuditStatusSuccess,
 		"",
 		session.Auditable(),
@@ -815,7 +815,7 @@ func (s *externalAuthenticationService) failConsumedProviderConnection(ctx conte
 	if state == nil || (state.Purpose != model.ExternalAuthenticationPurposeConnect && state.Purpose != model.ExternalAuthenticationPurposeReauthenticate) || state.AuditEventID == "" {
 		return failure
 	}
-	if err := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(failure)); err != nil {
+	if err := s.mutationAudit.Fail(ctx, model.AuditEventID(state.AuditEventID), appErrorCode(failure)); err != nil {
 		return err
 	}
 	return failure
@@ -835,11 +835,11 @@ func (s *externalAuthenticationService) completeProviderConnection(
 		Identity: &model.ExternalIdentity{UserID: state.TargetUserID, Provider: state.Provider,
 			Subject: assertion.Subject, LastSeenAt: model.OptionalTimeFrom(connectedAt)},
 		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
-		AuditEventID: state.AuditEventID, AuditAt: connectedAt.UnixMilli(),
+		AuditEventID: model.AuditEventID(state.AuditEventID), AuditAt: connectedAt.UnixMilli(),
 	})
 	if err != nil {
 		mapped := authenticationMethodStoreErrors.Translate(err)
-		if failErr := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(mapped)); failErr != nil {
+		if failErr := s.mutationAudit.Fail(ctx, model.AuditEventID(state.AuditEventID), appErrorCode(mapped)); failErr != nil {
 			return nil, failErr
 		}
 		return nil, mapped

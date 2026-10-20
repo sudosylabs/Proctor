@@ -154,7 +154,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	go func() {
 		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
+			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}
@@ -231,7 +231,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	go func() {
 		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
+			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}
@@ -248,7 +248,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 			BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(model.NewCredentialToken()),
 			ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
 		})
 		issueResult <- issueOutcome{result: result, err: issueErr}
 	}()
@@ -265,7 +265,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	if !store.IsNotFound(issued.err) || issued.result != nil {
 		t.Fatalf("IssueCode() after concurrent disable = %#v, %v; want not found", issued.result, issued.err)
 	}
-	after, err := primary.Audit().Get(ctx, issueAudit.ID.String())
+	after, err := primary.Audit().Get(ctx, issueAudit.ID)
 	if err != nil || after.Status != model.AuditStatusAttempt {
 		t.Fatalf("IssueCode audit = %#v, %v", after, err)
 	}
@@ -293,7 +293,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 	issueAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "archived-issue")
 	issue := &store.DesktopAuthorizationCodeIssue{BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
 		ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: issueAudit.ID, AuditAt: model.GetMillis()}
 	if result, issueErr := persistence.BrowserAuthentication().IssueCode(ctx, issue); result != nil || !store.IsNotFound(issueErr) {
 		t.Fatalf("IssueCode(archived User) = %#v, %v; want not found", result, issueErr)
 	}
@@ -302,7 +302,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 		t.Fatal(err)
 	}
 	issueAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "issue-after-unarchive")
-	issue.AuditEventID, issue.AuditAt = issueAudit.ID.String(), model.GetMillis()
+	issue.AuditEventID, issue.AuditAt = issueAudit.ID, model.GetMillis()
 	if _, err = persistence.BrowserAuthentication().IssueCode(ctx, issue); err != nil {
 		t.Fatalf("IssueCode after unarchive did not retain pending proofs: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 		t.Fatal(err)
 	}
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "exchange-after-unarchive")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID.String(), model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
 	if result, exchangeErr := persistence.BrowserAuthentication().Exchange(ctx, exchange); exchangeErr != nil || result == nil || result.Session == nil {
 		t.Fatalf("Exchange after unarchive did not retain code = %#v, %v", result, exchangeErr)
 	}
@@ -376,7 +376,7 @@ func TestDesktopAuthorizationRejectsMismatchedOrArchivedExternalIdentity(t *test
 	issue := &store.DesktopAuthorizationCodeIssue{BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(code), ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-		AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: issueAudit.ID, AuditAt: model.GetMillis()}
 	if _, err = persistence.BrowserAuthentication().IssueCode(ctx, issue); err != nil {
 		t.Fatalf("IssueCode after authentication mismatch did not retain binding: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestDesktopAuthorizationRejectsMismatchedOrArchivedExternalIdentity(t *test
 		t.Fatal(err)
 	}
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "external-exchange-after-restore")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID.String(), model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
 	if result, exchangeErr := persistence.BrowserAuthentication().Exchange(ctx, exchange); exchangeErr != nil || result == nil || result.Session == nil {
 		t.Fatalf("Exchange after identity restore did not retain code = %#v, %v", result, exchangeErr)
 	}
@@ -434,7 +434,7 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 		t.Fatal(err)
 	}
 	exchangeAudit = saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "exchange-after-session-slot")
-	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID.String(), model.GetMillis()
+	exchange.AuditEventID, exchange.AuditAt = exchangeAudit.ID, model.GetMillis()
 	result, err := persistence.BrowserAuthentication().Exchange(ctx, exchange)
 	if err != nil || result == nil || result.Session == nil {
 		t.Fatalf("Exchange after freeing slot did not retain code %s = %#v, %v", created.ID, result, err)
@@ -574,7 +574,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 
 func assertDesktopAuthorizationAuditAttempt(t *testing.T, ctx context.Context, persistence *SQLStore, id model.AuditEventID) {
 	t.Helper()
-	event, err := persistence.Audit().Get(ctx, id.String())
+	event, err := persistence.Audit().Get(ctx, id)
 	if err != nil || event.Status != model.AuditStatusAttempt {
 		t.Fatalf("desktop authorization audit = %#v, %v; want attempt", event, err)
 	}
@@ -735,7 +735,7 @@ func TestDesktopAuthorizationCreatesAndRevokesBoundDesktopRegistration(t *testin
 	revokeAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, persistence, institution.ID, user.ID, "registration-revoke")
 	revoked, err := persistence.DesktopRegistration().RevokeWithAudit(ctx, &store.DesktopRegistrationRevocation{
 		RegistrationID: exchanged.Registration.ID, UserID: user.ID, RevokedAt: model.GetMillis(),
-		AuditEventID: revokeAudit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: revokeAudit.ID, AuditAt: model.GetMillis(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -773,7 +773,7 @@ func issueDesktopAuthorizationForSQLTest(t *testing.T, ctx context.Context, pers
 	_, err = persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code), ExpectedUserID: userID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 	})
 	if err != nil {
 		t.Fatalf("issue Desktop authorization code: %v (cause: %v)", err, errors.Unwrap(err))
@@ -840,7 +840,7 @@ func desktopAuthorizationExchangeForSQLTest(code, state, verifier string, audit 
 		AccessTokenHash:                    model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
 		AccessLifetime: 5 * time.Minute, RefreshLifetime: time.Hour, IdleLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 		MaximumActive: 10, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: audit.ID, AuditAt: model.GetMillis()}
 }
 
 func desktopAuthorizationKeyForSQLTest() (model.DesktopPublicJWK, string) {

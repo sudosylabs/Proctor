@@ -95,13 +95,13 @@ func (s SQLClassMemberStore) EnrollWithAudit(
 	input *store.ClassMemberEnrollment,
 ) (*store.ClassEnrollmentResult, error) {
 	if input == nil || input.Member == nil || (input.Notice == nil && input.Command == nil) || input.ExpectedRecipientRevision < 1 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "enrollment", nil)
 	}
 	transferExpected := input.ExpectedPreviousID.IsValid()
-	if transferExpected != model.IsValidId(input.PreviousAuditEventID) ||
+	if transferExpected != input.PreviousAuditEventID.IsValid() ||
 		(transferExpected && input.PreviousAuditEventID == input.AuditEventID) ||
-		input.StudentProgression != (model.IsValidId(input.ProgressionSourceAuditEventID) && model.IsValidId(input.ProgressionDestinationAuditEventID) &&
+		input.StudentProgression != (input.ProgressionSourceAuditEventID.IsValid() && input.ProgressionDestinationAuditEventID.IsValid() &&
 			input.ProgressionSourceAuditEventID != input.ProgressionDestinationAuditEventID) {
 		return nil, store.NewErrInvalidInput("class_member", "enrollment_audit", nil)
 	}
@@ -133,7 +133,7 @@ func (s SQLClassMemberStore) EnrollWithAudit(
 				executeErr = completeClassProgressionAudits(ctx, tx, input, value, false, false)
 			}
 			if value != nil {
-				value.PreviousAuditEventID = input.PreviousAuditEventID
+				value.PreviousAuditEventID = input.PreviousAuditEventID.String()
 			}
 			return value, executeErr
 		},
@@ -191,7 +191,7 @@ func completeClassProgressionAudits(ctx context.Context, tx *sqlxTxWrapper, inpu
 	if duplicate {
 		status, code = model.AuditStatusFail, "onboarding_batch.duplicate"
 	}
-	for _, auditID := range []string{input.ProgressionDestinationAuditEventID, input.ProgressionSourceAuditEventID} {
+	for _, auditID := range []model.AuditEventID{input.ProgressionDestinationAuditEventID, input.ProgressionSourceAuditEventID} {
 		if _, err = completeAuditEvent(ctx, tx, auditID, status, code, data, input.AuditAt); err != nil {
 			return fmt.Errorf("complete Class progression audit: %w", err)
 		}
@@ -201,7 +201,7 @@ func completeClassProgressionAudits(ctx context.Context, tx *sqlxTxWrapper, inpu
 
 func (s SQLClassMemberStore) enrollWithTransition(ctx context.Context, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID, previousAuditEventID string, auditAt int64,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64,
 ) (*store.ClassEnrollmentResult, error) {
 	return s.enrollTransaction(ctx, candidate, expectedPreviousID, notice, payloadKeyID, expectedRecipientRevision,
 		auditEventID, previousAuditEventID, auditAt)
@@ -210,7 +210,7 @@ func (s SQLClassMemberStore) enrollWithTransition(ctx context.Context, candidate
 func (s SQLClassMemberStore) enroll(
 	ctx context.Context,
 	candidate *model.ClassMember,
-	auditEventID string,
+	auditEventID model.AuditEventID,
 	auditAt int64,
 ) (*store.ClassEnrollmentResult, error) {
 	return s.enrollTransaction(ctx, candidate, "", nil, "", 0, auditEventID, "", auditAt)
@@ -218,7 +218,7 @@ func (s SQLClassMemberStore) enroll(
 
 func (s SQLClassMemberStore) enrollTransaction(ctx context.Context, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID, previousAuditEventID string, auditAt int64,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64,
 ) (*store.ClassEnrollmentResult, error) {
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "class enrollment", func(ctx context.Context, tx *sqlxTxWrapper) (*classMemberMutationResult, error) {
 		return s.enrollInTransaction(ctx, tx, candidate, expectedPreviousID, notice, payloadKeyID, expectedRecipientRevision,
@@ -290,7 +290,7 @@ func (s SQLClassMemberStore) getClassMemberInTransaction(ctx context.Context, tx
 
 func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTxWrapper, candidate *model.ClassMember,
 	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
-	auditEventID, previousAuditEventID string, auditAt int64, allowNoOp, studentProgression bool,
+	auditEventID model.AuditEventID, previousAuditEventID model.AuditEventID, auditAt int64, allowNoOp, studentProgression bool,
 ) (*classMemberMutationResult, error) {
 	if notice != nil {
 		if err := lockClassMemberNoticeRecipient(ctx, tx, candidate.UserID, expectedRecipientRevision, notice); err != nil {
@@ -589,7 +589,7 @@ func (s SQLClassMemberStore) EndWithAudit(
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
 	if input == nil || (input.Notice == nil && input.Command == nil) || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.ExpectedRecipientRevision < 1 ||
-		input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*classMemberMutationResult, error) {

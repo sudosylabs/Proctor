@@ -206,7 +206,7 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 	if persistence.createInput == nil ||
 		persistence.createInput.Period.Owner.InstitutionID.String() != institutionID ||
 		persistence.createInput.Period.ID.String() != periodID ||
-		persistence.createInput.AuditEventID != auditID {
+		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if auditor.action != model.ActionAcademicPeriodManage || auditor.resource != (model.Resource{Type: model.ResourceAcademicPeriod, ID: periodID}) {

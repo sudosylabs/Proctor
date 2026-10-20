@@ -69,7 +69,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				CredentialID: model.NewMFACredentialID(), UserID: userID,
 				SessionID: sessionID, At: at, TimeStep: 1,
 				RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-				AuditEventID:  model.NewAuditEventID().String(), AuditAt: model.GetMillis(),
+				AuditEventID:  model.NewAuditEventID(), AuditAt: model.GetMillis(),
 			})
 			var invalid *store.ErrInvalidInput
 			if !errors.As(err, &invalid) || invalid.Entity != "mfa_credential" || invalid.Field != "activate" {
@@ -117,7 +117,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 						Principal: mfaSessionPrincipal(session, savedCredentials[0]), RecentAuthenticationTTL: time.Hour,
 						CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 						RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-						SessionID:     session.ID, At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
+						SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(), Notice: notice,
 					})
 					if !point.valid {
 						current, getErr := ss.MFA().GetByUser(ctx, user.ID)

@@ -412,11 +412,11 @@ func (f *fakeWorkspaceAuthorizer) Authorize(context.Context, Call, model.Action,
 
 type fakeWorkspaceAuditor struct{ values map[string]any }
 
-func (f *fakeWorkspaceAuditor) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (string, error) {
+func (f *fakeWorkspaceAuditor) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (model.AuditEventID, error) {
 	f.values = values
 	return "iiiiiiiiiiiiiiiiiiiiiiiiii", nil
 }
-func (f *fakeWorkspaceAuditor) Fail(context.Context, string, string) error { return nil }
+func (f *fakeWorkspaceAuditor) Fail(context.Context, model.AuditEventID, string) error { return nil }
 
 type fakeWorkspaceEffects struct {
 	operation ChangeOperation

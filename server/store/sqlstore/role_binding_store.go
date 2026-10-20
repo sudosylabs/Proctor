@@ -104,7 +104,7 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 ) (*model.RoleBinding, error) {
 	if input == nil || input.Binding == nil || !input.Binding.ID.IsZero() ||
 		input.ExpectedRoleUpdatedAt.IsZero() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role_binding", "creation", nil)
 	}
 	candidate := *input.Binding
@@ -493,7 +493,7 @@ func (s SQLRoleBindingStore) EndWithAudit(
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {
 	if input == nil || !input.ID.IsValid() || input.EndAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
 	}
@@ -556,7 +556,7 @@ func (s SQLRoleBindingStore) EndWithAudit(
 		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
-func (s SQLRoleBindingStore) runRoleBindingMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID string, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*roleBindingMutationResult, error)) (*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) runRoleBindingMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*roleBindingMutationResult, error)) (*model.RoleBinding, error) {
 	if command == nil {
 		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
 		if err != nil {

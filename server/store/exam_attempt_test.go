@@ -79,7 +79,7 @@ func TestExamAttemptParticipationExpiryContractIsConditionalBoundedAndSafe(t *te
 		LeaseExpiresAt: time.Date(2026, time.August, 18, 9, 0, 20, 0, time.UTC)}
 	input := ExamAttemptParticipationExpiry{AttemptID: due.AttemptID, ParticipationID: due.ParticipationID,
 		Generation: due.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
-		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptParticipationExpiryResult{ExamID: due.ExamID, SittingID: due.SittingID, ClassID: due.ClassID,
 		CandidateUserID: due.CandidateUserID, DatabaseTime: due.LeaseExpiresAt.Add(time.Second), Replayed: true}
 	if input.Generation != due.Generation || !input.EvidenceID.IsValid() || !input.FlagID.IsValid() ||
@@ -99,7 +99,7 @@ func TestExamAttemptReallowContractIsRevisionFencedAndPrivateReasonSafe(t *testi
 	input := ExamAttemptReallow{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), AttemptID: model.NewExamAttemptID(),
 		SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: model.NewUserID(), ManagerOverride: true,
 		ExpectedAttemptRevision: 7, PrivateReason: "manager verified secure continuity",
-		AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptReallowResult{ExamID: input.ExamID, SittingID: input.SittingID, ClassID: model.NewClassID(),
 		CandidateUserID: model.NewUserID(), Replayed: true}
 	if input.ExpectedAttemptRevision != 7 || input.PrivateReason == "" || !result.Replayed {

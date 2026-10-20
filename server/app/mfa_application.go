@@ -22,8 +22,8 @@ import (
 // mfaAudit preserves the exact critical-audit ordering of MFA mutations while
 // keeping the focused application service independent of the audit service.
 type mfaAudit interface {
-	Begin(context.Context, Invocation, model.Action, model.Resource, any) (string, error)
-	Complete(context.Context, string, model.AuditStatus, string, any) error
+	Begin(context.Context, Invocation, model.Action, model.Resource, any) (model.AuditEventID, error)
+	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, any) error
 }
 
 type mfaResetAuthorizer interface {
@@ -503,7 +503,7 @@ func (s *mfaApplicationService) auditResource(ctx context.Context) (model.Resour
 
 func (s *mfaApplicationService) failMutation(
 	ctx context.Context,
-	auditID string,
+	auditID model.AuditEventID,
 	err error,
 ) error {
 	mapped := mfaStoreErrors.Translate(err)
@@ -521,13 +521,7 @@ func (s *mfaApplicationService) failMutation(
 
 type mfaAuditAdapter struct{ audit *auditService }
 
-func (a mfaAuditAdapter) Begin(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-	prior any,
-) (string, error) {
+func (a mfaAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, prior any) (model.AuditEventID, error) {
 	event, err := a.audit.BeginCriticalAction(
 		ctx, invocation.Principal(), action, resource,
 		invocation.RequestMetadata(), nil, prior,
@@ -535,12 +529,12 @@ func (a mfaAuditAdapter) Begin(
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
 func (a mfaAuditAdapter) Complete(
 	ctx context.Context,
-	auditID string,
+	auditID model.AuditEventID,
 	status model.AuditStatus,
 	errorCode string,
 	result any,

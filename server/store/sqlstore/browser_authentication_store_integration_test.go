@@ -118,7 +118,7 @@ func TestDesktopAuthorizationAuthenticationClock(t *testing.T) {
 			issued, err := persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 				BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(model.NewCredentialToken()),
 				ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: capabilities,
-				AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+				AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 			})
 			if err != nil || issued == nil {
 				t.Fatalf("IssueCode() = %#v, %v", issued, err)

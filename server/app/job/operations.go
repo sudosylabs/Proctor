@@ -89,7 +89,7 @@ func (t ControlTarget) View() View { return cloneView(t.Projection) }
 // AuditReference identifies the durable audit attempt committed atomically by
 // the Job Store transition.
 type AuditReference struct {
-	EventID string
+	EventID model.AuditEventID
 	At      int64
 }
 

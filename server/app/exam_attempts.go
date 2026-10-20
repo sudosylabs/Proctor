@@ -560,9 +560,7 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ct
 
 type examAttemptAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (adapter examAttemptAuditAdapter) Begin(ctx context.Context, call examattempt.Call, action model.Action, resource model.Resource,
-	scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (string, error) {
+func (adapter examAttemptAuditAdapter) Begin(ctx context.Context, call examattempt.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	return adapter.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource,
 		scopeType, scopeID, operation, value, nil)
 }
@@ -581,12 +579,12 @@ func (adapter examAttemptAuditAdapter) RecordAuthorizationDecision(ctx context.C
 		call.RequestMetadata(), allowed)
 }
 
-func (adapter examAttemptAuditAdapter) Complete(ctx context.Context, auditID string, value map[string]any) error {
+func (adapter examAttemptAuditAdapter) Complete(ctx context.Context, auditID model.AuditEventID, value map[string]any) error {
 	_, err := adapter.audit.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusSuccess, "", value)
 	return err
 }
 
-func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return adapter.audit.Fail(ctx, id, code)
 }
 

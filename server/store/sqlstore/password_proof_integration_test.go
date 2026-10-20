@@ -204,7 +204,7 @@ func TestPasswordProofResetFencesEachDesktopTransition(t *testing.T) {
 				_, err := persistence.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code), ExpectedUserID: user.ID,
 					CodeLifetime: time.Minute, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-					AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+					AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
 				})
 				return err
 			}

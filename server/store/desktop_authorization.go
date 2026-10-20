@@ -25,7 +25,7 @@ type DesktopAuthorizationCodeIssue struct {
 	ExpectedUserID model.UserID
 	CodeLifetime   time.Duration
 	Capabilities   AccessDeploymentCapabilities
-	AuditEventID   string
+	AuditEventID   model.AuditEventID
 	AuditAt        int64
 }
 
@@ -88,7 +88,7 @@ type DesktopAuthorizationExchange struct {
 	AbsoluteLifetime                   time.Duration
 	MaximumActive                      int
 	Capabilities                       AccessDeploymentCapabilities
-	AuditEventID                       string
+	AuditEventID                       model.AuditEventID
 	AuditAt                            int64
 }
 

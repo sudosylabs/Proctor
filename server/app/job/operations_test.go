@@ -126,7 +126,7 @@ func TestEnginePreparesAndAppliesDescriptorGovernedControls(t *testing.T) {
 		t.Fatalf("PrepareCancellation() = %#v, %v", target.View(), err)
 	}
 	target.Projection.ID = model.NewJobID()
-	audit := AuditReference{EventID: model.NewId(), At: at.Add(time.Second).UnixMilli()}
+	audit := AuditReference{EventID: model.NewAuditEventID(), At: at.Add(time.Second).UnixMilli()}
 	if _, err = engine.Cancel(context.Background(), target, AuditReference{}); !errors.Is(err, ErrCancelUnsupported) || persistence.mutation != nil {
 		t.Fatalf("Cancel() with missing audit = %v, mutation=%#v", err, persistence.mutation)
 	}

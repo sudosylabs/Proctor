@@ -19,7 +19,7 @@ type DesktopCompatibilityPolicyReplacement struct {
 	ActorID          model.UserID
 	ExpectedRevision int64
 	Settings         model.DesktopCompatibilityPolicySettings
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 

@@ -55,7 +55,7 @@ type ExamSittingSchedule struct {
 	DeadlineJob     *model.Job
 	ActorUserID     model.UserID
 	ManagerOverride bool
-	AuditEventID    string
+	AuditEventID    model.AuditEventID
 	AuditAt         int64
 	Mail            *ExamSittingMailFanout
 }
@@ -75,7 +75,7 @@ type ExamSittingScheduleUpdate struct {
 	ScheduledEndAt   time.Time
 	OpenJob          *model.Job
 	DeadlineJob      *model.Job
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Mail             *ExamSittingMailFanout
 }
@@ -93,7 +93,7 @@ type ExamSittingManagerTransition struct {
 	FinalizeJob      *model.Job
 	PrivateReason    string
 	ChangedAt        time.Time
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -107,7 +107,7 @@ type ExamSittingExtension struct {
 	DeadlineJob      *model.Job
 	PrivateReason    string
 	ChangedAt        time.Time
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -147,7 +147,7 @@ type ExamSittingLifecycleDue struct {
 type ExamSittingDueAdvance struct {
 	SittingID    model.ExamSittingID
 	FinalizeJob  *model.Job
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -156,7 +156,7 @@ type ExamSittingDueAdvance struct {
 // incomplete work leaves the Sitting visibly Closing.
 type ExamSittingFinishSealing struct {
 	SittingID    model.ExamSittingID
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -184,7 +184,7 @@ type ExamSittingCancellation struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	PrivateReason    string
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Mail             *ExamSittingMailFanout
 }

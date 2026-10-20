@@ -398,8 +398,8 @@ func (s *sqlExamAttemptStore) SealNativeDelivery(ctx context.Context, input *sto
 	return result.Status, nil
 }
 
-func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID string, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*nativeDeclarationOutcome, error) {
-	if command == nil || command.UserID != access.Access.CandidateUserID || !model.IsValidId(auditID) || auditAt <= 0 {
+func (s *sqlExamAttemptStore) declareNativeDelivery(ctx context.Context, access store.NativeDeliveryAccess, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency, record deliveryDeclarationRecord) (*nativeDeclarationOutcome, error) {
+	if command == nil || command.UserID != access.Access.CandidateUserID || !auditID.IsValid() || auditAt <= 0 {
 		return nil, store.NewErrInvalidInput("native_delivery", "declaration", nil)
 	}
 	declarationID := ""
@@ -594,7 +594,7 @@ func latchDeliveryMetadata(ctx context.Context, tx *sqlxTxWrapper, attemptID mod
 	}
 	return settleExhaustedBrowserSources(ctx, tx, attemptID, "")
 }
-func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id string, at int64, streamID string, replayed bool) error {
+func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id model.AuditEventID, at int64, streamID string, replayed bool) error {
 	data, err := model.EncodeAuditData(map[string]any{"stream_id": streamID, "idempotency_replayed": replayed})
 	if err != nil {
 		return err
@@ -604,7 +604,7 @@ func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id stri
 }
 
 func (s *sqlExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, input *store.NativeDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
-	if input == nil || input.Summary.Validate() != nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || command == nil || command.Operation != store.NativeDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID {
+	if input == nil || input.Summary.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil || command.Operation != store.NativeDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID {
 		return nil, store.NewErrInvalidInput("native_delivery", "summary", nil)
 	}
 	hydrate := func(ctx context.Context, tx *sqlxTxWrapper, _ *model.NativeSecurityStreamStatus) (*model.NativeSecurityStreamStatus, error) {

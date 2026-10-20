@@ -25,7 +25,7 @@ func TestCommandOutcomeStore(t *testing.T, ss store.Store) {
 	period.PrepareCreate(model.NewAcademicPeriodID(), model.NowUTC())
 	audit := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
 	command := &store.CommandIdempotency{UserID: user.ID, Operation: "academic_period.create.v1", KeyDigest: sha256.Sum256([]byte("expiring")), FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte("command")), OutcomeVersion: 1, Retention: 100 * time.Millisecond, Wait: time.Second}
-	if _, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: period, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}, command); err != nil {
+	if _, err := ss.AcademicPeriod().CreateIdempotently(ctx, &store.AcademicPeriodCreation{Period: period, AuditEventID: audit.ID, AuditAt: model.GetMillis()}, command); err != nil {
 		t.Fatal(err)
 	}
 	if found, err := ss.CommandOutcome().Has(ctx, command); err != nil || !found {

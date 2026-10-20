@@ -30,7 +30,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
 		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 	}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
@@ -41,7 +41,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 		return &store.ExamAttemptManualSuspension{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: connected.Attempt.ID, SuspensionID: model.NewAttemptSuspensionID(), ActorUserID: actor,
 			ManagerOverride: override, ExpectedAttemptRevision: revision, PrivateReason: privateReason,
-			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	}
 
 	self := kick(fixture.candidate.ID, true, connected.Attempt.Revision)
@@ -98,7 +98,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID, SuspensionID: first.SuspensionID,
 		ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: kicked.Attempt.Revision, PrivateReason: "candidate returned",
-		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "kick-reallow", "kick-reallow"))
 	requireNoError(t, err)
 	if reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Suspension.State != model.AttemptSuspensionClosed ||
@@ -110,7 +110,7 @@ func TestExamAttemptManualSuspensionStore(t *testing.T, ss store.Store) {
 	// Exact replay returns the original kick even after the episode closed.
 	replay := *first
 	replay.SuspensionID = model.NewAttemptSuspensionID()
-	replay.AuditEventID, replay.AuditAt = saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+	replay.AuditEventID, replay.AuditAt = saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 	replayed, err := ss.ExamAttempt().SuspendAttempt(ctx, &replay, command)
 	requireNoError(t, err)
 	if !replayed.Replayed || replayed.Suspension.ID != first.SuspensionID || replayed.Attempt.State != model.ExamAttemptSuspended ||

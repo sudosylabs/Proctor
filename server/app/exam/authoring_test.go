@@ -622,13 +622,13 @@ type auditorFake struct {
 	failErr    error
 }
 
-func (f *auditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value map[string]any, _ map[string]any) (string, error) {
+func (f *auditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, scopeType model.RoleScopeType, scopeID, _ string, value, _ map[string]any) (model.AuditEventID, error) {
 	*f.order = append(*f.order, "audit.begin")
 	f.value = value
 	f.scopeType, f.scopeID = scopeType, scopeID
-	return model.NewId(), f.err
+	return model.NewAuditEventID(), f.err
 }
-func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
+func (f *auditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	*f.order = append(*f.order, "audit.fail")
 	f.failedCode = code
 	if f.failErr != nil {

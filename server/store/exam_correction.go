@@ -80,7 +80,7 @@ type ExamCorrectionResourceStageReservation struct {
 	ActorUserID     model.UserID
 	ManagerOverride bool
 	CreatedAt       time.Time
-	AuditEventID    string
+	AuditEventID    model.AuditEventID
 	AuditAt         int64
 }
 
@@ -119,7 +119,7 @@ type ExamCorrectionApplication struct {
 	AffectedCapabilities    []model.CandidateCapability
 	PrivateReason           string
 	AppliedAt               time.Time
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 }
 

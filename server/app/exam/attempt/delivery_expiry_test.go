@@ -29,7 +29,7 @@ func (f *expiryDeliveryStoreFake) ListExpiredDeliveries(context.Context, int) ([
 }
 func (f *expiryDeliveryStoreFake) ExpireDelivery(_ context.Context, input *store.DeliveryExpiry) (bool, error) {
 	f.calls++
-	f.auditID = input.AuditEventID
+	f.auditID = input.AuditEventID.String()
 	return f.err == nil, f.err
 }
 func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.T) {

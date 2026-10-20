@@ -67,7 +67,7 @@ func validateUserEmailMail(userID model.UserID, occurrence *model.MailOccurrence
 
 func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEmailChange) (*store.UserEmailChangeResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidEmail(input.NewEmail) ||
-		input.NewEmail != strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(input.NewEmail))) || input.Token == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.NewEmail != strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(input.NewEmail))) || input.Token == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		input.TokenLifetime < userEmailChangeTokenLifetimeMinimum || input.TokenLifetime > userEmailChangeTokenLifetimeMaximum ||
 		input.WarningLifetime < userEmailChangeWarningLifetimeMinimum || input.WarningLifetime > userEmailChangeWarningLifetimeMaximum ||
 		input.TokenLifetime%time.Millisecond != 0 || input.WarningLifetime%time.Millisecond != 0 {
@@ -174,7 +174,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 }
 
 func (s SQLUserTokenStore) VerifyEmailPrivileged(ctx context.Context, input *store.PrivilegedEmailVerification) (*model.User, error) {
-	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("user_email", "privileged_verification", nil)
 	}
 	keyID, err := validateUserEmailMail(input.UserID, input.Occurrence, input.Delivery, input.Job, model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailVerifiedByAdmin)

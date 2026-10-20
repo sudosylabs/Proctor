@@ -234,7 +234,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	controlClaim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{control.Type}, NodeID: "control-node", ClaimToken: controlToken, LeaseDuration: time.Minute})
 	requireNoError(t, err)
 	audit := saveJobMutationAudit(t, ctx, ss, control.ID, "cancel")
-	cancelRequested, err := ss.Job().CancelWithAudit(ctx, &store.JobMutation{ID: control.ID, ExpectedRevision: controlClaim.Job.Revision, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+	cancelRequested, err := ss.Job().CancelWithAudit(ctx, &store.JobMutation{ID: control.ID, ExpectedRevision: controlClaim.Job.Revision, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if cancelRequested.Status != model.JobStatusCancelRequested {
 		t.Fatalf("CancelWithAudit() = %#v", cancelRequested)
@@ -258,7 +258,7 @@ func TestJobStore(t *testing.T, ss store.Store) {
 	beforeAttempts, err := ss.Job().ListAttempts(ctx, failedJob.ID)
 	requireNoError(t, err)
 	audit = saveJobMutationAudit(t, ctx, ss, failedJob.ID, "retry")
-	requeued, err := ss.Job().RetryWithAudit(ctx, &store.JobMutation{ID: failedJob.ID, ExpectedRevision: failedJob.Revision, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+	requeued, err := ss.Job().RetryWithAudit(ctx, &store.JobMutation{ID: failedJob.ID, ExpectedRevision: failedJob.Revision, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	afterAttempts, err := ss.Job().ListAttempts(ctx, failedJob.ID)
 	requireNoError(t, err)

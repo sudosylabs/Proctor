@@ -78,7 +78,7 @@ func newSQLAcademicPeriodStore(sqlStore *SQLStore) store.AcademicPeriodStore {
 }
 
 func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.AcademicPeriodCreation) (*model.AcademicPeriod, error) {
-	if input == nil || input.Period == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "creation", nil)
 	}
 	if !input.Period.ID.IsValid() {
@@ -94,7 +94,7 @@ func (s SQLAcademicPeriodStore) Create(ctx context.Context, input *store.Academi
 }
 
 func (s SQLAcademicPeriodStore) CreateIdempotently(ctx context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
-	if input == nil || input.Period == nil || command == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || command == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "idempotent_creation", nil)
 	}
 	candidate := *input.Period
@@ -293,7 +293,7 @@ func (s SQLAcademicPeriodStore) Update(
 }
 
 func (s SQLAcademicPeriodStore) UpdateWithAudit(ctx context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
-	if input == nil || input.Period == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "update", nil)
 	}
 	candidate := *input.Period
@@ -343,7 +343,7 @@ func (s SQLAcademicPeriodStore) Archive(ctx context.Context, id model.AcademicPe
 }
 
 func (s SQLAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
 	}
 	return s.archiveAcademicPeriod(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})

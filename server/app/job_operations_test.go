@@ -81,13 +81,13 @@ type jobOperationsAuditorFake struct {
 	failCalls int
 }
 
-func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ Invocation, _ model.Action, _ model.Resource, operation string, params, _ map[string]any) (string, error) {
+func (f *jobOperationsAuditorFake) Begin(_ context.Context, _ Invocation, _ model.Action, _ model.Resource, operation string, params, _ map[string]any) (model.AuditEventID, error) {
 	*f.events = append(*f.events, "audit")
 	f.operation = operation
 	f.params = params
-	return model.NewId(), f.err
+	return model.NewAuditEventID(), f.err
 }
-func (f *jobOperationsAuditorFake) Fail(context.Context, string, string) error {
+func (f *jobOperationsAuditorFake) Fail(context.Context, model.AuditEventID, string) error {
 	*f.events = append(*f.events, "audit-fail")
 	f.failCalls++
 	return nil

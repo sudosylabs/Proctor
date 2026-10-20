@@ -84,7 +84,7 @@ func validateEndedFocusLoss(input *store.ExamAttemptFocusLossDiscrepancy) error 
 		input.SchemaVersion != model.FocusLossSignalSchemaVersion || !input.DiscrepancyID.IsValid() ||
 		!input.SignalID.IsValid() || input.Sequence < 1 || input.DurationMilliseconds < 1 ||
 		input.DurationMilliseconds > model.FocusLossMaximumDurationMilliseconds || !input.Source.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("integrity_discrepancy", "signal", nil)
 	}
 	return nil
@@ -249,7 +249,7 @@ func endedFocusLossTarget(row endedFocusLossAccessRow) (*store.ExamAttemptFocusL
 }
 
 func completeEndedFocusLossAudit(ctx context.Context, tx *sqlxTxWrapper,
-	result *store.ExamAttemptFocusLossDiscrepancyResult, auditID string, auditAt int64,
+	result *store.ExamAttemptFocusLossDiscrepancyResult, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"submission_id": result.Target.SubmissionID.String(),
 		"exam_attempt_id": result.Target.AttemptID.String(), "integrity_discrepancy_id": result.Discrepancy.ID.String(),

@@ -167,14 +167,14 @@ type profilePictureAuditorFake struct {
 	prior     map[string]any
 }
 
-func (a *profilePictureAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value map[string]any, prior map[string]any) (string, error) {
+func (a *profilePictureAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.action, a.resource, a.operation, a.value, a.prior = action, resource, operation, value, prior
 	if a.events != nil {
 		*a.events = append(*a.events, "audit-begin")
 	}
-	return a.beginID, a.beginErr
+	return model.AuditEventID(a.beginID), a.beginErr
 }
-func (a *profilePictureAuditorFake) Fail(_ context.Context, _ string, code string) error {
+func (a *profilePictureAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	a.failCode = code
 	if a.events != nil {
 		*a.events = append(*a.events, "audit-fail")

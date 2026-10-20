@@ -91,10 +91,10 @@ func (a examCorrectionAuthorizationAdapter) Authorize(ctx context.Context, call 
 
 type examCorrectionAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examCorrectionAuditAdapter) Begin(ctx context.Context, call examcorrection.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
+func (a examCorrectionAuditAdapter) Begin(ctx context.Context, call examcorrection.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
 }
-func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)
 }
 

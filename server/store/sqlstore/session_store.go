@@ -446,7 +446,7 @@ func (s SQLSessionStore) RevokeWithAudit(
 	input *store.SessionRevocation,
 ) (*store.SessionRevocationResult, error) {
 	if input == nil || !input.SessionID.IsValid() || !input.UserID.IsValid() ||
-		input.RevokedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.RevokedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("session", "revocation", nil)
 	}
 	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))
@@ -569,7 +569,7 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 	input *store.UserSessionsRevocation,
 ) (*store.UserSessionsRevocationResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.RevokedAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("session", "user_revocation", nil)
 	}
 	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))

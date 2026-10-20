@@ -38,8 +38,8 @@ type EnrollClassMemberCommand struct {
 	batchMetadata                 *store.CommandBatch
 	batchRetainedOutcome          bool
 	studentProgression            bool
-	progressionSourceAuditID      string
-	progressionDestinationAuditID string
+	progressionSourceAuditID      model.AuditEventID
+	progressionDestinationAuditID model.AuditEventID
 	onboardingImportID            model.OnboardingImportID
 	onboardingImportRowNumber     int
 }
@@ -262,7 +262,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		result, replayErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
 			Resource: resource, Operation: "enroll", Value: candidate.Auditable()}, func() time.Time { return at },
 			func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
-				execute := func(ctx context.Context, sourceAuditID string) (*store.ClassEnrollmentResult, error) {
+				execute := func(ctx context.Context, sourceAuditID model.AuditEventID) (*store.ClassEnrollmentResult, error) {
 					input := &store.ClassMemberEnrollment{Member: candidate, ExpectedRecipientRevision: 1, StudentProgression: command.studentProgression,
 						ProgressionSourceAuditEventID: command.progressionSourceAuditID, ProgressionDestinationAuditEventID: command.progressionDestinationAuditID,
 						AuditEventID: reference.ID, PreviousAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis, Command: idempotency}

@@ -93,14 +93,14 @@ func (s SQLCommandOutcomeStore) DeleteExpired(ctx context.Context, limit int) (i
 
 type idempotentMutation[T any] struct {
 	command           *store.CommandIdempotency
-	auditEventID      string
+	auditEventID      model.AuditEventID
 	execute           func(context.Context, *sqlxTxWrapper) (T, error)
 	encode            func(T) ([]byte, error)
 	decode            func(int, []byte) (T, error)
 	hydrateReplay     func(context.Context, *sqlxTxWrapper, T) (T, error)
 	completeReplay    func(context.Context, *sqlxTxWrapper, T, string) error
 	completeDuplicate func(context.Context, *sqlxTxWrapper, T, string) error
-	freshAuditEventID func(T) (string, error)
+	freshAuditEventID func(T) (model.AuditEventID, error)
 	onboardingOutcome func(T) (onboardingImportCommandResult, error)
 }
 
@@ -118,7 +118,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		(command.OnboardingImportID.IsValid() != (command.OnboardingImportRowNumber > 0)) ||
 		!validCommandAuthorization(command.Authorization) || !validCommandBatch(command.Batch, command.KeyDigest) ||
 		(mutation.freshAuditEventID == nil &&
-			(mutation.completeReplay == nil || !model.IsValidId(mutation.auditEventID))) {
+			(mutation.completeReplay == nil || !mutation.auditEventID.IsValid())) {
 		return nil, store.NewErrInvalidInput("command_outcome", "mutation", nil)
 	}
 	return runSQLTransaction(ctx, sqlStore.GetMaster().Begin, operation, func(ctx context.Context, tx *sqlxTxWrapper) (*idempotentResult[T], error) {
@@ -181,7 +181,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 					return nil, err
 				}
 			} else if mutation.completeReplay != nil && row.OriginalAuditID.Valid &&
-				mutation.auditEventID != row.OriginalAuditID.String {
+				mutation.auditEventID.String() != row.OriginalAuditID.String {
 				if completeErr := mutation.completeReplay(ctx, tx, value, row.OriginalAuditID.String); completeErr != nil {
 					return nil, completeErr
 				}
@@ -264,7 +264,7 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		var persistedAuditID any
 		switch {
 		case originalAuditID == "":
-		case model.IsValidId(originalAuditID):
+		case originalAuditID.IsValid():
 			persistedAuditID = originalAuditID
 		default:
 			return nil, store.NewErrInvalidInput("command_outcome", "audit_event_id", nil)
@@ -312,8 +312,8 @@ func validCommandBatch(batch *store.CommandBatch, keyDigest [sha256.Size]byte) b
 	return true
 }
 
-func completeCommandBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, auditID, originalAuditID string) error {
-	if !model.IsValidId(auditID) {
+func completeCommandBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, originalAuditID string) error {
+	if !auditID.IsValid() {
 		return store.NewErrInvalidInput("command_outcome", "duplicate_audit_event_id", nil)
 	}
 	data := map[string]any{"batch_duplicate": true}
@@ -335,7 +335,7 @@ func completeCommandBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, 
 	return nil
 }
 
-func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, at int64, idField, id string) error {
+func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, idField, id string) error {
 	data, err := model.EncodeAuditData(map[string]any{idField: id, "no_op": true})
 	if err != nil {
 		return err
@@ -346,7 +346,7 @@ func completeAdministrativeNoOpAudit(ctx context.Context, tx *sqlxTxWrapper, aud
 	return nil
 }
 
-func completeAdministrativeReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, at int64, idField, id string, noOp bool, originalAuditID string) error {
+func completeAdministrativeReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, at int64, idField, id string, noOp bool, originalAuditID string) error {
 	data := map[string]any{idField: id, "idempotency_replayed": true, "original_audit_event_id": originalAuditID}
 	if noOp {
 		data["no_op"] = true

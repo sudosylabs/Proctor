@@ -128,10 +128,10 @@ func testAuditedClassMemberLifecycle(
 	createNotice := classMemberPreparedMail(t, first, model.MailTemplateAcademicClassEnrolled, first.CreatedAt)
 	created, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: first, ExpectedRecipientRevision: user.Revision,
-		Notice: createNotice, AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis(),
+		Notice: createNotice, AuditEventID: createAttempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
-	requireSuccessfulAudit(t, ctx, ss, createAttempt.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, createAttempt.ID)
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicClassEnrolled))
 
 	rolledBackTransfer := &model.ClassMember{ClassID: secondClass.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start + 5)}
@@ -140,8 +140,8 @@ func testAuditedClassMemberLifecycle(
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBackTransfer, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision,
 		Notice:               classMemberPreparedMail(t, rolledBackTransfer, model.MailTemplateAcademicClassTransferred, rolledBackTransfer.CreatedAt),
-		AuditEventID:         model.NewId(),
-		PreviousAuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		AuditEventID:         model.NewAuditEventID(),
+		PreviousAuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	}); err == nil {
 		t.Fatal("transfer succeeded without its audit attempt")
 	}
@@ -163,18 +163,18 @@ func testAuditedClassMemberLifecycle(
 		Retention: time.Hour, Wait: time.Second, Batch: &store.CommandBatch{GroupDigest: sha256.Sum256([]byte("class-transfer-group"))}}
 	transferred, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: second, ExpectedPreviousID: created.Membership.ID, ExpectedRecipientRevision: user.Revision, Notice: transferNotice,
-		AuditEventID: transferAttempt.ID.String(), PreviousAuditEventID: previousTransferAttempt.ID.String(), AuditAt: model.GetMillis(), Command: transferCommand,
+		AuditEventID: transferAttempt.ID, PreviousAuditEventID: previousTransferAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand,
 	})
 	requireNoError(t, err)
 	if transferred.Previous == nil || transferred.Previous.ID != created.Membership.ID ||
 		transferred.Previous.EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || transferred.Previous.Revision != 2 {
 		t.Fatalf("audited transfer = %#v", transferred)
 	}
-	requireSuccessfulAudit(t, ctx, ss, transferAttempt.ID.String())
-	requireSuccessfulAudit(t, ctx, ss, previousTransferAttempt.ID.String())
-	destinationAudit, err := ss.Audit().Get(ctx, transferAttempt.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, transferAttempt.ID)
+	requireSuccessfulAudit(t, ctx, ss, previousTransferAttempt.ID)
+	destinationAudit, err := ss.Audit().Get(ctx, transferAttempt.ID)
 	requireNoError(t, err)
-	sourceAudit, err := ss.Audit().Get(ctx, previousTransferAttempt.ID.String())
+	sourceAudit, err := ss.Audit().Get(ctx, previousTransferAttempt.ID)
 	requireNoError(t, err)
 	if strings.Contains(string(destinationAudit.Result), created.Membership.ID.String()) ||
 		!strings.Contains(string(destinationAudit.Result), transferred.Membership.ID.String()) {
@@ -188,36 +188,36 @@ func testAuditedClassMemberLifecycle(
 	replayDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	replaySourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	replayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
-		ExpectedRecipientRevision: user.Revision, AuditEventID: replayDestinationAttempt.ID.String(),
-		PreviousAuditEventID: replaySourceAttempt.ID.String(), AuditAt: model.GetMillis(), Command: transferCommand}
+		ExpectedRecipientRevision: user.Revision, AuditEventID: replayDestinationAttempt.ID,
+		PreviousAuditEventID: replaySourceAttempt.ID, AuditAt: model.GetMillis(), Command: transferCommand}
 	if _, err = ss.ClassMember().EnrollWithAudit(ctx, replayInput); err != nil || !replayInput.Replayed {
 		t.Fatalf("retained transfer replay = %v, replayed=%v", err, replayInput.Replayed)
 	}
-	requireSuccessfulAudit(t, ctx, ss, replayDestinationAttempt.ID.String())
-	requireSuccessfulAudit(t, ctx, ss, replaySourceAttempt.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, replayDestinationAttempt.ID)
+	requireSuccessfulAudit(t, ctx, ss, replaySourceAttempt.ID)
 	duplicateDestinationAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	duplicateSourceAttempt := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	duplicateCommand := *transferCommand
 	duplicateCommand.KeyDigest = sha256.Sum256([]byte("class-transfer-duplicate"))
 	duplicateCommand.Batch = &store.CommandBatch{GroupDigest: transferCommand.Batch.GroupDigest, DuplicateOfKeyDigest: transferCommand.KeyDigest}
 	duplicateInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
-		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateDestinationAttempt.ID.String(),
-		PreviousAuditEventID: duplicateSourceAttempt.ID.String(), AuditAt: model.GetMillis(), Command: &duplicateCommand}
+		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateDestinationAttempt.ID,
+		PreviousAuditEventID: duplicateSourceAttempt.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
 	if _, err = ss.ClassMember().EnrollWithAudit(ctx, duplicateInput); err != nil || !duplicateInput.Command.Batch.Duplicate {
 		t.Fatalf("duplicate transfer = %v, duplicate=%v", err, duplicateInput.Command.Batch.Duplicate)
 	}
-	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateDestinationAttempt.ID.String())
-	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateSourceAttempt.ID.String())
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateDestinationAttempt.ID)
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateSourceAttempt.ID)
 	duplicateReplayDestination := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	duplicateReplaySource := saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String())
 	duplicateReplayInput := &store.ClassMemberEnrollment{Member: second, ExpectedPreviousID: created.Membership.ID,
-		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateReplayDestination.ID.String(),
-		PreviousAuditEventID: duplicateReplaySource.ID.String(), AuditAt: model.GetMillis(), Command: &duplicateCommand}
+		ExpectedRecipientRevision: user.Revision, AuditEventID: duplicateReplayDestination.ID,
+		PreviousAuditEventID: duplicateReplaySource.ID, AuditAt: model.GetMillis(), Command: &duplicateCommand}
 	if _, err = ss.ClassMember().EnrollWithAudit(ctx, duplicateReplayInput); err != nil || !duplicateReplayInput.Replayed {
 		t.Fatalf("retained duplicate transfer = %v, replayed=%v", err, duplicateReplayInput.Replayed)
 	}
-	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplayDestination.ID.String())
-	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplaySource.ID.String())
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplayDestination.ID)
+	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplaySource.ID)
 
 	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
@@ -230,13 +230,13 @@ func testAuditedClassMemberLifecycle(
 	endNotice := classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+30))
 	ended, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: transferred.Membership.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
-		EndAt: start + 30, Notice: endNotice, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis(),
+		EndAt: start + 30, Notice: endNotice, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if ended.Revision != transferred.Membership.Revision+1 || ended.EndsAt.Millis() != start+30 {
 		t.Fatalf("EndWithAudit() = %#v", ended)
 	}
-	requireSuccessfulAudit(t, ctx, ss, endAttempt.ID.String())
+	requireSuccessfulAudit(t, ctx, ss, endAttempt.ID)
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicClassEnrollmentEnded))
 
 	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
@@ -244,7 +244,7 @@ func testAuditedClassMemberLifecycle(
 		ID: ended.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
 		EndAt:        start + 31,
 		Notice:       classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+31)),
-		AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale EndWithAudit() error = %v", err)
 	}
@@ -260,7 +260,7 @@ func testAuditedClassMemberLifecycle(
 	if _, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: rolledBack, ExpectedRecipientRevision: rollbackUser.Revision,
 		Notice:       classMemberPreparedMail(t, rolledBack, model.MailTemplateAcademicClassEnrolled, rolledBack.CreatedAt),
-		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	}); err == nil {
 		t.Fatal("EnrollWithAudit() succeeded without its audit attempt")
 	}
@@ -280,7 +280,7 @@ func testAuditedClassMemberLifecycle(
 	disabledNotice = suppressClassMemberMail(t, disabledNotice, model.MailDeliveryDisabledCode)
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: disabledMailMember, ExpectedRecipientRevision: disabledMailUser.Revision, Notice: disabledNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	disabledDelivery, err := ss.Mail().GetDelivery(ctx, disabledNotice.Delivery.ID)
@@ -302,13 +302,13 @@ func testAuditedClassMemberLifecycle(
 	disableAt := model.GetMillis()
 	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: ineligibleUser.ID, ExpectedRevision: ineligibleUser.Revision, Disabled: true,
-		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: disableAt,
+		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: disableAt,
 	}))
 	requireNoError(t, err)
 	ineligibleUser = disabledResult.User
 	if _, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: staleQueuedMember, ExpectedRecipientRevision: activeRecipientRevision, Notice: staleQueuedNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("queued notice raced recipient disable error=%v", err)
 	}
@@ -322,7 +322,7 @@ func testAuditedClassMemberLifecycle(
 	ineligibleNotice = suppressClassMemberMail(t, ineligibleNotice, model.MailDeliveryRecipientIneligibleCode)
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 		Member: ineligibleMember, ExpectedRecipientRevision: ineligibleUser.Revision, Notice: ineligibleNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	ineligibleDelivery, err := ss.Mail().GetDelivery(ctx, ineligibleNotice.Delivery.ID)
@@ -338,13 +338,13 @@ func testAuditedClassMemberLifecycle(
 	enabledAt := model.GetMillis() + 1
 	enabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: ineligibleUser.ID, ExpectedRevision: disabledRecipientRevision,
-		ChangedAt: enabledAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: enabledAt,
+		ChangedAt: enabledAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID, AuditAt: enabledAt,
 	}))
 	requireNoError(t, err)
 	if _, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
 		ID: ineligibleMember.ID, ExpectedRevision: ineligibleMember.Revision,
 		ExpectedRecipientRevision: disabledRecipientRevision, EndAt: staleEndAt, Notice: staleEndNotice,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("ineligible suppression raced recipient enable error=%v", err)
 	}
@@ -474,7 +474,7 @@ func testConcurrentClassMemberEnrollment(
 			defer wg.Done()
 			_, errs[index] = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
 				Member: members[index], ExpectedRecipientRevision: user.Revision, Notice: notices[index],
-				AuditEventID: attempts[index].ID.String(), AuditAt: model.GetMillis(),
+				AuditEventID: attempts[index].ID, AuditAt: model.GetMillis(),
 			})
 		}(i)
 	}
@@ -497,7 +497,7 @@ func testConcurrentClassMemberEnrollment(
 	}
 	completedAudits := 0
 	for _, attempt := range attempts {
-		event, err := ss.Audit().Get(ctx, attempt.ID.String())
+		event, err := ss.Audit().Get(ctx, attempt.ID)
 		requireNoError(t, err)
 		if event.Status == model.AuditStatusSuccess {
 			completedAudits++
@@ -527,7 +527,7 @@ func saveClassMemberAuditAttempt(
 	return attempt
 }
 
-func requireSuccessfulAudit(t *testing.T, ctx context.Context, ss store.Store, id string) {
+func requireSuccessfulAudit(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	event, err := ss.Audit().Get(ctx, id)
 	requireNoError(t, err)
@@ -536,7 +536,7 @@ func requireSuccessfulAudit(t *testing.T, ctx context.Context, ss store.Store, i
 	}
 }
 
-func requireClassMemberDuplicateAudit(t *testing.T, ctx context.Context, ss store.Store, id string) {
+func requireClassMemberDuplicateAudit(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	audit, err := ss.Audit().Get(ctx, id)
 	requireNoError(t, err)

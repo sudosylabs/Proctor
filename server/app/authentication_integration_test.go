@@ -682,7 +682,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: model.SessionRevocationAccountDisabled,
-		AuditEventID: auditAttempt.ID.String(), AuditAt: disabledAt,
+		AuditEventID: auditAttempt.ID, AuditAt: disabledAt,
 	})); err != nil {
 		t.Fatal(err)
 	}

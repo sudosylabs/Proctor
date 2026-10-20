@@ -69,13 +69,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	candidate.DisplayName = "Audited Update"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-		Unit: &candidate, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
+		Unit: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Update" {
 		t.Fatalf("UpdateWithAudit() = %#v", updated)
 	}
-	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
+	completed, err := ss.Audit().Get(ctx, attempt.ID)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("update audit status = %q, want success", completed.Status)
@@ -85,7 +85,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	stale.DisplayName = "Stale Update"
 	stale.PrepareUpdate(model.NowUTC())
 	if _, err := ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-		Unit: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
+		Unit: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
 	}
@@ -94,7 +94,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
 	_, err = ss.AcademicUnit().UpdateWithAudit(ctx, &store.AcademicUnitUpdate{
-		Unit: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		Unit: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
@@ -109,13 +109,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
 	archived, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
 		ID: archiveUnit.ID, ArchiveAt: model.GetMillis(),
-		AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: archiveAttempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
 	}
-	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID.String())
+	completed, err = ss.Audit().Get(ctx, archiveAttempt.ID)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("archive audit status = %q, want success", completed.Status)
@@ -124,7 +124,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "rollback-archive")
 	_, err = ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
 		ID: rollbackArchive.ID, ArchiveAt: model.GetMillis(),
-		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
 		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
@@ -151,11 +151,11 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	unit.PrepareCreate(model.AcademicUnitID(model.NewId()), model.NowUTC())
 	saved, err := ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         unit,
-		AuditEventID: attempt.ID.String(),
+		AuditEventID: attempt.ID,
 		AuditAt:      model.GetMillis(),
 	})
 	requireNoError(t, err)
-	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
+	completed, err := ss.Audit().Get(ctx, attempt.ID)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %q, want success", completed.Status)
@@ -175,7 +175,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	rolledBack.PrepareCreate(model.AcademicUnitID(model.NewId()), model.NowUTC())
 	_, err = ss.AcademicUnit().Create(ctx, &store.AcademicUnitCreation{
 		Unit:         rolledBack,
-		AuditEventID: model.NewId(),
+		AuditEventID: model.NewAuditEventID(),
 		AuditAt:      model.GetMillis(),
 	})
 	if err == nil {

@@ -134,7 +134,7 @@ func requireMFARecoveryPATSource(ctx context.Context, executor sqlxExecutor, use
 // source Session. After any reset, that Session must still have current
 // authority, even if the old request reserved its audit after the reset.
 // The caller holds the User Session fence until the credential write commits.
-func requireMFARecoveryAuthenticationMethodSource(ctx context.Context, executor sqlxExecutor, userID model.UserID, auditID string) error {
+func requireMFARecoveryAuthenticationMethodSource(ctx context.Context, executor sqlxExecutor, userID model.UserID, auditID model.AuditEventID) error {
 	state, err := getMFARecoveryState(ctx, executor, userID)
 	if err != nil {
 		return err
@@ -150,7 +150,7 @@ func requireMFARecoveryAuthenticationMethodSource(ctx context.Context, executor 
 		At        time.Time      `db:"at"`
 	}
 	if err := executor.Get(ctx, &source, `SELECT session_id,clock_timestamp() AS at FROM audit_events WHERE id=? AND actor_id=? AND status='attempt' FOR SHARE`, auditID, userID.String()); err != nil {
-		return translateError("audit_event", auditID, err)
+		return translateError("audit_event", auditID.String(), err)
 	}
 	return requireMFARecoveryPATSource(ctx, executor, userID.String(), source.SessionID.String, source.At)
 }

@@ -97,7 +97,7 @@ func (service *Service) NativeDeliveryReceipt(ctx context.Context, call Call, qu
 	}
 	return value, nil
 }
-func (service *Service) beginNativeDeliveryAudit(ctx context.Context, call Call, access store.NativeDeliveryAccess, operation string) (string, error) {
+func (service *Service) beginNativeDeliveryAudit(ctx context.Context, call Call, access store.NativeDeliveryAccess, operation string) (model.AuditEventID, error) {
 	target, err := service.deps.Persistence.ResolveNativeDeliveryTarget(ctx, access)
 	if err != nil {
 		return "", deliveryStoreError(err)

@@ -175,7 +175,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	if persistence.createInput == nil ||
 		persistence.createInput.Programme.AcademicUnitID.String() != unitID ||
 		persistence.createInput.Programme.ID.String() != programmeID ||
-		persistence.createInput.AuditEventID != auditID {
+		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
@@ -217,7 +217,7 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID || persistence.archiveInput.AuditEventID != auditID {
+	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID || persistence.archiveInput.AuditEventID != model.AuditEventID(auditID) {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)
 	}
 }

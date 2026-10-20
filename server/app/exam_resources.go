@@ -105,10 +105,10 @@ func (a examResourceAuthorizationAdapter) Authorize(ctx context.Context, call ex
 
 type examResourceAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examResourceAuditAdapter) Begin(ctx context.Context, call examresource.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (string, error) {
+func (a examResourceAuditAdapter) Begin(ctx context.Context, call examresource.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
 }
-func (a examResourceAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (a examResourceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)
 }
 

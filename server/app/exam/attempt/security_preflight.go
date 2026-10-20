@@ -44,7 +44,7 @@ func (service *Service) securityPreflightAccess(ctx context.Context, call Call, 
 	}
 	return store.SecurityPreflightAccess{SittingID: sittingID, CandidateUserID: principal.UserID, SessionID: principal.SessionID, DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint, DesktopBuild: build.Build, DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision}, nil
 }
-func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sittingID model.ExamSittingID, operation string) (string, error) {
+func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sittingID model.ExamSittingID, operation string) (model.AuditEventID, error) {
 	snapshot, err := service.deps.Sittings.Resolve(ctx, sittingID)
 	if err != nil {
 		return "", storeError(storeErrors, err)

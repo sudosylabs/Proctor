@@ -320,7 +320,7 @@ func (s *SQLExamSubmissionStore) Seal(ctx context.Context, input *store.ExamSubm
 ) (*store.ExamSubmissionSealResult, error) {
 	if input == nil || command == nil || command.Operation != store.ExamSubmissionSealOperation || command.OutcomeVersion != 1 ||
 		command.UserID != input.Access.CandidateUserID || !input.SubmissionID.IsValid() ||
-		!validExamSubmissionSealAccess(input.Access) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!validExamSubmissionSealAccess(input.Access) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_submission", "seal", nil)
 	}
 	prepared := *input
@@ -725,7 +725,7 @@ func persistSubmittedExamAttempt(ctx context.Context, tx *sqlxTxWrapper, attempt
 }
 
 func completeExamSubmissionAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examSubmissionSealOutcomeV1,
-	auditID string, auditAt int64, replayed bool, originalAuditID string,
+	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_submission_id": outcome.Receipt.SubmissionID.String(), "exam_attempt_id": outcome.Receipt.AttemptID.String(),
 		"exam_sitting_id": outcome.SittingID, "candidate_user_id": outcome.CandidateID,

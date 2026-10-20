@@ -181,5 +181,5 @@ func newExamArchive(t *testing.T, ctx context.Context, ss store.Store, examID mo
 		ScopeID: exam.AcademicUnitID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
 	return &store.ExamArchive{ExamID: examID, ActorUserID: actorID, ExpectedRevision: expectedRevision,
-		ArchivedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}
+		ArchivedAt: model.MillisFromTime(at), AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
 }

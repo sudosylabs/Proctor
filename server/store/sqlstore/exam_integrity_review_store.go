@@ -662,7 +662,7 @@ func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submis
 	})
 }
 
-func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, name string, command *store.CommandIdempotency, auditID string, auditAt int64, actorID model.UserID, override bool,
+func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, name string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64, actorID model.UserID, override bool,
 	execute func(context.Context, *sqlxTxWrapper) (examIntegrityReviewOutcome, error), replay func(context.Context, *sqlxTxWrapper, examIntegrityReviewOutcome, string) error,
 ) (*store.ExamIntegrityReviewMutationResult, error) {
 	result, err := runIdempotentMutation(ctx, s.SQLStore, name, idempotentMutation[examIntegrityReviewOutcome]{command: command, auditEventID: auditID, execute: execute,
@@ -693,7 +693,7 @@ func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, nam
 }
 
 func validateReviewDecisionInput(input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) error {
-	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDecisionOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.DecisionID.IsValid() || !input.FlagID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ExpectedDecisionRevision < 0 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDecisionOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.DecisionID.IsValid() || !input.FlagID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ExpectedDecisionRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("submission_review", "decision", nil)
 	}
 	_, err := model.NewIntegrityReviewDecision(input.DecisionID, input.ReviewID, input.FlagID, input.Outcome, input.ActorUserID, input.PrivateRationale, input.ChangedAt)
@@ -704,7 +704,7 @@ func validateReviewDecisionInput(input *store.ExamIntegrityReviewDecisionMutatio
 }
 
 func validateReviewDraftInput(input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) error {
-	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDraftOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || command.Operation != store.ExamIntegrityReviewDraftOperation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 0 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("submission_review", "draft", nil)
 	}
 	review, err := model.NewSubmissionReview(input.ReviewID, input.SubmissionID, input.ActorUserID, input.ChangedAt)
@@ -718,7 +718,7 @@ func validateReviewDraftInput(input *store.ExamIntegrityReviewDraftMutation, com
 }
 
 func validateReviewFinalizeInput(input *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency, operation string) error {
-	if input == nil || command == nil || command.Operation != operation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || command == nil || command.Operation != operation || !input.SubmissionID.IsValid() || !input.ReviewID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedReviewRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("submission_review", "terminal", nil)
 	}
 	return nil
@@ -1208,7 +1208,7 @@ func deleteResultReleasePreparation(ctx context.Context, tx *sqlxTxWrapper,
 	return nil
 }
 
-func completeIntegrityReviewAudit(ctx context.Context, tx *sqlxTxWrapper, out examIntegrityReviewOutcome, auditID string, auditAt int64, replayed bool, original string) error {
+func completeIntegrityReviewAudit(ctx context.Context, tx *sqlxTxWrapper, out examIntegrityReviewOutcome, auditID model.AuditEventID, auditAt int64, replayed bool, original string) error {
 	data := map[string]any{"submission_id": out.Authorization.SubmissionID.String(), "submission_review_id": out.Review.ID.String(), "state": string(out.Review.State), "release_state": string(out.Review.ReleaseState), "revision": out.Review.Revision}
 	if out.Decision != nil {
 		data["integrity_flag_id"] = out.Decision.FlagID.String()

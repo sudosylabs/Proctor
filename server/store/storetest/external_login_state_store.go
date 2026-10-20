@@ -130,7 +130,7 @@ func TestExternalLoginStateStore(t *testing.T, ss store.Store, probe ExternalLog
 	if maintained.Terminalized != 1 || maintained.Purged != 0 || maintained.More {
 		t.Fatalf("Maintain(abandoned) = %#v", maintained)
 	}
-	terminalAudit, err := ss.Audit().Get(ctx, audit.ID.String())
+	terminalAudit, err := ss.Audit().Get(ctx, audit.ID)
 	requireNoError(t, err)
 	if terminalAudit.Status != model.AuditStatusFail || terminalAudit.ErrorCode != "authentication.external.expired" {
 		t.Fatalf("abandoned audit = %#v", terminalAudit)

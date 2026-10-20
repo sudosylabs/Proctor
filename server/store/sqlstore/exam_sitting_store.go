@@ -375,7 +375,7 @@ func (s sqlExamSittingStore) Schedule(ctx context.Context, input *store.ExamSitt
 
 func prepareExamSittingSchedule(input *store.ExamSittingSchedule) error {
 	if input == nil || input.Sitting == nil || input.OpenJob == nil || input.DeadlineJob == nil || input.Mail == nil || !input.ActorUserID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_sitting", "schedule", nil)
 	}
 	if err := input.Sitting.Validate(); err != nil || input.Sitting.State != model.ExamSittingScheduled || input.Sitting.Revision != 1 {
@@ -404,7 +404,7 @@ func prepareExamSittingUpdate(input *store.ExamSittingScheduleUpdate) error {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.OpenJob == nil || input.DeadlineJob == nil || input.Mail == nil ||
 		!input.ExamRevisionID.IsValid() || !input.ClassID.IsValid() || input.ExpectedRevision < 1 ||
 		input.ScheduledStartAt.IsZero() || input.ScheduledEndAt.IsZero() || !input.ScheduledStartAt.Before(input.ScheduledEndAt) ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_sitting", "schedule_update", nil)
 	}
 	resultingRevision := input.ExpectedRevision + 1
@@ -457,7 +457,7 @@ func (s sqlExamSittingStore) Cancel(ctx context.Context, input *store.ExamSittin
 
 func prepareExamSittingCancellation(input *store.ExamSittingCancellation) error {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.Mail == nil ||
-		input.ExpectedRevision < 1 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.ExpectedRevision < 1 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!utf8.ValidString(input.PrivateReason) || input.PrivateReason != strings.TrimSpace(input.PrivateReason) ||
 		utf8.RuneCountInString(input.PrivateReason) < 1 || utf8.RuneCountInString(input.PrivateReason) > 1000 {
 		return store.NewErrInvalidInput("exam_sitting", "cancellation", nil)
@@ -465,7 +465,7 @@ func prepareExamSittingCancellation(input *store.ExamSittingCancellation) error 
 	return nil
 }
 
-func (s sqlExamSittingStore) runExamSittingMutation(ctx context.Context, label, auditID string, auditAt int64, command *store.CommandIdempotency,
+func (s sqlExamSittingStore) runExamSittingMutation(ctx context.Context, label string, auditID model.AuditEventID, auditAt int64, command *store.CommandIdempotency,
 	execute func(context.Context, *sqlxTxWrapper) (*model.ExamSitting, error),
 ) (*store.ExamSittingCommandResult, error) {
 	if command == nil {
@@ -874,14 +874,14 @@ func insertExamSittingLifecycleJob(ctx context.Context, tx *sqlxTxWrapper, job *
 }
 
 func insertExamSittingPrivateAction(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, actorID model.UserID,
-	actionCode, privateReason, auditEventID string,
+	actionCode string, privateReason string, auditEventID model.AuditEventID,
 ) error {
 	_, err := tx.Exec(ctx, `INSERT INTO exam_sitting_private_actions
 		(audit_event_id,exam_sitting_id,actor_user_id,action_code,private_reason,created_at,sitting_revision)
 		VALUES (?,?,?,?,?,?,?)`, auditEventID, sitting.ID.String(), actorID.String(), actionCode, privateReason,
 		sitting.UpdatedAt, sitting.Revision)
 	if err != nil {
-		return fmt.Errorf("insert Exam Sitting private action: %w", translateError("exam_sitting_private_action", auditEventID, err))
+		return fmt.Errorf("insert Exam Sitting private action: %w", translateError("exam_sitting_private_action", auditEventID.String(), err))
 	}
 	return nil
 }
@@ -918,7 +918,7 @@ func (s sqlExamSittingStore) EarlyClose(ctx context.Context, input *store.ExamSi
 
 func prepareExamSittingManagerTransition(input *store.ExamSittingManagerTransition, requireFinalize bool) error {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() ||
-		input.ExpectedRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.ExpectedRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validExamSittingPrivateReason(input.PrivateReason) || (requireFinalize != (input.FinalizeJob != nil)) {
 		return store.NewErrInvalidInput("exam_sitting", "manager_transition", nil)
 	}
@@ -1028,7 +1028,7 @@ func examSittingManagerTransitionAllowed(state model.ExamSittingState, transitio
 func (s sqlExamSittingStore) Extend(ctx context.Context, input *store.ExamSittingExtension, command *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() ||
 		input.ExpectedRevision < 1 || input.ScheduledEndAt.IsZero() || input.ChangedAt.IsZero() || input.DeadlineJob == nil ||
-		!validExamSittingPrivateReason(input.PrivateReason) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || command == nil {
+		!validExamSittingPrivateReason(input.PrivateReason) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil {
 		return nil, store.NewErrInvalidInput("exam_sitting", "extension", nil)
 	}
 	if err := validateExamSittingLifecycleJob(input.DeadlineJob, input.SittingID, model.ExamSittingLifecycleJobDeadline,
@@ -1177,7 +1177,7 @@ func examSittingStructureStatus(ctx context.Context, tx *sqlxTxWrapper, sitting 
 }
 
 func (s sqlExamSittingStore) AdvanceDue(ctx context.Context, input *store.ExamSittingDueAdvance) (*store.ExamSittingLifecycleResult, error) {
-	if input == nil || !input.SittingID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.SittingID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_sitting", "advance_due", nil)
 	}
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "advance due Exam Sitting", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingLifecycleResult, error) {
@@ -1309,7 +1309,7 @@ func isStaleExamSittingFinalizeJob(job *model.Job, current *model.ExamSitting) b
 }
 
 func (s sqlExamSittingStore) FinishSealing(ctx context.Context, input *store.ExamSittingFinishSealing) (*store.ExamSittingLifecycleResult, error) {
-	if input == nil || !input.SittingID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.SittingID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_sitting", "finish_sealing", nil)
 	}
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "finish sealed Exam Sitting", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingLifecycleResult, error) {
@@ -1450,7 +1450,7 @@ func lockExamSittingSystemExam(ctx context.Context, tx *sqlxTxWrapper, examID mo
 }
 
 func completeExamSittingLifecycleAudit(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting,
-	transition store.ExamSittingLifecycleTransitionCode, changed, replayed bool, originalAuditID, auditID string, auditAt int64,
+	transition store.ExamSittingLifecycleTransitionCode, changed, replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": sitting.ExamID.String(), "exam_sitting_id": sitting.ID.String(),
 		"state": sitting.State, "revision": sitting.Revision, "reason_code": sitting.ReasonCode,
@@ -1581,7 +1581,7 @@ func requireExamSittingAffected(result sql.Result) error {
 	return nil
 }
 
-func completeExamSittingAudit(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, auditID string, auditAt int64) error {
+func completeExamSittingAudit(ctx context.Context, tx *sqlxTxWrapper, sitting *model.ExamSitting, auditID model.AuditEventID, auditAt int64) error {
 	encoded, err := encodeExamSittingAudit(sitting, false, "")
 	if err != nil {
 		return err

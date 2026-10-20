@@ -304,6 +304,6 @@ func prepareConcurrentProfilePicturePublication(t *testing.T, ctx context.Contex
 	return &store.ProfilePicturePublication{
 		ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: user.Revision,
 		EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions,
-		ChangedAt: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(),
+		ChangedAt: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(),
 	}
 }

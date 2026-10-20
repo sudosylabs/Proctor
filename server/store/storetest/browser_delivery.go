@@ -19,13 +19,13 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func browserDeliveryAuditFixture(t *testing.T, ctx context.Context, ss store.Store, access store.BrowserDeliveryAccess) string {
+func browserDeliveryAuditFixture(t *testing.T, ctx context.Context, ss store.Store, access store.BrowserDeliveryAccess) model.AuditEventID {
 	t.Helper()
 	target, err := ss.ExamAttempt().ResolveBrowserDeliveryTarget(ctx, access)
 	requireNoError(t, err)
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: access.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
-	return audit.ID.String()
+	return audit.ID
 }
 func testBrowserDeliveryRecovery(t *testing.T, ss store.Store) {
 	ctx := context.Background()
@@ -149,7 +149,7 @@ func testBrowserSourceReservationRace(t *testing.T, ss store.Store) {
 	results := make(chan error, 2)
 	start := make(chan struct{})
 	for i := range 2 {
-		input := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(12001 + i), PolicyRevisionID: presentation.RuntimeCapabilities.Browser.PolicyRevisionID, PolicyDigest: presentation.RuntimeCapabilities.Browser.PolicyDigest, Transition: model.BrowserStartTransition{Kind: "initial"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+		input := &store.BrowserActivitySourceStart{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: browserSourceID(12001 + i), PolicyRevisionID: presentation.RuntimeCapabilities.Browser.PolicyRevisionID, PolicyDigest: presentation.RuntimeCapabilities.Browser.PolicyDigest, Transition: model.BrowserStartTransition{Kind: "initial"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 		go func() { <-start; _, err := ss.ExamAttempt().StartBrowserActivity(ctx, input); results <- err }()
 	}
 	close(start)

@@ -71,7 +71,7 @@ func TestExamAttemptWorkspaceMutationResolvesSafeAuditAndEffectScope(t *testing.
 	target := ExamAttemptWorkspaceMutationTarget{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		ClassID: model.NewClassID(), CandidateUserID: access.CandidateUserID, WorkspaceID: model.NewExamAttemptWorkspaceID()}
 	input := ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateDirectory,
-		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "cmd", AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "cmd", AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	result := ExamAttemptWorkspaceMutationResult{SittingID: target.SittingID, ClassID: target.ClassID,
 		CandidateUserID: target.CandidateUserID, WorkspaceID: target.WorkspaceID}
 	if input.AuditEventID == "" || input.AuditAt < 1 || result.SittingID != target.SittingID || result.ClassID != target.ClassID ||

@@ -56,7 +56,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-connect", "workspace-connect"))
@@ -121,7 +121,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	entryID := model.NewAttemptWorkspaceEntryID()
 	mutation := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateFile,
 		EntryID: entryID, DestinationPath: "notes.go", ObjectID: ready.ID,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 		"workspace-create-file", "workspace-create-file")
 	created, err := workspace.ApplyMutation(ctx, mutation, command)
@@ -134,7 +134,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		t.Fatalf("ApplyMutation(create file) = %#v", created)
 	}
 	replayMutation := *mutation
-	replayMutation.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	replayMutation.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayedMutation, err := workspace.ApplyMutation(ctx, &replayMutation, command)
 	requireNoError(t, err)
 	if replayedMutation == nil || !replayedMutation.Replayed || replayedMutation.Change.Cursor != created.Change.Cursor ||
@@ -145,7 +145,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	requireSuccessfulAudit(t, ctx, ss, replayMutation.AuditEventID)
 	closed, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{
 		ConnectionID: access.ConnectionID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
-		Reason: model.AttemptConnectionCloseTransport, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+		Reason: model.AttemptConnectionCloseTransport, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if closed == nil || !closed.Changed {
@@ -164,7 +164,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
-		ContinuityCredentialHash: credentialHash, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		ContinuityCredentialHash: credentialHash, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, reconnect)
 	reconnected, err := ss.ExamAttempt().Connect(ctx, reconnect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-reconnect", "workspace-reconnect"))
@@ -177,7 +177,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	access.ConnectionID = reconnected.Connection.ID
 	replayAfterReconnect := *mutation
 	replayAfterReconnect.Access = access
-	replayAfterReconnect.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	replayAfterReconnect.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	replayedAfterReconnect, err := workspace.ApplyMutation(ctx, &replayAfterReconnect, command)
 	requireNoError(t, err)
 	if replayedAfterReconnect == nil || !replayedAfterReconnect.Replayed || replayedAfterReconnect.Change.Cursor != created.Change.Cursor {
@@ -217,7 +217,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	for i := range mutations {
 		mutations[i] = &store.ExamAttemptWorkspaceMutation{Access: access,
 			Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: model.NewAttemptWorkspaceEntryID(),
-			DestinationPath: "race-" + string(rune('a'+i)), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(),
+			DestinationPath: "race-" + string(rune('a'+i)), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID,
 			AuditAt: model.GetMillis()}
 		commands[i] = examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-race-"+string(rune('a'+i)), "workspace-race-"+string(rune('a'+i)))
@@ -268,7 +268,7 @@ writesComplete:
 	apply := func(operation model.AttemptWorkspaceMutationKind, label string, configure func(*store.ExamAttemptWorkspaceMutation)) (*store.ExamAttemptWorkspaceMutationResult, error) {
 		t.Helper()
 		input := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: operation,
-			EntryID: model.NewAttemptWorkspaceEntryID(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			EntryID: model.NewAttemptWorkspaceEntryID(), AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		configure(input)
 		return workspace.ApplyMutation(ctx, input, examCommand(fixture.candidate.ID,
 			store.ExamAttemptWorkspaceMutationOperation, "workspace-"+label, "workspace-"+label))
@@ -387,7 +387,7 @@ writesComplete:
 	for i, destination := range []string{"race-winner-a", "race-winner-b"} {
 		input := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationMoveEntry,
 			EntryID: mutations[3].EntryID, ExpectedPath: "race-d", DestinationPath: destination,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-move-race-"+string(rune('a'+i)), "workspace-move-race-"+string(rune('a'+i)))
 		go func() {
@@ -405,7 +405,7 @@ writesComplete:
 		t.Fatalf("ApplyMutation(same-entry race) errors = %v, %v", firstRace.err, secondRace.err)
 	}
 	replayWinner := *winner.input
-	replayWinner.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	replayWinner.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	winnerReplay, err := workspace.ApplyMutation(ctx, &replayWinner, winner.command)
 	requireNoError(t, err)
 	if winnerReplay == nil || !winnerReplay.Replayed || winnerReplay.Change.Cursor != winner.result.Change.Cursor ||
@@ -524,7 +524,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
-		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-fence-connect", "workspace-fence-connect"))
@@ -541,7 +541,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		for index := range inputs {
 			inputs[index] = &store.ExamAttemptWorkspaceMutation{Access: access,
 				Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: entryID, DestinationPath: "multi-node",
-				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		}
 		command := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation,
 			"workspace-multi-node", "workspace-multi-node")
@@ -587,7 +587,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(),
 		FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
-		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if expired == nil || expired.Attempt == nil || expired.Attempt.State != model.ExamAttemptSuspended {

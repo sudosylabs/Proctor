@@ -116,7 +116,7 @@ func (s SQLMFAStore) SavePendingWithAudit(ctx context.Context, input *store.MFAP
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID.String(), model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
 			return nil, err
 		}
 		return &candidate, nil
@@ -153,7 +153,7 @@ func (s SQLMFAStore) ChallengeWithAudit(ctx context.Context, input *store.MFACha
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID.String(), model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
 			return nil, err
 		}
 		return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil

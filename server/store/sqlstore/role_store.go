@@ -79,7 +79,7 @@ func (s SQLRoleStore) Save(ctx context.Context, role *model.Role) (*model.Role, 
 
 func (s SQLRoleStore) SaveWithAudit(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "creation", nil)
 	}
 	candidate := input.Role.Clone()
@@ -214,7 +214,7 @@ func (s SQLRoleStore) Update(ctx context.Context, role *model.Role) (*model.Role
 
 func (s SQLRoleStore) UpdateWithAudit(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "update", nil)
 	}
 	if input.Role.BuiltIn {
@@ -307,7 +307,7 @@ func (s SQLRoleStore) Archive(ctx context.Context, id model.RoleID, archiveAt in
 
 func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited role archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Role, error) {

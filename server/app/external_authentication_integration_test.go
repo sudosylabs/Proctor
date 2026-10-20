@@ -624,7 +624,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			Disabled:         true,
 			ChangedAt:        disabledAt,
 			RevocationReason: model.SessionRevocationAccountDisabled,
-			AuditEventID:     auditAttempt.ID.String(),
+			AuditEventID:     auditAttempt.ID,
 			AuditAt:          disabledAt,
 		}),
 	); err != nil {

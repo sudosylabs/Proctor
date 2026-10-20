@@ -93,7 +93,7 @@ func testUserEmailChangeUsesDatabaseClock(t *testing.T, ss store.Store) {
 		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 	}
 	result, err := ss.UserToken().ChangeEmail(ctx, command)
 	requireNoError(t, err)
@@ -159,7 +159,7 @@ func testConcurrentUserEmailChange(t *testing.T, ss store.Store) {
 			TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 			WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 			VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-			AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}
+			AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
 	}
 	inputs := []*store.UserEmailChange{build("a"), build("b")}
 	errs := make(chan error, 2)
@@ -207,7 +207,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)})
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
 	requireNoError(t, err)
 	if result.User.Email != newEmail || result.User.EmailVerified || result.User.Revision != user.Revision+1 || result.Token.Target != newEmail {
 		t.Fatalf("email change result = %#v", result)
@@ -230,7 +230,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
 		WarningOccurrence: conflictWarningOccurrence, WarningDelivery: conflictWarningDelivery, WarningJob: conflictWarningJob,
 		VerificationOccurrence: conflictVerifyOccurrence, VerificationDelivery: conflictVerifyDelivery, VerificationJob: conflictVerifyJob,
-		AuditEventID: conflictAudit.ID.String(), AuditAt: model.MillisFromTime(secondAt)})
+		AuditEventID: conflictAudit.ID, AuditAt: model.MillisFromTime(secondAt)})
 	if !store.IsConflict(err) {
 		t.Fatalf("duplicate email change error = %v, want conflict", err)
 	}
@@ -253,7 +253,7 @@ func testPrivilegedEmailVerificationAtomic(t *testing.T, ss store.Store) {
 	audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	verified, err := ss.UserToken().VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{UserID: user.ID, ExpectedRevision: user.Revision,
 		Occurrence: occurrence, Delivery: delivery, Job: job,
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)})
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)})
 	requireNoError(t, err)
 	if !verified.EmailVerified || verified.Revision != user.Revision+1 {
 		t.Fatalf("verified user = %#v", verified)
@@ -288,7 +288,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
-			AuditEventID: audit.ID.String(), AuditAt: at,
+			AuditEventID: audit.ID, AuditAt: at,
 		}))
 		requireNoError(t, err)
 		token := newUserToken(user, model.UserTokenEmailVerification)
@@ -562,7 +562,7 @@ func changeUserEmailForTest(t *testing.T, ctx context.Context, ss store.Store, u
 		TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
 		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
 		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at),
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at),
 	})
 	requireNoError(t, err)
 	return result.User

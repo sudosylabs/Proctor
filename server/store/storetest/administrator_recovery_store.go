@@ -92,7 +92,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pendingMFA.ID, UserID: installed.Administrator.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     preservedSession.ID, At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
+		SessionID:     preservedSession.ID, At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID, AuditAt: mfaAt,
 		Notice: mfaNotice,
 	})
 	requireNoError(t, err)

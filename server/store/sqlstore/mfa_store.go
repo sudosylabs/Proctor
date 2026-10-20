@@ -130,7 +130,7 @@ func (s SQLMFAStore) Activate(
 	at := model.TimeUTC(input.At)
 	if !input.CredentialID.IsValid() || !input.UserID.IsValid() ||
 		!input.SessionID.IsValid() || input.TimeStep <= 0 || !at.After(time.Unix(0, 0)) ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
@@ -319,7 +319,7 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 	input *store.MFARecoveryCodesRegeneration,
 ) error {
 	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return store.NewErrInvalidInput("mfa_recovery_code", "replace", nil)
 	}
@@ -413,7 +413,7 @@ func (s SQLMFAStore) Disable(
 	input *store.MFADisablement,
 ) (*store.MFADisableResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("mfa_credential", "disable", nil)
 	}
 	at := model.TimeFromMillis(input.At)

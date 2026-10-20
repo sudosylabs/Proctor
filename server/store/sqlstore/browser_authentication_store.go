@@ -974,7 +974,7 @@ func validateDesktopAuthorizationCodeIssue(input *store.DesktopAuthorizationCode
 	if input == nil || !model.IsValidTokenHash(input.BindingHash) ||
 		!model.IsValidTokenHash(input.StateHash) || !model.IsValidTokenHash(input.CodeHash) || !input.ExpectedUserID.IsValid() || input.CodeLifetime <= 0 ||
 		input.CodeLifetime > model.DesktopAuthorizationCodeLifetime ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return store.NewErrInvalidInput("browser_authentication_transaction", "code_issue", nil)
 	}
 	return nil
@@ -987,7 +987,7 @@ func validateDesktopAuthorizationExchange(input *store.DesktopAuthorizationExcha
 		input.AccessTokenHash == input.RefreshTokenHash || input.AccessLifetime <= 0 || input.RefreshLifetime <= 0 ||
 		input.IdleLifetime <= 0 || input.AbsoluteLifetime <= 0 || input.AccessLifetime > input.IdleLifetime ||
 		input.IdleLifetime > input.AbsoluteLifetime || input.RefreshLifetime > input.AbsoluteLifetime ||
-		input.MaximumActive < 1 || !model.IsValidId(input.AuditEventID) ||
+		input.MaximumActive < 1 || !input.AuditEventID.IsValid() ||
 		input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) ||
 		input.ExpectedPublicJWK.Validate() != nil || !model.IsValidDPoPKeyThumbprint(input.ExpectedKeyThumbprint) ||
 		!model.IsValidDesktopRelease(input.DesktopRelease) || !model.IsValidDesktopBuildID(input.DesktopBuildID) ||

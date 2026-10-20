@@ -69,7 +69,7 @@ func (row retentionRetirementRow) retirement() (*model.RetentionRetirement, erro
 }
 
 func (s *SQLRetentionStore) ReconcileSubmission(ctx context.Context, input *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
-	if input == nil || !input.SubmissionID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.SubmissionID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("retention_retirement", "reconciliation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "retention reconciliation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.RetentionReconciliationResult, error) {

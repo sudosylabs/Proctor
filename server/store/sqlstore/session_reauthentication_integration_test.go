@@ -62,7 +62,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			if result.Session.ID != session.ID || !current.ReauthenticatedAt.Valid || current.ReauthenticatedAt.Time.Before(before) || current.ReauthenticatedAt.Time.After(model.NowUTC()) || !current.AuthenticatedAt.Equal(session.AuthenticatedAt) || current.MFACompletedAt != session.MFACompletedAt || current.ExpiresAt != session.ExpiresAt || current.IdleExpiresAt != session.IdleExpiresAt || current.AuthenticationStrength != session.AuthenticationStrength || len(result.AccessTokenHashes) != 1 {
 				t.Fatalf("reauthentication changed original provenance or expiry: %#v", current)
 			}
-			storedAudit, err := s.Audit().Get(ctx, audit.ID.String())
+			storedAudit, err := s.Audit().Get(ctx, audit.ID)
 			if err != nil || storedAudit.Status != model.AuditStatusSuccess {
 				t.Fatal("fresh proof omitted terminal audit")
 			}
@@ -112,7 +112,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			case "disabled provider":
 				_, err = s.GetMaster().Exec(ctx, `UPDATE access_policies SET provider_admissions='{}'::jsonb`)
 			case "terminal audit":
-				_, err = s.Audit().Complete(ctx, audit.ID.String(), model.AuditStatusFail, "authentication.token_invalid", nil, model.GetMillis())
+				_, err = s.Audit().Complete(ctx, audit.ID, model.AuditStatusFail, "authentication.token_invalid", nil, model.GetMillis())
 			}
 			if err != nil {
 				t.Fatal(err)

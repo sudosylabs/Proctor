@@ -23,7 +23,7 @@ import (
 
 func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Identity == nil || !input.Identity.ID.IsZero() ||
-		!input.Identity.UserID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!input.Identity.UserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "link", nil)
 	}
@@ -80,7 +80,7 @@ func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *stor
 
 func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt <= 0 ||
-		!input.RevocationReason.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "unlink", nil)
 	}
@@ -138,7 +138,7 @@ func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *st
 
 func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || !input.Credential.UserID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "enroll", nil)
 	}
 	credential := *input.Credential
@@ -174,7 +174,7 @@ func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *
 
 func (s SQLPasswordCredentialStore) RemoveWithAudit(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !input.RevocationReason.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "remove", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "remove password credential", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AuthenticationMethodMutationResult, error) {
@@ -297,7 +297,7 @@ func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sql
 	return rows, hashes, nil
 }
 
-func completeAuthenticationMethodAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, auditAt int64, result any) error {
+func completeAuthenticationMethodAudit(ctx context.Context, tx *sqlxTxWrapper, auditID model.AuditEventID, auditAt int64, result any) error {
 	encoded, err := model.EncodeAuditData(result)
 	if err != nil {
 		return err

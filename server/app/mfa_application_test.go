@@ -505,12 +505,12 @@ func (a *mfaApplicationAuditFake) appendEvent(event string) {
 	}
 }
 
-func (a *mfaApplicationAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, any) (string, error) {
+func (a *mfaApplicationAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, any) (model.AuditEventID, error) {
 	a.appendEvent("audit_begin")
-	return model.NewAuditEventID().String(), nil
+	return model.NewAuditEventID(), nil
 }
 
-func (a *mfaApplicationAuditFake) Complete(_ context.Context, _ string, status model.AuditStatus, _ string, _ any) error {
+func (a *mfaApplicationAuditFake) Complete(_ context.Context, _ model.AuditEventID, status model.AuditStatus, _ string, _ any) error {
 	if status == model.AuditStatusSuccess {
 		a.appendEvent("audit_success")
 	} else {

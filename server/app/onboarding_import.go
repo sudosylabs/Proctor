@@ -317,7 +317,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 		Resource: resource, ScopeType: current.ScopeType, ScopeID: current.ScopeID, Operation: auditOperation,
 		Value: map[string]any{"onboarding_import_id": id, "policy": command.Policy,
 			"total_rows": current.TotalRows, "valid_rows": current.ValidRows, "invalid_rows": current.InvalidRows}}
-	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID string) (*store.OnboardingImport, error) {
+	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID model.AuditEventID) (*store.OnboardingImport, error) {
 		return s.imports.CommitOnboardingImport(ctx, &store.OnboardingImportCommit{ID: id, ActorUserID: invocation.Principal().UserID,
 			Principal:        invocation.Principal(),
 			ExpectedRevision: command.ExpectedRevision, PreviewDigest: command.PreviewDigest, Policy: command.Policy, IdempotencyKey: digest, ExecutionJob: job, At: at,
@@ -368,7 +368,7 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 	attempt := mutationAttempt{Invocation: invocation, Action: auditAction,
 		Resource: onboardingImportResource(current.ScopeType, current.ScopeID), ScopeType: current.ScopeType, ScopeID: current.ScopeID,
 		Operation: auditOperation, Value: map[string]any{"onboarding_import_id": id, "state": current.State}}
-	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID string) (*store.OnboardingImport, error) {
+	persist := func(ctx context.Context, reference mutationAttemptReference, sourceAuditID model.AuditEventID) (*store.OnboardingImport, error) {
 		return s.imports.CancelOnboardingImport(ctx, &store.OnboardingImportCancellation{ID: id, ActorUserID: invocation.Principal().UserID, At: at,
 			Principal:    invocation.Principal(),
 			AuditEventID: reference.ID, SourceAuditEventID: sourceAuditID, AuditAt: reference.MutationAtMillis})
@@ -1318,7 +1318,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 		if progression && operation == AcademicAdministrationClassEnroll {
 			relationshipID = ""
 		}
-		run := func(ctx context.Context, sourceAuditID, destinationAuditID string) (AcademicAdministrationBatchResult, error) {
+		run := func(ctx context.Context, sourceAuditID, destinationAuditID model.AuditEventID) (AcademicAdministrationBatchResult, error) {
 			if progression {
 				if err := s.authorizeImport(ctx, invocation, current, true); err != nil {
 					return AcademicAdministrationBatchResult{}, err

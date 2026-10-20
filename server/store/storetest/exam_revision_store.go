@@ -76,7 +76,7 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	// A failure at the final audit step occurs after the transaction has built
 	// the snapshot and attempted both aggregate fences. Nothing may escape.
 	rollbackInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(3500*time.Millisecond))
-	rollbackInput.AuditEventID = model.NewId()
+	rollbackInput.AuditEventID = model.NewAuditEventID()
 	_, err = ss.ExamRevision().Publish(ctx, rollbackInput, examCommand(creator.ID, "exam.revision.publish.v1", "revision-rollback", "revision-rollback-command"))
 	if err == nil {
 		t.Fatal("publication with a missing audit attempt committed")
@@ -304,5 +304,5 @@ func examRevisionPublication(t *testing.T, ctx context.Context, ss store.Store, 
 	audit := saveExamResourceAudit(t, ctx, ss, examID, actorID, unitID)
 	return &store.ExamRevisionPublication{RevisionID: model.NewExamRevisionID(), ExamID: examID, ActorUserID: actorID,
 		ExpectedDraftRevision: expected, Kind: model.ExamRevisionPublicationStandard, PublishedAt: at,
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
 }

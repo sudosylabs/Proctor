@@ -543,12 +543,12 @@ type auditFake struct {
 	began bool
 }
 
-func (a *auditFake) Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error) {
+func (a *auditFake) Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error) {
 	a.f.order = append(a.f.order, "audit.begin")
 	a.began = true
-	return model.NewId(), nil
+	return model.NewAuditEventID(), nil
 }
-func (a *auditFake) Fail(context.Context, string, string) error { return nil }
+func (a *auditFake) Fail(context.Context, model.AuditEventID, string) error { return nil }
 
 type effectFake struct {
 	f             *fixture

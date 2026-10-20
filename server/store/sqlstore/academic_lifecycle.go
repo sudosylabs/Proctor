@@ -19,7 +19,7 @@ import (
 // the shared lifecycle transition. Legacy callers use the same transition with
 // no audit completion; application commands always supply their pending audit.
 type academicMutationAudit struct {
-	eventID string
+	eventID model.AuditEventID
 	at      int64
 }
 

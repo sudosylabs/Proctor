@@ -43,8 +43,8 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 type Effects interface {
@@ -607,7 +607,7 @@ func (service *Service) effect(ctx context.Context, operation string, result Res
 	}
 }
 
-func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
+func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.integrity_review.unavailable")
 	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {

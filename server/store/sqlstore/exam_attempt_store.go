@@ -135,7 +135,7 @@ func (s *sqlExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 	}
 	aggregate.Replayed = result.Replayed
 	aggregate.ConnectionOpened = result.Value.ConnectionOpened && !result.Replayed
-	aggregate.RevokedSessionIDs = append([]string(nil), result.Value.RevokedSessionIDs...)
+	aggregate.RevokedSessionIDs = typedIDs[model.SessionID](result.Value.RevokedSessionIDs)
 	aggregate.RevokedAccessTokenDigests = append([]string(nil), result.Value.RevokedTokenHashes...)
 	return aggregate, nil
 }
@@ -146,7 +146,7 @@ func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.
 		!input.SittingID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() ||
 		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		command.UserID != input.CandidateUserID || !input.AttemptID.IsValid() || !input.WorkspaceID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
-		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		input.Security.Validate() != nil || input.DesktopBuild.NativeAgreement == nil || input.DesktopBuild.Validate() != nil || input.DesktopCompatibilityPolicyRevision < 1 || !model.IsValidSHA256Fingerprint(input.ConfigurationManifestFingerprint) ||
 		input.DesktopBuild.AttemptConfigurationManifestFingerprint != input.ConfigurationManifestFingerprint {
 		return store.NewErrInvalidInput("exam_attempt", "connect", nil)
@@ -429,7 +429,7 @@ type participationExpiryLockRow struct {
 func (s *sqlExamAttemptStore) ExpireParticipation(ctx context.Context, input *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
 	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || input.Generation < 1 ||
 		!input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("attempt_participation", "expiry", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "expire Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationExpiryResult, error) {
@@ -723,7 +723,7 @@ func loadParticipationExpiryResult(ctx context.Context, tx *sqlxTxWrapper, row p
 }
 
 func completeParticipationExpiryAudit(ctx context.Context, tx *sqlxTxWrapper, result *store.ExamAttemptParticipationExpiryResult,
-	auditID string, auditAt int64,
+	auditID model.AuditEventID, auditAt int64,
 ) error {
 	data, err := model.EncodeAuditData(map[string]any{"exam_id": result.ExamID.String(), "exam_sitting_id": result.SittingID.String(),
 		"exam_attempt_id": result.Attempt.ID.String(), "participation_id": result.Participation.ID.String(),
@@ -749,7 +749,7 @@ func (s *sqlExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 	if input == nil || command == nil || command.Operation != store.ExamAttemptReallowOperation || command.OutcomeVersion != 1 ||
 		command.UserID != input.ActorUserID || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.AttemptID.IsValid() ||
 		!input.SuspensionID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedAttemptRevision < 1 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_attempt", "reallow", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "re-allow Exam Attempt", idempotentMutation[examAttemptReallowOutcomeV1]{
@@ -943,7 +943,7 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 }
 
 func completeExamAttemptReallowAudit(ctx context.Context, tx *sqlxTxWrapper, value examAttemptReallowOutcomeV1,
-	replayed bool, originalAuditID, auditID string, auditAt int64,
+	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": value.ExamID, "exam_sitting_id": value.SittingID, "exam_attempt_id": value.AttemptID,
 		"suspension_id": value.SuspensionID, "focus_loss_window_reset": value.FocusLossWindowReset, "replayed": replayed}
@@ -1765,7 +1765,7 @@ func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admi
 }
 
 func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcomeV1,
-	replayed bool, originalAuditID, auditID string, auditAt int64,
+	replayed bool, originalAuditID string, auditID model.AuditEventID, auditAt int64,
 ) error {
 	data := map[string]any{"exam_id": outcome.ExamID, "exam_sitting_id": outcome.SittingID,
 		"exam_attempt_id": outcome.AttemptID, "admission_revision_id": outcome.RevisionID,
@@ -1787,7 +1787,7 @@ func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, out
 }
 
 func (s *sqlExamAttemptStore) CloseConnection(ctx context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
-	if input == nil || !input.ConnectionID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || !input.Reason.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ConnectionID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || !input.Reason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("attempt_connection", "close", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "close Attempt Connection", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptConnectionCloseResult, error) {

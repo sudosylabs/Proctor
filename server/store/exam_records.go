@@ -43,7 +43,7 @@ type ExamRecordsMutation struct {
 	Scope        model.RetentionHoldScope
 	Principal    model.Principal
 	Action       model.Action
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

@@ -186,14 +186,17 @@ func (a *mailAuditFake) PrepareTest(_ context.Context, invocation Invocation, re
 	principal := invocation.Principal()
 	return &model.AuditEvent{ActorID: principal.UserID, SessionID: principal.SessionID, Action: string(model.ActionMailManage), Resource: model.Resource{Type: model.ResourceMailDelivery, ID: id.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: resource.ID, Status: model.AuditStatusSuccess, NodeID: "test", ClientType: string(principal.ClientType), AuthMethod: principal.AuthenticationMethod}, nil
 }
-func (a *mailAuditFake) PrepareControl(_ context.Context, _ Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (string, error) {
+func (a *mailAuditFake) PrepareControl(_ context.Context, _ Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
 	a.beginCalls++
 	if institution.Type != model.ResourceInstitution || delivery == nil || (operation != "cancel" && operation != "retry") {
 		return "", errors.New("unsafe mail audit")
 	}
-	return model.NewId(), nil
+	return model.NewAuditEventID(), nil
 }
-func (a *mailAuditFake) Fail(context.Context, string, string) error { a.failCalls++; return nil }
+func (a *mailAuditFake) Fail(context.Context, model.AuditEventID, string) error {
+	a.failCalls++
+	return nil
+}
 
 type mailRendererFake struct{ content FrozenMailContent }
 

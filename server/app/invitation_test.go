@@ -60,7 +60,7 @@ func (f *invitationStoreFake) RecordBatchDuplicate(_ context.Context, _ *store.I
 	f.batchDuplicates[command.KeyDigest] = true
 	return &store.InvitationBatchCommandResult{Duplicate: true, Replayed: replayed}, nil
 }
-func (f *invitationStoreFake) ReplayIssue(_ context.Context, command *store.CommandIdempotency, _ string, _ int64) (*store.InvitationCommandResult, error) {
+func (f *invitationStoreFake) ReplayIssue(_ context.Context, command *store.CommandIdempotency, _ model.AuditEventID, _ int64) (*store.InvitationCommandResult, error) {
 	if f.batchDuplicates[command.KeyDigest] {
 		return &store.InvitationCommandResult{Duplicate: true, Replayed: true}, nil
 	}
@@ -628,7 +628,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	if accepted == nil || accepted.UserID != userID || accepted.RoleBinding.UserID != userID ||
 		accepted.RoleBinding.RoleID != roleID || accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit ||
 		accepted.RoleBinding.ScopeID != unitID.String() || accepted.RoleBinding.OriginInvitationID != invitation.ID ||
-		accepted.AuditEventID != auditID || accepted.AuditAt != model.MillisFromTime(now.Add(time.Minute)) ||
+		accepted.AuditEventID != model.AuditEventID(auditID) || accepted.AuditAt != model.MillisFromTime(now.Add(time.Minute)) ||
 		result.User == nil || result.User.ID != userID || result.RoleBinding == nil || mail.directJobType != "" {
 		t.Fatalf("scoped Role acceptance/result = %#v / %#v", accepted, result)
 	}
@@ -911,7 +911,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 		persistence.replaced.Replacement.InviterUserID != actor || persistence.replaced.Replacement.ClassID != class.ID ||
 		persistence.replaced.Replacement.AcademicPeriodID != period.ID || persistence.replaced.Replacement.ClaimHash == invitation.ClaimHash ||
 		persistence.replaced.ExpectedCurrentRevision != invitation.Revision ||
-		persistence.replaced.CurrentAuditEventID != auditIDs[0] || persistence.replaced.ReplacementAuditEventID != auditIDs[1] ||
+		persistence.replaced.CurrentAuditEventID != model.AuditEventID(auditIDs[0]) || persistence.replaced.ReplacementAuditEventID != model.AuditEventID(auditIDs[1]) ||
 		!strings.Contains(mail.issueURL, "/join#token=") {
 		t.Fatalf("Invitation replacement = %#v / %#v / %q", result, persistence.replaced, mail.issueURL)
 	}

@@ -111,7 +111,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 	paused, err := ss.ExamSitting().Pause(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 		PrivateReason: "prove Browser Activity is fenced while paused", ChangedAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, "exam.sitting.pause.v1", "browser-activity-pause", "browser-activity-pause"))
 	requireNoError(t, err)
 	schemeBlockedReason := model.BrowserBlockSchemeNotAllowed
@@ -143,7 +143,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 	resumed, err := ss.ExamSitting().Resume(ctx, &store.ExamSittingManagerTransition{ExamID: fixture.examID,
 		SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: paused.Value.Sitting.Revision,
 		PrivateReason: "finish Browser Activity conformance", ChangedAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 		examCommand(fixture.manager.ID, "exam.sitting.resume.v1", "browser-activity-resume", "browser-activity-resume"))
 	requireNoError(t, err)
 	if resumed.Value.Sitting.State != model.ExamSittingOpen {
@@ -208,7 +208,7 @@ func testBrowserActivityLifecycle(t *testing.T, ss store.Store) {
 		ExpectedWorkspaceCursor: connected.Workspace.Cursor,
 	}
 	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-activity-seal", "browser-activity-seal"))
@@ -242,7 +242,7 @@ func testCompleteBrowserActivitySubmission(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 
 	sealAccess := store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: fixture.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}
-	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, fixture.candidate, input)
 	sealed, err := ss.ExamSubmission().Seal(ctx, input, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "browser-complete-submit", "browser-complete-submit"))
 	requireNoError(t, err)
@@ -329,7 +329,7 @@ func testBrowserActivitySourceLimit(t *testing.T, ss store.Store) {
 		policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: "https://example.edu", PathPrefix: fmt.Sprintf("/revision-%d", index), HostMatch: model.BrowserPolicyHostExact, AllowRedirects: true, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord}})
 		requireNoError(t, err)
 		key := fmt.Sprintf("source-capacity-correction-%d", index)
-		corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify independent Browser source budgets", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply.v1", key, key))
+		corrected, err := ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: f.examID, SittingID: f.sitting.ID, CurrentRevisionID: f.revisionID, ExpectedSittingRevision: f.sitting.Revision, ActorUserID: f.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{}, BrowserPolicy: &policy, CandidateSummary: "Updated browser references", AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser}, PrivateReason: "Verify independent Browser source budgets", AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.correction.apply.v1", key, key))
 		requireNoError(t, err)
 		f.revisionID, f.sitting = corrected.Revision.ID, corrected.Sitting.Sitting
 		next := browserSourceID(200 + index)
@@ -435,7 +435,7 @@ func startBrowserSourceFixture(t *testing.T, ctx context.Context, ss store.Store
 	}
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: input.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
-	input.AuditEventID = audit.ID.String()
+	input.AuditEventID = audit.ID
 	input.AuditAt = model.GetMillis()
 	return ss.ExamAttempt().StartBrowserActivity(ctx, input)
 }
@@ -460,7 +460,7 @@ func appendBrowserActivityFixture(t *testing.T, ctx context.Context, ss store.St
 	}
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: input.Access.CandidateUserID, Action: string(model.ActionExamSittingParticipate), Resource: model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, ScopeType: model.RoleScopeClass, ScopeID: target.ClassID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
 	requireNoError(t, err)
-	input.AuditEventID = audit.ID.String()
+	input.AuditEventID = audit.ID
 	input.AuditAt = model.GetMillis()
 	return ss.ExamAttempt().AppendBrowserActivity(ctx, input)
 }

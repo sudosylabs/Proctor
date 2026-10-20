@@ -37,7 +37,7 @@ func (s *sqlExamAttemptStore) lockPreflightEligibility(ctx context.Context, tx *
 }
 
 func (s *sqlExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, input *store.SecurityPreflightPrepare, command *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
-	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || input.AttemptID != "" && !input.AttemptID.IsValid() {
+	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.AttemptID != "" && !input.AttemptID.IsValid() {
 		return nil, store.NewErrInvalidInput("security_preflight", "prepare", nil)
 	}
 	agreement := input.Access.DesktopBuild.NativeAgreement
@@ -264,7 +264,7 @@ func lockCurrentSecurityPreflight(ctx context.Context, tx *sqlxTxWrapper, access
 }
 
 func (s *sqlExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input *store.SecurityPreflightReport, command *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
-	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || input.Report.Validate() != nil {
+	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Report.Validate() != nil {
 		return nil, store.NewErrInvalidInput("security_preflight", "report", nil)
 	}
 	result, err := runIdempotentMutation(ctx, s.SQLStore, "report security preflight", idempotentMutation[*model.SecurityPreflightResult]{command: command, auditEventID: input.AuditEventID,
@@ -347,7 +347,7 @@ func canonicalPreflightValue(value any) ([]byte, error) {
 	}
 	return canonicaljson.Canonicalize(raw, 256*1024)
 }
-func completeSecurityPreflightAudit(ctx context.Context, tx *sqlxTxWrapper, id string, at int64, preflight string, replayed bool) error {
+func completeSecurityPreflightAudit(ctx context.Context, tx *sqlxTxWrapper, id model.AuditEventID, at int64, preflight string, replayed bool) error {
 	data, err := model.EncodeAuditData(map[string]any{"preflight_id": preflight, "idempotency_replayed": replayed})
 	if err != nil {
 		return err

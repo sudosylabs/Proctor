@@ -31,17 +31,7 @@ type mutationAttemptAuditorFake struct {
 	attempts []mutationAttempt
 }
 
-func (a *mutationAttemptAuditorFake) BeginAtScope(
-	_ context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-	scopeType model.RoleScopeType,
-	scopeID string,
-	operation string,
-	value map[string]any,
-	prior map[string]any,
-) (string, error) {
+func (a *mutationAttemptAuditorFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "begin-at-scope")
 	a.attempt = mutationAttempt{
 		Invocation: invocation,
@@ -54,18 +44,10 @@ func (a *mutationAttemptAuditorFake) BeginAtScope(
 		Prior:      prior,
 	}
 	a.attempts = append(a.attempts, a.attempt)
-	return a.nextBeginID(), a.beginErr
+	return model.AuditEventID(a.nextBeginID()), a.beginErr
 }
 
-func (a *mutationAttemptAuditorFake) Begin(
-	_ context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-	operation string,
-	value map[string]any,
-	prior map[string]any,
-) (string, error) {
+func (a *mutationAttemptAuditorFake) Begin(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "begin")
 	a.attempt = mutationAttempt{
 		Invocation: invocation,
@@ -76,7 +58,7 @@ func (a *mutationAttemptAuditorFake) Begin(
 		Prior:      prior,
 	}
 	a.attempts = append(a.attempts, a.attempt)
-	return a.nextBeginID(), a.beginErr
+	return model.AuditEventID(a.nextBeginID()), a.beginErr
 }
 
 func (a *mutationAttemptAuditorFake) nextBeginID() string {
@@ -88,9 +70,9 @@ func (a *mutationAttemptAuditorFake) nextBeginID() string {
 	return id
 }
 
-func (a *mutationAttemptAuditorFake) Fail(_ context.Context, id, code string) error {
+func (a *mutationAttemptAuditorFake) Fail(_ context.Context, id model.AuditEventID, code string) error {
 	*a.events = append(*a.events, "fail")
-	a.failID = id
+	a.failID = id.String()
 	a.failCode = code
 	return a.failErr
 }
@@ -147,7 +129,7 @@ func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
 		time.Now,
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			return reference.ID, nil
+			return reference.ID.String(), nil
 		},
 		func(error) error { return nil },
 	)
@@ -181,7 +163,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		func() time.Time { return at },
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.MutationAtMillis != at.UnixMilli() {
+			if reference.ID != model.AuditEventID(auditID) || reference.MutationAtMillis != at.UnixMilli() {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "", storeErr
@@ -324,7 +306,7 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 		},
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != auditID || reference.MutationAtMillis != 500 {
+			if reference.ID != model.AuditEventID(auditID) || reference.MutationAtMillis != 500 {
 				t.Fatalf("reference = %#v", reference)
 			}
 			return "saved", nil

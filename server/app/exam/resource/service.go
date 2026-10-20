@@ -46,8 +46,8 @@ type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 type Effects interface {
 	Changed(context.Context, model.ExamID, model.ExamResourceID, int64, string) error
@@ -524,7 +524,7 @@ func (s *Service) currentActiveDraft(ctx context.Context, call Call, examID mode
 		!snapshot.Exam.IsArchived() && snapshot.Draft.Revision == expectedRevision
 }
 
-func (s *Service) failAudit(ctx context.Context, auditID string, err error) error {
+func (s *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.resource.unavailable")
 	if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {

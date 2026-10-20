@@ -106,16 +106,14 @@ type authenticationCache interface {
 // outcome. Attempts rejected before rate-limit admission are not audited so an
 // unauthenticated flood cannot grow the audit table without bound.
 type localLoginAuditor interface {
-	BeginLocalLogin(context.Context, Invocation, model.UserID, model.SessionClientType) (string, error)
-	CompleteLocalLogin(context.Context, string, model.AuditStatus, string, any) error
+	BeginLocalLogin(context.Context, Invocation, model.UserID, model.SessionClientType) (model.AuditEventID, error)
+	CompleteLocalLogin(context.Context, model.AuditEventID, model.AuditStatus, string, any) error
 	RecordLocalLoginFailure(context.Context, Invocation, model.UserID, model.SessionClientType, string) error
 }
 
 type localLoginAuditAdapter struct{ audit *auditService }
 
-func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation Invocation, userID model.UserID,
-	clientType model.SessionClientType,
-) (string, error) {
+func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
 	if a.audit == nil {
 		return "", auditUnavailable(errors.New("local login audit service is unavailable"))
 	}
@@ -123,10 +121,10 @@ func (a localLoginAuditAdapter) BeginLocalLogin(ctx context.Context, invocation 
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
-func (a localLoginAuditAdapter) CompleteLocalLogin(ctx context.Context, auditID string, status model.AuditStatus,
+func (a localLoginAuditAdapter) CompleteLocalLogin(ctx context.Context, auditID model.AuditEventID, status model.AuditStatus,
 	errorCode string, result any,
 ) error {
 	if a.audit == nil {

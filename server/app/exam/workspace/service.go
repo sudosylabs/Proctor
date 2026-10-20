@@ -108,8 +108,8 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 type Content interface {

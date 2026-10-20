@@ -52,7 +52,7 @@ func (d retentionNoticeDispatcher) DispatchRetentionNotice(ctx context.Context, 
 	return d.records.CompleteNotice(ctx, input)
 }
 
-func (a retentionJobAudit) BeginRetention(ctx context.Context, institutionID model.InstitutionID, submissionID model.SubmissionID) (string, error) {
+func (a retentionJobAudit) BeginRetention(ctx context.Context, institutionID model.InstitutionID, submissionID model.SubmissionID) (model.AuditEventID, error) {
 	if a.audit == nil {
 		return "", apperror.New("audit.unavailable")
 	}
@@ -62,10 +62,10 @@ func (a retentionJobAudit) BeginRetention(ctx context.Context, institutionID mod
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
-func (a retentionJobAudit) FailRetention(ctx context.Context, id string) error {
+func (a retentionJobAudit) FailRetention(ctx context.Context, id model.AuditEventID) error {
 	if a.audit == nil {
 		return apperror.New("audit.unavailable")
 	}
@@ -73,7 +73,7 @@ func (a retentionJobAudit) FailRetention(ctx context.Context, id string) error {
 	return err
 }
 
-func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institutionID model.InstitutionID, kind model.RetentionExpiryKind, id string) (string, error) {
+func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institutionID model.InstitutionID, kind model.RetentionExpiryKind, id string) (model.AuditEventID, error) {
 	if a.audit == nil || !kind.IsValid() || !model.IsValidId(id) {
 		return "", apperror.New("audit.unavailable")
 	}
@@ -83,7 +83,7 @@ func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institution
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
 func (a retentionJobAudit) PrepareRetentionCleanupAudit(_ context.Context, institutionID model.InstitutionID) (*model.AuditEvent, error) {

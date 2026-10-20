@@ -196,7 +196,7 @@ func completedMailRekeyAllowsPromotion(job mailRekeyCompletionRow, requiredPrima
 }
 
 func validateMailRekeyStart(input *store.MailRekeyStart) error {
-	if input == nil || input.Job == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validMailPayloadKeyID(input.PrimaryKeyID) ||
+	if input == nil || input.Job == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validMailPayloadKeyID(input.PrimaryKeyID) ||
 		!validMailPayloadKeyID(input.RetiringKeyID) || input.PrimaryKeyID == input.RetiringKeyID ||
 		input.Job.Validate() != nil || input.Job.Type != model.JobTypeMailRekey || input.Job.Status != model.JobStatusQueued ||
 		input.Job.CommandVersion != 1 || input.Job.MaximumAttempts != 10 || input.Job.AttemptCount != 0 ||

@@ -62,12 +62,12 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 		t.Fatalf("self waiver accepted: %v", err)
 	}
 	decision := &store.ExamIntegrityReviewDecisionMutation{SubmissionID: submissionScope.SubmissionID, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flagged.Flag.ID,
-		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Evidence reviewed; no final disposition is needed.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, submissionScope.SubmissionID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}
+		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Evidence reviewed; no final disposition is needed.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, submissionScope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}
 	decided, err := ss.ExamIntegrityReview().SaveDecision(ctx, decision, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "records-decision", "records-decision"))
 	requireNoError(t, err)
 	waiver.ExpectedReviewRevision = decided.Review.Revision
 	waiver.ExamRecordsMutation = mutation(submissionScope, principal, model.ActionExamRecordsComplete)
-	waiver.AuditEventID = model.NewId()
+	waiver.AuditEventID = model.NewAuditEventID()
 	waiverKey := examCommand(f.manager.ID, store.ExamRecordsWaiveReviewOperation, "records-waiver", "records-waiver")
 	if _, err = records.WaiveReview(ctx, waiver, waiverKey); err == nil {
 		t.Fatal("waiver committed without audit attempt")
@@ -109,7 +109,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 		t.Fatal("current completion restarted clock")
 	}
 	draft := &store.ExamIntegrityReviewDraftMutation{SubmissionID: submissionScope.SubmissionID, ReviewID: decided.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decided.Review.Revision,
-		ManagerNotes: "New private draft material.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, submissionScope.SubmissionID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}
+		ManagerNotes: "New private draft material.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, submissionScope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}
 	draftResult, err := ss.ExamIntegrityReview().UpdateDraft(ctx, draft, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "records-draft", "records-draft"))
 	requireNoError(t, err)
 	stale, err := records.GetCompletion(ctx, f.examID, f.sitting.ID)
@@ -134,7 +134,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if !renewed.Completion.IsCurrent() || !renewed.Completion.CompletedAt.Time.After(first.CompletedAt.Time) {
 		t.Fatalf("renewed completion = %#v", renewed)
 	}
-	late := &store.ExamAttemptFocusLossDiscrepancy{Access: focusAccess, SchemaVersion: model.FocusLossSignalSchemaVersion, DiscrepancyID: model.NewIntegrityDiscrepancyID(), SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900, Source: model.FocusLossSourceFullscreenExited, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+	late := &store.ExamAttemptFocusLossDiscrepancy{Access: focusAccess, SchemaVersion: model.FocusLossSignalSchemaVersion, DiscrepancyID: model.NewIntegrityDiscrepancyID(), SignalID: model.NewFocusLossSignalID(), Sequence: 2, DurationMilliseconds: 900, Source: model.FocusLossSourceFullscreenExited, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	accepted, err := ss.ExamAttempt().RecordEndedFocusLoss(ctx, late)
 	requireNoError(t, err)
 	if accepted.Duplicate {
@@ -151,7 +151,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	duplicate := *late
 	duplicate.DiscrepancyID = model.NewIntegrityDiscrepancyID()
 	duplicate.SignalID = model.NewFocusLossSignalID()
-	duplicate.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	duplicate.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	accepted, err = ss.ExamAttempt().RecordEndedFocusLoss(ctx, &duplicate)
 	requireNoError(t, err)
 	afterReplay, err := records.GetCompletion(ctx, f.examID, f.sitting.ID)
@@ -199,7 +199,7 @@ func recordsMutation(t *testing.T, ctx context.Context, ss store.Store, unitID m
 	t.Helper()
 	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: principal.UserID, Action: string(action), Resource: scope.Resource(), ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(), Status: model.AuditStatusAttempt, NodeID: "records-test"})
 	requireNoError(t, err)
-	return store.ExamRecordsMutation{Scope: scope, Principal: principal, Action: action, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+	return store.ExamRecordsMutation{Scope: scope, Principal: principal, Action: action, AuditEventID: audit.ID, AuditAt: model.GetMillis()}
 }
 func saveRecordsPrincipal(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, strong bool) model.Principal {
 	t.Helper()
@@ -216,9 +216,9 @@ func closeRecordsSitting(t *testing.T, ctx context.Context, ss store.Store, f *e
 	t.Helper()
 	at := model.NowUTC()
 	_, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{ExamID: f.examID, SittingID: f.sitting.ID, ActorUserID: f.manager.ID, ExpectedRevision: f.sitting.Revision,
-		FinalizeJob: newExamSittingFinalizeJob(t, f.sitting.ID, f.sitting.Revision+1, at), PrivateReason: "Delivery is finished.", ChangedAt: at, AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.close.v1", "records-close", "records-close"))
+		FinalizeJob: newExamSittingFinalizeJob(t, f.sitting.ID, f.sitting.Revision+1, at), PrivateReason: "Delivery is finished.", ChangedAt: at, AuditEventID: saveExamSittingAudit(t, ctx, ss, f.manager.ID, f.examID, f.unitID).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, "exam.sitting.close.v1", "records-close", "records-close"))
 	requireNoError(t, err)
-	closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: f.sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, f.sitting.ID, f.unitID).ID.String(), AuditAt: model.GetMillis()})
+	closed, err := ss.ExamSitting().FinishSealing(ctx, &store.ExamSittingFinishSealing{SittingID: f.sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, f.sitting.ID, f.unitID).ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	f.sitting = closed.Value.Sitting
 }
@@ -259,7 +259,7 @@ func testRecordsHolds(t *testing.T, ctx context.Context, ss store.Store, f examA
 		t.Fatalf("hold continuation = %#v", next)
 	}
 	missingAudit := &store.ExamRecordsHoldCreation{ExamRecordsMutation: recordsMutation(t, ctx, ss, f.unitID, examScope, principal, model.ActionExamRecordsHold), HoldID: model.NewRetentionHoldID(), ReasonCode: "other", PrivateReason: "Preserve."}
-	missingAudit.AuditEventID = model.NewId()
+	missingAudit.AuditEventID = model.NewAuditEventID()
 	if _, err = records.CreateHold(ctx, missingAudit, examCommand(f.manager.ID, store.ExamRecordsCreateHoldOperation, "hold-missing-audit", "hold-missing-audit")); err == nil {
 		t.Fatal("hold committed without audit")
 	}

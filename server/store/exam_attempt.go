@@ -48,7 +48,7 @@ type ExamAttemptConnect struct {
 	InitialConfiguration               *model.AttemptConfigurationCandidate
 	DesktopBuild                       model.DesktopBuildTuple
 	DesktopCompatibilityPolicyRevision int64
-	AuditEventID                       string
+	AuditEventID                       model.AuditEventID
 	AuditAt                            int64
 }
 
@@ -75,7 +75,7 @@ type ExamAttemptConnectResult struct {
 	// RevokedSessionIDs and RevokedAccessTokenDigests are bounded post-commit
 	// invalidation selectors for other interactive Sessions fenced when this
 	// Attempt entered active. Personal Access Tokens are never included.
-	RevokedSessionIDs         []string
+	RevokedSessionIDs         []model.SessionID
 	RevokedAccessTokenDigests []string
 	Replayed                  bool
 }
@@ -186,7 +186,7 @@ type ExamAttemptFocusLossSignal struct {
 	Sequence             int64
 	DurationMilliseconds int64
 	Source               model.FocusLossSource
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -256,7 +256,7 @@ type ExamAttemptFocusLossDiscrepancy struct {
 	Sequence             int64
 	DurationMilliseconds int64
 	Source               model.FocusLossSource
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -291,7 +291,7 @@ type ExamAttemptParticipationExpiry struct {
 	EvidenceID      model.IntegrityEvidenceID
 	FlagID          model.IntegrityFlagID
 	SuspensionID    model.AttemptSuspensionID
-	AuditEventID    string
+	AuditEventID    model.AuditEventID
 	AuditAt         int64
 }
 
@@ -349,7 +349,7 @@ type ExamAttemptReallow struct {
 	ManagerOverride         bool
 	ExpectedAttemptRevision int64
 	PrivateReason           string
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 }
 
@@ -384,7 +384,7 @@ type ExamAttemptManualSuspension struct {
 	ManagerOverride         bool
 	ExpectedAttemptRevision int64
 	PrivateReason           string
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 }
 
@@ -409,7 +409,7 @@ type ExamAttemptConnectionClose struct {
 	CandidateUserID model.UserID
 	SessionID       model.SessionID
 	Reason          model.AttemptConnectionCloseReason
-	AuditEventID    string
+	AuditEventID    model.AuditEventID
 	AuditAt         int64
 }
 
@@ -443,7 +443,7 @@ type DeliveryOwnerTarget struct {
 }
 
 type BrowserActivitySourceStart struct {
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Access           CandidateAttemptAccess
 	ParticipationID  model.AttemptParticipationID
@@ -482,7 +482,7 @@ type BrowserDeliveryAccess struct {
 }
 
 type BrowserActivityAppend struct {
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	PolicyRevisionID model.ExamRevisionID
 	PolicyDigest     string
@@ -539,7 +539,7 @@ type ExamAttemptCorrectionAcknowledgementResult struct {
 	CorrectionRevisionID model.ExamRevisionID
 	CurrentRevisionID    model.ExamRevisionID
 	AcknowledgedAt       time.Time
-	MutationAuditEventID string
+	MutationAuditEventID model.AuditEventID
 	Duplicate            bool
 	Replayed             bool
 }

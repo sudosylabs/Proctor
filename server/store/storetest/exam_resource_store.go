@@ -34,7 +34,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 		t.Fatalf("finalized=%#v", finalized)
 	}
 	replay := *first.finalization
-	replay.AuditEventID = saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID.String()
+	replay.AuditEventID = saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID
 	replay.AuditAt = model.GetMillis()
 	replayed, err := ss.ExamResource().FinalizeUpload(ctx, &replay, command)
 	requireNoError(t, err)
@@ -72,7 +72,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	if !retriedReplacement.Replayed || retriedReplacement.Value.Resource.SelectedFileRevisionID != replaced.Value.Resource.SelectedFileRevisionID || retriedReplacement.Value.DraftRevision != 3 {
 		t.Fatalf("post-success replacement retry=%#v first=%#v", retriedReplacement, replaced)
 	}
-	metadata := &store.ExamResourceMetadataUpdate{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 3, ResourceID: got.Resource.ID, DisplayName: "Updated", DescriptionMarkdown: "New **description**", ChangedAt: at.Add(3 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID.String(), AuditAt: model.MillisFromTime(at.Add(3 * time.Second))}
+	metadata := &store.ExamResourceMetadataUpdate{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 3, ResourceID: got.Resource.ID, DisplayName: "Updated", DescriptionMarkdown: "New **description**", ChangedAt: at.Add(3 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(3 * time.Second))}
 	updated, err := ss.ExamResource().UpdateMetadata(ctx, metadata, examCommand(creator.ID, "exam.resource.metadata.v1", "resource-metadata", "resource-metadata-command"))
 	requireNoError(t, err)
 	if updated.Value.Resource.DisplayName != "Updated" || updated.Value.DraftRevision != 4 {
@@ -82,7 +82,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	second := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Second", 1, 4, at.Add(4*time.Second), model.ExamResourceMediaText, nil)
 	secondResult, err := ss.ExamResource().FinalizeUpload(ctx, second.finalization, examCommand(creator.ID, "exam.resource.add.v1", "resource-second", "resource-second-command"))
 	requireNoError(t, err)
-	reorder := &store.ExamResourceReorder{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 5, ResourceIDs: []model.ExamResourceID{secondResult.Value.Resource.ID, updated.Value.Resource.ID}, ChangedAt: at.Add(5 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID.String(), AuditAt: model.MillisFromTime(at.Add(5 * time.Second))}
+	reorder := &store.ExamResourceReorder{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 5, ResourceIDs: []model.ExamResourceID{secondResult.Value.Resource.ID, updated.Value.Resource.ID}, ChangedAt: at.Add(5 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(5 * time.Second))}
 	ordered, err := ss.ExamResource().Reorder(ctx, reorder, examCommand(creator.ID, "exam.resource.reorder.v1", "resource-order", "resource-order-command"))
 	requireNoError(t, err)
 	if len(ordered.Items) != 2 || ordered.Items[0].Resource.ID != secondResult.Value.Resource.ID || ordered.Items[1].Resource.Position != 1 {
@@ -104,7 +104,7 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
 	institution, err = ss.Institution().Update(ctx, institution)
 	requireNoError(t, err)
-	removal := &store.ExamResourceRemoval{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 6, ResourceID: secondResult.Value.Resource.ID, ChangedAt: at.Add(6 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID.String(), AuditAt: model.MillisFromTime(at.Add(6 * time.Second))}
+	removal := &store.ExamResourceRemoval{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 6, ResourceID: secondResult.Value.Resource.ID, ChangedAt: at.Add(6 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID, AuditAt: model.MillisFromTime(at.Add(6 * time.Second))}
 	removed, err := ss.ExamResource().Remove(ctx, removal, examCommand(creator.ID, "exam.resource.remove.v1", "resource-remove", "resource-remove-command"))
 	requireNoError(t, err)
 	if !removed.Value.Resource.IsArchived() || removed.Value.DraftRevision != 7 {
@@ -208,7 +208,7 @@ func reserveExamResource(t *testing.T, ctx context.Context, ss store.Store, exam
 	exam, err := ss.ExamAuthoring().Resolve(ctx, examID)
 	requireNoError(t, err)
 	audit := saveExamResourceAudit(t, ctx, ss, examID, actorID, exam.AcademicUnitID)
-	return reservedExamResource{finalization: &store.ExamResourceUploadFinalization{ExamID: examID, ActorUserID: actorID, ExpectedDraftRevision: expected, Resource: resource, LeaseID: lease.ID, Rendition: rendition, ChangedAt: at, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}}
+	return reservedExamResource{finalization: &store.ExamResourceUploadFinalization{ExamID: examID, ActorUserID: actorID, ExpectedDraftRevision: expected, Resource: resource, LeaseID: lease.ID, Rendition: rendition, ChangedAt: at, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}}
 }
 func saveExamResourceAudit(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID, unitID model.AcademicUnitID) *model.AuditEvent {
 	t.Helper()

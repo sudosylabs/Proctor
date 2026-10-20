@@ -62,23 +62,21 @@ type mailRekeyAuditFake struct {
 	events   *[]string
 }
 
-func (f *mailRekeyAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, string, map[string]any, map[string]any) (string, error) {
+func (f *mailRekeyAuditFake) Begin(context.Context, Invocation, model.Action, model.Resource, string, map[string]any, map[string]any) (model.AuditEventID, error) {
 	return "", errors.New("unscoped mail rekey audit is forbidden")
 }
 
-func (f *mailRekeyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action,
-	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any,
-) (string, error) {
+func (f *mailRekeyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	if f.events != nil {
 		*f.events = append(*f.events, "audit")
 	}
 	f.attempt = mutationAttempt{Invocation: invocation, Action: action, Resource: resource, ScopeType: scopeType,
 		ScopeID: scopeID, Operation: operation, Value: value, Prior: prior}
-	return f.beginID, nil
+	return model.AuditEventID(f.beginID), nil
 }
 
-func (f *mailRekeyAuditFake) Fail(_ context.Context, id, code string) error {
-	f.failID, f.failCode = id, code
+func (f *mailRekeyAuditFake) Fail(_ context.Context, id model.AuditEventID, code string) error {
+	f.failID, f.failCode = id.String(), code
 	return f.failErr
 }
 
@@ -113,7 +111,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	}
 	if persistence.input == nil || persistence.input.Job.Type != model.JobTypeMailRekey ||
 		persistence.input.PrimaryKeyID != sealer.PrimaryKeyID() || persistence.input.RetiringKeyID != oldSealerKeyID(t, oldKey) ||
-		persistence.input.AuditEventID != auditor.beginID || persistence.input.AuditAt != now.UnixMilli() ||
+		persistence.input.AuditEventID != model.AuditEventID(auditor.beginID) || persistence.input.AuditAt != now.UnixMilli() ||
 		view.JobID != persistence.input.Job.ID || view.PrimaryKeyID != sealer.PrimaryKeyID() ||
 		view.RetiringKeyID != oldSealerKeyID(t, oldKey) || auditor.attempt.Operation != "start_rekey" ||
 		auditor.attempt.ScopeType != model.RoleScopeInstitution || !view.CreatedAt.Equal(wantCreatedAt) || woke != 1 {
@@ -198,7 +196,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 			principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
 			_, appErr := service.StartRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
-			if !apperror.Is(appErr, test.wantCode) || persistence.input == nil || persistence.input.AuditEventID != auditor.beginID ||
+			if !apperror.Is(appErr, test.wantCode) || persistence.input == nil || persistence.input.AuditEventID != model.AuditEventID(auditor.beginID) ||
 				auditor.failID != auditor.beginID || auditor.failCode != test.failCode {
 				t.Fatalf("StartRekey() error=%v input=%#v audit=%#v", appErr, persistence.input, auditor)
 			}

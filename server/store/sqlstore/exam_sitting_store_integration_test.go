@@ -339,7 +339,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 			Capabilities: store.AccessDeploymentCapabilities{
 				Providers: map[string]store.AccessProviderCapability{},
 			},
-			AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 		})
 		enrollResult <- enrollmentOutcome{result: result, err: enrollErr}
 	}()
@@ -358,7 +358,7 @@ func TestInvitationAcceptanceAndAuthenticationMethodMutationUseGlobalUserOrder(t
 	if enrolled.result != nil || !store.IsConflict(enrolled.err) {
 		t.Fatalf("EnrollWithAudit() after Invitation acceptance = %#v, %v; want conflict", enrolled.result, enrolled.err)
 	}
-	terminal, err := primary.Audit().Get(ctx, audit.ID.String())
+	terminal, err := primary.Audit().Get(ctx, audit.ID)
 	if err != nil || terminal.Status != model.AuditStatusAttempt {
 		t.Fatalf("authentication-method audit = %#v, %v", terminal, err)
 	}

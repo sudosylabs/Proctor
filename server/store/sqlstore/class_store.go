@@ -69,7 +69,7 @@ func newSQLClassStore(sqlStore *SQLStore) store.ClassStore {
 }
 
 func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (*model.Class, error) {
-	if input == nil || input.Class == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Class == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "creation", nil)
 	}
 	if !input.Class.ID.IsValid() {
@@ -265,7 +265,7 @@ func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 
 func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	if input == nil || input.Class == nil || !input.ExpectedAcademicUnitID.IsValid() ||
-		input.ExpectedRevision <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "update", nil)
 	}
 	candidate := *input.Class
@@ -336,7 +336,7 @@ func (s SQLClassStore) Archive(ctx context.Context, id model.ClassID, archiveAt 
 
 func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
 	if input == nil || !input.ID.IsValid() || !input.ExpectedAcademicUnitID.IsValid() ||
-		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "archive", nil)
 	}
 	return s.archiveClass(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, input.ExpectedAcademicUnitID, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})

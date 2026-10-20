@@ -33,7 +33,7 @@ type RetentionExpiryPage struct {
 type RetentionExpiryReconciliation struct {
 	Kind         model.RetentionExpiryKind
 	RecordID     string
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -48,14 +48,14 @@ type RetentionExpiryResult struct {
 // a bounded batch changes state, then completed with scalar counts atomically.
 // A no-change scan persists neither an audit nor another work item.
 type RetentionCleanupAuditReconciliation struct {
-	AfterID string
+	AfterID model.AuditEventID
 	Before  time.Time
 	Limit   int
 	Audit   *model.AuditEvent
 }
 type RetentionCleanupAuditResult struct {
 	Before    time.Time
-	AfterID   string
+	AfterID   model.AuditEventID
 	HasMore   bool
 	Examined  int
 	Changed   int

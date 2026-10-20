@@ -159,8 +159,8 @@ func (s SQLUserSettingsStore) Replace(
 		},
 		encode: encodeUserSettingsReplacementOutcome,
 		decode: decodeUserSettingsReplacementOutcome,
-		freshAuditEventID: func(outcome userSettingsReplacementOutcome) (string, error) {
-			return outcome.AuditEventID, nil
+		freshAuditEventID: func(outcome userSettingsReplacementOutcome) (model.AuditEventID, error) {
+			return model.AuditEventID(outcome.AuditEventID), nil
 		},
 	})
 	if err != nil {

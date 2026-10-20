@@ -281,14 +281,12 @@ func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Cont
 
 type examIntegrityReviewAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (adapter examIntegrityReviewAuditAdapter) Begin(ctx context.Context, call examreview.Call, action model.Action,
-	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (string, error) {
+func (adapter examIntegrityReviewAuditAdapter) Begin(ctx context.Context, call examreview.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	return adapter.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource,
 		scopeType, scopeID, operation, value, nil)
 }
 
-func (adapter examIntegrityReviewAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (adapter examIntegrityReviewAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return adapter.audit.Fail(ctx, id, code)
 }
 

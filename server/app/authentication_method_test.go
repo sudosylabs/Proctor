@@ -76,7 +76,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	if err = service.enrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
-	if passwords.enroll == nil || passwords.enroll.Credential.UserID != principal.UserID || passwords.enroll.Credential.PasswordHash == "" || passwords.enroll.Credential.PasswordHash == "correct horse battery staple" || passwords.enroll.AuditEventID != audit.beginID {
+	if passwords.enroll == nil || passwords.enroll.Credential.UserID != principal.UserID || passwords.enroll.Credential.PasswordHash == "" || passwords.enroll.Credential.PasswordHash == "correct horse battery staple" || passwords.enroll.AuditEventID != model.AuditEventID(audit.beginID) {
 		t.Fatalf("enrollment = %#v", passwords.enroll)
 	}
 	weak := principal

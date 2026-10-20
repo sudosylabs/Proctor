@@ -197,7 +197,7 @@ type ExamManagerMutation struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	ChangedAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Notices          []ExamManagerMail
 }
@@ -223,7 +223,7 @@ type ExamArchive struct {
 	ManagerOverride  bool
 	ExpectedRevision int64
 	ArchivedAt       int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -238,7 +238,7 @@ type ExamAuthoringCreation struct {
 	Exam         *model.Exam
 	Draft        *model.ExamDraft
 	Manager      *model.ExamManager
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -252,7 +252,7 @@ type ExamDraftTextUpdate struct {
 	Title                *string
 	InstructionsMarkdown *string
 	UpdatedAt            int64
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -266,7 +266,7 @@ type ExamDraftFocusLossUpdate struct {
 	ExpectedRevision int64
 	FocusLoss        model.FocusLossPolicy
 	UpdatedAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -279,7 +279,7 @@ type ExamDraftNativePolicyUpdate struct {
 	ExpectedRevision int64
 	NativePolicy     model.NativeSecurityPolicy
 	UpdatedAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -294,7 +294,7 @@ type ExamDraftBrowserPolicyUpdate struct {
 	ExpectedRevision  int64
 	Policy            model.BrowserPolicy
 	UpdatedAt         int64
-	AuditEventID      string
+	AuditEventID      model.AuditEventID
 	AuditAt           int64
 }
 
@@ -518,7 +518,7 @@ type MailDeliveryListOptions struct {
 type MailDeliveryMutation struct {
 	ID               model.MailDeliveryID
 	ExpectedRevision int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -665,7 +665,7 @@ type JobAttemptListOptions struct {
 type JobMutation struct {
 	ID               model.JobID
 	ExpectedRevision int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -761,7 +761,7 @@ type ProfilePicturePublication struct {
 	LeaseID              model.UploadLeaseID
 	Renditions           []model.FileRendition
 	ChangedAt            time.Time
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -805,7 +805,7 @@ type ProfilePictureRemoval struct {
 	ExpectedCurrentRevisionID model.FileRevisionID
 	ExpectedSHA256            string
 	ChangedAt                 time.Time
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 }
 
@@ -899,7 +899,7 @@ type InstitutionStore interface {
 
 type InstitutionUpdate struct {
 	Institution  *model.Institution
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -907,13 +907,13 @@ type InstitutionUpdate struct {
 // Unit and completing its already-persisted mutation audit in one transaction.
 type AcademicUnitCreation struct {
 	Unit         *model.AcademicUnit
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
 type AcademicUnitUpdate struct {
 	Unit         *model.AcademicUnit
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -922,7 +922,7 @@ type AcademicUnitArchive struct {
 	ExpectedRevision int64
 	ID               model.AcademicUnitID
 	ArchiveAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -945,13 +945,13 @@ type AcademicUnitStore interface {
 // ProgrammeStore persists courses of study owned by academic units.
 type ProgrammeCreation struct {
 	Programme    *model.Programme
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
 type ProgrammeUpdate struct {
 	Programme    *model.Programme
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -960,7 +960,7 @@ type ProgrammeArchive struct {
 	ExpectedRevision int64
 	ID               model.ProgrammeID
 	ArchiveAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -980,13 +980,13 @@ type ProgrammeStore interface {
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
 type ProgrammeLevelCreation struct {
 	Level        *model.ProgrammeLevel
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
 type ProgrammeLevelUpdate struct {
 	Level        *model.ProgrammeLevel
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -995,7 +995,7 @@ type ProgrammeLevelArchive struct {
 	ExpectedRevision int64
 	ID               model.ProgrammeLevelID
 	ArchiveAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1024,13 +1024,13 @@ type AcademicPeriodVisibilityScope struct {
 // periods.
 type AcademicPeriodCreation struct {
 	Period       *model.AcademicPeriod
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
 type AcademicPeriodUpdate struct {
 	Period       *model.AcademicPeriod
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -1039,7 +1039,7 @@ type AcademicPeriodArchive struct {
 	ExpectedRevision int64
 	ID               model.AcademicPeriodID
 	ArchiveAt        int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1059,7 +1059,7 @@ type AcademicPeriodStore interface {
 // ClassStore persists concrete programme-level rosters for academic periods.
 type ClassCreation struct {
 	Class        *model.Class
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -1067,7 +1067,7 @@ type ClassUpdate struct {
 	Class                  *model.Class
 	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
-	AuditEventID           string
+	AuditEventID           model.AuditEventID
 	AuditAt                int64
 }
 
@@ -1076,7 +1076,7 @@ type ClassArchive struct {
 	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
 	ArchiveAt              int64
-	AuditEventID           string
+	AuditEventID           model.AuditEventID
 	AuditAt                int64
 }
 
@@ -1141,7 +1141,7 @@ type UserProfileUpdate struct {
 	UserID           model.UserID
 	Changes          model.UserProfileChanges
 	ExpectedRevision int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1159,7 +1159,7 @@ type UserDisabledStateChange struct {
 	DeliveryJob      *model.Job
 	ChangedAt        int64
 	RevocationReason model.SessionRevocationReason
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Command          *CommandIdempotency
 	Replayed         bool
@@ -1316,7 +1316,7 @@ type ExternalIdentityLink struct {
 	ExternalLoginStateID model.ExternalLoginStateID
 	Identity             *model.ExternalIdentity
 	Capabilities         AccessDeploymentCapabilities
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -1328,7 +1328,7 @@ type ExternalIdentityUnlink struct {
 	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        int64
 	RevocationReason model.SessionRevocationReason
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1423,7 +1423,7 @@ type UserEmailChange struct {
 	WarningOccurrence, VerificationOccurrence *model.MailOccurrence
 	WarningDelivery, VerificationDelivery     *model.MailDelivery
 	WarningJob, VerificationJob               *model.Job
-	AuditEventID                              string
+	AuditEventID                              model.AuditEventID
 	AuditAt                                   int64
 }
 
@@ -1440,7 +1440,7 @@ type PrivilegedEmailVerification struct {
 	Occurrence       *model.MailOccurrence
 	Delivery         *model.MailDelivery
 	Job              *model.Job
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1494,7 +1494,7 @@ type StudentClassInvitationIssue struct {
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -1509,7 +1509,7 @@ type TeacherAcademicUnitInvitationIssue struct {
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -1583,7 +1583,7 @@ type ScopedRoleInvitationIssue struct {
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -1596,7 +1596,7 @@ type ScopedRoleInvitationAcceptance struct {
 	RoleBinding *model.RoleBinding
 	// AuditEventID identifies the already-persisted secret-free attempt. The
 	// aggregate completes it atomically with acceptance or exact replay.
-	AuditEventID       string
+	AuditEventID       model.AuditEventID
 	AuditAt            int64
 	RequiredActions    []model.Action
 	BrowserTransaction *BrowserInvitationTransactionProof
@@ -1708,7 +1708,7 @@ type InvitationBatchDuplicate struct {
 	CanonicalOperation   string
 	CanonicalKeyDigest   [sha256.Size]byte
 	CanonicalFingerprint [sha256.Size]byte
-	AuditEventID         string
+	AuditEventID         model.AuditEventID
 	AuditAt              int64
 }
 
@@ -1740,7 +1740,7 @@ type InvitationResend struct {
 	Delivery         *model.MailDelivery
 	DeliveryJob      *model.Job
 	ActorUserID      model.UserID
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1751,7 +1751,7 @@ type InvitationRevocation struct {
 	ExpectedRevision int64
 	ActorUserID      model.UserID
 	RevocationNotice *PreparedMail
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -1774,8 +1774,8 @@ type InvitationReplacement struct {
 	Delivery                *model.MailDelivery
 	DeliveryJob             *model.Job
 	ActorUserID             model.UserID
-	CurrentAuditEventID     string
-	ReplacementAuditEventID string
+	CurrentAuditEventID     model.AuditEventID
+	ReplacementAuditEventID model.AuditEventID
 	AuditAt                 int64
 }
 
@@ -1867,8 +1867,8 @@ type OnboardingImportRow struct {
 type OnboardingImportCreation struct {
 	Import             *OnboardingImport
 	ParseJob           *model.Job
-	AuditEventID       string
-	SourceAuditEventID string
+	AuditEventID       model.AuditEventID
+	SourceAuditEventID model.AuditEventID
 	AuditAt            int64
 }
 
@@ -1891,8 +1891,8 @@ type OnboardingImportCommit struct {
 	IdempotencyKey     [sha256.Size]byte
 	ExecutionJob       *model.Job
 	At                 time.Time
-	AuditEventID       string
-	SourceAuditEventID string
+	AuditEventID       model.AuditEventID
+	SourceAuditEventID model.AuditEventID
 	AuditAt            int64
 }
 
@@ -1901,8 +1901,8 @@ type OnboardingImportCancellation struct {
 	ActorUserID        model.UserID
 	Principal          model.Principal
 	At                 time.Time
-	AuditEventID       string
-	SourceAuditEventID string
+	AuditEventID       model.AuditEventID
+	SourceAuditEventID model.AuditEventID
 	AuditAt            int64
 }
 
@@ -1933,8 +1933,8 @@ type InvitationStore interface {
 	IssueScopedRoleIdempotently(context.Context, *ScopedRoleInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
 	ResolveOnboardingInvitationNoOp(context.Context, *model.Invitation) (*model.Invitation, bool, error)
 	FindCommandOutcome(context.Context, *CommandIdempotency) (*InvitationCommandResult, error)
-	ReplayIssue(context.Context, *CommandIdempotency, string, int64) (*InvitationCommandResult, error)
-	ReplayAdministration(context.Context, *CommandIdempotency, string, int64) (*InvitationAdministrationCommandResult, error)
+	ReplayIssue(context.Context, *CommandIdempotency, model.AuditEventID, int64) (*InvitationCommandResult, error)
+	ReplayAdministration(context.Context, *CommandIdempotency, model.AuditEventID, int64) (*InvitationAdministrationCommandResult, error)
 	RecordBatchDuplicate(context.Context, *InvitationBatchDuplicate, *CommandIdempotency) (*InvitationBatchCommandResult, error)
 	Get(context.Context, model.InvitationID) (*model.Invitation, error)
 	GetByClaimHash(context.Context, string) (*model.Invitation, error)
@@ -2102,7 +2102,7 @@ type MFAActivationMutation struct {
 	RecoveryCodes           []*model.MFARecoveryCode
 	SessionID               model.SessionID
 	At                      time.Time
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 	Notice                  MFASecurityNotice
 }
@@ -2113,7 +2113,7 @@ type MFARecoveryCodesRegeneration struct {
 	UserID                  model.UserID
 	RecoveryCodes           []*model.MFARecoveryCode
 	At                      int64
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 	Notice                  MFASecurityNotice
 }
@@ -2123,7 +2123,7 @@ type MFADisablement struct {
 	RecentAuthenticationTTL time.Duration
 	UserID                  model.UserID
 	At                      int64
-	AuditEventID            string
+	AuditEventID            model.AuditEventID
 	AuditAt                 int64
 	Notice                  MFASecurityNotice
 }
@@ -2150,7 +2150,7 @@ type MFAStore interface {
 // AffiliationStore persists non-exclusive institution relationships.
 type AffiliationCreation struct {
 	Affiliation  *model.Affiliation
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 	Command      *CommandIdempotency
 	Replayed     bool
@@ -2161,7 +2161,7 @@ type AffiliationEnd struct {
 	ID               model.AffiliationID
 	ExpectedRevision int64
 	EndAt            int64
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 	Command          *CommandIdempotency
 	Replayed         bool
@@ -2183,7 +2183,7 @@ type AcademicUnitMemberCreation struct {
 	Member                    *model.AcademicUnitMember
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Command                   *CommandIdempotency
 	Replayed                  bool
@@ -2196,7 +2196,7 @@ type AcademicUnitMemberEnd struct {
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
 	EndAt                     int64
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Command                   *CommandIdempotency
 	Replayed                  bool
@@ -2230,11 +2230,11 @@ type ClassMemberEnrollment struct {
 	ExpectedPreviousID                 model.ClassMemberID
 	ExpectedRecipientRevision          int64
 	StudentProgression                 bool
-	ProgressionSourceAuditEventID      string
-	ProgressionDestinationAuditEventID string
+	ProgressionSourceAuditEventID      model.AuditEventID
+	ProgressionDestinationAuditEventID model.AuditEventID
 	Notice                             *PreparedMail
-	AuditEventID                       string
-	PreviousAuditEventID               string
+	AuditEventID                       model.AuditEventID
+	PreviousAuditEventID               model.AuditEventID
 	AuditAt                            int64
 	Command                            *CommandIdempotency
 	Replayed                           bool
@@ -2247,7 +2247,7 @@ type ClassMemberEnd struct {
 	ExpectedRecipientRevision int64
 	EndAt                     int64
 	Notice                    *PreparedMail
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Command                   *CommandIdempotency
 	Replayed                  bool
@@ -2302,7 +2302,7 @@ func (p PasswordCredentialProof) IsValid() bool { return p.ID.IsValid() && p.Rev
 type PasswordCredentialEnrollment struct {
 	Credential   *model.PasswordCredential
 	Capabilities AccessDeploymentCapabilities
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -2311,7 +2311,7 @@ type PasswordCredentialRemoval struct {
 	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        int64
 	RevocationReason model.SessionRevocationReason
-	AuditEventID     string
+	AuditEventID     model.AuditEventID
 	AuditAt          int64
 }
 
@@ -2330,7 +2330,7 @@ type SessionRevocation struct {
 	DeliveryJob  *model.Job
 	RevokedAt    int64
 	Reason       model.SessionRevocationReason
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -2363,7 +2363,7 @@ type UserSessionsRevocation struct {
 	DeliveryJob  *model.Job
 	RevokedAt    int64
 	Reason       model.SessionRevocationReason
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 	Command      *CommandIdempotency
 	Replayed     bool
@@ -2427,7 +2427,7 @@ type DesktopRegistrationRevocation struct {
 	RegistrationID model.DesktopRegistrationID
 	UserID         model.UserID
 	RevokedAt      int64
-	AuditEventID   string
+	AuditEventID   model.AuditEventID
 	AuditAt        int64
 }
 
@@ -2469,7 +2469,7 @@ type SessionCredentialStore interface {
 // already-persisted audit attempt.
 type RoleCreation struct {
 	Role         *model.Role
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -2477,7 +2477,7 @@ type RoleCreation struct {
 // already-persisted audit attempt.
 type RoleUpdate struct {
 	Role         *model.Role
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -2486,7 +2486,7 @@ type RoleUpdate struct {
 type RoleArchive struct {
 	ID           model.RoleID
 	ArchiveAt    int64
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -2513,7 +2513,7 @@ type RoleBindingCreation struct {
 	ExpectedRolePermissions   []string
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Command                   *CommandIdempotency
 	Replayed                  bool
@@ -2528,7 +2528,7 @@ type RoleBindingEnd struct {
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
 	Capabilities              AccessDeploymentCapabilities
-	AuditEventID              string
+	AuditEventID              model.AuditEventID
 	AuditAt                   int64
 	Command                   *CommandIdempotency
 	Replayed                  bool
@@ -2579,8 +2579,8 @@ type AuditVisibilityScope struct {
 // Complete permits only the terminal transition from attempt to success/fail.
 type AuditStore interface {
 	Save(context.Context, *model.AuditEvent) (*model.AuditEvent, error)
-	Get(context.Context, string) (*model.AuditEvent, error)
-	Complete(context.Context, string, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
+	Get(context.Context, model.AuditEventID) (*model.AuditEvent, error)
+	Complete(context.Context, model.AuditEventID, model.AuditStatus, string, []byte, int64) (*model.AuditEvent, error)
 	List(context.Context, AuditListOptions) ([]*model.AuditEvent, error)
 }
 

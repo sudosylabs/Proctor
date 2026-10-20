@@ -26,8 +26,8 @@ type RetentionExpiryMaintenanceStore interface {
 }
 
 type RetentionExpirySystemAuditor interface {
-	BeginRetentionExpiry(context.Context, model.InstitutionID, model.RetentionExpiryKind, string) (string, error)
-	FailRetention(context.Context, string) error
+	BeginRetentionExpiry(context.Context, model.InstitutionID, model.RetentionExpiryKind, string) (model.AuditEventID, error)
+	FailRetention(context.Context, model.AuditEventID) error
 	PrepareRetentionCleanupAudit(context.Context, model.InstitutionID) (*model.AuditEvent, error)
 }
 
@@ -217,17 +217,17 @@ func (h retentionExpiryHandler) cleanupAuditBatch(ctx context.Context, e jobengi
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}
-	result, err := h.records.ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: cp.AfterID, Before: cp.Before, Limit: limit, Audit: prepared})
+	result, err := h.records.ReconcileCleanupAuditExpiry(ctx, &store.RetentionCleanupAuditReconciliation{AfterID: model.AuditEventID(cp.AfterID), Before: cp.Before, Limit: limit, Audit: prepared})
 	if err != nil {
 		return jobengine.RetryableFailure("retention.unavailable", err)
 	}
 	if result == nil || result.Examined < 0 || result.Examined > limit || result.Changed < 0 || result.Changed > result.Examined || result.Scheduled < 0 || result.Scheduled > result.Changed || result.Cancelled < 0 || result.Cancelled > result.Changed || result.Expired < 0 || result.Expired > result.Changed ||
-		!result.Before.Equal(cp.Before) || result.AfterID < cp.AfterID || (result.AfterID != "" && !model.IsValidId(result.AfterID)) || (result.HasMore && result.Examined == 0) {
+		!result.Before.Equal(cp.Before) || result.AfterID.String() < cp.AfterID || (result.AfterID != "" && !result.AfterID.IsValid()) || (result.HasMore && result.Examined == 0) {
 		return jobengine.PermanentFailure("job.invariant_failed", errors.New("invalid cleanup audit batch result"))
 	}
 	cp.Examined += result.Examined
 	cp.Changed += result.Changed
-	cp.AfterID = result.AfterID
+	cp.AfterID = result.AfterID.String()
 	cp.Done = !result.HasMore
 	document, err := json.Marshal(cp)
 	if err != nil {

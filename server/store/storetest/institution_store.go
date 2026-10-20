@@ -44,13 +44,13 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	candidate.DisplayName = "Audited Northbridge"
 	candidate.PrepareUpdate(model.NowUTC())
 	updated, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
-		Institution: &candidate, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
+		Institution: &candidate, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	if updated.DisplayName != "Audited Northbridge" {
 		t.Fatalf("UpdateWithAudit() = %#v", updated)
 	}
-	completed, err := ss.Audit().Get(ctx, attempt.ID.String())
+	completed, err := ss.Audit().Get(ctx, attempt.ID)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("audit status = %q", completed.Status)
@@ -64,7 +64,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	stale.DisplayName = "Stale Northbridge"
 	stale.PrepareUpdate(model.NowUTC())
 	if _, err := ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
-		Institution: &stale, AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
+		Institution: &stale, AuditEventID: staleAttempt.ID, AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
 		t.Fatalf("stale UpdateWithAudit() error = %v, want conflict", err)
 	}
@@ -73,7 +73,7 @@ func testInstitutionStoreUpdateWithAudit(t *testing.T, ss store.Store) {
 	rolledBack.DisplayName = "Must Roll Back"
 	rolledBack.PrepareUpdate(model.NowUTC())
 	_, err = ss.Institution().UpdateWithAudit(ctx, &store.InstitutionUpdate{
-		Institution: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		Institution: &rolledBack, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")

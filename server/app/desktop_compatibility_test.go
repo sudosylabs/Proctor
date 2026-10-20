@@ -322,7 +322,7 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 	}
 	if result.Revision != 2 || authorization.action != model.ActionDesktopCompatibilityPolicyManage ||
 		persistence.replaceInput == nil || persistence.replaceInput.ActorID != invocation.Principal().UserID ||
-		persistence.replaceInput.AuditEventID != audit.beginID || persistence.command == nil ||
+		persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) || persistence.command == nil ||
 		persistence.command.Operation != "desktop_compatibility_policy.replace.v1" ||
 		audit.attempt.Action != model.ActionDesktopCompatibilityPolicyManage ||
 		audit.attempt.ScopeType != model.RoleScopeInstitution {

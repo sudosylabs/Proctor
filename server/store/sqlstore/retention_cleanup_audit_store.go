@@ -16,7 +16,7 @@ import (
 )
 
 func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, input *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
-	if input == nil || input.Limit < 1 || input.Limit > 100 || input.Before.IsZero() || (input.AfterID != "" && !model.IsValidId(input.AfterID)) || input.Audit == nil || !input.Audit.ID.IsZero() ||
+	if input == nil || input.Limit < 1 || input.Limit > 100 || input.Before.IsZero() || (input.AfterID != "" && !input.AfterID.IsValid()) || input.Audit == nil || !input.Audit.ID.IsZero() ||
 		!input.Audit.ActorID.IsZero() || !input.Audit.SessionID.IsZero() || input.Audit.Action != string(model.ActionRetentionCleanupManage) || input.Audit.Status != model.AuditStatusAttempt ||
 		input.Audit.Resource.Type != model.ResourceInstitution || input.Audit.ScopeType != model.RoleScopeInstitution || input.Audit.ScopeID != input.Audit.Resource.ID || len(input.Audit.Result) > 0 || len(input.Audit.PriorState) > 0 {
 		return nil, store.NewErrInvalidInput("retention_expiry", "cleanup_batch", nil)
@@ -84,7 +84,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 				return nil, err
 			}
 			result.Examined++
-			result.AfterID = id
+			result.AfterID = model.AuditEventID(id)
 			permitted := control.Permits(policy) && record.Blocker == model.RetentionExpiryEligible
 			change := plannedChange{id: id}
 			if row.ScheduledAt.Valid && (!permitted || row.PolicyRevision.Int64 != policy.Revision || row.ControlRevision.Int64 != control.Revision) {
@@ -136,7 +136,7 @@ func (s *SQLRetentionStore) ReconcileCleanupAuditExpiry(ctx context.Context, inp
 		if err != nil {
 			return nil, err
 		}
-		if _, err = completeAuditEvent(ctx, tx, audit.ID.String(), model.AuditStatusSuccess, "", encoded, model.MillisFromTime(at)); err != nil {
+		if _, err = completeAuditEvent(ctx, tx, audit.ID, model.AuditStatusSuccess, "", encoded, model.MillisFromTime(at)); err != nil {
 			return nil, err
 		}
 		return result, nil

@@ -57,7 +57,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	}
 	probe.SetPolicy(t, ctx, 1)
 	broken := *input
-	broken.AuditEventID = model.NewId()
+	broken.AuditEventID = model.NewAuditEventID()
 	if _, err = exports.Create(ctx, &broken, command); err == nil {
 		t.Fatal("export committed without its audit")
 	}
@@ -239,10 +239,10 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	}
 	// The other category freezes its own structured records without work.
 	decision, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: scope.SubmissionID, ReviewID: model.NewSubmissionReviewID(), DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: flagged.Flag.ID,
-		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retained review rationale.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "export-decision", "export-decision"))
+		ActorUserID: f.manager.ID, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retained review rationale.", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "export-decision", "export-decision"))
 	requireNoError(t, err)
 	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: scope.SubmissionID, ReviewID: decision.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: decision.Review.Revision, ChangedAt: model.NowUTC(),
-		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "export-finalize", "export-finalize"))
+		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, scope.SubmissionID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "export-finalize", "export-finalize"))
 	requireNoError(t, err)
 	integrityInput := makeInput(model.RetentionCategoryIntegrity)
 	integrity, err := exports.Create(ctx, integrityInput, examCommand(f.manager.ID, store.ExamExportCreateOperation, "export-integrity", "export-integrity"))

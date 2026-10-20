@@ -28,9 +28,9 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 	_, err = appendBrowserActivityFixture(t, ctx, ss, &store.BrowserActivityAppend{Access: access, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SourceSessionID: source, Events: []model.BrowserActivityEvent{browserActivityEvent(2, model.BrowserActivityOpened, f.revisionID)}})
 	requireNoError(t, err)
 	native := store.NativeDeliveryAccess{Access: access, StreamID: connected.Security.DeliveryStreamID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation}
-	_, err = ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: native, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewId(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.NativeDeliveryGapsOperation, "expiry-gap", "expiry-gap"))
+	_, err = ss.ExamAttempt().DeclareNativeDeliveryGaps(ctx, &store.NativeDeliveryGapDeclaration{Access: native, Declaration: model.DeclareDeliveryGaps{DeclarationID: model.NewId(), AllocatedThroughSequence: 4, Ranges: []model.SequenceRange{{First: 1, Last: 1}}, Reason: "spool_lost"}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}, examCommand(f.candidate.ID, store.NativeDeliveryGapsOperation, "expiry-gap", "expiry-gap"))
 	requireNoError(t, err)
-	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+	seal := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID, ExpectedWorkspaceCursor: connected.Workspace.Cursor}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "expiry-seal", "expiry-seal"))
 	requireNoError(t, err)
@@ -40,9 +40,9 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 		t.Fatal("unexpired upload selected")
 	}
 	subID := sealed.Receipt.SubmissionID
-	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: subID, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "expiry-review", "expiry-review"))
+	draft, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &store.ExamIntegrityReviewDraftMutation{SubmissionID: subID, ReviewID: model.NewSubmissionReviewID(), ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "expiry-review", "expiry-review"))
 	requireNoError(t, err)
-	finalized, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "expiry-review-final", "expiry-review-final"))
+	finalized, err := ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID, ReviewID: draft.Review.ID, ExpectedReviewRevision: draft.Review.Revision, ActorUserID: f.manager.ID, ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "expiry-review-final", "expiry-review-final"))
 	requireNoError(t, err)
 	age(t, ctx, connected.Attempt.ID)
 	readAccess := access
@@ -74,11 +74,11 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 		t.Fatalf("abandoned sources=%#v", due)
 	}
 	for _, d := range due {
-		input := &store.DeliveryExpiry{Due: d, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		input := &store.DeliveryExpiry{Due: d, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 		if _, err := ss.ExamAttempt().ExpireDelivery(ctx, input); err == nil {
 			t.Fatal("expiry committed without audit")
 		}
-		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 		if d.Family == "native" && len(corrupt) > 0 {
 			for _, raw := range []string{`{`, `{}`, `{"closed_at":"2026-09-09T12:00:00Z"}`} {
 				restore := corrupt[0](d.SourceID, raw)
@@ -94,7 +94,7 @@ func TestDeliveryExpiryStore(t *testing.T, ss store.Store, age func(*testing.T, 
 		if !changed {
 			t.Fatal("first expiry was not committed")
 		}
-		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+		input.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 		changed, err = ss.ExamAttempt().ExpireDelivery(ctx, input)
 		requireNoError(t, err)
 		if changed {

@@ -61,7 +61,7 @@ type nativeAppendOutcome struct {
 }
 
 func (s *sqlExamAttemptStore) AppendNativeDelivery(ctx context.Context, input *store.NativeDeliveryAppend, command *store.CommandIdempotency) (*model.NativeSecurityAcknowledgement, error) {
-	if input == nil || input.Batch.Validate() != nil || command == nil || command.UserID != input.Access.Access.CandidateUserID || command.Operation != store.NativeDeliveryAppendOperation || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || input.Access.StreamID != input.Batch.StreamID {
+	if input == nil || input.Batch.Validate() != nil || command == nil || command.UserID != input.Access.Access.CandidateUserID || command.Operation != store.NativeDeliveryAppendOperation || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Access.StreamID != input.Batch.StreamID {
 		return nil, store.NewErrInvalidInput("native_delivery", "batch", nil)
 	}
 	release, admissionErr := s.enterDeliveryAppend(ctx, "native")

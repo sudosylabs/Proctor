@@ -123,15 +123,15 @@ type Authorizer interface {
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 // SystemAuditor owns audit creation for trusted durable work. It deliberately
 // accepts SystemCall rather than Call so Jobs cannot impersonate a User.
 type SystemAuditor interface {
-	Begin(context.Context, SystemCall, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, SystemCall, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 
 // LifecycleJobFactory constructs validated durable intents. Persistence owns
@@ -795,7 +795,7 @@ func (service *Service) ListNoShows(ctx context.Context, call Call, examID model
 
 type systemLifecycleInput struct {
 	sittingID   model.ExamSittingID
-	auditID     string
+	auditID     model.AuditEventID
 	auditAt     int64
 	finalizeJob *model.Job
 }
@@ -919,7 +919,7 @@ func (service *Service) publishLifecycle(ctx context.Context, result *store.Exam
 	}
 }
 
-func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
+func (service *Service) failSystemAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.systemAudit.Fail(ctx, auditID, code); auditErr != nil {
@@ -1037,7 +1037,7 @@ func requireScheduledCommandResult(result *store.ExamSittingCommandResult, examI
 	return value, nil
 }
 
-func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
+func (service *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.auditor.Fail(ctx, auditID, code); auditErr != nil {

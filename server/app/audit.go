@@ -33,24 +33,20 @@ type userSettingsAuditAdapter struct{ audit *auditService }
 
 type mailAuditAdapter struct{ audit *auditService }
 
-func (a mailAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource,
-	operation string, value, prior map[string]any,
-) (string, error) {
+func (a mailAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return (mutationAuditAdapter{audit: a.audit}).Begin(ctx, invocation, action, resource, operation, value, prior)
 }
 
-func (a mailAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action,
-	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any,
-) (string, error) {
+func (a mailAuditAdapter) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return (mutationAuditAdapter{audit: a.audit}).BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID,
 		operation, value, prior)
 }
 
-func (a mailAuditAdapter) Fail(ctx context.Context, auditID, errorCode string) error {
+func (a mailAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, errorCode string) error {
 	return (mutationAuditAdapter{audit: a.audit}).Fail(ctx, auditID, errorCode)
 }
 
-func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (string, error) {
+func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
 	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) ||
 		delivery == nil || delivery.Validate() != nil || (operation != "cancel" && operation != "retry") {
 		return "", auditUnavailable(errors.New("mail control audit dependencies are invalid"))
@@ -61,7 +57,7 @@ func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocat
 	if appErr != nil {
 		return "", appErr
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
 func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
@@ -521,7 +517,7 @@ func (s *auditService) prepareCriticalActionAtScope(
 // and the use case must return the audit failure instead of reporting success.
 func (s *auditService) CompleteCriticalAction(
 	ctx context.Context,
-	eventID string,
+	eventID model.AuditEventID,
 	status model.AuditStatus,
 	errorCode string,
 	result any,

@@ -66,7 +66,7 @@ func academicUnitMemberColumns() []string {
 const academicUnitMemberLifecycleLock = "proctor:academic-unit-member-lifecycle"
 
 func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error) {
-	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Member == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "creation", nil)
 	}
 	if !input.Member.ID.IsValid() {
@@ -251,7 +251,7 @@ func (s SQLAcademicUnitMemberStore) End(ctx context.Context, id model.AcademicUn
 }
 
 func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*academicUnitMemberMutationResult, error) {
@@ -310,7 +310,7 @@ func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 		func(replayed, noOp bool) { input.Replayed, input.NoOp = replayed, noOp }, execute)
 }
 
-func (s SQLAcademicUnitMemberStore) runAcademicUnitMemberMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID string, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*academicUnitMemberMutationResult, error)) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) runAcademicUnitMemberMutation(ctx context.Context, operation string, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64, setOutput func(bool, bool), execute func(context.Context, *sqlxTxWrapper) (*academicUnitMemberMutationResult, error)) (*model.AcademicUnitMember, error) {
 	if command == nil {
 		result, err := runSQLTransaction(ctx, s.GetMaster().Begin, operation, execute)
 		if err != nil {

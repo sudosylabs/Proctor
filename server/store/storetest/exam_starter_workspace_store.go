@@ -237,7 +237,7 @@ func starterWorkspaceMutation(t *testing.T, ctx context.Context, ss store.Store,
 	t.Helper()
 	audit := saveExamResourceAudit(t, ctx, ss, examID, actorID, unitID)
 	return &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: actorID, ExpectedDraftRevision: expected,
-		ChangedAt: at, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
+		ChangedAt: at, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
 }
 
 func reserveStarterWorkspaceObject(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID,

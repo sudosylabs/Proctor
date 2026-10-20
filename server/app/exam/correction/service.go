@@ -49,8 +49,8 @@ type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (string, error)
-	Fail(context.Context, string, string) error
+	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	Fail(context.Context, model.AuditEventID, string) error
 }
 type Effects interface {
 	Corrected(context.Context, Result) error
@@ -396,7 +396,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	}
 	return authorizationDecision{action == model.ActionExamSittingManageOverride, access.Exam.AcademicUnitID, action}, nil
 }
-func (s *Service) failAudit(ctx context.Context, id string, err error) error {
+func (s *Service) failAudit(ctx context.Context, id model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.correction.unavailable")
 	if auditErr := s.auditor.Fail(ctx, id, code); auditErr != nil {

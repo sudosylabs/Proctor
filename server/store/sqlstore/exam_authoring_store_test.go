@@ -78,7 +78,7 @@ func TestPrepareExamAuthoringCreationRejectsBrokenAggregate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = prepareExamAuthoringCreation(&store.ExamAuthoringCreation{
-		Exam: exam, Draft: draft, Manager: manager, AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		Exam: exam, Draft: draft, Manager: manager, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	})
 	var invalid *store.ErrInvalidInput
 	if !errors.As(err, &invalid) || invalid.Field != "aggregate" {

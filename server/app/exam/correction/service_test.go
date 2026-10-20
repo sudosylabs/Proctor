@@ -345,12 +345,12 @@ type correctionAuditFake struct {
 	value map[string]any
 }
 
-func (a *correctionAuditFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (string, error) {
+func (a *correctionAuditFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value, _ map[string]any) (model.AuditEventID, error) {
 	a.f.order = append(a.f.order, "audit.begin")
 	a.value = value
-	return model.NewId(), nil
+	return model.NewAuditEventID(), nil
 }
-func (a *correctionAuditFake) Fail(context.Context, string, string) error { return nil }
+func (a *correctionAuditFake) Fail(context.Context, model.AuditEventID, string) error { return nil }
 
 type correctionEffectFake struct {
 	f           *correctionFixture

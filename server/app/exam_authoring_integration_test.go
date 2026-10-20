@@ -218,7 +218,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	if _, err := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledManager.ID, ExpectedRevision: disabledManager.Revision, Disabled: false,
-		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID.String(), AuditAt: reenabledAt,
+		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID, AuditAt: reenabledAt,
 	})); err != nil {
 		t.Fatal(err)
 	}

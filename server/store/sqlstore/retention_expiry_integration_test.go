@@ -184,7 +184,7 @@ func TestRetentionExpiryCompletedHistoryDoesNotPinAuditForever(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := s.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID.String(), AuditAt: model.GetMillis()})
+		r, err := s.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit, RecordID: id, AuditEventID: a.ID, AuditAt: model.GetMillis()})
 		if err != nil || r == nil || *r != expected {
 			t.Fatalf("history expiry=%#v expected=%#v error=%v", r, expected, err)
 		}
@@ -220,7 +220,7 @@ func TestRetentionExpiryCompletedHistoryDoesNotPinAuditForever(t *testing.T) {
 	if err = s.GetMaster().Get(ctx, &count, `SELECT count(*) FROM administrator_recovery_records WHERE id=?`, recordID); err != nil || count != 0 {
 		t.Fatalf("completed recovery evidence pinned audit count=%d error=%v", count, err)
 	}
-	if _, err = s.Audit().Get(ctx, a.ID.String()); !store.IsNotFound(err) {
+	if _, err = s.Audit().Get(ctx, a.ID); !store.IsNotFound(err) {
 		t.Fatalf("completed recovery audit retained: %v", err)
 	}
 }

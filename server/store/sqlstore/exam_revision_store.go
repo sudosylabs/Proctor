@@ -157,7 +157,7 @@ func (s SQLExamRevisionStore) Publish(ctx context.Context, input *store.ExamRevi
 func prepareExamRevisionPublication(input *store.ExamRevisionPublication) (*store.ExamRevisionPublication, error) {
 	if input == nil || !input.RevisionID.IsValid() || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() ||
 		input.ExpectedDraftRevision < 1 || input.Kind != model.ExamRevisionPublicationStandard || input.PublishedAt.IsZero() ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_revision", "publication", nil)
 	}
 	prepared := *input

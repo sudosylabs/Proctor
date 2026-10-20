@@ -57,7 +57,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 			{CodeHash: firstHash},
 			{CodeHash: secondHash},
 		},
-		SessionID: session.ID, At: model.TimeFromMillis(now), AuditEventID: activationAudit.ID.String(), AuditAt: now,
+		SessionID: session.ID, At: model.TimeFromMillis(now), AuditEventID: activationAudit.ID, AuditAt: now,
 		Notice: activationNotice,
 	})
 	requireNoError(t, err)
@@ -100,7 +100,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	requireNoError(t, ss.MFA().ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		UserID: user.ID, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: replacementHash}}, At: now + 5,
-		AuditEventID: regenerationAudit.ID.String(), AuditAt: now + 5, Notice: regenerationNotice,
+		AuditEventID: regenerationAudit.ID, AuditAt: now + 5, Notice: regenerationNotice,
 	}))
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, regenerationAudit, model.MailTemplateIdentityMFARecoveryCodesRegenerated, model.MailDeliveryQueued)
 	count, err = ss.MFA().CountRecoveryCodes(ctx, user.ID)
@@ -116,7 +116,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	disableAudit, disableNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFADisabled, now+7)
 	disableNotice = suppressedMFASecurityNotice(t, disableNotice, model.TimeFromMillis(now+7))
 	disabled, err := ss.MFA().Disable(ctx, &store.MFADisablement{Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour, UserID: user.ID, At: now + 7,
-		AuditEventID: disableAudit.ID.String(), AuditAt: now + 7, Notice: disableNotice})
+		AuditEventID: disableAudit.ID, AuditAt: now + 7, Notice: disableNotice})
 	requireNoError(t, err)
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, disableAudit, model.MailTemplateIdentityMFADisabled, model.MailDeliverySuppressed)
 	if len(disabled.AccessTokenHashes) != 1 ||
@@ -136,7 +136,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 
 func requireMFATransitionCommitted(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, audit *model.AuditEvent, key model.MailTemplateKey, state model.MailDeliveryState) {
 	t.Helper()
-	completed, err := ss.Audit().Get(ctx, audit.ID.String())
+	completed, err := ss.Audit().Get(ctx, audit.ID)
 	requireNoError(t, err)
 	if completed.Status != model.AuditStatusSuccess {
 		t.Fatalf("%s audit status = %s, want success", key, completed.Status)
@@ -208,7 +208,7 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: codeHash}}, SessionID: session.ID, At: model.TimeFromMillis(base + 1),
-		AuditEventID: audit.ID.String(), AuditAt: base + 1, Notice: notice,
+		AuditEventID: audit.ID, AuditAt: base + 1, Notice: notice,
 	})
 	requireNoError(t, err)
 
@@ -261,7 +261,7 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID, At: model.TimeFromMillis(at), AuditEventID: missingAuditID.String(), AuditAt: at, Notice: notice,
+		SessionID:     session.ID, At: model.TimeFromMillis(at), AuditEventID: missingAuditID, AuditAt: at, Notice: notice,
 	})
 	if err == nil {
 		t.Fatal("Activate() without durable audit attempt succeeded")
@@ -284,7 +284,7 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID, At: model.TimeFromMillis(at + 1), AuditEventID: audit.ID.String(), AuditAt: at + 1, Notice: replayNotice,
+		SessionID:     session.ID, At: model.TimeFromMillis(at + 1), AuditEventID: audit.ID, AuditAt: at + 1, Notice: replayNotice,
 	})
 	requireNoError(t, err)
 	replayAudit, secondNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at+2)
@@ -292,13 +292,13 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID, At: model.TimeFromMillis(at + 2), AuditEventID: replayAudit.ID.String(), AuditAt: at + 2, Notice: secondNotice,
+		SessionID:     session.ID, At: model.TimeFromMillis(at + 2), AuditEventID: replayAudit.ID, AuditAt: at + 2, Notice: secondNotice,
 	})
 	if err == nil {
 		t.Fatal("replayed activation succeeded")
 	}
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, audit, model.MailTemplateIdentityMFAEnabled, model.MailDeliveryQueued)
-	replayAuditAfter, auditErr := ss.Audit().Get(ctx, replayAudit.ID.String())
+	replayAuditAfter, auditErr := ss.Audit().Get(ctx, replayAudit.ID)
 	requireNoError(t, auditErr)
 	if replayAuditAfter.Status != model.AuditStatusAttempt {
 		t.Fatalf("replay audit status = %s, want attempt for caller failure completion", replayAuditAfter.Status)

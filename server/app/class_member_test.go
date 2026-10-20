@@ -292,7 +292,7 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 		mailer.requests[0].Details.ClassDisplayName != destination.DisplayName ||
 		persistence.enrollInput.ExpectedPreviousID != previous.ID || persistence.enrollInput.Notice == nil ||
 		persistence.enrollInput.ExpectedRecipientRevision != users.value.Revision ||
-		persistence.enrollInput.AuditEventID != destinationAuditID || persistence.enrollInput.PreviousAuditEventID != sourceAuditID {
+		persistence.enrollInput.AuditEventID != model.AuditEventID(destinationAuditID) || persistence.enrollInput.PreviousAuditEventID != model.AuditEventID(sourceAuditID) {
 		t.Fatalf("transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	}
 	wantAuditResources := []model.Resource{{Type: model.ResourceClass, ID: destination.ID.String()}, {Type: model.ResourceClass, ID: source.ID.String()}}

@@ -107,7 +107,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 		ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID,
 		ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedCurrentRevisionID: f.revisionID,
 		ExpectedWorkspaceCursor: connected.Workspace.Cursor, FinalFocusLossSequence: 2},
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	attachSubmissionReceipt(t, f.candidate, seal)
 	sealed, err := ss.ExamSubmission().Seal(ctx, seal, examCommand(f.candidate.ID, store.ExamSubmissionSealOperation, "privacy-seal", "privacy-seal"))
 	requireNoError(t, err)
@@ -134,7 +134,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	}
 	draft := &store.ExamIntegrityReviewDraftMutation{SubmissionID: subID, ReviewID: model.NewSubmissionReviewID(),
 		ActorUserID: f.manager.ID, ManagerNotes: "private-retirement-review-note", ChangedAt: model.NowUTC(),
-		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}
 	draftKey := examCommand(f.manager.ID, store.ExamIntegrityReviewDraftOperation, "privacy-draft", "privacy-draft")
 	drafted, err := ss.ExamIntegrityReview().UpdateDraft(ctx, draft, draftKey)
 	requireNoError(t, err)
@@ -158,13 +158,13 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 		if len(evidenceRaw) <= model.BrowserActivityAppendMaximumBytes {
 			t.Fatal("maximum evidence fixture did not exceed request bound")
 		}
-		decided, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: subID, ReviewID: drafted.Review.ID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: browserFlag, ActorUserID: f.manager.ID, ExpectedReviewRevision: drafted.Review.Revision, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retain the minimized Review copy independently", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "retirement-browser-decision", "retirement-browser-decision"))
+		decided, err := ss.ExamIntegrityReview().SaveDecision(ctx, &store.ExamIntegrityReviewDecisionMutation{SubmissionID: subID, ReviewID: drafted.Review.ID, DecisionID: model.NewIntegrityReviewDecisionID(), FlagID: browserFlag, ActorUserID: f.manager.ID, ExpectedReviewRevision: drafted.Review.Revision, Outcome: model.IntegrityReviewInconclusive, PrivateRationale: "Retain the minimized Review copy independently", ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()}, examCommand(f.manager.ID, store.ExamIntegrityReviewDecisionOperation, "retirement-browser-decision", "retirement-browser-decision"))
 		requireNoError(t, err)
 		drafted.Review = decided.Review
 	}
 	_, err = ss.ExamIntegrityReview().Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: subID,
 		ReviewID: drafted.Review.ID, ActorUserID: f.manager.ID, ExpectedReviewRevision: drafted.Review.Revision,
-		ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String(), AuditAt: model.GetMillis()},
+		ChangedAt: model.NowUTC(), AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID, AuditAt: model.GetMillis()},
 		examCommand(f.manager.ID, store.ExamIntegrityReviewFinalizeOperation, "privacy-finalize", "privacy-finalize"))
 	requireNoError(t, err)
 	probe.Inspect(t, ctx, subID, false)
@@ -204,7 +204,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: f.institutionID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retirement-privacy"})
 		requireNoError(t, err)
-		return store.RetentionMutation{Principal: principal, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
+		return store.RetentionMutation{Principal: principal, AuditEventID: audit.ID, AuditAt: model.GetMillis(), RecentAuthenticationTTL: 10 * time.Minute}
 	}
 	preview, err := ss.Retention().CreatePreview(ctx, &store.RetentionPreviewCreation{RetentionMutation: mutation(model.ActionRetentionPolicyView),
 		PreviewID: model.NewRetentionPreviewID(), ExpectedPolicyRevision: changed.Policy.Revision},
@@ -231,7 +231,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 			Resource: model.Resource{Type: model.ResourceSubmission, ID: subID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: f.institutionID.String(), Status: model.AuditStatusAttempt, NodeID: "retirement-privacy"})
 		requireNoError(t, err)
-		got, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+		got, err := ss.Retention().ReconcileSubmission(ctx, &store.RetentionReconciliation{SubmissionID: subID, AuditEventID: audit.ID, AuditAt: model.GetMillis()})
 		requireNoError(t, err)
 		if got == nil || *got != want {
 			t.Fatalf("retirement result=%#v, want=%#v", got, want)
@@ -275,7 +275,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	nativeInput.Batch.BatchSequence = 2
 	nativeInput.Batch.Records[0].Occurrence.Status = "repeated"
 	nativeInput.Batch.Records[0].Occurrence.RepeatCount = 2
-	nativeInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	nativeInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	nativeInput.AuditAt = model.GetMillis()
 	if _, err := ss.ExamAttempt().AppendNativeDelivery(ctx, nativeInput, examCommand(f.candidate.ID, store.NativeDeliveryAppendOperation, "retired-native-new", "retired-native-new")); !errors.Is(err, model.ErrDeliveryExpired) {
 		t.Fatalf("new native condition after integrity retirement: %v", err)
@@ -299,7 +299,7 @@ func testRetentionSubmissionPrivacy(t *testing.T, ss store.Store, probe Retentio
 	for _, freshAudit := range []bool{false, true} {
 		replay := *draft
 		if freshAudit {
-			replay.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID.String()
+			replay.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, f, subID, model.ActionSubmissionReview).ID
 			replay.AuditAt = model.GetMillis()
 		}
 		if result, err := ss.ExamIntegrityReview().UpdateDraft(ctx, &replay, draftKey); err == nil || result != nil {
@@ -376,7 +376,7 @@ func appendRetirementNativeCondition(t *testing.T, ctx context.Context, ss store
 	at := model.NowUTC().Truncate(time.Millisecond)
 	occurrence := model.NativeOccurrence{Kind: "occurrence", OccurrenceID: model.NewId(), ConditionID: "baseline.capture", DetectorID: "synthetic-baseline", DetectorVersion: 1, CapabilityID: "baseline", Mode: model.NativeClaimEnforce, Status: "opened", FirstObservedAt: at, LastConfirmedAt: at, RepeatCount: 1, Certainty: "complete", SourceRanges: []model.NativeSourceRange{{SourceID: source.SourceID, SourceInstanceID: source.SourceInstanceID, FirstSequence: 0, LastSequence: 1}}}
 	b := model.NativeSecurityBatch{StreamID: connected.Security.DeliveryStreamID, BatchSequence: 1, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, SecuritySessionID: connected.Security.SecuritySessionID, PolicyDigest: connected.Security.Policy.Digest, ApplicationReleaseID: connected.Security.Policy.ApplicationReleaseID, MatrixID: connected.Security.Policy.MatrixID, Records: []model.NativeRecord{{Occurrence: &occurrence}}}
-	input := &store.NativeDeliveryAppend{Access: store.NativeDeliveryAccess{Access: access, StreamID: b.StreamID, ParticipationID: b.ParticipationID, Generation: b.Generation}, Batch: b, DesktopBuild: renewal.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID.String(), AuditAt: model.GetMillis()}
+	input := &store.NativeDeliveryAppend{Access: store.NativeDeliveryAccess{Access: access, StreamID: b.StreamID, ParticipationID: b.ParticipationID, Generation: b.Generation}, Batch: b, DesktopBuild: renewal.DesktopBuild, AuditEventID: saveExamAttemptAudit(t, ctx, ss, f).ID, AuditAt: model.GetMillis()}
 	_, err := ss.ExamAttempt().AppendNativeDelivery(ctx, input, examCommand(f.candidate.ID, store.NativeDeliveryAppendOperation, "retirement-native", "retirement-native"))
 	requireNoError(t, err)
 	return input

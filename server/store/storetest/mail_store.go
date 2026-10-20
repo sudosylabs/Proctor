@@ -284,7 +284,7 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 	}
 
 	cancelAudit := saveMailMutationAudit(t, ctx, ss, institution, second, "cancel")
-	canceled, err := ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: second.ID, ExpectedRevision: second.Revision, AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis()})
+	canceled, err := ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: second.ID, ExpectedRevision: second.Revision, AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if canceled.State != model.MailDeliveryCanceled || len(canceled.EncryptedPayload) != 0 || canceled.ID != second.ID || canceled.MessageID != second.MessageID {
 		t.Fatalf("CancelDelivery() = %#v", canceled)
@@ -294,14 +294,14 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 	if canceledJob.Status != model.JobStatusCanceled {
 		t.Fatalf("canceled delivery Job = %#v", canceledJob)
 	}
-	if _, err = ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: second.ID, ExpectedRevision: second.Revision, AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err = ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: second.ID, ExpectedRevision: second.Revision, AuditEventID: cancelAudit.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("CancelDelivery(stale) error = %v", err)
 	}
 	mismatchInput := mailTestEnqueueFixture(t, user, institution, at.Add(1500*time.Millisecond))
 	mismatch, err := ss.Mail().EnqueueTest(ctx, mismatchInput)
 	requireNoError(t, err)
 	mismatchAudit := saveMailMutationAudit(t, ctx, ss, institution, second, "cancel")
-	if _, err = ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: mismatch.ID, ExpectedRevision: mismatch.Revision, AuditEventID: mismatchAudit.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err = ss.Mail().CancelDelivery(ctx, &store.MailDeliveryMutation{ID: mismatch.ID, ExpectedRevision: mismatch.Revision, AuditEventID: mismatchAudit.ID, AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("CancelDelivery(mismatched audit) error = %v", err)
 	}
 	unchanged, err := ss.Mail().GetDelivery(ctx, mismatch.ID)
@@ -333,9 +333,10 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 	}
 	if failed == nil {
 		t.Fatal("did not claim retry delivery Job")
+		return
 	}
 	retryAudit := saveMailMutationAudit(t, ctx, ss, institution, failed, "retry")
-	retried, err := ss.Mail().RetryDelivery(ctx, &store.MailDeliveryMutation{ID: failed.ID, ExpectedRevision: failed.Revision, AuditEventID: retryAudit.ID.String(), AuditAt: model.GetMillis()})
+	retried, err := ss.Mail().RetryDelivery(ctx, &store.MailDeliveryMutation{ID: failed.ID, ExpectedRevision: failed.Revision, AuditEventID: retryAudit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if retried.State != model.MailDeliveryQueued || retried.ID != failed.ID || retried.MessageID != failed.MessageID || len(retried.EncryptedPayload) == 0 {
 		t.Fatalf("RetryDelivery() = %#v", retried)

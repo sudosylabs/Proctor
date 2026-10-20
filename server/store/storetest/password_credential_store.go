@@ -46,7 +46,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		attempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		result, err := ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{
 			UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-			ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
+			ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != passwordSession.ID || len(result.RevokedTokenHashes) != 2 {
@@ -98,13 +98,13 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		result, err := ss.PasswordCredential().EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{
 			Credential:   &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$enrolled"},
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: attempt.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if result.PasswordCredential == nil || result.PasswordCredential.UserID != user.ID {
 			t.Fatalf("EnrollWithAudit() = %#v", result)
 		}
-		terminal, err := ss.Audit().Get(ctx, attempt.ID.String())
+		terminal, err := ss.Audit().Get(ctx, attempt.ID)
 		requireNoError(t, err)
 		if terminal.Status != model.AuditStatusSuccess {
 			t.Fatalf("audit status = %s", terminal.Status)
@@ -112,7 +112,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		removeAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "remove_password")
 		_, err = ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: user.ID,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			ChangedAt:    model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID.String(), AuditAt: model.GetMillis()})
+			ChangedAt:    model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: removeAttempt.ID, AuditAt: model.GetMillis()})
 		if !errors.Is(err, store.ErrLastUsableAuthenticationMethod) {
 			t.Fatalf("RemoveWithAudit(last) error = %v", err)
 		}

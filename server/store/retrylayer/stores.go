@@ -169,13 +169,13 @@ func (s *invitationStore) FindCommandOutcome(ctx context.Context, command *store
 	})
 }
 
-func (s *invitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationCommandResult, error) {
+func (s *invitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationCommandResult, error) {
 	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
 		return s.InvitationStore.ReplayIssue(ctx, command, auditID, auditAt)
 	})
 }
 
-func (s *invitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
+func (s *invitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID model.AuditEventID, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
 	return retryCall1(ctx, s.layer, func() (*store.InvitationAdministrationCommandResult, error) {
 		return s.InvitationStore.ReplayAdministration(ctx, command, auditID, auditAt)
 	})
@@ -784,7 +784,7 @@ func (s *roleBindingStore) ListActiveByUser(ctx context.Context, userID model.Us
 	})
 }
 
-func (s *auditStore) Get(ctx context.Context, id string) (*model.AuditEvent, error) {
+func (s *auditStore) Get(ctx context.Context, id model.AuditEventID) (*model.AuditEvent, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AuditEvent, error) { return s.AuditStore.Get(ctx, id) })
 }
 func (s *auditStore) List(ctx context.Context, options store.AuditListOptions) ([]*model.AuditEvent, error) {

@@ -86,8 +86,8 @@ type RunAcademicAdministrationBatchCommand struct {
 	onboardingImportID            model.OnboardingImportID
 	onboardingImportRowNumber     int
 	progression                   bool
-	progressionSourceAuditID      string
-	progressionDestinationAuditID string
+	progressionSourceAuditID      model.AuditEventID
+	progressionDestinationAuditID model.AuditEventID
 }
 
 type AcademicAdministrationBatchItemResult struct {

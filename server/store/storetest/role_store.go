@@ -126,7 +126,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		at := model.GetMillis() + 100
 		if _, err := ss.Role().SaveWithAudit(ctx, &store.RoleCreation{
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
-			AuditEventID: model.NewId(), AuditAt: at,
+			AuditEventID: model.NewAuditEventID(), AuditAt: at,
 		}); err == nil {
 			t.Fatal("SaveWithAudit() succeeded without its audit attempt")
 		}
@@ -141,10 +141,10 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		createAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		created, err := ss.Role().SaveWithAudit(ctx, &store.RoleCreation{
 			Role:         &model.Role{Name: "audited-teacher", DisplayName: "Audited Teacher", Permissions: []string{string(model.ActionClassView)}},
-			AuditEventID: createAttempt.ID.String(), AuditAt: at,
+			AuditEventID: createAttempt.ID, AuditAt: at,
 		})
 		requireNoError(t, err)
-		createAudit, err := ss.Audit().Get(ctx, createAttempt.ID.String())
+		createAudit, err := ss.Audit().Get(ctx, createAttempt.ID)
 		requireNoError(t, err)
 		if createAudit.Status != model.AuditStatusSuccess {
 			t.Fatalf("create audit = %#v", createAudit)
@@ -152,7 +152,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 
 		created.DisplayName = "Audited Teacher Updated"
 		if _, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
-			Role: created, AuditEventID: model.NewId(), AuditAt: at + 1,
+			Role: created, AuditEventID: model.NewAuditEventID(), AuditAt: at + 1,
 		}); err == nil {
 			t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 		}
@@ -163,7 +163,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		updateAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		updated, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
-			Role: created, AuditEventID: updateAttempt.ID.String(), AuditAt: at + 1,
+			Role: created, AuditEventID: updateAttempt.ID, AuditAt: at + 1,
 		})
 		requireNoError(t, err)
 		if updated.DisplayName != "Audited Teacher Updated" {
@@ -183,7 +183,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		permissionCandidate.Permissions = append(permissionCandidate.Permissions, string(model.ActionClassManage))
 		permissionAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		if _, err := ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
-			Role: permissionCandidate, AuditEventID: permissionAttempt.ID.String(), AuditAt: at + 3,
+			Role: permissionCandidate, AuditEventID: permissionAttempt.ID, AuditAt: at + 3,
 		}); !store.IsConflict(err) {
 			t.Fatalf("bound role permission UpdateWithAudit() error = %v, want conflict", err)
 		}
@@ -192,7 +192,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		historicalAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		permissionCandidate, err = ss.Role().UpdateWithAudit(ctx, &store.RoleUpdate{
-			Role: permissionCandidate, AuditEventID: historicalAttempt.ID.String(), AuditAt: at + 5,
+			Role: permissionCandidate, AuditEventID: historicalAttempt.ID, AuditAt: at + 5,
 		})
 		requireNoError(t, err)
 		if !slices.Contains(permissionCandidate.Permissions, string(model.ActionClassManage)) {
@@ -200,7 +200,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 
 		if _, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
-			ID: created.ID, ArchiveAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at + 2, AuditEventID: model.NewAuditEventID(), AuditAt: at + 2,
 		}); err == nil {
 			t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 		}
@@ -211,7 +211,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		archiveAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		archived, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
-			ID: created.ID, ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID.String(), AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID, AuditAt: at + 2,
 		})
 		requireNoError(t, err)
 		if archived.ArchivedAt.Millis() != at+2 {

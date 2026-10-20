@@ -164,7 +164,7 @@ func (s SQLInstitutionStore) UpdateWithAudit(
 	input *store.InstitutionUpdate,
 ) (*model.Institution, error) {
 	if input == nil || input.Institution == nil ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("institution", "update", nil)
 	}
 	candidate := *input.Institution
@@ -177,7 +177,7 @@ func (s SQLInstitutionStore) UpdateWithAudit(
 func (s SQLInstitutionStore) updateInstitution(
 	ctx context.Context,
 	candidate *model.Institution,
-	auditEventID string,
+	auditEventID model.AuditEventID,
 	auditAt int64,
 ) (*model.Institution, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "institution update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Institution, error) {

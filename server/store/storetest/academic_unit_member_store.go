@@ -68,7 +68,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 		model.MailTemplateAcademicUnitAssigned, candidate.CreatedAt)
 	created, err := ss.AcademicUnitMember().Create(ctx, &store.AcademicUnitMemberCreation{Member: candidate,
 		ExpectedRecipientRevision: auditedUser.Revision, Notice: createNotice,
-		AuditEventID: createAttempt.ID.String(), AuditAt: model.GetMillis()})
+		AuditEventID: createAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAcademicUnitAssigned))
 	endAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, unit.ID.String())
@@ -77,7 +77,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 		model.MailTemplateAcademicUnitAssignmentEnded, endAt)
 	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
 		ExpectedRevision: created.Revision, ExpectedRecipientRevision: auditedUser.Revision, Notice: endNotice,
-		EndAt: start + 20, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis()})
+		EndAt: start + 20, AuditEventID: endAttempt.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAcademicUnitAssignmentEnded))
 	if endedAudited.Revision != created.Revision+1 {

@@ -499,7 +499,7 @@ func validFilePurgeCandidate(candidate *store.FilePurgeCandidate) bool {
 }
 
 func (s SQLFileStore) PublishProfilePicture(ctx context.Context, input *store.ProfilePicturePublication) (*store.ProfilePicturePublicationResult, error) {
-	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.RevisionID.IsValid() || !input.LeaseID.IsValid() || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validProfilePictureRenditions(input.RevisionID, input.Renditions) {
+	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.RevisionID.IsValid() || !input.LeaseID.IsValid() || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validProfilePictureRenditions(input.RevisionID, input.Renditions) {
 		return nil, store.NewErrInvalidInput("file", "profile_picture_publication", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "profile picture publication", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ProfilePicturePublicationResult, error) {
@@ -633,7 +633,7 @@ func (s SQLFileStore) GetProfilePictureState(ctx context.Context, userID model.U
 }
 
 func (s SQLFileStore) RemoveProfilePictureWithAudit(ctx context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
-	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.ExpectedCurrentRevisionID.IsValid() || len(input.ExpectedSHA256) != 64 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.ExpectedCurrentRevisionID.IsValid() || len(input.ExpectedSHA256) != 64 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("file", "profile_picture_removal", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "profile picture removal", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {

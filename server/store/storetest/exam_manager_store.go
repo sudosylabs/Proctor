@@ -201,7 +201,7 @@ func newExamManagerMutation(t *testing.T, ctx context.Context, ss store.Store, e
 	requireNoError(t, err)
 	return &store.ExamManagerMutation{ExamID: examID, ActorUserID: actorID, TargetUserID: targetID, ManagerOverride: override,
 		ExpectedRevision: revision, ChangedAt: model.MillisFromTime(at),
-		AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at)}
+		AuditEventID: audit.ID, AuditAt: model.MillisFromTime(at)}
 }
 
 type examManagerMailRecipient struct {

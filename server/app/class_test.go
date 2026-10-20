@@ -158,7 +158,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	if persistence.createInput == nil ||
 		persistence.createInput.Class.ProgrammeLevelID.String() != levelID ||
 		persistence.createInput.Class.AcademicPeriodID.String() != periodID ||
-		persistence.createInput.AuditEventID != auditID {
+		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
 		t.Fatalf("create input = %#v", persistence.createInput)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {

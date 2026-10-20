@@ -65,7 +65,7 @@ func affiliationColumns() []string {
 const affiliationLifecycleLock = "proctor:affiliation-lifecycle"
 
 func (s SQLAffiliationStore) Create(ctx context.Context, input *store.AffiliationCreation) (*model.Affiliation, error) {
-	if input == nil || input.Affiliation == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Affiliation == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "creation", nil)
 	}
 	if !input.Affiliation.ID.IsValid() {
@@ -227,7 +227,7 @@ func (s SQLAffiliationStore) End(ctx context.Context, id model.AffiliationID, ex
 }
 
 func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
-	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*affiliationMutationResult, error) {

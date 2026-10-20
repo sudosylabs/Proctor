@@ -23,19 +23,19 @@ type NativeDeliveryAccess struct {
 type NativeDeliveryGapDeclaration struct {
 	Access       NativeDeliveryAccess
 	Declaration  model.DeclareDeliveryGaps
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 type NativeDeliveryFinalDeclaration struct {
 	Access       NativeDeliveryAccess
 	Declaration  model.FinalDeliveryDeclaration
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 type NativeDeliverySummaryUpdate struct {
 	Access       NativeDeliveryAccess
 	Summary      model.UnretainedDeliverySummary
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 
@@ -56,7 +56,7 @@ type NativeDeliveryAppend struct {
 	Access       NativeDeliveryAccess
 	Batch        model.NativeSecurityBatch
 	DesktopBuild model.DesktopBuildTuple
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

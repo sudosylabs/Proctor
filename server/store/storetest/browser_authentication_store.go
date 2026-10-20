@@ -111,7 +111,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 				issued, err := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
 					ExpectedUserID: fixtureUser.ID, CodeLifetime: 45 * time.Second, Capabilities: input.Capabilities,
-					AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+					AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
 				})
 				requireNoError(t, err)
 				if issued.CodeExpiresAt.After(created.ExpiresAt) {
@@ -221,7 +221,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(code), ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: model.NewAuditEventID().String(), AuditAt: model.GetMillis(),
+		AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis(),
 	}
 	if _, rollbackErr := ss.BrowserAuthentication().IssueCode(ctx, issueInput); rollbackErr == nil {
 		t.Fatal("IssueCode() succeeded without its durable audit attempt")
@@ -230,12 +230,12 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	switchAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, switchedUser.ID, "issue-account-switch")
 	switchInput := *issueInput
 	switchInput.ExpectedUserID = switchedUser.ID
-	switchInput.AuditEventID = switchAudit.ID.String()
+	switchInput.AuditEventID = switchAudit.ID
 	if _, switchErr := ss.BrowserAuthentication().IssueCode(ctx, &switchInput); !store.IsNotFound(switchErr) {
 		t.Fatalf("IssueCode(account switch) error = %v, want not found", switchErr)
 	}
 	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "issue")
-	issueInput.AuditEventID, issueInput.AuditAt = issueAudit.ID.String(), model.GetMillis()
+	issueInput.AuditEventID, issueInput.AuditAt = issueAudit.ID, model.GetMillis()
 	issueBefore := model.NowUTC()
 	issued, err := ss.BrowserAuthentication().IssueCode(ctx, issueInput)
 	issueAfter := model.NowUTC()
@@ -248,7 +248,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if _, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
 		CodeHash: model.HashToken(model.NewCredentialToken()), ExpectedUserID: user.ID, CodeLifetime: 30 * time.Second,
-		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
 	}); !store.IsNotFound(err) {
 		t.Fatalf("IssueCode(replay) error = %v", err)
 	}
@@ -277,7 +277,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		}
 	}
 	rollbackExchange := *exchange
-	rollbackExchange.AuditEventID = model.NewAuditEventID().String()
+	rollbackExchange.AuditEventID = model.NewAuditEventID()
 	if _, rollbackErr := ss.BrowserAuthentication().Exchange(ctx, &rollbackExchange); rollbackErr == nil {
 		t.Fatal("Exchange() succeeded without its durable audit attempt")
 	}
@@ -365,13 +365,13 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		BindingHash: model.HashToken(disabledBinding), StateHash: model.HashToken(disabledState),
 		CodeHash: model.HashToken(disabledCode), ExpectedUserID: disabledUser.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: disabledIssueAudit.ID.String(), AuditAt: model.GetMillis(),
+		AuditEventID: disabledIssueAudit.ID, AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
 	disableAudit := saveUserProfileAuditAttempt(t, ctx, ss, disabledUser.ID.String())
 	disabled, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledUser.ID, ExpectedRevision: disabledUser.Revision, Disabled: true,
-		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(),
+		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID,
 		AuditAt: model.GetMillis(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
 	requireNoError(t, err)
@@ -402,7 +402,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if len(disabledSessions) != 0 {
 		t.Fatalf("disabled user sessions = %#v", disabledSessions)
 	}
-	disabledExchangeAuditAfter, getErr := ss.Audit().Get(ctx, disabledExchangeAudit.ID.String())
+	disabledExchangeAuditAfter, getErr := ss.Audit().Get(ctx, disabledExchangeAudit.ID)
 	requireNoError(t, getErr)
 	if disabledExchangeAuditAfter.Status != model.AuditStatusAttempt {
 		t.Fatalf("disabled exchange completed audit: %#v", disabledExchangeAuditAfter)
@@ -432,7 +432,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			BindingHash: model.HashToken(issuedBinding), StateHash: model.HashToken(issuedState),
 			CodeHash: model.HashToken(issuedCode), ExpectedUserID: fixture.candidate.ID, CodeLifetime: 45 * time.Second,
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-			AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID: issueAudit.ID, AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, issueErr)
 
@@ -448,7 +448,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 			ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 			ContinuityCredentialHash: continuity,
-			AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+			AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
 		}
 		prepareExamAttemptConnect(t, ctx, ss, connect)
 		_, connectErr := ss.ExamAttempt().Connect(ctx, connect,
@@ -478,7 +478,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		if denied == nil || !denied.Denied || denied.Session != nil {
 			t.Fatalf("Exchange(active Attempt) = %#v", denied)
 		}
-		completedAudit, auditErr := ss.Audit().Get(ctx, exchangeAudit.ID.String())
+		completedAudit, auditErr := ss.Audit().Get(ctx, exchangeAudit.ID)
 		requireNoError(t, auditErr)
 		if completedAudit.Status != model.AuditStatusFail ||
 			completedAudit.ErrorCode != "authentication.desktop_authorization.account_session_locked" {
@@ -550,7 +550,7 @@ func desktopAuthorizationExchange(at time.Time, code, state, verifier string, au
 		AccessTokenHash:                    model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
 		AccessLifetime: 5 * time.Minute, RefreshLifetime: time.Hour, IdleLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 		MaximumActive: 10,
-		Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+		Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: audit.ID, AuditAt: model.GetMillis()}
 }
 
 func storetestDesktopAuthorizationKey() (model.DesktopPublicJWK, string) {

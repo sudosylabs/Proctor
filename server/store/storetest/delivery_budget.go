@@ -35,7 +35,7 @@ func TestDeliveryBudgetStore(t *testing.T, ss store.Store) {
 	if _, err := ss.ExamAttempt().DeliveryBudget(ctx, foreign); !store.IsNotFound(err) {
 		t.Fatalf("foreign quota access: %v", err)
 	}
-	stop := &store.DeliveryDetailsStop{Access: access, Request: model.StopDeliveryDetails{Family: "browser", Reason: model.DeliveryStopLocalLossInventory}, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+	stop := &store.DeliveryDetailsStop{Access: access, Request: model.StopDeliveryDetails{Family: "browser", Reason: model.DeliveryStopLocalLossInventory}, AuditEventID: model.NewAuditEventID(), AuditAt: model.GetMillis()}
 	key := examCommand(f.candidate.ID, store.DeliveryStopDetailsOperation, "stop-browser", "stop-browser")
 	if _, err := ss.ExamAttempt().StopDeliveryDetails(ctx, stop, key); err == nil {
 		t.Fatal("stop committed without audit")
@@ -45,13 +45,13 @@ func TestDeliveryBudgetStore(t *testing.T, ss store.Store) {
 	if unchanged.Browser.Participation.SummaryOnly {
 		t.Fatal("missing audit retained quota latch")
 	}
-	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	result, err := ss.ExamAttempt().StopDeliveryDetails(ctx, stop, key)
 	requireNoError(t, err)
 	if result.Validate("browser") != nil || result.Budget.Native.Participation.SummaryOnly || result.Budget.Browser.Attempt.SummaryOnly || len(result.Browser) != 1 || result.Browser[0].HighestContiguous != 0 || result.Browser[0].TerminalMissingThrough != 2 || result.Browser[0].SettledThrough != 2 || result.Budget.Browser.PendingBytes != 0 {
 		t.Fatalf("family cutoff=%#v", result)
 	}
-	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	replay, err := ss.ExamAttempt().StopDeliveryDetails(ctx, stop, key)
 	requireNoError(t, err)
 	if replay.Budget.Browser.Attempt.RetainedBytes != before.Browser.Attempt.RetainedBytes || replay.Budget.ControlMetadataBytes != before.ControlMetadataBytes || replay.Budget.Browser.Attempt.AllocatedPositions != before.Browser.Attempt.AllocatedPositions {
@@ -64,7 +64,7 @@ func TestDeliveryBudgetStore(t *testing.T, ss store.Store) {
 		t.Fatal("cutoff fabricated or erased receipt")
 	}
 	stop.Request.Family = "native"
-	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID.String()
+	stop.AuditEventID = saveExamAttemptAudit(t, ctx, ss, f).ID
 	result, err = ss.ExamAttempt().StopDeliveryDetails(ctx, stop, examCommand(f.candidate.ID, store.DeliveryStopDetailsOperation, "stop-native", "stop-native"))
 	requireNoError(t, err)
 	if result.Validate("native") != nil || result.Budget.Native.Attempt.SummaryOnly {

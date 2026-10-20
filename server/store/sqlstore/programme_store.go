@@ -71,7 +71,7 @@ func (s SQLProgrammeStore) Create(
 	input *store.ProgrammeCreation,
 ) (*model.Programme, error) {
 	if input == nil || input.Programme == nil ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "creation", nil)
 	}
 	if !input.Programme.ID.IsValid() {
@@ -264,7 +264,7 @@ func (s SQLProgrammeStore) UpdateWithAudit(
 	input *store.ProgrammeUpdate,
 ) (*model.Programme, error) {
 	if input == nil || input.Programme == nil ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "update", nil)
 	}
 	candidate := *input.Programme
@@ -286,7 +286,7 @@ func (s SQLProgrammeStore) ArchiveWithAudit(
 	input *store.ProgrammeArchive,
 ) (*model.Programme, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "archive", nil)
 	}
 	return s.archiveProgramme(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})

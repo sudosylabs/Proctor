@@ -82,7 +82,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	published, err := ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{
 		ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: user.Revision, EntryID: entry.ID,
 		RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, ChangedAt: changeAt,
-		AuditEventID: auditAttempt.ID.String(), AuditAt: changeAt.UnixMilli(),
+		AuditEventID: auditAttempt.ID, AuditAt: changeAt.UnixMilli(),
 	})
 	requireNoError(t, err)
 	if published.User.CustomProfilePictureFileID != entry.ID || published.Revision.Availability != model.FileAvailabilityAvailable {
@@ -108,7 +108,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 		replacementRenditions = append(replacementRenditions, *rendition)
 	}
 	replacementAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	replaced, err := ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: published.User.Revision, EntryID: entry.ID, RevisionID: replacementRevision.ID, LeaseID: replacementLease.ID, Renditions: replacementRenditions, ChangedAt: replacementAt, AuditEventID: replacementAudit.ID.String(), AuditAt: replacementAt.UnixMilli()})
+	replaced, err := ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: published.User.Revision, EntryID: entry.ID, RevisionID: replacementRevision.ID, LeaseID: replacementLease.ID, Renditions: replacementRenditions, ChangedAt: replacementAt, AuditEventID: replacementAudit.ID, AuditAt: replacementAt.UnixMilli()})
 	requireNoError(t, err)
 	if replaced.User.CustomProfilePictureFileID != entry.ID || replaced.Revision.ID != replacementRevision.ID {
 		t.Fatalf("replacement = %#v", replaced)
@@ -145,7 +145,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 		requireNoError(t, renditionErr)
 		rollbackRenditions = append(rollbackRenditions, *rendition)
 	}
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, RevisionID: rollbackRevision.ID, LeaseID: rollbackLease.ID, Renditions: rollbackRenditions, ChangedAt: rollbackAt, AuditEventID: model.NewId(), AuditAt: rollbackAt.UnixMilli()}); err == nil {
+	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, RevisionID: rollbackRevision.ID, LeaseID: rollbackLease.ID, Renditions: rollbackRenditions, ChangedAt: rollbackAt, AuditEventID: model.NewAuditEventID(), AuditAt: rollbackAt.UnixMilli()}); err == nil {
 		t.Fatal("PublishProfilePicture() succeeded without its audit attempt")
 	}
 	state, err = ss.File().GetProfilePictureState(ctx, user.ID)
@@ -156,7 +156,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 
 	removalAt := model.NowUTC()
 	removalAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	removed, err := ss.File().RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, ExpectedSHA256: replacementRenditions[0].SHA256, ChangedAt: removalAt, AuditEventID: removalAudit.ID.String(), AuditAt: removalAt.UnixMilli()})
+	removed, err := ss.File().RemoveProfilePictureWithAudit(ctx, &store.ProfilePictureRemoval{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: replaced.User.Revision, EntryID: entry.ID, ExpectedCurrentRevisionID: replacementRevision.ID, ExpectedSHA256: replacementRenditions[0].SHA256, ChangedAt: removalAt, AuditEventID: removalAudit.ID, AuditAt: removalAt.UnixMilli()})
 	requireNoError(t, err)
 	if !removed.CustomProfilePictureFileID.IsZero() || removed.Revision != replaced.User.Revision+1 {
 		t.Fatalf("removal = %#v", removed)
@@ -210,7 +210,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 		expiredRenditions = append(expiredRenditions, *rendition)
 	}
 	expiredAudit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID.String(), AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) {
+	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) {
 		t.Fatalf("PublishProfilePicture(expired lease) error = %v", err)
 	}
 	page, err := ss.File().ListPurgeCandidates(ctx, &store.FilePurgeCandidateRequest{Limit: 10})
@@ -232,7 +232,7 @@ func TestFileStore(t *testing.T, ss store.Store) {
 	if _, err = ss.File().RenewUploadLease(ctx, expiredLease.ID, user.ID, expiredLease.Revision, 1, model.NowUTC().Add(time.Hour)); !store.IsConflict(err) && !store.IsNotFound(err) {
 		t.Fatalf("RenewUploadLease(claimed) error = %v", err)
 	}
-	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID.String(), AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) && !store.IsNotFound(err) {
+	if _, err = ss.File().PublishProfilePicture(ctx, &store.ProfilePicturePublication{ActorID: user.ID, UserID: user.ID, ExpectedUserRevision: withDefault.User.Revision, EntryID: expiredEntry.ID, RevisionID: expiredRevision.ID, LeaseID: expiredLease.ID, Renditions: expiredRenditions, ChangedAt: model.NowUTC(), AuditEventID: expiredAudit.ID, AuditAt: model.NowUTC().UnixMilli()}); !store.IsConflict(err) && !store.IsNotFound(err) {
 		t.Fatalf("PublishProfilePicture(claimed) error = %v", err)
 	}
 	requireNoError(t, ss.File().CompletePurge(ctx, claim))

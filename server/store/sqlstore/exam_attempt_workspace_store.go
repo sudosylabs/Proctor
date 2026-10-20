@@ -533,7 +533,7 @@ func (s *SQLExamAttemptWorkspaceStore) ApplyMutation(ctx context.Context, input 
 func prepareAttemptWorkspaceMutation(input *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutation, error) {
 	if input == nil || command == nil || command.Operation != store.ExamAttemptWorkspaceMutationOperation ||
 		command.OutcomeVersion != 1 || command.UserID != input.Access.CandidateUserID || !validAttemptWorkspaceMutationAccess(input.Access) ||
-		!input.EntryID.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.EntryID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("attempt_workspace", "mutation", nil)
 	}
 	prepared := *input
@@ -796,7 +796,7 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 }
 
 func deleteAttemptWorkspaceSubtree(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID,
-	path, auditID string, at time.Time,
+	path string, auditID model.AuditEventID, at time.Time,
 ) error {
 	// A retirement group keeps outcome protection bounded even for the maximum
 	// hierarchy. Starter-origin objects remain pinned to their published source.
@@ -995,7 +995,7 @@ func appendAttemptWorkspaceJournal(ctx context.Context, tx *sqlxTxWrapper, works
 }
 
 func completeAttemptWorkspaceMutationAudit(ctx context.Context, tx *sqlxTxWrapper, outcome attemptWorkspaceMutationOutcomeV1,
-	auditID string, auditAt int64, replayed bool, originalAuditID string,
+	auditID model.AuditEventID, auditAt int64, replayed bool, originalAuditID string,
 ) error {
 	data := map[string]any{"exam_sitting_id": outcome.SittingID, "candidate_user_id": outcome.CandidateID,
 		"workspace_id": outcome.WorkspaceID, "entry_id": outcome.Change.EntryID.String(),

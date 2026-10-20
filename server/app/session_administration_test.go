@@ -367,7 +367,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 			if outcome != "attempt unavailable" {
 				want = append(want, "store-revoke-all")
 				input := persistence.revokeAllInput
-				if input.AuditEventID != audit.beginID || input.AuditAt != now.UnixMilli() ||
+				if input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() ||
 					input.RevokedAt != now.UnixMilli() || input.Command == nil ||
 					input.Reason != model.SessionRevocationAdministratorAllSessions {
 					t.Fatalf("atomic input = %#v", input)

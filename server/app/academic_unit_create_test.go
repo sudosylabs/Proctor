@@ -96,31 +96,19 @@ type academicUnitMutationAudit struct {
 	prior     map[string]any
 }
 
-func (a *academicUnitCommandAuditor) Begin(
-	_ context.Context,
-	_ Invocation,
-	action model.Action,
-	resource model.Resource,
-	operation string,
-	value map[string]any,
-	prior map[string]any,
-) (string, error) {
+func (a *academicUnitCommandAuditor) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "audit-begin")
 	a.beginData = academicUnitMutationAudit{
 		action: action, resource: resource, operation: operation,
 		value: value, prior: prior,
 	}
-	return a.beginID, a.beginErr
+	return model.AuditEventID(a.beginID), a.beginErr
 }
 
-func (a *academicUnitCommandAuditor) Fail(
-	_ context.Context,
-	auditID string,
-	errorCode string,
-) error {
+func (a *academicUnitCommandAuditor) Fail(_ context.Context, auditID model.AuditEventID, errorCode string) error {
 	*a.events = append(*a.events, "audit-fail")
 	a.failCode = errorCode
-	if auditID != a.beginID {
+	if auditID != model.AuditEventID(a.beginID) {
 		return errors.New("wrong audit ID")
 	}
 	return a.failErr
@@ -220,7 +208,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	if creator.input == nil || creator.input.Unit.InstitutionID.String() != institutionID ||
 		creator.input.Unit.ParentID.String() != "" || creator.input.Unit.ID.String() != createdID ||
 		creator.input.Unit.Name != "engineering" ||
-		creator.input.AuditEventID != auditor.beginID || creator.input.AuditAt != 500 {
+		creator.input.AuditEventID != model.AuditEventID(auditor.beginID) || creator.input.AuditAt != 500 {
 		t.Fatalf("creation input = %#v", creator.input)
 	}
 	if effects.unitID != saved.ID.String() {

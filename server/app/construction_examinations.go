@@ -167,9 +167,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 
 type examAttemptSystemAuditAdapter struct{ audit *auditService }
 
-func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action model.Action, resource model.Resource,
-	scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (string, error) {
+func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value))
 	for key, item := range value {
 		auditValue[key] = item
@@ -179,10 +177,10 @@ func (adapter examAttemptSystemAuditAdapter) Begin(ctx context.Context, action m
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
-func (adapter examAttemptSystemAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (adapter examAttemptSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
 	return err
 }

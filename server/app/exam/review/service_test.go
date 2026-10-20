@@ -311,12 +311,12 @@ type reviewAuditorFake struct {
 	failedCode string
 }
 
-func (fake *reviewAuditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (string, error) {
+func (fake *reviewAuditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (model.AuditEventID, error) {
 	fake.value = value
 	fake.begun++
-	return model.NewAuditEventID().String(), nil
+	return model.NewAuditEventID(), nil
 }
-func (fake *reviewAuditorFake) Fail(_ context.Context, _ string, code string) error {
+func (fake *reviewAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	fake.failedCode = code
 	return nil
 }

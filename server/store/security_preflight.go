@@ -37,7 +37,7 @@ type SecurityPreflightPrepare struct {
 	NativeRegistryDigest             string
 	SourceManifestDigest             string
 	ConfigurationManifestFingerprint string
-	AuditEventID                     string
+	AuditEventID                     model.AuditEventID
 	AuditAt                          int64
 }
 type SecurityPreflightPrepared struct {
@@ -52,7 +52,7 @@ type SecurityPreflightReport struct {
 	Access       SecurityPreflightAccess
 	PreflightID  string
 	Report       model.SecurityPreflightReport
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

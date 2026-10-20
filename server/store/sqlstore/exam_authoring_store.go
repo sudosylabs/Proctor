@@ -321,7 +321,7 @@ FROM exams e JOIN exam_drafts d ON d.exam_id = e.id
 JOIN institutions i ON i.singleton=TRUE AND i.archived_at IS NULL`
 
 func prepareExamAuthoringCreation(input *store.ExamAuthoringCreation) (*store.ExamAuthoringCreation, json.RawMessage, error) {
-	if input == nil || input.Exam == nil || input.Draft == nil || input.Manager == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Exam == nil || input.Draft == nil || input.Manager == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, nil, store.NewErrInvalidInput("exam", "creation", nil)
 	}
 	exam := *input.Exam
@@ -349,7 +349,7 @@ func prepareExamAuthoringCreation(input *store.ExamAuthoringCreation) (*store.Ex
 func prepareExamDraftTextUpdate(input *store.ExamDraftTextUpdate) (*store.ExamDraftTextUpdate, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
 		input.Title == nil && input.InstructionsMarkdown == nil || input.UpdatedAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_draft", "text_update", nil)
 	}
 	prepared := *input
@@ -360,7 +360,7 @@ func prepareExamDraftTextUpdate(input *store.ExamDraftTextUpdate) (*store.ExamDr
 
 func prepareExamDraftFocusLossUpdate(input *store.ExamDraftFocusLossUpdate) (*store.ExamDraftFocusLossUpdate, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
-		input.UpdatedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.UpdatedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_draft", "focus_loss_update", nil)
 	}
 	policy := model.DefaultExamPolicySet()
@@ -374,7 +374,7 @@ func prepareExamDraftFocusLossUpdate(input *store.ExamDraftFocusLossUpdate) (*st
 
 func prepareExamDraftBrowserPolicyUpdate(input *store.ExamDraftBrowserPolicyUpdate) (*store.ExamDraftBrowserPolicyUpdate, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
-		input.UpdatedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.UpdatedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_draft", "browser_policy_update", nil)
 	}
 	canonical, err := model.NewBrowserPolicy(input.Policy.Enabled, input.Policy.StartRuleID, input.Policy.Rules)
@@ -773,7 +773,7 @@ func (s SQLExamAuthoringStore) UpdateDraftNativePolicy(ctx context.Context, inpu
 
 func prepareExamDraftNativePolicyUpdate(input *store.ExamDraftNativePolicyUpdate) (*store.ExamDraftNativePolicyUpdate, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
-		input.UpdatedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.UpdatedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_draft", "native_policy_update", nil)
 	}
 	policy := model.DefaultExamPolicySet()

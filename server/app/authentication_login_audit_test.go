@@ -36,29 +36,25 @@ type localLoginAuditorFake struct {
 	completeErr error
 }
 
-func (f *localLoginAuditorFake) BeginLocalLogin(_ context.Context, invocation Invocation, userID model.UserID,
-	clientType model.SessionClientType,
-) (string, error) {
+func (f *localLoginAuditorFake) BeginLocalLogin(_ context.Context, invocation Invocation, userID model.UserID, clientType model.SessionClientType) (model.AuditEventID, error) {
 	if f.pending == nil {
 		f.pending = map[string]*localLoginAuditRecord{}
 	}
 	id := model.NewId()
 	f.pending[id] = &localLoginAuditRecord{status: model.AuditStatusAttempt, actor: userID, target: userID,
 		clientType: clientType, metadata: invocation.RequestMetadata()}
-	return id, nil
+	return model.AuditEventID(id), nil
 }
 
-func (f *localLoginAuditorFake) CompleteLocalLogin(_ context.Context, auditID string, status model.AuditStatus,
-	errorCode string, result any,
-) error {
+func (f *localLoginAuditorFake) CompleteLocalLogin(_ context.Context, auditID model.AuditEventID, status model.AuditStatus, errorCode string, result any) error {
 	if f.completeErr != nil {
 		return f.completeErr
 	}
-	record, ok := f.pending[auditID]
+	record, ok := f.pending[auditID.String()]
 	if !ok {
 		return errors.New("unknown audit attempt")
 	}
-	delete(f.pending, auditID)
+	delete(f.pending, auditID.String())
 	record.status, record.errorCode, record.result = status, errorCode, result
 	f.terminal = append(f.terminal, *record)
 	return nil

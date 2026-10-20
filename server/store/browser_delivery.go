@@ -12,19 +12,19 @@ import "github.com/sudosylabs/proctor/server/model"
 type BrowserDeliveryGapDeclaration struct {
 	Access       BrowserDeliveryAccess
 	Declaration  model.DeclareDeliveryGaps
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 type BrowserDeliveryFinalDeclaration struct {
 	Access       BrowserDeliveryAccess
 	Declaration  model.FinalDeliveryDeclaration
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 type BrowserDeliverySummaryUpdate struct {
 	Access       BrowserDeliveryAccess
 	Summary      model.UnretainedDeliverySummary
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

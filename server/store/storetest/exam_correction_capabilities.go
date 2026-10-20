@@ -38,7 +38,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				ActorUserID: fixture.manager.ID, Resources: []store.ExamCorrectionResourceManifestItem{},
 				CandidateSummary: "The current examination reference changed.", AcknowledgementRequired: test.required,
 				AffectedCapabilities: test.selected, PrivateReason: "Exercise independent correction gates",
-				AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+				AppliedAt: model.NowUTC(), AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis(),
 			}
 			if test.instructions {
 				instructions := "Corrected instructions."
@@ -83,7 +83,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				DPoPKeyThumbprint: access.DPoPKeyThumbprint, ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash}
 			mutation := &store.ExamAttemptWorkspaceMutation{Access: workspaceAccess, Operation: model.AttemptWorkspaceMutationCreateDirectory,
 				EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "after-correction",
-				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 			changed, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, mutation,
 				examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "correction-workspace", "correction-workspace"))
 			cursor := connected.Workspace.Cursor
@@ -110,7 +110,7 @@ func testCorrectionCapabilityGates(t *testing.T, ss store.Store) {
 				ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 				ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash,
 				ExpectedCurrentRevisionID: corrected.Revision.ID, ExpectedWorkspaceCursor: cursor},
-				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+				AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 			attachSubmissionReceipt(t, fixture.candidate, seal)
 			_, err = ss.ExamSubmission().Seal(ctx, seal, examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "correction-submit", "correction-submit"))
 			if blocked(model.CandidateCapabilitySubmission) {
@@ -132,13 +132,13 @@ func testCorrectionPublicationWorkspaceRace(t *testing.T, ss store.Store) {
 		CandidateSummary: "Instructions changed.", AcknowledgementRequired: true,
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace},
 		PrivateReason:        "Verify correction and Workspace serialization", AppliedAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()}
 	write := &store.ExamAttemptWorkspaceMutation{Access: store.ExamAttemptWorkspaceMutationAccess{
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		CandidateUserID: access.CandidateUserID, SessionID: access.SessionID, DesktopRegistrationID: access.DesktopRegistrationID,
 		DPoPKeyThumbprint: access.DPoPKeyThumbprint, ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash},
 		Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "racing-correction",
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	correctionKey := examCommand(fixture.manager.ID, "exam.sitting.correction.apply.v1", "publication-race", "publication-race")
 	writeKey := examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "write-race", "write-race")
 	type writeOutcome struct {
@@ -165,7 +165,7 @@ func testCorrectionPublicationWorkspaceRace(t *testing.T, ss store.Store) {
 	}
 	// Once publication returns, both a new write and an exact previously
 	// accepted replay must see the current Workspace gate.
-	write.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	write.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, write, writeKey)
 	assertExamAttemptConflict(t, err, "exam_correction_acknowledgement_required")
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)

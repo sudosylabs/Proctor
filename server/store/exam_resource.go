@@ -45,7 +45,7 @@ type ExamResourceUploadFinalization struct {
 	LeaseID               model.UploadLeaseID
 	Rendition             *model.FileRendition
 	ChangedAt             time.Time
-	AuditEventID          string
+	AuditEventID          model.AuditEventID
 	AuditAt               int64
 }
 
@@ -58,7 +58,7 @@ type ExamResourceMetadataUpdate struct {
 	DisplayName           string
 	DescriptionMarkdown   string
 	ChangedAt             time.Time
-	AuditEventID          string
+	AuditEventID          model.AuditEventID
 	AuditAt               int64
 }
 
@@ -69,7 +69,7 @@ type ExamResourceReorder struct {
 	ExpectedDraftRevision int64
 	ResourceIDs           []model.ExamResourceID
 	ChangedAt             time.Time
-	AuditEventID          string
+	AuditEventID          model.AuditEventID
 	AuditAt               int64
 }
 
@@ -80,7 +80,7 @@ type ExamResourceRemoval struct {
 	ExpectedDraftRevision int64
 	ResourceID            model.ExamResourceID
 	ChangedAt             time.Time
-	AuditEventID          string
+	AuditEventID          model.AuditEventID
 	AuditAt               int64
 }
 

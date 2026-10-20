@@ -793,7 +793,7 @@ func validateStarterWorkspaceReservation(input *store.ExamStarterWorkspaceReserv
 
 func prepareStarterWorkspaceMutation(input *store.ExamStarterWorkspaceMutation) (*store.ExamStarterWorkspaceMutation, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.EntryID.IsValid() ||
-		input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace", "mutation", nil)
 	}
 	prepared := *input

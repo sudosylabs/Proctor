@@ -82,7 +82,7 @@ func (s SQLMFAStore) ResetWithAudit(ctx context.Context, input *store.MFAAssiste
 		if err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID.String(), model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
+		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, at.UnixMilli()); err != nil {
 			return nil, err
 		}
 		return result, nil

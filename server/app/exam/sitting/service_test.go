@@ -948,12 +948,12 @@ type auditorFake struct {
 	failErr   error
 }
 
-func (fake *auditorFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, _ model.RoleScopeType, _ string, operation string, value, _ map[string]any) (string, error) {
+func (fake *auditorFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
 	fake.action, fake.resource, fake.operation, fake.value = action, resource, operation, value
-	return fake.id, fake.err
+	return model.AuditEventID(fake.id), fake.err
 }
 
-func (fake *auditorFake) Fail(_ context.Context, _ string, code string) error {
+func (fake *auditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	fake.failCode = code
 	return fake.failErr
 }
@@ -1009,15 +1009,13 @@ type systemAuditorFake struct {
 	err, failErr            error
 }
 
-func (fake *systemAuditorFake) Begin(_ context.Context, call SystemCall, action model.Action, resource model.Resource,
-	scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (string, error) {
+func (fake *systemAuditorFake) Begin(_ context.Context, call SystemCall, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	fake.call, fake.action, fake.resource, fake.operation, fake.value = call, action, resource, operation, value
 	fake.scopeType, fake.scopeID = scopeType, scopeID
-	return fake.id, fake.err
+	return model.AuditEventID(fake.id), fake.err
 }
 
-func (fake *systemAuditorFake) Fail(_ context.Context, _ string, code string) error {
+func (fake *systemAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	fake.failCode = code
 	return fake.failErr
 }

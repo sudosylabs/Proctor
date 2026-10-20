@@ -71,46 +71,24 @@ type institutionAuditorFake struct {
 	scopeID   string
 }
 
-func (a *institutionAuditorFake) Begin(
-	_ context.Context,
-	_ Invocation,
-	action model.Action,
-	resource model.Resource,
-	_ string,
-	_ map[string]any,
-	_ map[string]any,
-) (string, error) {
+func (a *institutionAuditorFake) Begin(_ context.Context, _ Invocation, action model.Action, resource model.Resource, _ string, _, _ map[string]any) (model.AuditEventID, error) {
 	*a.events = append(*a.events, "audit-begin")
 	a.action, a.resource = action, resource
 	a.resources = append(a.resources, resource)
 	if len(a.beginIDs) > 0 {
 		id := a.beginIDs[0]
 		a.beginIDs = a.beginIDs[1:]
-		return id, nil
+		return model.AuditEventID(id), nil
 	}
-	return a.beginID, nil
+	return model.AuditEventID(a.beginID), nil
 }
 
-func (a *institutionAuditorFake) BeginAtScope(
-	ctx context.Context,
-	invocation Invocation,
-	action model.Action,
-	resource model.Resource,
-	scopeType model.RoleScopeType,
-	scopeID string,
-	operation string,
-	value map[string]any,
-	prior map[string]any,
-) (string, error) {
+func (a *institutionAuditorFake) BeginAtScope(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.scopeType, a.scopeID = scopeType, scopeID
 	return a.Begin(ctx, invocation, action, resource, operation, value, prior)
 }
 
-func (a *institutionAuditorFake) Fail(
-	_ context.Context,
-	_ string,
-	code string,
-) error {
+func (a *institutionAuditorFake) Fail(_ context.Context, _ model.AuditEventID, code string) error {
 	*a.events = append(*a.events, "audit-fail")
 	a.failCode = code
 	return nil
@@ -171,7 +149,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 		persistence.updateInput.Institution.DisplayName != displayName ||
 		persistence.updateInput.Institution.ExamCapacity != capacity ||
 		!persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
-		persistence.updateInput.AuditEventID != auditor.beginID {
+		persistence.updateInput.AuditEventID != model.AuditEventID(auditor.beginID) {
 		t.Fatalf("update input = %#v", persistence.updateInput)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update"}) {

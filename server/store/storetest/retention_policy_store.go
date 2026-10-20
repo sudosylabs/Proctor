@@ -110,7 +110,7 @@ func TestRetentionPolicyStore(t *testing.T, stores store.Store) {
 
 	missingAudit := &store.RetentionPolicyReplacement{RetentionMutation: replacement.RetentionMutation, ExpectedRevision: result.Policy.Revision,
 		Settings: settings}
-	missingAudit.AuditEventID, missingAudit.AuditAt = model.NewId(), model.GetMillis()
+	missingAudit.AuditEventID, missingAudit.AuditAt = model.NewAuditEventID(), model.GetMillis()
 	missingAudit.Settings.SubmissionRetentionDays++
 	missingAuditCommand := retentionPolicyCommand(missingAudit.Principal.UserID, "missing-audit")
 	if _, err = stores.RetentionPolicy().Replace(ctx, missingAudit, missingAuditCommand); err == nil {
@@ -327,7 +327,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 				audit := saveUserProfileAuditAttempt(t, ctx, stores, actor.ID.String())
 				_, disableErr := stores.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt),
+					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt),
 				}))
 				requireNoError(t, disableErr)
 			}
@@ -367,11 +367,11 @@ func prepareRetentionPolicyAttempt(t *testing.T, ctx context.Context, stores sto
 		ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt,
 		NodeID: "store-test", ClientType: string(model.SessionClientWeb), AuthMethod: "password"})
 	requireNoError(t, err)
-	replacement.AuditEventID, replacement.AuditAt = event.ID.String(), model.MillisFromTime(event.CreatedAt)
+	replacement.AuditEventID, replacement.AuditAt = event.ID, model.MillisFromTime(event.CreatedAt)
 }
 
 func assertRetentionPolicyAudit(t *testing.T, ctx context.Context, stores store.Store, input *store.RetentionPolicyReplacement,
-	outcome *store.RetentionPolicyReplacementResult, originalAuditID string,
+	outcome *store.RetentionPolicyReplacementResult, originalAuditID model.AuditEventID,
 ) {
 	t.Helper()
 	event, err := stores.Audit().Get(ctx, input.AuditEventID)
@@ -390,12 +390,12 @@ func assertRetentionPolicyAudit(t *testing.T, ctx context.Context, stores store.
 		result["deletion_grace_days"] != float64(outcome.Policy.DeletionGraceDays) || result["automatic_deletion_enabled"] != false {
 		t.Fatalf("retention audit result = %#v", result)
 	}
-	if originalAuditID != "" && (result["idempotency_replayed"] != true || result["original_audit_event_id"] != originalAuditID) {
+	if originalAuditID != "" && (result["idempotency_replayed"] != true || result["original_audit_event_id"] != originalAuditID.String()) {
 		t.Fatalf("replay audit lost original identity: %#v", result)
 	}
 }
 
-func assertRetentionPolicyAttemptPending(t *testing.T, ctx context.Context, stores store.Store, auditID string) {
+func assertRetentionPolicyAttemptPending(t *testing.T, ctx context.Context, stores store.Store, auditID model.AuditEventID) {
 	t.Helper()
 	event, err := stores.Audit().Get(ctx, auditID)
 	requireNoError(t, err)

@@ -51,7 +51,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 					t.Fatal(err)
 				}
 				return store.RetentionMutation{Principal: f.principal, RecentAuthenticationTTL: time.Hour,
-					AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt)}
+					AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}
 			}
 			command := func(operation, key string) *store.CommandIdempotency {
 				return &store.CommandIdempotency{UserID: f.principal.UserID, Operation: operation,
@@ -102,7 +102,7 @@ func TestRetentionPolicyCurrentCredentialAndAssurancePreserveGrace(t *testing.T)
 				t.Fatal(err)
 			}
 			scheduled, err := s.Retention().ReconcileExpiry(ctx, &store.RetentionExpiryReconciliation{Kind: model.RetentionExpiryAudit,
-				RecordID: scheduledID, AuditEventID: cleanupAudit.ID.String(), AuditAt: model.MillisFromTime(cleanupAudit.CreatedAt)})
+				RecordID: scheduledID.String(), AuditEventID: cleanupAudit.ID, AuditAt: model.MillisFromTime(cleanupAudit.CreatedAt)})
 			if err != nil || !scheduled.Scheduled {
 				t.Fatalf("audit expiry was not scheduled: %#v, %v", scheduled, err)
 			}
@@ -248,7 +248,7 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 			command := &store.CommandIdempotency{UserID: actor.ID, Operation: "retention_policy.replace.v1",
 				KeyDigest: sha256.Sum256([]byte(test.name)), FingerprintVersion: 1,
 				Fingerprint: sha256.Sum256([]byte("retention-clock:" + test.name)), OutcomeVersion: 1, Retention: time.Hour, Wait: time.Second}
-			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
+			result, replaceErr := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: test.settings}, command)
 			if replaceErr != nil {
 				t.Fatalf("policy metadata ahead of database clock rejected %s: %v (cause=%v)", test.name, replaceErr, errors.Unwrap(replaceErr))
 			}
@@ -257,7 +257,7 @@ func TestRetentionPolicyReplacementKeepsMonotonicMetadata(t *testing.T) {
 				!result.Policy.CreatedAt.Equal(initial.CreatedAt) {
 				t.Fatalf("non-monotonic policy transition: %#v, previous=%#v", result, initial)
 			}
-			storedAudit, auditErr := persistence.Audit().Get(ctx, audit.ID.String())
+			storedAudit, auditErr := persistence.Audit().Get(ctx, audit.ID)
 			if auditErr != nil || storedAudit.Status != model.AuditStatusSuccess {
 				t.Fatalf("policy transition did not complete audit: %#v, %v", storedAudit, auditErr)
 			}
@@ -276,7 +276,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 		{
 			name: "retention", action: model.ActionRetentionPolicyManage, operation: "retention_policy.replace.v1",
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
-				_, err := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: model.RetentionPolicySettings{SubmissionRetentionDays: 365}}, command)
+				_, err := persistence.RetentionPolicy().Replace(ctx, &store.RetentionPolicyReplacement{RetentionMutation: store.RetentionMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, ExpectedRevision: 1, Settings: model.RetentionPolicySettings{SubmissionRetentionDays: 365}}, command)
 				return err
 			},
 			revision: func(ctx context.Context, persistence *SQLStore) (int64, error) {
@@ -292,7 +292,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			replace: func(ctx context.Context, persistence *SQLStore, principal model.Principal, audit *model.AuditEvent, command *store.CommandIdempotency) error {
 				_, err := persistence.DesktopCompatibilityPolicy().Replace(ctx, &store.DesktopCompatibilityPolicyReplacement{ActorID: principal.UserID, ExpectedRevision: 1,
 					Settings:     model.DesktopCompatibilityPolicySettings{MinimumDesktopRelease: "2.0.0", RevokedDesktopBuildIDs: []string{}, Availability: model.DesktopAvailabilityReady},
-					AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt)}, command)
+					AuditEventID: audit.ID, AuditAt: model.MillisFromTime(audit.CreatedAt)}, command)
 				return err
 			},
 			revision: func(ctx context.Context, persistence *SQLStore) (int64, error) {
@@ -383,7 +383,7 @@ func TestPolicyReplacementRechecksAdministratorAfterBindingEnd(t *testing.T) {
 			if found, outcomeErr := persistence.CommandOutcome().Has(ctx, command); outcomeErr != nil || found {
 				t.Fatalf("revoked administrator recorded an outcome: exists=%v err=%v", found, outcomeErr)
 			}
-			storedAudit, err := persistence.Audit().Get(ctx, audit.ID.String())
+			storedAudit, err := persistence.Audit().Get(ctx, audit.ID)
 			if err != nil || storedAudit.Status != model.AuditStatusAttempt {
 				t.Fatalf("revoked administrator completed audit: event=%#v err=%v", storedAudit, err)
 			}

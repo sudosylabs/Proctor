@@ -226,7 +226,7 @@ func testTeacherAcademicUnitInvitationIssue(t *testing.T, ss store.Store) {
 
 	rollback := teacherAcademicUnitInvitationIssueFixture(t, ss, inviter, unit, packageRole, issuedAt.Add(time.Second))
 	rollback.Invitation.TargetEmail = "rollback-teacher@example.edu"
-	rollback.AuditEventID = model.NewAuditEventID().String()
+	rollback.AuditEventID = model.NewAuditEventID()
 	if _, err = ss.Invitation().IssueTeacherAcademicUnit(ctx, rollback); err == nil {
 		t.Fatal("IssueTeacherAcademicUnit() succeeded without durable audit attempt")
 	}
@@ -391,7 +391,7 @@ func teacherAcademicUnitInvitationIssueFixture(t *testing.T, ss store.Store, inv
 	return &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation,
 			TemplateKey: model.MailTemplateAccessTeacherAcademicUnitInvitation, ActorUserID: inviter.ID, CreatedAt: issuedAt},
-		Delivery: delivery, DeliveryJob: job, AuditEventID: attempt.ID.String(), AuditAt: model.MillisFromTime(issuedAt)}
+		Delivery: delivery, DeliveryJob: job, AuditEventID: attempt.ID, AuditAt: model.MillisFromTime(issuedAt)}
 }
 
 func teacherAcademicUnitInvitationAcceptanceFixture(t *testing.T, invitation *model.Invitation, acceptedAt time.Time) *store.TeacherAcademicUnitInvitationAcceptance {

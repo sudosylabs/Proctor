@@ -63,24 +63,20 @@ type accessPolicyAuditFake struct {
 	failCode string
 }
 
-func (a *accessPolicyAuditFake) Begin(_ context.Context, invocation Invocation, action model.Action, resource model.Resource,
-	operation string, value, prior map[string]any,
-) (string, error) {
+func (a *accessPolicyAuditFake) Begin(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.attempt = mutationAttempt{Invocation: invocation, Action: action, Resource: resource,
 		Operation: operation, Value: value, Prior: prior}
-	return a.beginID, a.beginErr
+	return model.AuditEventID(a.beginID), a.beginErr
 }
 
-func (a *accessPolicyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource,
-	scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any,
-) (string, error) {
+func (a *accessPolicyAuditFake) BeginAtScope(_ context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	a.attempt = mutationAttempt{Invocation: invocation, Action: action, Resource: resource,
 		ScopeType: scopeType, ScopeID: scopeID, Operation: operation, Value: value, Prior: prior}
-	return a.beginID, a.beginErr
+	return model.AuditEventID(a.beginID), a.beginErr
 }
 
-func (a *accessPolicyAuditFake) Fail(_ context.Context, id, code string) error {
-	a.failID, a.failCode = id, code
+func (a *accessPolicyAuditFake) Fail(_ context.Context, id model.AuditEventID, code string) error {
+	a.failID, a.failCode = id.String(), code
 	return a.failErr
 }
 
@@ -318,7 +314,7 @@ func TestAccessPolicyReplacementIsIdempotentAndPublishesOnlyCommittedRevision(t 
 		t.Fatal(err)
 	}
 	if result.Policy.Revision != 2 || persistence.command == nil || persistence.command.Operation != "access_policy.replace.v1" ||
-		persistence.replaceInput == nil || persistence.replaceInput.AuditEventID != audit.beginID ||
+		persistence.replaceInput == nil || persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) ||
 		audit.attempt.Operation != "replace" || audit.attempt.ScopeType != model.RoleScopeInstitution ||
 		len(effects.changes) != 1 || effects.changes[0].Revision != 2 {
 		t.Fatalf("result=%#v command=%#v replacement=%#v effects=%v", result, persistence.command, persistence.replaceInput, effects.changes)
@@ -349,7 +345,7 @@ func TestAccessPolicyReplacementResolvesExactReplayBeforeRevisionPreflight(t *te
 	if len(effects.changes) != 0 {
 		t.Fatalf("replay effects = %#v", effects.changes)
 	}
-	if audit.attempt.Operation != "replace" || persistence.replaceInput.AuditEventID != audit.beginID {
+	if audit.attempt.Operation != "replace" || persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) {
 		t.Fatalf("replay audit = %#v replacement = %#v", audit.attempt, persistence.replaceInput)
 	}
 }

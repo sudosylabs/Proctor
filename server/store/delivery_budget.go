@@ -23,7 +23,7 @@ type DeliveryBudgetAccess struct {
 type DeliveryDetailsStop struct {
 	Access       CandidateAttemptAccess
 	Request      model.StopDeliveryDetails
-	AuditEventID string
+	AuditEventID model.AuditEventID
 	AuditAt      int64
 }
 

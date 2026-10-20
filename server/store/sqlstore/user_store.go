@@ -588,6 +588,16 @@ func idStrings[T ~string](ids []T) []string {
 	return out
 }
 
+// typedIDs converts persisted identifier text back to typed identifiers,
+// preserving a nil slice for an empty input.
+func typedIDs[T ~string](values []string) []T {
+	var out []T
+	for _, value := range values {
+		out = append(out, T(value))
+	}
+	return out
+}
+
 func validVisibilityIDs[T interface{ IsValid() bool }](ids []T) bool {
 	for _, id := range ids {
 		if !id.IsValid() {
@@ -728,7 +738,7 @@ func (s SQLUserStore) get(
 
 func (s SQLUserStore) UpdateProfileWithAudit(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("user", "profile_update", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited user profile update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.User, error) {
@@ -841,7 +851,7 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 ||
-		input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.ChangedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
 	}

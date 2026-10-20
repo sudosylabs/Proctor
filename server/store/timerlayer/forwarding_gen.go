@@ -2984,13 +2984,13 @@ func (s *timedInvitationStore) FindCommandOutcome(arg0 context.Context, arg1 *st
 	})
 }
 
-func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 string, arg3 int64) (*store.InvitationCommandResult, error) {
+func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 model.AuditEventID, arg3 int64) (*store.InvitationCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayIssue), func() (*store.InvitationCommandResult, error) {
 		return s.next.ReplayIssue(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 string, arg3 int64) (*store.InvitationAdministrationCommandResult, error) {
+func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 model.AuditEventID, arg3 int64) (*store.InvitationAdministrationCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayAdministration), func() (*store.InvitationAdministrationCommandResult, error) {
 		return s.next.ReplayAdministration(arg0, arg1, arg2, arg3)
 	})
@@ -3692,13 +3692,13 @@ func (s *timedAuditStore) Save(arg0 context.Context, arg1 *model.AuditEvent) (*m
 	})
 }
 
-func (s *timedAuditStore) Get(arg0 context.Context, arg1 string) (*model.AuditEvent, error) {
+func (s *timedAuditStore) Get(arg0 context.Context, arg1 model.AuditEventID) (*model.AuditEvent, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodGet), func() (*model.AuditEvent, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedAuditStore) Complete(arg0 context.Context, arg1 string, arg2 model.AuditStatus, arg3 string, arg4 []byte, arg5 int64) (*model.AuditEvent, error) {
+func (s *timedAuditStore) Complete(arg0 context.Context, arg1 model.AuditEventID, arg2 model.AuditStatus, arg3 string, arg4 []byte, arg5 int64) (*model.AuditEvent, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAudit, methodComplete), func() (*model.AuditEvent, error) {
 		return s.next.Complete(arg0, arg1, arg2, arg3, arg4, arg5)
 	})

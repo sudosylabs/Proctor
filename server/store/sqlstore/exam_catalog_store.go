@@ -250,7 +250,7 @@ func validateExamListOptions(options store.ExamListOptions) error {
 
 func prepareExamArchive(input *store.ExamArchive) (*store.ExamArchive, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || input.ExpectedRevision < 1 ||
-		input.ArchivedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ArchivedAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam", "archive", nil)
 	}
 	prepared := *input

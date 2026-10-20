@@ -61,7 +61,7 @@ func testExamAttemptFocusLoss(t *testing.T, ctx context.Context, ss store.Store,
 
 	replay := *crossingInput
 	replay.SignalID, replay.EvidenceID, replay.FlagID, replay.SuspensionID = model.NewFocusLossSignalID(), model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
-	replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+	replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 	replayed, err := ss.ExamAttempt().RecordFocusLoss(ctx, &replay)
 	requireNoError(t, err)
 	if !replayed.Duplicate || replayed.Signal.ID != crossed.Signal.ID || !replayed.DatabaseTime.Equal(crossed.DatabaseTime) ||
@@ -73,12 +73,12 @@ func testExamAttemptFocusLoss(t *testing.T, ctx context.Context, ss store.Store,
 	assertFocusLossAuditAllowlist(t, ctx, ss, replay.AuditEventID)
 	changed := replay
 	changed.DurationMilliseconds++
-	changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &changed)
 	assertExamAttemptConflict(t, err, "focus_loss_sequence")
 	stale := replay
 	stale.Sequence = 3
-	stale.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	stale.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 	_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &stale)
 	assertExamAttemptConflict(t, err, "focus_loss_sequence")
 
@@ -103,7 +103,7 @@ func testExamAttemptFocusLoss(t *testing.T, ctx context.Context, ss store.Store,
 	return newFocusLossInput(t, ctx, ss, fixture, access, 11, 2000, model.FocusLossSourceApplicationBackgrounded)
 }
 
-func assertFocusLossAuditAllowlist(t *testing.T, ctx context.Context, ss store.Store, id string) {
+func assertFocusLossAuditAllowlist(t *testing.T, ctx context.Context, ss store.Store, id model.AuditEventID) {
 	t.Helper()
 	audit, err := ss.Audit().Get(ctx, id)
 	requireNoError(t, err)
@@ -225,7 +225,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		}
 		replay := *crossingInput
 		replay.SignalID, replay.EvidenceID, replay.FlagID, replay.SuspensionID = model.NewFocusLossSignalID(), model.NewIntegrityEvidenceID(), model.NewIntegrityFlagID(), model.NewAttemptSuspensionID()
-		replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+		replay.AuditEventID, replay.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 		replayed, err := ss.ExamAttempt().RecordFocusLoss(ctx, &replay)
 		requireNoError(t, err)
 		if !replayed.Duplicate || replayed.Signal.ID != crossed.Signal.ID || replayed.Suspension == nil ||
@@ -235,19 +235,19 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		}
 		changed := replay
 		changed.DurationMilliseconds++
-		changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+		changed.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &changed)
 		assertExamAttemptConflict(t, err, "focus_loss_sequence")
 		later := replay
 		later.Sequence++
-		later.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+		later.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID
 		_, err = ss.ExamAttempt().RecordFocusLoss(ctx, &later)
 		assertExamAttemptConflict(t, err, "exam_attempt_state")
 
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: crossed.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: crossed.Attempt.Revision,
 			PrivateReason: "reviewed the focus policy episode",
-			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "focus-reallow", "focus-reallow"))
 		requireNoError(t, err)
@@ -290,7 +290,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		}
 		closed, err := ss.ExamAttempt().CloseConnection(ctx, &store.ExamAttemptConnectionClose{ConnectionID: connected.Connection.ID,
 			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Reason: model.AttemptConnectionCloseTransport,
-			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()})
+			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})
 		requireNoError(t, err)
 		if !closed.Changed {
 			t.Fatalf("CloseConnection(Focus Loss access) = %#v", closed)
@@ -304,7 +304,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 			SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID, ExpectedRevision: fixture.sitting.Revision,
 			FinalizeJob:   newExamSittingFinalizeJob(t, fixture.sitting.ID, fixture.sitting.Revision+1, closeAt),
 			PrivateReason: "verify terminal Focus Loss fence", ChangedAt: closeAt,
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.manager.ID, fixture.examID, fixture.unitID).ID, AuditAt: model.GetMillis()},
 			examCommand(fixture.manager.ID, "exam.sitting.close.v1", "focus-close", "focus-close"))
 		requireNoError(t, err)
 		terminalInput := newFocusLossInput(t, ctx, ss, fixture, access, 2, 500, "")
@@ -338,12 +338,12 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		expired, err := ss.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID,
 			ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 			EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(),
-			AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()})
+			AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})
 		requireNoError(t, err)
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
 			SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID, ExpectedAttemptRevision: expired.Attempt.Revision,
 			PrivateReason: "connectivity was restored",
-			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID:  saveExamAttemptReallowAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "connection-loss-reallow-focus", "connection-loss-reallow-focus"))
 		requireNoError(t, err)
@@ -361,14 +361,14 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
 		connected, access := connectFocusLossFixture(t, ctx, ss, fixture, "focus-audit-rollback")
 		input := newFocusLossInput(t, ctx, ss, fixture, access, 1, 500, model.FocusLossSourceWindowBlur)
-		input.AuditEventID = model.NewId()
+		input.AuditEventID = model.NewAuditEventID()
 		if _, err := ss.ExamAttempt().RecordFocusLoss(ctx, input); err == nil {
 			t.Fatal("RecordFocusLoss with missing audit unexpectedly succeeded")
 		}
 		if persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation); persisted != (FocusLossPersistenceProbe{}) {
 			t.Fatalf("failed Focus Loss audit left partial persistence = %#v", persisted)
 		}
-		input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+		input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID, model.GetMillis()
 		accepted, err := ss.ExamAttempt().RecordFocusLoss(ctx, input)
 		requireNoError(t, err)
 		if accepted.Duplicate || accepted.AcceptedSequence != 1 {
@@ -434,7 +434,7 @@ func connectFocusLossFixture(t *testing.T, ctx context.Context, ss store.Store, 
 		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input, examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, key, key))
 	requireNoError(t, err)
@@ -460,5 +460,5 @@ func newFocusLossInput(t *testing.T, ctx context.Context, ss store.Store, fixtur
 	return &store.ExamAttemptFocusLossSignal{Access: access, SchemaVersion: model.FocusLossSignalSchemaVersion,
 		SignalID: model.NewFocusLossSignalID(), EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(),
 		SuspensionID: model.NewAttemptSuspensionID(), Sequence: sequence, DurationMilliseconds: duration, Source: source,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()}
 }

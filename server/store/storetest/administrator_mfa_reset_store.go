@@ -45,7 +45,7 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		CredentialID: pending.ID, UserID: userID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID, At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
+		SessionID:     session.ID, At: at, AuditEventID: audit.ID, AuditAt: at.UnixMilli(), Notice: notice,
 	})
 	requireNoError(t, err)
 	passwordBefore, err := ss.PasswordCredential().GetByUser(ctx, userID)
@@ -253,7 +253,7 @@ func TestAdministratorMFAResetExternalStore(t *testing.T, ss store.Store) {
 	removeAudit := saveAuthenticationMethodAuditAttempt(t, ctx, ss, installed.Administrator.ID.String(), "remove_password")
 	_, err = ss.PasswordCredential().RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: installed.Administrator.ID,
 		Capabilities: capabilities, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
-		AuditEventID: removeAudit.ID.String(), AuditAt: model.GetMillis()})
+		AuditEventID: removeAudit.ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	input := &store.AdministratorMFAReset{InstitutionID: installed.Institution.ID, UserID: installed.Administrator.ID, MFAEnabled: true}
 	if _, err = ss.Installation().ResetAdministratorMFA(ctx, input); !store.IsConflict(err) {

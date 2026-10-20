@@ -87,8 +87,8 @@ func (s *sqlExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *
 			}
 			return value, nil
 		},
-		freshAuditEventID: func(value *store.ExamAttemptCorrectionAcknowledgementResult) (string, error) {
-			if value == nil || !model.IsValidId(value.MutationAuditEventID) {
+		freshAuditEventID: func(value *store.ExamAttemptCorrectionAcknowledgementResult) (model.AuditEventID, error) {
+			if value == nil || !value.MutationAuditEventID.IsValid() {
 				return "", errors.New("missing correction acknowledgement mutation audit")
 			}
 			return value.MutationAuditEventID, nil
@@ -208,7 +208,7 @@ func (s *sqlExamAttemptStore) acknowledgeCorrection(ctx context.Context, tx *sql
 		return &store.ExamAttemptCorrectionAcknowledgementResult{AttemptID: target.AttemptID,
 			CorrectionRevisionID: target.CorrectionRevisionID,
 			CurrentRevisionID:    currentRevisionID,
-			AcknowledgedAt:       model.TimeUTC(existing.AcknowledgedAt), MutationAuditEventID: existing.AuditEventID, Duplicate: true}, nil
+			AcknowledgedAt:       model.TimeUTC(existing.AcknowledgedAt), MutationAuditEventID: model.AuditEventID(existing.AuditEventID), Duplicate: true}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -250,15 +250,15 @@ func (s *sqlExamAttemptStore) acknowledgeCorrection(ctx context.Context, tx *sql
 	}
 	result := &store.ExamAttemptCorrectionAcknowledgementResult{AttemptID: target.AttemptID,
 		CorrectionRevisionID: target.CorrectionRevisionID, CurrentRevisionID: target.CurrentRevisionID,
-		AcknowledgedAt: databaseNow, MutationAuditEventID: auditEvent.ID.String()}
-	if err = completeCorrectionAcknowledgementAudit(ctx, tx, result, auditEvent.ID.String(), databaseNow); err != nil {
+		AcknowledgedAt: databaseNow, MutationAuditEventID: auditEvent.ID}
+	if err = completeCorrectionAcknowledgementAudit(ctx, tx, result, auditEvent.ID, databaseNow); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
 func completeCorrectionAcknowledgementAudit(ctx context.Context, tx *sqlxTxWrapper,
-	result *store.ExamAttemptCorrectionAcknowledgementResult, auditID string, at time.Time,
+	result *store.ExamAttemptCorrectionAcknowledgementResult, auditID model.AuditEventID, at time.Time,
 ) error {
 	data := map[string]any{"exam_attempt_id": result.AttemptID.String(), "correction_revision_id": result.CorrectionRevisionID.String(),
 		"current_revision_id": result.CurrentRevisionID.String(), "acknowledged_at": model.MillisFromTime(result.AcknowledgedAt)}
@@ -273,7 +273,7 @@ func completeCorrectionAcknowledgementAudit(ctx context.Context, tx *sqlxTxWrapp
 func validateCorrectionAcknowledgementResult(value *store.ExamAttemptCorrectionAcknowledgementResult, input *store.ExamAttemptCorrectionAcknowledgement) error {
 	if value == nil || value.AttemptID != input.Access.AttemptID || value.CorrectionRevisionID != input.CorrectionRevisionID ||
 		value.CurrentRevisionID != input.ExpectedCurrentRevisionID || value.AcknowledgedAt.IsZero() ||
-		!model.IsValidId(value.MutationAuditEventID) {
+		!value.MutationAuditEventID.IsValid() {
 		return invalidPersistedState("exam_attempt_correction_acknowledgement", "outcome", errors.New("invalid acknowledgement outcome"))
 	}
 	return nil

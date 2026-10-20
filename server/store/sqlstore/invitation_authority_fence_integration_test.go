@@ -87,7 +87,7 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_disable", "users", "UPDATE users", 8154700260822, func() error {
 				_, err := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 					ID: inviter.ID, ExpectedRevision: inviter.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				}))
 				return err
@@ -98,7 +98,7 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_binding_end", "role_bindings", "UPDATE role_bindings", 8154700260823, func() error {
 				endedAt := model.GetMillis() - 1_000
 				_, err := secondary.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{
-					ID: binding.ID, EndAt: endedAt, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+					ID: binding.ID, EndAt: endedAt, AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				})
 				return err
@@ -109,7 +109,7 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, invitationRoleActorID(t, ctx, secondary, role.ID), string(model.ActionRoleManage), model.ResourceInstitution, institutionID.String(), model.RoleScopeInstitution, institutionID.String())
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_role_archive", "roles", "UPDATE roles", 8154700260824, func() error {
 				_, err := secondary.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
-					ID: role.ID, ArchiveAt: model.GetMillis(), AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+					ID: role.ID, ArchiveAt: model.GetMillis(), AuditEventID: audit.ID, AuditAt: model.GetMillis(),
 				})
 				return err
 			}, operation)

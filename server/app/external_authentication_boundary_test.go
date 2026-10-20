@@ -208,7 +208,7 @@ func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *tes
 				t.Fatal(err)
 			}
 			if identities.linked == nil || identities.linked.Identity.UserID != target || identities.linked.Identity.Subject != provider.assertion.Subject ||
-				identities.linked.AuditEventID != state.AuditEventID || identities.linked.AuditAt != databaseNow.UnixMilli() ||
+				identities.linked.AuditEventID != model.AuditEventID(state.AuditEventID) || identities.linked.AuditAt != databaseNow.UnixMilli() ||
 				!identities.linked.Identity.LastSeenAt.Valid || !identities.linked.Identity.LastSeenAt.Time.Equal(databaseNow) {
 				t.Fatalf("link = %#v", identities.linked)
 			}
@@ -900,7 +900,7 @@ func (f externalAuditFake) RecordExternalAuthenticationFailure(_ context.Context
 	}
 	return nil
 }
-func (externalAuditFake) CompleteCriticalAction(context.Context, string, model.AuditStatus, string, any) (*model.AuditEvent, error) {
+func (externalAuditFake) CompleteCriticalAction(context.Context, model.AuditEventID, model.AuditStatus, string, any) (*model.AuditEvent, error) {
 	return nil, nil
 }
 

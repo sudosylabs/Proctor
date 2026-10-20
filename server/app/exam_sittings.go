@@ -211,22 +211,18 @@ func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, call ex
 
 type examSittingAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (adapter examSittingAuditAdapter) Begin(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource,
-	scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any,
-) (string, error) {
+func (adapter examSittingAuditAdapter) Begin(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
 	return adapter.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource,
 		scopeType, scopeID, operation, value, prior)
 }
 
-func (adapter examSittingAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (adapter examSittingAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return adapter.audit.Fail(ctx, id, code)
 }
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
-func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call examsitting.SystemCall, action model.Action,
-	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
-) (string, error) {
+func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call examsitting.SystemCall, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value)+2)
 	for key, item := range value {
 		auditValue[key] = item
@@ -238,10 +234,10 @@ func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call exa
 	if err != nil {
 		return "", err
 	}
-	return event.ID.String(), nil
+	return event.ID, nil
 }
 
-func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id, code string) error {
+func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	_, err := adapter.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, code, nil)
 	return err
 }

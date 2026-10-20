@@ -36,7 +36,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
-			AuditEventID: model.NewId(), AuditAt: at,
+			AuditEventID: model.NewAuditEventID(), AuditAt: at,
 		}); err == nil {
 			t.Fatal("SaveWithAudit succeeded without audit attempt")
 		}
@@ -58,7 +58,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
 			ExpectedRoleUpdatedAt: staleUpdatedAt, ExpectedRolePermissions: stalePermissions,
-			AuditEventID: attempt.ID.String(), AuditAt: at,
+			AuditEventID: attempt.ID, AuditAt: at,
 		}); !store.IsConflict(err) {
 			t.Fatalf("SaveWithAudit(stale role snapshot) error = %v, want conflict", err)
 		}
@@ -76,7 +76,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			},
 			ExpectedRoleUpdatedAt: role.UpdatedAt, ExpectedRolePermissions: append([]string(nil), role.Permissions...),
 			ExpectedRecipientRevision: user.Revision, Notice: createNotice,
-			AuditEventID: attempt.ID.String(), AuditAt: at,
+			AuditEventID: attempt.ID, AuditAt: at,
 		})
 		requireNoError(t, err)
 		requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAuthorizationInstitutionRoleAssigned))
@@ -91,7 +91,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeFromMillis(at+1))
 		ended, err := ss.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{
 			ID: saved.ID, EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
-			AuditEventID: endAttempt.ID.String(), AuditAt: at + 1,
+			AuditEventID: endAttempt.ID, AuditAt: at + 1,
 		})
 		requireNoError(t, err)
 		requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAuthorizationInstitutionRoleEnded))

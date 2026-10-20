@@ -57,11 +57,11 @@ func (s SQLSessionStore) ReauthenticatePasswordWithAudit(
 		if err != nil {
 			return nil, err
 		}
-		return commitSessionReauthentication(ctx, tx, session, at, input.AuditEventID.String())
+		return commitSessionReauthentication(ctx, tx, session, at, input.AuditEventID)
 	})
 }
 
-func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, session *model.Session, at time.Time, auditID string) (*store.SessionReauthenticationResult, error) {
+func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, session *model.Session, at time.Time, auditID model.AuditEventID) (*store.SessionReauthenticationResult, error) {
 	if err := requireSessionAuthenticationGeneration(ctx, tx, session); err != nil {
 		return nil, err
 	}
@@ -147,6 +147,6 @@ func (s SQLSessionStore) ReauthenticateExternalWithAudit(ctx context.Context, in
 		if err != nil {
 			return nil, err
 		}
-		return commitSessionReauthentication(ctx, tx, session, proofAt, state.AuditEventID)
+		return commitSessionReauthentication(ctx, tx, session, proofAt, model.AuditEventID(state.AuditEventID))
 	})
 }
