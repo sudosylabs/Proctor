@@ -107,3 +107,35 @@ func TestCreateRequestsRejectServerOwnedFields(t *testing.T) {
 		}
 	}
 }
+
+// Route scope is the only authority for a created child's parent, so create
+// requests do not declare parent identifiers they would silently ignore.
+func TestCreateRequestsRejectRouteOwnedParentFields(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		target  any
+		members []string
+	}{
+		"academic_unit":        {&createAcademicUnitRequest{}, []string{"institution_id", "parent_id"}},
+		"programme":            {&createProgrammeRequest{}, []string{"academic_unit_id"}},
+		"programme_level":      {&createProgrammeLevelRequest{}, []string{"programme_id"}},
+		"class":                {&createClassRequest{}, []string{"programme_level_id"}},
+		"academic_unit_member": {&createAcademicUnitMemberRequest{}, []string{"academic_unit_id", "end_at"}},
+		"class_member":         {&enrollClassMemberRequest{}, []string{"class_id", "academic_period_id"}},
+		"affiliation":          {&createAffiliationRequest{}, []string{"user_id"}},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, member := range test.members {
+				request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/",
+					strings.NewReader(`{"`+member+`":"route-owned"}`))
+				request.Header.Set("Content-Type", "application/json")
+				fresh := reflect.New(reflect.TypeOf(test.target).Elem()).Interface()
+				if err := decodeRequestJSON(request, fresh); err == nil {
+					t.Fatalf("%T accepted route-owned member %s", test.target, member)
+				}
+			}
+		})
+	}
+}

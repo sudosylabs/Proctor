@@ -124,14 +124,6 @@ components:
         - name
         - display_name
       properties:
-        institution_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored for v1 compatibility.
-        parent_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; route scope is authoritative.
         name:
           type: string
           description: The owner-scoped canonical machine name.

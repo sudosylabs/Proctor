@@ -32,7 +32,8 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   `model.FormatRFC3339` and omit an absent optional instant instead of sending
   `null` or zero, lifecycle members use `<verb>ed_at` names such as
   `created_at`, `updated_at`, and `archived_at`, and create requests never
-  declare server-owned `id` or timestamp members;
+  declare server-owned `id` or timestamp members or route-owned parent
+  identifiers that the route path already fixes;
 - document stable application error codes in `x-proctor-error-codes`, map each
   code to a declared HTTP response, and return RFC 9457 Problem Details;
 - list every public code once, with its status and meaning, in

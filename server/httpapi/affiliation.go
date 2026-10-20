@@ -26,7 +26,6 @@ type affiliationResponse struct {
 }
 
 type createAffiliationRequest struct {
-	UserID  string                `json:"user_id"`
 	Kind    model.AffiliationKind `json:"kind"`
 	StartAt string                `json:"start_at"`
 	EndAt   string                `json:"end_at"`

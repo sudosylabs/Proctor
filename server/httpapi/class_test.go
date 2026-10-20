@@ -287,7 +287,7 @@ func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ application.Inv
 	return nil
 }
 
-func TestClassHTTPMapsBothParentsAndIgnoresBodyProgrammeLevel(t *testing.T) {
+func TestClassHTTPMapsBothParentsFromRouteAndBody(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
@@ -316,7 +316,7 @@ func TestClassHTTPMapsBothParentsAndIgnoresBodyProgrammeLevel(t *testing.T) {
 	if len(classCreate.ErrorCodes) == 0 {
 		t.Fatal("production Class route has no kernel-owned public error contract")
 	}
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/programme-levels/"+class.ProgrammeLevelID.String()+"/classes", strings.NewReader(`{"programme_level_id":"ignored","academic_period_id":"`+class.AcademicPeriodID.String()+`","name":"class-a","display_name":"Class A"}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/programme-levels/"+class.ProgrammeLevelID.String()+"/classes", strings.NewReader(`{"academic_period_id":"`+class.AcademicPeriodID.String()+`","name":"class-a","display_name":"Class A"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

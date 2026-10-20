@@ -90,7 +90,7 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	members := &academicUnitMemberHTTPApplication{result: member}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, academicUnitMemberResource(members))
 
-	create := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/academic-units/"+unitID+"/members", strings.NewReader(`{"academic_unit_id":"ignored","user_id":"`+userID+`","start_at":"1970-01-01T00:00:00.1Z"}`))
+	create := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/academic-units/"+unitID+"/members", strings.NewReader(`{"user_id":"`+userID+`","start_at":"1970-01-01T00:00:00.1Z"}`))
 	create.Header.Set("Authorization", "Bearer credential")
 	create.Header.Set("Content-Type", "application/json")
 	created := httptest.NewRecorder()

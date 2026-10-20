@@ -26,10 +26,8 @@ type academicUnitMemberResponse struct {
 }
 
 type createAcademicUnitMemberRequest struct {
-	AcademicUnitID string `json:"academic_unit_id"`
-	UserID         string `json:"user_id"`
-	StartAt        string `json:"start_at"`
-	EndAt          string `json:"end_at"`
+	UserID  string `json:"user_id"`
+	StartAt string `json:"start_at"`
 }
 
 type academicUnitMemberResourceModule struct {

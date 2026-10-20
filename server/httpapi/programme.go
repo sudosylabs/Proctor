@@ -27,10 +27,9 @@ type programmeResponse struct {
 }
 
 type createProgrammeRequest struct {
-	AcademicUnitID string `json:"academic_unit_id"`
-	Name           string `json:"name"`
-	DisplayName    string `json:"display_name"`
-	Description    string `json:"description"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
 }
 
 type updateProgrammeRequest struct {

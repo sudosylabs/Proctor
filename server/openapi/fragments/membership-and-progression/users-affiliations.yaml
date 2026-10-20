@@ -139,10 +139,6 @@ components:
       required:
         - kind
       properties:
-        user_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; route scope is authoritative.
         kind:
           $ref: '#/components/schemas/AffiliationKind'
         start_at:

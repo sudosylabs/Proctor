@@ -27,11 +27,9 @@ type classMemberResponse struct {
 }
 
 type enrollClassMemberRequest struct {
-	ClassID          string `json:"class_id"`
-	AcademicPeriodID string `json:"academic_period_id"`
-	UserID           string `json:"user_id"`
-	StartAt          string `json:"start_at"`
-	EndAt            string `json:"end_at"`
+	UserID  string `json:"user_id"`
+	StartAt string `json:"start_at"`
+	EndAt   string `json:"end_at"`
 }
 
 type classEnrollmentResponse struct {

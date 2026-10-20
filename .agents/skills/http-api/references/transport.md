@@ -33,8 +33,8 @@ optional instant rather than sending `null` or zero; requests accept any RFC
 Lifecycle members use past-tense `<verb>ed_at` names (`created_at`,
 `updated_at`, `archived_at`, `completed_at`); scheduled bounds and deadlines
 keep their noun form (`start_at`, `end_at`, `expires_at`). Create requests
-never declare server-owned `id` or timestamp members, so strict decoding
-rejects them. The OpenAPI agreement suite enforces this for every registered
+never declare server-owned `id` or timestamp members, nor parent identifiers
+that the route path fixes, so strict decoding rejects them. The OpenAPI agreement suite enforces this for every registered
 schema. Model-owned canonical security documents, such as delivery closures,
 keep their frozen closed-record codecs.
 

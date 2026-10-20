@@ -295,8 +295,6 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 			request := httptest.NewRequest(
 				http.MethodPost, tt.path,
 				strings.NewReader(`{
-					"institution_id":"client-institution",
-					"parent_id":"client-parent",
 					"name":"computing",
 					"display_name":"Computing",
 					"description":"School"

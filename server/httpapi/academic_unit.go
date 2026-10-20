@@ -28,13 +28,9 @@ type academicUnitResponse struct {
 }
 
 type createAcademicUnitRequest struct {
-	// Server-owned fields remain accepted for v1 compatibility with the prior
-	// domain-shaped request. Mapping deliberately ignores them.
-	InstitutionID string `json:"institution_id"`
-	ParentID      string `json:"parent_id"`
-	Name          string `json:"name"`
-	DisplayName   string `json:"display_name"`
-	Description   string `json:"description"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
 }
 
 type updateAcademicUnitRequest struct {

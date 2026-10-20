@@ -174,17 +174,8 @@ components:
       required:
         - user_id
       properties:
-        academic_unit_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; route scope is authoritative.
         user_id:
           $ref: '#/components/schemas/ID'
         start_at:
           type: string
           format: date-time
-        end_at:
-          type: string
-          format: date-time
-          deprecated: true
-          description: Accepted and ignored; memberships are ended through DELETE.

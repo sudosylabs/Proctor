@@ -27,7 +27,6 @@ type programmeLevelResponse struct {
 }
 
 type createProgrammeLevelRequest struct {
-	ProgrammeID string `json:"programme_id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Description string `json:"description"`

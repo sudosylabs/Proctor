@@ -186,14 +186,6 @@ components:
       required:
         - user_id
       properties:
-        class_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; route scope is authoritative.
-        academic_period_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; destination Class is authoritative.
         user_id:
           $ref: '#/components/schemas/ID'
         start_at:

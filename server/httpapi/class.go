@@ -27,7 +27,6 @@ type classResponse struct {
 	Description      string `json:"description"`
 }
 type createClassRequest struct {
-	ProgrammeLevelID string `json:"programme_level_id"`
 	AcademicPeriodID string `json:"academic_period_id"`
 	Name             string `json:"name"`
 	DisplayName      string `json:"display_name"`

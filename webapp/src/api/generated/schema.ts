@@ -6398,17 +6398,6 @@ export interface components {
             start_at: string;
         };
         CreateAcademicUnitMemberRequest: {
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            academic_unit_id?: string;
-            /**
-             * Format: date-time
-             * @deprecated
-             * @description Accepted and ignored; memberships are ended through DELETE.
-             */
-            end_at?: string;
             /** Format: date-time */
             start_at?: string;
             user_id: components["schemas"]["ID"];
@@ -6418,18 +6407,8 @@ export interface components {
             description?: string;
             /** @description The human-facing Academic Unit name. */
             display_name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored for v1 compatibility.
-             */
-            institution_id?: string;
             /** @description The owner-scoped canonical machine name. */
             name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            parent_id?: string;
         };
         CreateAffiliationRequest: {
             /** Format: date-time */
@@ -6437,11 +6416,6 @@ export interface components {
             kind: components["schemas"]["AffiliationKind"];
             /** Format: date-time */
             start_at?: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            user_id?: string;
         };
         CreateCandidateWorkspaceDirectoryRequest: {
             /** Format: int64 */
@@ -6455,11 +6429,6 @@ export interface components {
             description?: string;
             display_name: string;
             name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            programme_level_id?: string;
         };
         CreateExamExportRequest: {
             /** @description Work and/or integrity, or Browser Activity alone. Browser Activity requires exact current Exam Manager membership and the dedicated history permission; generic exports contain no ordinary browsing URLs. */
@@ -6490,19 +6459,9 @@ export interface components {
             description?: string;
             display_name: string;
             name: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            programme_id?: string;
         };
         /** @description Canonical and human-facing fields for a new Programme. */
         CreateProgrammeRequest: {
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            academic_unit_id?: string;
             description?: string;
             display_name: string;
             name: string;
@@ -6951,16 +6910,6 @@ export interface components {
             reason: string;
         };
         EnrollClassMemberRequest: {
-            /**
-             * @deprecated
-             * @description Accepted and ignored; destination Class is authoritative.
-             */
-            academic_period_id?: string;
-            /**
-             * @deprecated
-             * @description Accepted and ignored; route scope is authoritative.
-             */
-            class_id?: string;
             /** Format: date-time */
             end_at?: string;
             /** Format: date-time */

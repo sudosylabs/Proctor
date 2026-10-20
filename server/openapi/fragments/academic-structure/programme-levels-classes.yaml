@@ -133,10 +133,6 @@ components:
         - name
         - display_name
       properties:
-        programme_level_id:
-          type: string
-          deprecated: true
-          description: Accepted and ignored; route scope is authoritative.
         academic_period_id:
           $ref: '#/components/schemas/ID'
         name:

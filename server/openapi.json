@@ -9646,17 +9646,6 @@
       "CreateAcademicUnitMemberRequest": {
         "additionalProperties": false,
         "properties": {
-          "academic_unit_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
-            "type": "string"
-          },
-          "end_at": {
-            "deprecated": true,
-            "description": "Accepted and ignored; memberships are ended through DELETE.",
-            "format": "date-time",
-            "type": "string"
-          },
           "start_at": {
             "format": "date-time",
             "type": "string"
@@ -9681,18 +9670,8 @@
             "description": "The human-facing Academic Unit name.",
             "type": "string"
           },
-          "institution_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored for v1 compatibility.",
-            "type": "string"
-          },
           "name": {
             "description": "The owner-scoped canonical machine name.",
-            "type": "string"
-          },
-          "parent_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           }
         },
@@ -9714,11 +9693,6 @@
           },
           "start_at": {
             "format": "date-time",
-            "type": "string"
-          },
-          "user_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           }
         },
@@ -9763,11 +9737,6 @@
             "type": "string"
           },
           "name": {
-            "type": "string"
-          },
-          "programme_level_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
             "type": "string"
           }
         },
@@ -9883,11 +9852,6 @@
           },
           "name": {
             "type": "string"
-          },
-          "programme_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
-            "type": "string"
           }
         },
         "required": [
@@ -9900,11 +9864,6 @@
         "additionalProperties": false,
         "description": "Canonical and human-facing fields for a new Programme.",
         "properties": {
-          "academic_unit_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
-            "type": "string"
-          },
           "description": {
             "type": "string"
           },
@@ -12362,16 +12321,6 @@
       "EnrollClassMemberRequest": {
         "additionalProperties": false,
         "properties": {
-          "academic_period_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; destination Class is authoritative.",
-            "type": "string"
-          },
-          "class_id": {
-            "deprecated": true,
-            "description": "Accepted and ignored; route scope is authoritative.",
-            "type": "string"
-          },
           "end_at": {
             "format": "date-time",
             "type": "string"

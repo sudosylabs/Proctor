@@ -62,7 +62,7 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 		t, logger, classRouteAuthenticator{principal: principal}, programmeResource(programmes),
 	)
 
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/academic-units/"+programme.AcademicUnitID.String()+"/programmes", strings.NewReader(`{"academic_unit_id":"ignored","name":"computer-science","display_name":"Computer Science"}`))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/academic-units/"+programme.AcademicUnitID.String()+"/programmes", strings.NewReader(`{"name":"computer-science","display_name":"Computer Science"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
