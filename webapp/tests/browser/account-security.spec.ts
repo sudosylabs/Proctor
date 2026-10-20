@@ -145,6 +145,11 @@ test("OTP supports leading zeroes, editing, paste, validation and explicit submi
   await input.press("Backspace");
   await expect(input).toHaveValue("01234");
   await input.press("ArrowLeft");
+  // The OTP control selects the previous slot asynchronously; overwrite only
+  // after that selection exists so the keystroke replaces instead of inserts.
+  await expect
+    .poll(() => input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd]))
+    .toEqual([4, 5]);
   await input.press("9");
   await expect(input).toHaveValue("01239");
   await input.press("ControlOrMeta+A");
