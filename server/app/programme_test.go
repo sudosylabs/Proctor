@@ -32,14 +32,14 @@ type programmeStoreFake struct {
 	searchLimit  int
 }
 
-func (s *programmeStoreFake) Get(context.Context, string) (*model.Programme, error) {
+func (s *programmeStoreFake) Get(context.Context, model.ProgrammeID) (*model.Programme, error) {
 	*s.events = append(*s.events, "get")
 	return s.current, nil
 }
 func (s *programmeStoreFake) ListByAcademicUnit(context.Context, string) ([]*model.Programme, error) {
 	return s.listed, nil
 }
-func (s *programmeStoreFake) SearchByAcademicUnit(_ context.Context, _ string, term string, limit int) ([]*model.Programme, error) {
+func (s *programmeStoreFake) SearchByAcademicUnit(_ context.Context, _ model.AcademicUnitID, term string, limit int) ([]*model.Programme, error) {
 	s.searchTerm, s.searchLimit = term, limit
 	return s.listed[:min(limit, len(s.listed))], nil
 }
@@ -118,7 +118,7 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 		time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
-		AcademicUnitID: model.NewId(), Name: "computer-science", DisplayName: "Computer Science",
+		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
@@ -138,7 +138,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 		time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
-		AcademicUnitID: model.NewId(), Name: "computer-science", DisplayName: "Computer Science",
+		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if !apperror.Is(err, "programme.conflict") || auditor.failCode != "programme.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
@@ -164,7 +164,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
 	service := newProgrammeService(persistence, authorizer, auditor, func() time.Time { return time.UnixMilli(500) }, func() string { return programmeID })
 	got, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
-		AcademicUnitID: unitID, Name: "computer-science", DisplayName: "Computer Science",
+		AcademicUnitID: model.AcademicUnitID(unitID), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
@@ -195,7 +195,7 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "computing"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID.String(), Name: &name})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,10 +214,10 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewId()
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID.String()}); err != nil {
+	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID.String() || persistence.archiveInput.AuditEventID != auditID {
+	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID || persistence.archiveInput.AuditEventID != auditID {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)
 	}
 }
@@ -238,7 +238,7 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 				&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 			)
 			got, err := service.List(context.Background(), Invocation{}, ListProgrammesQuery{
-				AcademicUnitID: model.NewId(), Query: term, Limit: 1,
+				AcademicUnitID: model.NewAcademicUnitID(), Query: term, Limit: 1,
 			})
 			if err != nil {
 				t.Fatal(err)

@@ -19,11 +19,11 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 	childID := model.NewId()
 	classID := model.NewId()
 	resolved := resolvedAuthorizationResource{
-		institutionID: institutionID,
-		academicUnitID: map[string]struct{}{
-			parentID: {}, childID: {},
+		institutionID: model.InstitutionID(institutionID),
+		academicUnitID: map[model.AcademicUnitID]struct{}{
+			model.AcademicUnitID(parentID): {}, model.AcademicUnitID(childID): {},
 		},
-		classID: classID,
+		classID: model.ClassID(classID),
 	}
 	classDefinition, _ := model.DefinitionForAction(model.ActionClassView)
 	institutionDefinition, _ := model.DefinitionForAction(model.ActionInstitutionManage)
@@ -96,11 +96,11 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 	childID := model.NewId()
 	classID := model.NewId()
 	resolved := resolvedAuthorizationResource{
-		institutionID: model.NewId(),
-		academicUnitID: map[string]struct{}{
-			parentID: {}, childID: {},
+		institutionID: model.NewInstitutionID(),
+		academicUnitID: map[model.AcademicUnitID]struct{}{
+			model.AcademicUnitID(parentID): {}, model.AcademicUnitID(childID): {},
 		},
-		classID: classID,
+		classID: model.ClassID(classID),
 	}
 	principal := model.Principal{
 		CredentialType:   model.CredentialPersonalAccessToken,
@@ -126,7 +126,7 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 	if personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
-		model.Resource{Type: model.ResourceInstitution, ID: resolved.institutionID},
+		model.Resource{Type: model.ResourceInstitution, ID: resolved.institutionID.String()},
 		resolved,
 	) {
 		t.Fatal("academic-unit-constrained token was allowed at institution scope")

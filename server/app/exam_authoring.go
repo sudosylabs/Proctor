@@ -193,8 +193,8 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 	}
 	return store.ExamListVisibility{ActorUserID: principal.UserID,
 		OrdinaryMembershipAt:    decisionAt,
-		OrdinaryInstitutionWide: ordinary.InstitutionWide, OrdinaryAcademicUnitRootIDs: append([]string(nil), ordinary.AcademicUnitRootIDs...),
-		OverrideInstitutionWide: override.InstitutionWide, OverrideAcademicUnitRootIDs: append([]string(nil), override.AcademicUnitRootIDs...)}, nil
+		OrdinaryInstitutionWide: ordinary.InstitutionWide, OrdinaryAcademicUnitRootIDs: append([]model.AcademicUnitID(nil), ordinary.AcademicUnitRootIDs...),
+		OverrideInstitutionWide: override.InstitutionWide, OverrideAcademicUnitRootIDs: append([]model.AcademicUnitID(nil), override.AcademicUnitRootIDs...)}, nil
 }
 
 type examAuditAdapter struct{ audit mutationAuditAdapter }

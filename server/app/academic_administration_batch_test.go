@@ -195,7 +195,7 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 		t.Fatalf("Run() = %#v commands=%#v", result, commands.enrollments)
 	}
 	command := commands.enrollments[0]
-	if command.ClassID != classID || command.UserID != userID || command.ExpectedPreviousID != previousID || !command.RequireTransfer || command.IdempotencyKey != "9:batch-key:row-1" {
+	if command.ClassID != model.ClassID(classID) || command.UserID != userID || command.ExpectedPreviousID != previousID || !command.RequireTransfer || command.IdempotencyKey != "9:batch-key:row-1" {
 		t.Fatalf("ordinary transfer command = %#v", command)
 	}
 }

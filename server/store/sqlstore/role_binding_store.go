@@ -427,7 +427,7 @@ func (s SQLRoleBindingStore) ListVisibleByUser(
 				SELECT id FROM academic_units WHERE id = ANY(?)
 				UNION ALL SELECT child.id FROM academic_units child
 				JOIN allowed_units parent ON child.parent_id = parent.id
-			)`, pq.Array(visibility.AcademicUnitRootIDs)).Where(`(
+			)`, pq.Array(idStrings(visibility.AcademicUnitRootIDs))).Where(`(
 				(role_bindings.scope_type = 'academic_unit' AND role_bindings.scope_id IN (SELECT id FROM allowed_units))
 				OR (role_bindings.scope_type = 'class' AND (
 					role_bindings.scope_id = ANY(?) OR EXISTS (
@@ -437,7 +437,7 @@ func (s SQLRoleBindingStore) ListVisibleByUser(
 						WHERE c.id = role_bindings.scope_id AND p.academic_unit_id IN (SELECT id FROM allowed_units)
 					)
 				))
-			)`, pq.Array(visibility.ClassIDs))
+			)`, pq.Array(idStrings(visibility.ClassIDs)))
 		}
 	}
 	return s.selectBindings(ctx, query.OrderBy("role_bindings.start_at", "role_bindings.id"), "list visible role bindings by user")

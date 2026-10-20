@@ -189,30 +189,23 @@ func (s SQLAffiliationStore) Save(
 	})
 }
 
-func (s SQLAffiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) Get(ctx context.Context, id model.AffiliationID) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 		"affiliations.id": id, "affiliations.archived_at": nil,
 	})); err != nil {
-		return nil, translateError("affiliation", id, err)
+		return nil, translateError("affiliation", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLAffiliationStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.Affiliation, error) {
+func (s SQLAffiliationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Affiliation, error) {
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
 		"affiliations.user_id": userID, "affiliations.archived_at": nil,
 	}).OrderBy("affiliations.start_at DESC", "affiliations.id"))
 }
 
-func (s SQLAffiliationStore) ListActiveByUser(
-	ctx context.Context,
-	userID string,
-	at int64,
-) ([]*model.Affiliation, error) {
+func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.Affiliation, error) {
 	activeAt := model.TimeFromMillis(at)
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
 		"affiliations.user_id": userID, "affiliations.archived_at": nil,
@@ -221,13 +214,8 @@ func (s SQLAffiliationStore) ListActiveByUser(
 		OrderBy("affiliations.kind", "affiliations.id"))
 }
 
-func (s SQLAffiliationStore) End(
-	ctx context.Context,
-	id string,
-	expectedRevision int64,
-	endAt int64,
-) (*model.Affiliation, error) {
-	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
+func (s SQLAffiliationStore) End(ctx context.Context, id model.AffiliationID, expectedRevision, endAt int64) (*model.Affiliation, error) {
+	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "affiliation end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Affiliation, error) {
@@ -239,7 +227,7 @@ func (s SQLAffiliationStore) End(
 }
 
 func (s SQLAffiliationStore) EndWithAudit(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*affiliationMutationResult, error) {
@@ -342,7 +330,7 @@ func (s SQLAffiliationStore) hydrateAffiliationMutationOutcome(ctx context.Conte
 	if value == nil || value.Value == nil {
 		return nil, store.NewErrInvalidInput("affiliation", "command_outcome", nil)
 	}
-	hydrated, err := s.getAffiliationInTransaction(ctx, tx, value.Value.ID.String())
+	hydrated, err := s.getAffiliationInTransaction(ctx, tx, value.Value.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -350,18 +338,18 @@ func (s SQLAffiliationStore) hydrateAffiliationMutationOutcome(ctx context.Conte
 	return value, nil
 }
 
-func (s SQLAffiliationStore) getAffiliationInTransaction(ctx context.Context, tx sqlxExecutor, id string) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) getAffiliationInTransaction(ctx context.Context, tx sqlxExecutor, id model.AffiliationID) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
-		return nil, translateError("affiliation", id, err)
+		return nil, translateError("affiliation", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.Affiliation, error) {
+func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor, id model.AffiliationID, expectedRevision, endAt int64) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"affiliations.id": id, "affiliations.archived_at": nil})); err != nil {
-		return nil, translateError("affiliation", id, err)
+		return nil, translateError("affiliation", id.String(), err)
 	}
 	current, err := row.model()
 	if err != nil {
@@ -389,7 +377,7 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 	if err != nil {
 		return nil, fmt.Errorf("end affiliation: %w", err)
 	}
-	if err := requireAffected(result, "affiliation", id); err != nil {
+	if err := requireAffected(result, "affiliation", id.String()); err != nil {
 		return nil, err
 	}
 	current.UpdatedAt = at

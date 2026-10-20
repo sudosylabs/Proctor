@@ -911,7 +911,7 @@ type membershipsFake struct {
 	at    time.Time
 }
 
-func (fake *membershipsFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.AcademicUnitMember, error) {
+func (fake *membershipsFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	fake.at = at
 	return fake.items, fake.err
 }

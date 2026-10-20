@@ -19,7 +19,7 @@ import (
 // Methods absent here remain promoted from the generated embedded store and
 // are forwarded exactly once, including every mutation and transaction.
 
-func (s *institutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {
+func (s *institutionStore) Get(ctx context.Context, id model.InstitutionID) (*model.Institution, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Institution, error) {
 		return s.InstitutionStore.Get(ctx, id)
 	})
@@ -31,20 +31,20 @@ func (s *institutionStore) GetSingleton(ctx context.Context) (*model.Institution
 	})
 }
 
-func (s *academicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
+func (s *academicUnitStore) Get(ctx context.Context, id model.AcademicUnitID) (*model.AcademicUnit, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AcademicUnit, error) { return s.AcademicUnitStore.Get(ctx, id) })
 }
-func (s *academicUnitStore) ListChildren(ctx context.Context, institutionID, parentID string) ([]*model.AcademicUnit, error) {
+func (s *academicUnitStore) ListChildren(ctx context.Context, institutionID model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnit, error) {
 		return s.AcademicUnitStore.ListChildren(ctx, institutionID, parentID)
 	})
 }
-func (s *academicUnitStore) ListAncestors(ctx context.Context, id string) ([]*model.AcademicUnit, error) {
+func (s *academicUnitStore) ListAncestors(ctx context.Context, id model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnit, error) {
 		return s.AcademicUnitStore.ListAncestors(ctx, id)
 	})
 }
-func (s *academicUnitStore) Search(ctx context.Context, institutionID, query string, limit int) ([]*model.AcademicUnit, error) {
+func (s *academicUnitStore) Search(ctx context.Context, institutionID model.InstitutionID, query string, limit int) ([]*model.AcademicUnit, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnit, error) {
 		return s.AcademicUnitStore.Search(ctx, institutionID, query, limit)
 	})
@@ -58,45 +58,45 @@ func (s *academicUnitStore) CreateIdempotently(ctx context.Context, input *store
 	})
 }
 
-func (s *programmeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
+func (s *programmeStore) Get(ctx context.Context, id model.ProgrammeID) (*model.Programme, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Programme, error) { return s.ProgrammeStore.Get(ctx, id) })
 }
-func (s *programmeStore) GetByName(ctx context.Context, academicUnitID, name string) (*model.Programme, error) {
+func (s *programmeStore) GetByName(ctx context.Context, academicUnitID model.AcademicUnitID, name string) (*model.Programme, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Programme, error) {
 		return s.ProgrammeStore.GetByName(ctx, academicUnitID, name)
 	})
 }
-func (s *programmeStore) ListByAcademicUnit(ctx context.Context, academicUnitID string) ([]*model.Programme, error) {
+func (s *programmeStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID) ([]*model.Programme, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Programme, error) {
 		return s.ProgrammeStore.ListByAcademicUnit(ctx, academicUnitID)
 	})
 }
-func (s *programmeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID, query string, limit int) ([]*model.Programme, error) {
+func (s *programmeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, query string, limit int) ([]*model.Programme, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Programme, error) {
 		return s.ProgrammeStore.SearchByAcademicUnit(ctx, academicUnitID, query, limit)
 	})
 }
 
-func (s *programmeLevelStore) Get(ctx context.Context, id string) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelStore) Get(ctx context.Context, id model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	return retryCall1(ctx, s.layer, func() (*model.ProgrammeLevel, error) { return s.ProgrammeLevelStore.Get(ctx, id) })
 }
-func (s *programmeLevelStore) GetByName(ctx context.Context, programmeID, name string) (*model.ProgrammeLevel, error) {
+func (s *programmeLevelStore) GetByName(ctx context.Context, programmeID model.ProgrammeID, name string) (*model.ProgrammeLevel, error) {
 	return retryCall1(ctx, s.layer, func() (*model.ProgrammeLevel, error) {
 		return s.ProgrammeLevelStore.GetByName(ctx, programmeID, name)
 	})
 }
-func (s *programmeLevelStore) ListByProgramme(ctx context.Context, programmeID string) ([]*model.ProgrammeLevel, error) {
+func (s *programmeLevelStore) ListByProgramme(ctx context.Context, programmeID model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ProgrammeLevel, error) {
 		return s.ProgrammeLevelStore.ListByProgramme(ctx, programmeID)
 	})
 }
-func (s *programmeLevelStore) SearchByProgramme(ctx context.Context, programmeID, query string, limit int) ([]*model.ProgrammeLevel, error) {
+func (s *programmeLevelStore) SearchByProgramme(ctx context.Context, programmeID model.ProgrammeID, query string, limit int) ([]*model.ProgrammeLevel, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ProgrammeLevel, error) {
 		return s.ProgrammeLevelStore.SearchByProgramme(ctx, programmeID, query, limit)
 	})
 }
 
-func (s *academicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStore) Get(ctx context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AcademicPeriod, error) { return s.AcademicPeriodStore.Get(ctx, id) })
 }
 func (s *academicPeriodStore) GetByOwnerName(ctx context.Context, owner model.Resource, name string) (*model.AcademicPeriod, error) {
@@ -586,31 +586,31 @@ func (s *examStarterWorkspaceStore) retryMutation(
 	})
 }
 
-func (s *classStore) Get(ctx context.Context, id string) (*model.Class, error) {
+func (s *classStore) Get(ctx context.Context, id model.ClassID) (*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Class, error) { return s.ClassStore.Get(ctx, id) })
 }
-func (s *classStore) GetByName(ctx context.Context, programmeLevelID, academicPeriodID, name string) (*model.Class, error) {
+func (s *classStore) GetByName(ctx context.Context, programmeLevelID model.ProgrammeLevelID, academicPeriodID model.AcademicPeriodID, name string) (*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Class, error) {
 		return s.ClassStore.GetByName(ctx, programmeLevelID, academicPeriodID, name)
 	})
 }
-func (s *classStore) ListByProgrammeLevel(ctx context.Context, programmeLevelID string) ([]*model.Class, error) {
+func (s *classStore) ListByProgrammeLevel(ctx context.Context, programmeLevelID model.ProgrammeLevelID) ([]*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Class, error) {
 		return s.ClassStore.ListByProgrammeLevel(ctx, programmeLevelID)
 	})
 }
-func (s *classStore) ListByAcademicPeriod(ctx context.Context, academicPeriodID string) ([]*model.Class, error) {
+func (s *classStore) ListByAcademicPeriod(ctx context.Context, academicPeriodID model.AcademicPeriodID) ([]*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Class, error) {
 		return s.ClassStore.ListByAcademicPeriod(ctx, academicPeriodID)
 	})
 }
-func (s *classStore) SearchByAcademicUnit(ctx context.Context, academicUnitID, query string, limit int) ([]*model.Class, error) {
+func (s *classStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, query string, limit int) ([]*model.Class, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Class, error) {
 		return s.ClassStore.SearchByAcademicUnit(ctx, academicUnitID, query, limit)
 	})
 }
-func (s *classStore) GetAcademicUnitId(ctx context.Context, id string) (string, error) {
-	return retryCall1(ctx, s.layer, func() (string, error) { return s.ClassStore.GetAcademicUnitId(ctx, id) })
+func (s *classStore) GetAcademicUnitID(ctx context.Context, id model.ClassID) (model.AcademicUnitID, error) {
+	return retryCall1(ctx, s.layer, func() (model.AcademicUnitID, error) { return s.ClassStore.GetAcademicUnitID(ctx, id) })
 }
 
 func (s *userStore) Get(ctx context.Context, id string) (*model.User, error) {
@@ -675,49 +675,49 @@ func (s *mfaStore) CountRecoveryCodes(ctx context.Context, userID string) (int, 
 	return retryCall1(ctx, s.layer, func() (int, error) { return s.MFAStore.CountRecoveryCodes(ctx, userID) })
 }
 
-func (s *affiliationStore) Get(ctx context.Context, id string) (*model.Affiliation, error) {
+func (s *affiliationStore) Get(ctx context.Context, id model.AffiliationID) (*model.Affiliation, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Affiliation, error) { return s.AffiliationStore.Get(ctx, id) })
 }
-func (s *affiliationStore) ListByUser(ctx context.Context, userID string) ([]*model.Affiliation, error) {
+func (s *affiliationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Affiliation, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Affiliation, error) { return s.AffiliationStore.ListByUser(ctx, userID) })
 }
-func (s *affiliationStore) ListActiveByUser(ctx context.Context, userID string, at int64) ([]*model.Affiliation, error) {
+func (s *affiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.Affiliation, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Affiliation, error) {
 		return s.AffiliationStore.ListActiveByUser(ctx, userID, at)
 	})
 }
 
-func (s *academicUnitMemberStore) Get(ctx context.Context, id string) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) Get(ctx context.Context, id model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() (*model.AcademicUnitMember, error) { return s.AcademicUnitMemberStore.Get(ctx, id) })
 }
-func (s *academicUnitMemberStore) ListByUser(ctx context.Context, userID string) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnitMember, error) {
 		return s.AcademicUnitMemberStore.ListByUser(ctx, userID)
 	})
 }
-func (s *academicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID string, at int64) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, at int64) ([]*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnitMember, error) {
 		return s.AcademicUnitMemberStore.ListByAcademicUnit(ctx, academicUnitID, at)
 	})
 }
-func (s *academicUnitMemberStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnitMember, error) {
 		return s.AcademicUnitMemberStore.ListActiveByUser(ctx, userID, at)
 	})
 }
 
-func (s *classMemberStore) Get(ctx context.Context, id string) (*model.ClassMember, error) {
+func (s *classMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() (*model.ClassMember, error) { return s.ClassMemberStore.Get(ctx, id) })
 }
-func (s *classMemberStore) ListByUser(ctx context.Context, userID string) ([]*model.ClassMember, error) {
+func (s *classMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) { return s.ClassMemberStore.ListByUser(ctx, userID) })
 }
-func (s *classMemberStore) ListByClass(ctx context.Context, classID string, at int64) ([]*model.ClassMember, error) {
+func (s *classMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at int64) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) {
 		return s.ClassMemberStore.ListByClass(ctx, classID, at)
 	})
 }
-func (s *classMemberStore) ListActiveByUser(ctx context.Context, userID string, at int64) ([]*model.ClassMember, error) {
+func (s *classMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.ClassMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ClassMember, error) {
 		return s.ClassMemberStore.ListActiveByUser(ctx, userID, at)
 	})

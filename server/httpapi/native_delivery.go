@@ -47,7 +47,7 @@ func nativeDeliveryQuery(request operationRequest) (application.NativeDeliveryQu
 	if err != nil {
 		return application.NativeDeliveryQuery{}, invalidRequestError(err)
 	}
-	streamID, err := requirePathId("stream_id", request.params.NativeStreamID)
+	streamID, err := requirePathID("stream_id", request.params.NativeStreamID)
 	if err != nil {
 		return application.NativeDeliveryQuery{}, err
 	}

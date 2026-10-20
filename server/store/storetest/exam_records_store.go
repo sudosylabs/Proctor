@@ -177,7 +177,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	_, err = records.CompleteRecords(ctx, complete, examCommand(f.manager.ID, store.ExamRecordsCompleteOperation, "records-late-complete", "records-late-complete"))
 	requireNoError(t, err)
 	testRecordsHolds(t, ctx, ss, f, principal, scope, submissionScope, probes)
-	_, err = ss.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, model.GetMillis())
+	_, err = ss.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, model.GetMillis())
 	requireNoError(t, err)
 	hold := &store.ExamRecordsHoldCreation{ExamRecordsMutation: mutation(scope, principal, model.ActionExamRecordsHold), HoldID: model.NewRetentionHoldID(), ReasonCode: "other", PrivateReason: "Preserve."}
 	if _, err = records.CreateHold(ctx, hold, examCommand(f.manager.ID, store.ExamRecordsCreateHoldOperation, "records-member-ended", "records-member-ended")); !store.IsConflict(err) {

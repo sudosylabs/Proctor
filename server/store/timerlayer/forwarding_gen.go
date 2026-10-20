@@ -2390,7 +2390,7 @@ func (s *timedInstitutionStore) Save(arg0 context.Context, arg1 *model.Instituti
 	})
 }
 
-func (s *timedInstitutionStore) Get(arg0 context.Context, arg1 string) (*model.Institution, error) {
+func (s *timedInstitutionStore) Get(arg0 context.Context, arg1 model.InstitutionID) (*model.Institution, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInstitution, methodGet), func() (*model.Institution, error) {
 		return s.next.Get(arg0, arg1)
 	})
@@ -2414,7 +2414,7 @@ func (s *timedInstitutionStore) UpdateWithAudit(arg0 context.Context, arg1 *stor
 	})
 }
 
-func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 string, arg2 int64) error {
+func (s *timedInstitutionStore) Archive(arg0 context.Context, arg1 model.InstitutionID, arg2 int64) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateInstitution, methodArchive), func() error {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -2450,31 +2450,31 @@ func (s *timedAcademicUnitStore) Save(arg0 context.Context, arg1 *model.Academic
 	})
 }
 
-func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 string) (*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) Get(arg0 context.Context, arg1 model.AcademicUnitID) (*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGet), func() (*model.AcademicUnit, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 string, arg2 string) (*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) GetByName(arg0 context.Context, arg1 model.InstitutionID, arg2 string) (*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodGetByName), func() (*model.AcademicUnit, error) {
 		return s.next.GetByName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 string, arg2 string) ([]*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) ListChildren(arg0 context.Context, arg1 model.InstitutionID, arg2 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListChildren), func() ([]*model.AcademicUnit, error) {
 		return s.next.ListChildren(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedAcademicUnitStore) ListAncestors(arg0 context.Context, arg1 string) ([]*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) ListAncestors(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodListAncestors), func() ([]*model.AcademicUnit, error) {
 		return s.next.ListAncestors(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 string, arg2 string, arg3 int) ([]*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) Search(arg0 context.Context, arg1 model.InstitutionID, arg2 string, arg3 int) ([]*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodSearch), func() ([]*model.AcademicUnit, error) {
 		return s.next.Search(arg0, arg1, arg2, arg3)
 	})
@@ -2486,7 +2486,7 @@ func (s *timedAcademicUnitStore) Update(arg0 context.Context, arg1 *model.Academ
 	})
 }
 
-func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 string, arg2 int64) (*model.AcademicUnit, error) {
+func (s *timedAcademicUnitStore) Archive(arg0 context.Context, arg1 model.AcademicUnitID, arg2 int64) (*model.AcademicUnit, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnit, methodArchive), func() (*model.AcademicUnit, error) {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -2516,25 +2516,25 @@ func (s *timedProgrammeStore) Save(arg0 context.Context, arg1 *model.Programme) 
 	})
 }
 
-func (s *timedProgrammeStore) Get(arg0 context.Context, arg1 string) (*model.Programme, error) {
+func (s *timedProgrammeStore) Get(arg0 context.Context, arg1 model.ProgrammeID) (*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGet), func() (*model.Programme, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeStore) GetByName(arg0 context.Context, arg1 string, arg2 string) (*model.Programme, error) {
+func (s *timedProgrammeStore) GetByName(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string) (*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodGetByName), func() (*model.Programme, error) {
 		return s.next.GetByName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedProgrammeStore) ListByAcademicUnit(arg0 context.Context, arg1 string) ([]*model.Programme, error) {
+func (s *timedProgrammeStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID) ([]*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodListByAcademicUnit), func() ([]*model.Programme, error) {
 		return s.next.ListByAcademicUnit(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 string, arg2 string, arg3 int) ([]*model.Programme, error) {
+func (s *timedProgrammeStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string, arg3 int) ([]*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodSearchByAcademicUnit), func() ([]*model.Programme, error) {
 		return s.next.SearchByAcademicUnit(arg0, arg1, arg2, arg3)
 	})
@@ -2546,7 +2546,7 @@ func (s *timedProgrammeStore) Update(arg0 context.Context, arg1 *model.Programme
 	})
 }
 
-func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 string, arg2 int64) (*model.Programme, error) {
+func (s *timedProgrammeStore) Archive(arg0 context.Context, arg1 model.ProgrammeID, arg2 int64) (*model.Programme, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgramme, methodArchive), func() (*model.Programme, error) {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -2576,25 +2576,25 @@ func (s *timedProgrammeLevelStore) Save(arg0 context.Context, arg1 *model.Progra
 	})
 }
 
-func (s *timedProgrammeLevelStore) Get(arg0 context.Context, arg1 string) (*model.ProgrammeLevel, error) {
+func (s *timedProgrammeLevelStore) Get(arg0 context.Context, arg1 model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGet), func() (*model.ProgrammeLevel, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeLevelStore) GetByName(arg0 context.Context, arg1 string, arg2 string) (*model.ProgrammeLevel, error) {
+func (s *timedProgrammeLevelStore) GetByName(arg0 context.Context, arg1 model.ProgrammeID, arg2 string) (*model.ProgrammeLevel, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodGetByName), func() (*model.ProgrammeLevel, error) {
 		return s.next.GetByName(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedProgrammeLevelStore) ListByProgramme(arg0 context.Context, arg1 string) ([]*model.ProgrammeLevel, error) {
+func (s *timedProgrammeLevelStore) ListByProgramme(arg0 context.Context, arg1 model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodListByProgramme), func() ([]*model.ProgrammeLevel, error) {
 		return s.next.ListByProgramme(arg0, arg1)
 	})
 }
 
-func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 string, arg2 string, arg3 int) ([]*model.ProgrammeLevel, error) {
+func (s *timedProgrammeLevelStore) SearchByProgramme(arg0 context.Context, arg1 model.ProgrammeID, arg2 string, arg3 int) ([]*model.ProgrammeLevel, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodSearchByProgramme), func() ([]*model.ProgrammeLevel, error) {
 		return s.next.SearchByProgramme(arg0, arg1, arg2, arg3)
 	})
@@ -2606,7 +2606,7 @@ func (s *timedProgrammeLevelStore) Update(arg0 context.Context, arg1 *model.Prog
 	})
 }
 
-func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 string, arg2 int64) (*model.ProgrammeLevel, error) {
+func (s *timedProgrammeLevelStore) Archive(arg0 context.Context, arg1 model.ProgrammeLevelID, arg2 int64) (*model.ProgrammeLevel, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateProgrammeLevel, methodArchive), func() (*model.ProgrammeLevel, error) {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -2642,7 +2642,7 @@ func (s *timedAcademicPeriodStore) Save(arg0 context.Context, arg1 *model.Academ
 	})
 }
 
-func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 string) (*model.AcademicPeriod, error) {
+func (s *timedAcademicPeriodStore) Get(arg0 context.Context, arg1 model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodGet), func() (*model.AcademicPeriod, error) {
 		return s.next.Get(arg0, arg1)
 	})
@@ -2666,7 +2666,7 @@ func (s *timedAcademicPeriodStore) Update(arg0 context.Context, arg1 *model.Acad
 	})
 }
 
-func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 string, arg2 int64) (*model.AcademicPeriod, error) {
+func (s *timedAcademicPeriodStore) Archive(arg0 context.Context, arg1 model.AcademicPeriodID, arg2 int64) (*model.AcademicPeriod, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicPeriod, methodArchive), func() (*model.AcademicPeriod, error) {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -2696,39 +2696,39 @@ func (s *timedClassStore) Save(arg0 context.Context, arg1 *model.Class) (*model.
 	})
 }
 
-func (s *timedClassStore) Get(arg0 context.Context, arg1 string) (*model.Class, error) {
+func (s *timedClassStore) Get(arg0 context.Context, arg1 model.ClassID) (*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGet), func() (*model.Class, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedClassStore) GetByName(arg0 context.Context, arg1 string, arg2 string, arg3 string) (*model.Class, error) {
+func (s *timedClassStore) GetByName(arg0 context.Context, arg1 model.ProgrammeLevelID, arg2 model.AcademicPeriodID, arg3 string) (*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetByName), func() (*model.Class, error) {
 		return s.next.GetByName(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedClassStore) ListByProgrammeLevel(arg0 context.Context, arg1 string) ([]*model.Class, error) {
+func (s *timedClassStore) ListByProgrammeLevel(arg0 context.Context, arg1 model.ProgrammeLevelID) ([]*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodListByProgrammeLevel), func() ([]*model.Class, error) {
 		return s.next.ListByProgrammeLevel(arg0, arg1)
 	})
 }
 
-func (s *timedClassStore) ListByAcademicPeriod(arg0 context.Context, arg1 string) ([]*model.Class, error) {
+func (s *timedClassStore) ListByAcademicPeriod(arg0 context.Context, arg1 model.AcademicPeriodID) ([]*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodListByAcademicPeriod), func() ([]*model.Class, error) {
 		return s.next.ListByAcademicPeriod(arg0, arg1)
 	})
 }
 
-func (s *timedClassStore) SearchByAcademicUnit(arg0 context.Context, arg1 string, arg2 string, arg3 int) ([]*model.Class, error) {
+func (s *timedClassStore) SearchByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 string, arg3 int) ([]*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodSearchByAcademicUnit), func() ([]*model.Class, error) {
 		return s.next.SearchByAcademicUnit(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedClassStore) GetAcademicUnitId(arg0 context.Context, arg1 string) (string, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetAcademicUnitID), func() (string, error) {
-		return s.next.GetAcademicUnitId(arg0, arg1)
+func (s *timedClassStore) GetAcademicUnitID(arg0 context.Context, arg1 model.ClassID) (model.AcademicUnitID, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodGetAcademicUnitID), func() (model.AcademicUnitID, error) {
+		return s.next.GetAcademicUnitID(arg0, arg1)
 	})
 }
 
@@ -2738,7 +2738,7 @@ func (s *timedClassStore) Update(arg0 context.Context, arg1 *model.Class) (*mode
 	})
 }
 
-func (s *timedClassStore) Archive(arg0 context.Context, arg1 string, arg2 int64) (*model.Class, error) {
+func (s *timedClassStore) Archive(arg0 context.Context, arg1 model.ClassID, arg2 int64) (*model.Class, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClass, methodArchive), func() (*model.Class, error) {
 		return s.next.Archive(arg0, arg1, arg2)
 	})
@@ -3302,25 +3302,25 @@ func (s *timedAffiliationStore) Save(arg0 context.Context, arg1 *model.Affiliati
 	})
 }
 
-func (s *timedAffiliationStore) Get(arg0 context.Context, arg1 string) (*model.Affiliation, error) {
+func (s *timedAffiliationStore) Get(arg0 context.Context, arg1 model.AffiliationID) (*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodGet), func() (*model.Affiliation, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedAffiliationStore) ListByUser(arg0 context.Context, arg1 string) ([]*model.Affiliation, error) {
+func (s *timedAffiliationStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodListByUser), func() ([]*model.Affiliation, error) {
 		return s.next.ListByUser(arg0, arg1)
 	})
 }
 
-func (s *timedAffiliationStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.Affiliation, error) {
+func (s *timedAffiliationStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 int64) ([]*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodListActiveByUser), func() ([]*model.Affiliation, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedAffiliationStore) End(arg0 context.Context, arg1 string, arg2 int64, arg3 int64) (*model.Affiliation, error) {
+func (s *timedAffiliationStore) End(arg0 context.Context, arg1 model.AffiliationID, arg2 int64, arg3 int64) (*model.Affiliation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAffiliation, methodEnd), func() (*model.Affiliation, error) {
 		return s.next.End(arg0, arg1, arg2, arg3)
 	})
@@ -3344,19 +3344,19 @@ func (s *timedAcademicUnitMemberStore) Save(arg0 context.Context, arg1 *model.Ac
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) Get(arg0 context.Context, arg1 string) (*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) Get(arg0 context.Context, arg1 model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodGet), func() (*model.AcademicUnitMember, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) ListByUser(arg0 context.Context, arg1 string) ([]*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListByUser), func() ([]*model.AcademicUnitMember, error) {
 		return s.next.ListByUser(arg0, arg1)
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(arg0 context.Context, arg1 string, arg2 int64) ([]*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(arg0 context.Context, arg1 model.AcademicUnitID, arg2 int64) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListByAcademicUnit), func() ([]*model.AcademicUnitMember, error) {
 		return s.next.ListByAcademicUnit(arg0, arg1, arg2)
 	})
@@ -3368,13 +3368,13 @@ func (s *timedAcademicUnitMemberStore) ListPageByAcademicUnit(arg0 context.Conte
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 time.Time) ([]*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 time.Time) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListActiveByUser), func() ([]*model.AcademicUnitMember, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) End(arg0 context.Context, arg1 string, arg2 int64, arg3 int64) (*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) End(arg0 context.Context, arg1 model.AcademicUnitMemberID, arg2 int64, arg3 int64) (*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodEnd), func() (*model.AcademicUnitMember, error) {
 		return s.next.End(arg0, arg1, arg2, arg3)
 	})
@@ -3398,19 +3398,19 @@ func (s *timedClassMemberStore) Enroll(arg0 context.Context, arg1 *model.ClassMe
 	})
 }
 
-func (s *timedClassMemberStore) Get(arg0 context.Context, arg1 string) (*model.ClassMember, error) {
+func (s *timedClassMemberStore) Get(arg0 context.Context, arg1 model.ClassMemberID) (*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodGet), func() (*model.ClassMember, error) {
 		return s.next.Get(arg0, arg1)
 	})
 }
 
-func (s *timedClassMemberStore) ListByUser(arg0 context.Context, arg1 string) ([]*model.ClassMember, error) {
+func (s *timedClassMemberStore) ListByUser(arg0 context.Context, arg1 model.UserID) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListByUser), func() ([]*model.ClassMember, error) {
 		return s.next.ListByUser(arg0, arg1)
 	})
 }
 
-func (s *timedClassMemberStore) ListByClass(arg0 context.Context, arg1 string, arg2 int64) ([]*model.ClassMember, error) {
+func (s *timedClassMemberStore) ListByClass(arg0 context.Context, arg1 model.ClassID, arg2 int64) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListByClass), func() ([]*model.ClassMember, error) {
 		return s.next.ListByClass(arg0, arg1, arg2)
 	})
@@ -3422,13 +3422,13 @@ func (s *timedClassMemberStore) ListPageByClass(arg0 context.Context, arg1 store
 	})
 }
 
-func (s *timedClassMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.ClassMember, error) {
+func (s *timedClassMemberStore) ListActiveByUser(arg0 context.Context, arg1 model.UserID, arg2 int64) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListActiveByUser), func() ([]*model.ClassMember, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedClassMemberStore) End(arg0 context.Context, arg1 string, arg2 int64, arg3 int64) (*model.ClassMember, error) {
+func (s *timedClassMemberStore) End(arg0 context.Context, arg1 model.ClassMemberID, arg2 int64, arg3 int64) (*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodEnd), func() (*model.ClassMember, error) {
 		return s.next.End(arg0, arg1, arg2, arg3)
 	})

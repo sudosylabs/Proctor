@@ -318,7 +318,7 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 	requireNoError(t, err)
 
 	changeAt := start.Add(-time.Hour)
-	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
+	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID,
 		ExpectedRevision: enrolled.Membership.Revision, ExpectedRecipientRevision: candidate.Revision,
 		EndAt:        model.MillisFromTime(changeAt),
 		Notice:       classMemberPreparedMail(t, enrolled.Membership, model.MailTemplateAcademicClassEnrollmentEnded, changeAt),
@@ -749,7 +749,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 
 	// Ending that same membership is another audience fact without a Sitting
 	// revision change and must yield the assignment-removed projection.
-	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
+	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID,
 		ExpectedRevision: enrolled.Membership.Revision, ExpectedRecipientRevision: newCandidate.Revision,
 		EndAt:        model.MillisFromTime(start.Add(-time.Hour)),
 		Notice:       classMemberPreparedMail(t, enrolled.Membership, model.MailTemplateAcademicClassEnrollmentEnded, start.Add(-time.Hour)),
@@ -1411,7 +1411,7 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	// A lineage archived after scheduling cancels at opening revalidation.
 	invalidClass := saveClass(t, ctx, ss, fixture.levelID.String(), fixture.period.ID.String(), "sitting-lifecycle-invalid-class")
 	invalid := schedule("sitting-invalid-structure", invalidClass.ID, fixture.period.StartsAt.Add(10*time.Hour), fixture.period.StartsAt.Add(11*time.Hour))
-	_, err = ss.Class().Archive(ctx, invalidClass.ID.String(), model.GetMillis())
+	_, err = ss.Class().Archive(ctx, invalidClass.ID, model.GetMillis())
 	requireNoError(t, err)
 	probe.SetSchedule(t, ctx, invalid.Value.Sitting.ID, model.NowUTC().Add(-time.Minute), model.NowUTC().Add(time.Hour))
 	invalidAudit := saveExamSittingSystemAudit(t, ctx, ss, invalid.Value.Sitting.ID, fixture.unitID)
@@ -1596,7 +1596,7 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		fixture.period.StartsAt.Add(time.Hour), fixture.period.StartsAt.Add(2*time.Hour))
 
 	archivedClass := saveClass(t, ctx, ss, fixture.levelID.String(), fixture.period.ID.String(), "sitting-archived-class")
-	_, err := ss.Class().Archive(ctx, archivedClass.ID.String(), model.GetMillis())
+	_, err := ss.Class().Archive(ctx, archivedClass.ID, model.GetMillis())
 	requireNoError(t, err)
 	requireScheduleConflict("sitting-archived-class", "exam_sitting_class_lineage", fixture.revisionID, archivedClass.ID,
 		fixture.period.StartsAt.Add(3*time.Hour), fixture.period.StartsAt.Add(4*time.Hour))

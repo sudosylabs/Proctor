@@ -186,14 +186,14 @@ func (s SQLAcademicUnitStore) Save(ctx context.Context, unit *model.AcademicUnit
 	})
 }
 
-func (s SQLAcademicUnitStore) Get(ctx context.Context, id string) (*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Get(ctx context.Context, id model.AcademicUnitID) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	query := s.academicUnitsQuery.Where(sq.Eq{
 		"academic_units.id":          id,
 		"academic_units.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("academic_unit", id, err)
+		return nil, translateError("academic_unit", id.String(), err)
 	}
 	return row.model()
 }
@@ -201,10 +201,7 @@ func (s SQLAcademicUnitStore) Get(ctx context.Context, id string) (*model.Academ
 // ListAncestors returns the target unit first, followed by each parent up to
 // the root. The recursive query is bounded by the cycle invariant enforced by
 // Save and Update.
-func (s SQLAcademicUnitStore) ListAncestors(
-	ctx context.Context,
-	id string,
-) ([]*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) ListAncestors(ctx context.Context, id model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	rows := []academicUnitRow{}
 	if err := s.GetMaster().Select(ctx, &rows, `
 		WITH RECURSIVE ancestors AS (
@@ -227,7 +224,7 @@ func (s SQLAcademicUnitStore) ListAncestors(
 		return nil, fmt.Errorf("list academic unit ancestors: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, store.NewErrNotFound("academic_unit", id)
+		return nil, store.NewErrNotFound("academic_unit", id.String())
 	}
 	units := make([]*model.AcademicUnit, 0, len(rows))
 	for _, row := range rows {
@@ -240,7 +237,7 @@ func (s SQLAcademicUnitStore) ListAncestors(
 	return units, nil
 }
 
-func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID, parentID string) ([]*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{
 			"academic_units.institution_id": institutionID,
@@ -264,12 +261,7 @@ func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID, p
 	return units, nil
 }
 
-func (s SQLAcademicUnitStore) Search(
-	ctx context.Context,
-	institutionID string,
-	term string,
-	limit int,
-) ([]*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Search(ctx context.Context, institutionID model.InstitutionID, term string, limit int) ([]*model.AcademicUnit, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("academic_unit", "limit", limit)
 	}
@@ -297,8 +289,8 @@ func (s SQLAcademicUnitStore) Search(
 	return units, nil
 }
 
-func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID, name string) (*model.AcademicUnit, error) {
-	if !model.IsValidId(institutionID) || name == "" {
+func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID model.InstitutionID, name string) (*model.AcademicUnit, error) {
+	if !institutionID.IsValid() || name == "" {
 		return nil, store.NewErrInvalidInput("academic_unit", "name", nil)
 	}
 	var row academicUnitRow
@@ -395,7 +387,7 @@ func (s SQLAcademicUnitStore) ArchiveWithAudit(
 	ctx context.Context,
 	input *store.AcademicUnitArchive,
 ) (*model.AcademicUnit, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "archive", nil)
 	}
@@ -405,11 +397,7 @@ func (s SQLAcademicUnitStore) ArchiveWithAudit(
 	)
 }
 
-func (s SQLAcademicUnitStore) Archive(
-	ctx context.Context,
-	id string,
-	archiveAt int64,
-) (*model.AcademicUnit, error) {
+func (s SQLAcademicUnitStore) Archive(ctx context.Context, id model.AcademicUnitID, archiveAt int64) (*model.AcademicUnit, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit", "archived_at", archiveAt)
 	}
@@ -418,7 +406,7 @@ func (s SQLAcademicUnitStore) Archive(
 
 func (s SQLAcademicUnitStore) archiveAcademicUnit(
 	ctx context.Context,
-	id string,
+	id model.AcademicUnitID,
 	archiveAt int64,
 	expectedRevision int64,
 	audit *academicMutationAudit,
@@ -427,7 +415,7 @@ func (s SQLAcademicUnitStore) archiveAcademicUnit(
 		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
 			return nil, err
 		}
-		current, err := academicUnitFromExecutor(ctx, tx, id)
+		current, err := academicUnitFromExecutor(ctx, tx, id.String())
 		if err != nil {
 			return nil, err
 		}
@@ -456,7 +444,7 @@ func (s SQLAcademicUnitStore) archiveAcademicUnit(
 		if err != nil {
 			return nil, fmt.Errorf("archive academic unit: %w", err)
 		}
-		if err := requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id); err != nil {
+		if err = requireRevisionAffected(ctx, tx, result, "academic_unit", "academic_units", id.String()); err != nil {
 			return nil, err
 		}
 		var row academicUnitRow

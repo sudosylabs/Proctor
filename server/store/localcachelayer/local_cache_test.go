@@ -112,7 +112,7 @@ type academicPeriodStub struct {
 	saveErr     error
 }
 
-func (s *academicPeriodStub) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStub) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	s.getAttempts++
 	return s.period, nil
 }
@@ -175,12 +175,12 @@ func TestLocalCacheReturnsDefensiveAcademicPeriodCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String())
+	first, err := layer.AcademicPeriod().Get(context.Background(), period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	first.DisplayName = "consumer mutation"
-	second, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String())
+	second, err := layer.AcademicPeriod().Get(context.Background(), period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestLocalCacheInvalidatesAfterSuccessfulAcademicPeriodMutation(t *testing.T
 	underlying := &academicPeriodStub{period: period}
 	layer := newLayer(t, underlying, time.Minute)
 	ctx := context.Background()
-	if _, err := layer.AcademicPeriod().Get(ctx, period.ID.String()); err != nil {
+	if _, err := layer.AcademicPeriod().Get(ctx, period.ID); err != nil {
 		t.Fatal(err)
 	}
 	updated := *period
@@ -210,7 +210,7 @@ func TestLocalCacheInvalidatesAfterSuccessfulAcademicPeriodMutation(t *testing.T
 	if _, err := layer.AcademicPeriod().Save(ctx, &updated); err != nil {
 		t.Fatal(err)
 	}
-	got, err := layer.AcademicPeriod().Get(ctx, period.ID.String())
+	got, err := layer.AcademicPeriod().Get(ctx, period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestLocalCacheRejectsInvalidCachedAcademicPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 	layer := newLayerWithCache(t, underlying, cache, time.Minute)
-	got, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String())
+	got, err := layer.AcademicPeriod().Get(context.Background(), period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 	layerB := newLayerWithCacheAndFanout(t, underlying, cacheB, ttl, invalidationEndpoint{network, 1})
 	ctx := context.Background()
 
-	if _, err := layerB.AcademicPeriod().Get(ctx, period.ID.String()); err != nil {
+	if _, err := layerB.AcademicPeriod().Get(ctx, period.ID); err != nil {
 		t.Fatal(err)
 	}
 	delivered := *period
@@ -267,7 +267,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 	if _, err := layerA.AcademicPeriod().Save(ctx, &delivered); err != nil {
 		t.Fatal(err)
 	}
-	peerFresh, err := layerB.AcademicPeriod().Get(ctx, period.ID.String())
+	peerFresh, err := layerB.AcademicPeriod().Get(ctx, period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 	}
 
 	network.drop = true
-	stale, err := layerB.AcademicPeriod().Get(ctx, period.ID.String())
+	stale, err := layerB.AcademicPeriod().Get(ctx, period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stillStale, err := layerB.AcademicPeriod().Get(ctx, period.ID.String())
+	stillStale, err := layerB.AcademicPeriod().Get(ctx, period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestLocalCacheRecoversAfterMissedPeerInvalidationAtTTL(t *testing.T) {
 		t.Fatalf("pre-TTL DisplayName = %q, want bounded stale value %q", stillStale.DisplayName, stale.DisplayName)
 	}
 	cacheB.advance(ttl)
-	recovered, err := layerB.AcademicPeriod().Get(ctx, period.ID.String())
+	recovered, err := layerB.AcademicPeriod().Get(ctx, period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ type coordinatedAcademicPeriodStore struct {
 	allowRead   chan struct{}
 }
 
-func (s *coordinatedAcademicPeriodStore) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (s *coordinatedAcademicPeriodStore) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	s.mu.Lock()
 	s.getAttempts++
 	period := *s.period
@@ -345,7 +345,7 @@ func TestLocalCacheConcurrentFillCannotUndoMutationInvalidation(t *testing.T) {
 	layer := newLayer(t, underlying, time.Minute)
 	readDone := make(chan error, 1)
 	go func() {
-		_, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String())
+		_, err := layer.AcademicPeriod().Get(context.Background(), period.ID)
 		readDone <- err
 	}()
 	<-underlying.readStarted
@@ -358,7 +358,7 @@ func TestLocalCacheConcurrentFillCannotUndoMutationInvalidation(t *testing.T) {
 	if err := <-readDone; err != nil {
 		t.Fatal(err)
 	}
-	got, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String())
+	got, err := layer.AcademicPeriod().Get(context.Background(), period.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,12 +379,12 @@ func TestLocalCacheDoesNotServeHitForCanceledContext(t *testing.T) {
 	period := validAcademicPeriod()
 	underlying := &academicPeriodStub{period: period}
 	layer := newLayer(t, underlying, time.Minute)
-	if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String()); err != nil {
+	if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := layer.AcademicPeriod().Get(ctx, period.ID.String()); !errors.Is(err, context.Canceled) {
+	if _, err := layer.AcademicPeriod().Get(ctx, period.ID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Get() error = %v, want context.Canceled", err)
 	}
 }
@@ -439,7 +439,7 @@ func TestLocalCacheFailureFallsBackAndRecorderCannotBreakReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String()); err != nil {
+		if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -471,7 +471,7 @@ func TestLocalCacheRecordsClosedHitAndMissOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID.String()); err != nil {
+		if _, err := layer.AcademicPeriod().Get(context.Background(), period.ID); err != nil {
 			t.Fatal(err)
 		}
 	}

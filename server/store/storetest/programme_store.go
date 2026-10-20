@@ -58,7 +58,7 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	if _, err := ss.Programme().Create(ctx, &store.ProgrammeCreation{Programme: rolledBackCreate, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
-	if _, err := ss.Programme().Get(ctx, rolledBackCreate.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.Programme().Get(ctx, rolledBackCreate.ID); !store.IsNotFound(err) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 
@@ -87,14 +87,14 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	if _, err := ss.Programme().UpdateWithAudit(ctx, &store.ProgrammeUpdate{Programme: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 	}
-	persisted, err := ss.Programme().Get(ctx, updated.ID.String())
+	persisted, err := ss.Programme().Get(ctx, updated.ID)
 	requireNoError(t, err)
 	if persisted.DisplayName != updated.DisplayName {
 		t.Fatalf("update survived audit rollback: %#v", persisted)
 	}
 
 	archiveAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
-	archived, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
+	archived, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: updated.ID, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
@@ -106,17 +106,17 @@ func testProgrammeStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	}
 
 	archiveRollback := saveProgramme(t, ctx, ss, unit.ID.String(), "rolled-back-archive")
-	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: archiveRollback.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: archiveRollback.ID, ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 	}
-	if _, err := ss.Programme().Get(ctx, archiveRollback.ID.String()); err != nil {
+	if _, err := ss.Programme().Get(ctx, archiveRollback.ID); err != nil {
 		t.Fatalf("archive survived audit rollback: %v", err)
 	}
 
 	withLevel := saveProgramme(t, ctx, ss, unit.ID.String(), "programme-with-level")
 	saveProgrammeLevel(t, ctx, ss, withLevel.ID.String(), "year-1")
 	blockedAttempt := saveProgrammeAuditAttempt(t, ctx, ss, unit.ID.String())
-	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: withLevel.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{ID: withLevel.ID, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active level error = %v, want conflict", err)
 	}
 }
@@ -140,19 +140,19 @@ func testProgrammeStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	programme.DisplayName = "Literal 50%_! Robotics"
 	programme, err := ss.Programme().Update(ctx, programme)
 	requireNoError(t, err)
-	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), "robot", 10)
+	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, "robot", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != programme.ID {
 		t.Fatalf("SearchByAcademicUnit() = %#v", found)
 	}
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), query, 10)
+		found, err = ss.Programme().SearchByAcademicUnit(ctx, unit.ID, query, 10)
 		requireNoError(t, err)
 		if len(found) != 1 || found[0].ID != programme.ID {
 			t.Fatalf("SearchByAcademicUnit(%q) = %#v, want only %s", query, found, programme.ID)
 		}
 	}
-	archived, err := ss.Programme().Archive(ctx, programme.ID.String(), model.GetMillis())
+	archived, err := ss.Programme().Archive(ctx, programme.ID, model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("Archive() = %#v", archived)
@@ -192,12 +192,12 @@ func testProgrammeStoreGet(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "computing")
 	programme := saveProgramme(t, ctx, ss, unit.ID.String(), "computer-science")
 
-	got, err := ss.Programme().Get(ctx, programme.ID.String())
+	got, err := ss.Programme().Get(ctx, programme.ID)
 	requireNoError(t, err)
 	if *got != *programme {
 		t.Fatalf("Get() = %#v, want %#v", got, programme)
 	}
-	if _, err := ss.Programme().Get(ctx, model.NewId()); !store.IsNotFound(err) {
+	if _, err := ss.Programme().Get(ctx, model.NewProgrammeID()); !store.IsNotFound(err) {
 		t.Fatalf("Get(missing) error = %v, want not found", err)
 	}
 }
@@ -208,12 +208,12 @@ func testProgrammeStoreGetByName(t *testing.T, ss store.Store) {
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "computing")
 	programme := saveProgramme(t, ctx, ss, unit.ID.String(), "computer-science")
 
-	got, err := ss.Programme().GetByName(ctx, unit.ID.String(), programme.Name)
+	got, err := ss.Programme().GetByName(ctx, unit.ID, programme.Name)
 	requireNoError(t, err)
 	if got.ID != programme.ID {
 		t.Fatalf("GetByName() id = %q, want %q", got.ID.String(), programme.ID.String())
 	}
-	if _, err := ss.Programme().GetByName(ctx, unit.ID.String(), "missing"); !store.IsNotFound(err) {
+	if _, err := ss.Programme().GetByName(ctx, unit.ID, "missing"); !store.IsNotFound(err) {
 		t.Fatalf("GetByName(missing) error = %v, want not found", err)
 	}
 }
@@ -227,12 +227,12 @@ func testProgrammeStoreListByAcademicUnit(t *testing.T, ss store.Store) {
 	first := saveProgramme(t, ctx, ss, computing.ID.String(), "computer-science")
 	saveProgramme(t, ctx, ss, engineering.ID.String(), "civil-engineering")
 
-	programmes, err := ss.Programme().ListByAcademicUnit(ctx, computing.ID.String())
+	programmes, err := ss.Programme().ListByAcademicUnit(ctx, computing.ID)
 	requireNoError(t, err)
 	if len(programmes) != 2 || programmes[0].ID != first.ID || programmes[1].ID != second.ID {
 		t.Fatalf("ListByAcademicUnit() = %#v", programmes)
 	}
-	empty, err := ss.Programme().ListByAcademicUnit(ctx, model.NewId())
+	empty, err := ss.Programme().ListByAcademicUnit(ctx, model.NewAcademicUnitID())
 	requireNoError(t, err)
 	if len(empty) != 0 {
 		t.Fatalf("ListByAcademicUnit(missing) = %#v, want empty", empty)
@@ -267,7 +267,7 @@ func testProgrammeStoreUpdate(t *testing.T, ss store.Store) {
 	}
 
 	archivedUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "archived-unit")
-	if _, err := ss.AcademicUnit().Archive(ctx, archivedUnit.ID.String(), model.GetMillis()); err != nil {
+	if _, err = ss.AcademicUnit().Archive(ctx, archivedUnit.ID, model.GetMillis()); err != nil {
 		t.Fatalf("archive destination unit: %v", err)
 	}
 	invalidMove := *updated
@@ -344,7 +344,7 @@ func testProgrammeStoreSearchLimit(t *testing.T, ss store.Store) {
 	first := saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-first")
 	saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-second")
 	for _, term := range []string{"", "  \t", "bounded"} {
-		found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), term, 1)
+		found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID, term, 1)
 		requireNoError(t, err)
 		if len(found) != 1 || found[0].ID != first.ID {
 			t.Fatalf("SearchByAcademicUnit(q=%q, limit=1) = %#v", term, found)

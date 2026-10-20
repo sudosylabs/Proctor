@@ -588,9 +588,9 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		if replay, replayErr := ss.Invitation().AcceptExternalIdentity(ctx, external); replay != nil || !store.IsConflict(replayErr) {
 			t.Fatalf("external acceptance replay = %#v, %v", replay, replayErr)
 		}
-		class, getErr := ss.Class().Get(ctx, invitation.ClassID.String())
+		class, getErr := ss.Class().Get(ctx, invitation.ClassID)
 		requireNoError(t, getErr)
-		period, getErr := ss.AcademicPeriod().Get(ctx, invitation.AcademicPeriodID.String())
+		period, getErr := ss.AcademicPeriod().Get(ctx, invitation.AcademicPeriodID)
 		requireNoError(t, getErr)
 		existingIssue := studentClassInvitationIssueFixture(t, ss, existingUser, class, period, model.NowUTC())
 		existingIssue.Invitation.TargetEmail = existingUser.Email
@@ -759,11 +759,11 @@ func assertConcurrentExternalAutoProvision(t *testing.T, ctx context.Context, ss
 
 func assertRelationshipFreeUser(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID) {
 	t.Helper()
-	affiliations, err := ss.Affiliation().ListByUser(ctx, userID.String())
+	affiliations, err := ss.Affiliation().ListByUser(ctx, userID)
 	requireNoError(t, err)
-	academicMemberships, err := ss.AcademicUnitMember().ListByUser(ctx, userID.String())
+	academicMemberships, err := ss.AcademicUnitMember().ListByUser(ctx, userID)
 	requireNoError(t, err)
-	classMemberships, err := ss.ClassMember().ListByUser(ctx, userID.String())
+	classMemberships, err := ss.ClassMember().ListByUser(ctx, userID)
 	requireNoError(t, err)
 	bindings, err := ss.RoleBinding().ListByUser(ctx, userID.String())
 	requireNoError(t, err)

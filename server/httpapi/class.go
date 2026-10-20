@@ -118,7 +118,7 @@ func classMutationErrorCodes(specific ...string) []string {
 }
 
 func (module classResourceModule) search(request operationRequest) (operationResult, error) {
-	academicUnitID, err := request.params.RequireAcademicUnitId()
+	academicUnitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -142,7 +142,7 @@ func (module classResourceModule) search(request operationRequest) (operationRes
 }
 
 func (module classResourceModule) list(request operationRequest) (operationResult, error) {
-	programmeLevelID, err := request.params.RequireProgrammeLevelId()
+	programmeLevelID, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -158,7 +158,7 @@ func (module classResourceModule) list(request operationRequest) (operationResul
 }
 
 func (module classResourceModule) create(request operationRequest) (operationResult, error) {
-	programmeLevelID, err := request.params.RequireProgrammeLevelId()
+	programmeLevelID, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -184,7 +184,7 @@ func (module classResourceModule) create(request operationRequest) (operationRes
 }
 
 func (module classResourceModule) get(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireClassId()
+	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -200,7 +200,7 @@ func (module classResourceModule) get(request operationRequest) (operationResult
 }
 
 func (module classResourceModule) patch(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireClassId()
+	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -230,7 +230,7 @@ func (module classResourceModule) patch(request operationRequest) (operationResu
 }
 
 func (module classResourceModule) archive(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireClassId()
+	id, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}

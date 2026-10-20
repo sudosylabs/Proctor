@@ -70,7 +70,7 @@ func TestProgrammeHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if programmes.createCommand.AcademicUnitID != programme.AcademicUnitID.String() || programmes.createCommand.Name != programme.Name {
+	if programmes.createCommand.AcademicUnitID != programme.AcademicUnitID || programmes.createCommand.Name != programme.Name {
 		t.Fatalf("create command = %#v", programmes.createCommand)
 	}
 	var body programmeResponse

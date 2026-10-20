@@ -60,7 +60,7 @@ func TestAffiliationHTTPUsesDTOAndRouteOwnedUser(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if affiliations.createCommand.UserID != userID || affiliations.createCommand.Kind != model.AffiliationTeacher {
+	if affiliations.createCommand.UserID != model.UserID(userID) || affiliations.createCommand.Kind != model.AffiliationTeacher {
 		t.Fatalf("command = %#v", affiliations.createCommand)
 	}
 	var body map[string]any

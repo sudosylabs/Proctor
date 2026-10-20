@@ -490,7 +490,7 @@ writesComplete:
 	}
 
 	endedAt := model.GetMillis()
-	ended, err := ss.ClassMember().End(ctx, fixture.membership.ID.String(), fixture.membership.Revision, endedAt)
+	ended, err := ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 	requireNoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
 	// current eligibility with a higher-precision clock. Cross the millisecond

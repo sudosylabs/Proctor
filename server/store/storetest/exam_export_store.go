@@ -291,11 +291,11 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	grant.Notices = examManagerMailNotices(t, at, examManagerMailRecipient{nonmanager.ID, model.MailTemplateExamManagerAdded})
 	added, err := ss.ExamAuthoring().AddManager(ctx, grant, examCommand(f.manager.ID, "exam.manager.add.v1", "export-manager-add", "export-manager-add"))
 	requireNoError(t, err)
-	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, nonmanager.ID.String(), model.NowUTC())
+	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, nonmanager.ID, model.NowUTC())
 	requireNoError(t, err)
 	for _, membership := range memberships {
 		if membership.AcademicUnitID == f.unitID {
-			_, err := ss.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, model.GetMillis())
+			_, err = ss.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, model.GetMillis())
 			requireNoError(t, err)
 		}
 	}

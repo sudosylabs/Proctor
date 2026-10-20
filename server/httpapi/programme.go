@@ -63,7 +63,7 @@ func programmeResource(programmes ProgrammeApplication) resource {
 }
 
 func (module programmeResourceModule) list(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -86,7 +86,7 @@ func (module programmeResourceModule) list(request operationRequest) (operationR
 }
 
 func (module programmeResourceModule) create(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -105,7 +105,7 @@ func (module programmeResourceModule) create(request operationRequest) (operatio
 }
 
 func (module programmeResourceModule) get(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeId()
+	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -120,7 +120,7 @@ func (module programmeResourceModule) get(request operationRequest) (operationRe
 }
 
 func (module programmeResourceModule) patch(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeId()
+	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -142,7 +142,7 @@ func (module programmeResourceModule) patch(request operationRequest) (operation
 }
 
 func (module programmeResourceModule) archive(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeId()
+	id, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}

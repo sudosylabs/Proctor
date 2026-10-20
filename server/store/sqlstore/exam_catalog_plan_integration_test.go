@@ -167,7 +167,7 @@ func testExamCatalogBoundedPlan(t *testing.T, persistence *SQLStore) {
 		}, wantIndexes: []string{"exams_active_updated_at_id_idx"}},
 		{name: "archived exact unit override keyset", options: store.ExamListOptions{
 			AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveArchived, Limit: 20, BeforeUpdatedAt: at.Add(4000 * time.Millisecond), BeforeExamID: ids[4000],
-			Visibility: store.ExamListVisibility{ActorUserID: actor.ID, OverrideAcademicUnitRootIDs: []string{unit.ID.String()}},
+			Visibility: store.ExamListVisibility{ActorUserID: actor.ID, OverrideAcademicUnitRootIDs: []model.AcademicUnitID{unit.ID}},
 		}, wantIndexes: []string{"exams_archived_academic_unit_updated_at_id_idx", "exams_archived_updated_at_id_idx"}},
 		{name: "all exact unit ordinary", options: store.ExamListOptions{
 			AcademicUnitID: unit.ID, ArchiveFilter: store.ExamArchiveAll, Limit: 20,

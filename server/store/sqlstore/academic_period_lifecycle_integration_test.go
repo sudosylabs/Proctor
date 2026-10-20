@@ -57,7 +57,7 @@ func TestAcademicPeriodArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: period.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: period.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()

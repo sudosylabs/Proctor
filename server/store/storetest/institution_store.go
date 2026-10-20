@@ -123,13 +123,13 @@ func testInstitutionStoreGet(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	got, err := ss.Institution().Get(ctx, institution.ID.String())
+	got, err := ss.Institution().Get(ctx, institution.ID)
 	requireNoError(t, err)
 	if *got != *institution {
 		t.Fatalf("Get() = %#v, want %#v", got, institution)
 	}
 
-	_, err = ss.Institution().Get(ctx, model.NewId())
+	_, err = ss.Institution().Get(ctx, model.NewInstitutionID())
 	if !store.IsNotFound(err) {
 		t.Fatalf("Get(missing) error = %v, want not found", err)
 	}
@@ -182,13 +182,13 @@ func testInstitutionStoreArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 
-	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); err != nil {
+	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); err != nil {
 		t.Fatalf("Archive() error = %v", err)
 	}
-	if _, err := ss.Institution().Get(ctx, institution.ID.String()); !store.IsNotFound(err) {
+	if _, err := ss.Institution().Get(ctx, institution.ID); !store.IsNotFound(err) {
 		t.Fatalf("Get(archived) error = %v, want not found", err)
 	}
-	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); !store.IsNotFound(err) {
+	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); !store.IsNotFound(err) {
 		t.Fatalf("second Archive() error = %v, want not found", err)
 	}
 	if _, err := ss.Institution().Save(ctx, &model.Institution{
@@ -218,7 +218,7 @@ func cleanupInstitution(t *testing.T, ctx context.Context, ss store.Store) {
 		return
 	}
 	requireNoError(t, err)
-	if err := ss.Institution().Archive(ctx, institution.ID.String(), model.GetMillis()); err != nil {
+	if err := ss.Institution().Archive(ctx, institution.ID, model.GetMillis()); err != nil {
 		t.Fatalf("cleanup institution: %v", err)
 	}
 }

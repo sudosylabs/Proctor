@@ -163,7 +163,7 @@ type layerOrderPeriods struct {
 	reads  atomic.Int64
 }
 
-func (s *layerOrderPeriods) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (s *layerOrderPeriods) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	s.reads.Add(1)
 	copy := *s.period
 	return &copy, nil
@@ -211,7 +211,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = owner.release() })
 	for range 2 {
-		if _, err := owner.persistence.AcademicPeriod().Get(context.Background(), period.ID.String()); err != nil {
+		if _, err := owner.persistence.AcademicPeriod().Get(context.Background(), period.ID); err != nil {
 			t.Fatal(err)
 		}
 	}

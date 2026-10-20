@@ -1016,7 +1016,7 @@ func (s SQLInvitationStore) listAdministrationRows(ctx context.Context, options 
 					UNION ALL SELECT child.id FROM academic_units child JOIN descendants parent ON child.parent_id=parent.id
 				) SELECT 1 FROM descendants WHERE id=scope_id
 			))`)
-			args = append(args, pq.Array(visibility.AcademicUnitRootIDs))
+			args = append(args, pq.Array(idStrings(visibility.AcademicUnitRootIDs)))
 			parts = append(parts, `(scope_type='class' AND EXISTS (
 				WITH RECURSIVE descendants AS (
 					SELECT id FROM academic_units WHERE id=ANY(?)
@@ -1024,11 +1024,11 @@ func (s SQLInvitationStore) listAdministrationRows(ctx context.Context, options 
 				) SELECT 1 FROM classes c JOIN programme_levels pl ON pl.id=c.programme_level_id
 				JOIN programmes p ON p.id=pl.programme_id WHERE c.id=scope_id AND p.academic_unit_id IN (SELECT id FROM descendants)
 			))`)
-			args = append(args, pq.Array(visibility.AcademicUnitRootIDs))
+			args = append(args, pq.Array(idStrings(visibility.AcademicUnitRootIDs)))
 		}
 		if len(visibility.ClassIDs) > 0 {
 			parts = append(parts, `(scope_type='class' AND scope_id=ANY(?))`)
-			args = append(args, pq.Array(visibility.ClassIDs))
+			args = append(args, pq.Array(idStrings(visibility.ClassIDs)))
 		}
 		conditions = append(conditions, "("+strings.Join(parts, " OR ")+")")
 	}

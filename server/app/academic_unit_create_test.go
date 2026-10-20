@@ -60,16 +60,16 @@ func (s *academicUnitCreateStore) ArchiveWithAudit(
 func (*academicUnitCreateStore) Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
 	panic("unexpected Save")
 }
-func (*academicUnitCreateStore) Get(context.Context, string) (*model.AcademicUnit, error) {
+func (*academicUnitCreateStore) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	panic("unexpected Get")
 }
-func (*academicUnitCreateStore) ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error) {
+func (*academicUnitCreateStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListChildren")
 }
 func (*academicUnitCreateStore) ListAncestors(context.Context, string) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (*academicUnitCreateStore) Search(context.Context, string, string, int) ([]*model.AcademicUnit, error) {
+func (*academicUnitCreateStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
 }
 func (*academicUnitCreateStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
@@ -321,7 +321,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{
-		ParentID: parentID, Name: "computing", DisplayName: "Computing",
+		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
 	})
 	if !apperror.Is(err, "academic_unit.conflict") {
 		t.Fatalf("Create() error = %v, want academic_unit.conflict", err)

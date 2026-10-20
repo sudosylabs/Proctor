@@ -72,8 +72,8 @@ func (s SQLExamAuthoringStore) List(ctx context.Context, options store.ExamListO
 }
 
 func examCatalogQuery(options store.ExamListOptions) (string, []any) {
-	ordinaryRoots := append([]string(nil), options.Visibility.OrdinaryAcademicUnitRootIDs...)
-	overrideRoots := append([]string(nil), options.Visibility.OverrideAcademicUnitRootIDs...)
+	ordinaryRoots := idStrings(options.Visibility.OrdinaryAcademicUnitRootIDs)
+	overrideRoots := idStrings(options.Visibility.OverrideAcademicUnitRootIDs)
 	hasSittingFilters := len(options.SittingStates) > 0 || !options.EndsAfter.IsZero()
 	query := `WITH RECURSIVE ordinary_units AS (
 		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL

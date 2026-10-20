@@ -529,33 +529,23 @@ func isNoRows(err error) bool {
 	return err == sql.ErrNoRows
 }
 
-func (s SQLClassMemberStore) Get(
-	ctx context.Context,
-	id string,
-) (*model.ClassMember, error) {
+func (s SQLClassMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*model.ClassMember, error) {
 	var row classMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 		"class_members.id": id, "class_members.archived_at": nil,
 	})); err != nil {
-		return nil, translateError("class_member", id, err)
+		return nil, translateError("class_member", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLClassMemberStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.ClassMember, error) {
+func (s SQLClassMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ClassMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"class_members.user_id": userID, "class_members.archived_at": nil,
 	}).OrderBy("class_members.start_at DESC", "class_members.id"))
 }
 
-func (s SQLClassMemberStore) ListByClass(
-	ctx context.Context,
-	classID string,
-	at int64,
-) ([]*model.ClassMember, error) {
+func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at int64) ([]*model.ClassMember, error) {
 	query := s.query.Where(sq.Eq{
 		"class_members.class_id": classID, "class_members.archived_at": nil,
 	})
@@ -567,11 +557,7 @@ func (s SQLClassMemberStore) ListByClass(
 	return s.selectMembers(ctx, query.OrderBy("class_members.user_id", "class_members.id"))
 }
 
-func (s SQLClassMemberStore) ListActiveByUser(
-	ctx context.Context,
-	userID string,
-	at int64,
-) ([]*model.ClassMember, error) {
+func (s SQLClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.ClassMember, error) {
 	activeAt := model.TimeFromMillis(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"class_members.user_id": userID, "class_members.archived_at": nil,
@@ -580,13 +566,8 @@ func (s SQLClassMemberStore) ListActiveByUser(
 		OrderBy("class_members.academic_period_id", "class_members.id"))
 }
 
-func (s SQLClassMemberStore) End(
-	ctx context.Context,
-	id string,
-	expectedRevision int64,
-	endAt int64,
-) (*model.ClassMember, error) {
-	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
+func (s SQLClassMemberStore) End(ctx context.Context, id model.ClassMemberID, expectedRevision, endAt int64) (*model.ClassMember, error) {
+	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ClassMember, error) {
@@ -594,7 +575,7 @@ func (s SQLClassMemberStore) End(
 		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 			"class_members.id": id, "class_members.archived_at": nil,
 		})); err != nil {
-			return nil, translateError("class_member", id, err)
+			return nil, translateError("class_member", id.String(), err)
 		}
 		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
 			return nil, err
@@ -607,7 +588,7 @@ func (s SQLClassMemberStore) EndWithAudit(
 	ctx context.Context,
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
-	if input == nil || (input.Notice == nil && input.Command == nil) || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.ExpectedRecipientRevision < 1 ||
+	if input == nil || (input.Notice == nil && input.Command == nil) || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.ExpectedRecipientRevision < 1 ||
 		input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
@@ -616,7 +597,7 @@ func (s SQLClassMemberStore) EndWithAudit(
 		if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 			"class_members.id": input.ID, "class_members.archived_at": nil,
 		})); err != nil {
-			return nil, translateError("class_member", input.ID, err)
+			return nil, translateError("class_member", input.ID.String(), err)
 		}
 		current, modelErr := row.model()
 		if modelErr != nil {
@@ -760,7 +741,7 @@ func validateRelationshipTransitionMail(resource string, prepared *store.Prepare
 func (s SQLClassMemberStore) endClassMember(
 	ctx context.Context,
 	executor sqlxExecutor,
-	id string,
+	id model.ClassMemberID,
 	expectedRevision int64,
 	endAt int64,
 ) (*model.ClassMember, error) {
@@ -768,7 +749,7 @@ func (s SQLClassMemberStore) endClassMember(
 	if err := executor.GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 		"class_members.id": id, "class_members.archived_at": nil,
 	})); err != nil {
-		return nil, translateError("class_member", id, err)
+		return nil, translateError("class_member", id.String(), err)
 	}
 	current, err := row.model()
 	if err != nil {
@@ -796,7 +777,7 @@ func (s SQLClassMemberStore) endClassMember(
 	if err != nil {
 		return nil, fmt.Errorf("end class member: %w", err)
 	}
-	if err := requireAffected(result, "class_member", id); err != nil {
+	if err := requireAffected(result, "class_member", id.String()); err != nil {
 		return nil, err
 	}
 	current.UpdatedAt = at

@@ -99,7 +99,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	if err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 	}
-	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.ID.String())
+	persisted, getErr := ss.AcademicUnit().Get(ctx, unit.ID)
 	requireNoError(t, getErr)
 	if persisted.DisplayName != updated.DisplayName {
 		t.Fatalf("update survived audit rollback: %#v", persisted)
@@ -108,7 +108,7 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 	archiveUnit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "audited-archive")
 	archiveAttempt := saveAcademicUnitAuditAttempt(t, ctx, ss, archiveUnit.ID.String())
 	archived, err := ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-		ID: archiveUnit.ID.String(), ArchiveAt: model.GetMillis(),
+		ID: archiveUnit.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
@@ -123,13 +123,13 @@ func testAcademicUnitStoreMutationAuditAtomicity(t *testing.T, ss store.Store) {
 
 	rollbackArchive := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "rollback-archive")
 	_, err = ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-		ID: rollbackArchive.ID.String(), ArchiveAt: model.GetMillis(),
+		ID: rollbackArchive.ID, ArchiveAt: model.GetMillis(),
 		AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
 	})
 	if err == nil {
 		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 	}
-	if _, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID.String()); getErr != nil {
+	if _, getErr = ss.AcademicUnit().Get(ctx, rollbackArchive.ID); getErr != nil {
 		t.Fatalf("archive survived audit rollback: %v", getErr)
 	}
 }
@@ -181,7 +181,7 @@ func testAcademicUnitStoreCreateWithAudit(t *testing.T, ss store.Store) {
 	if err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
-	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID.String(), "rolled-back-unit", 10)
+	found, searchErr := ss.AcademicUnit().Search(ctx, institution.ID, "rolled-back-unit", 10)
 	requireNoError(t, searchErr)
 	if len(found) != 0 {
 		t.Fatalf("unit survived audit rollback: %#v", found)
@@ -196,36 +196,36 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	child.DisplayName = "Literal 50%_! Computing"
 	child, err := ss.AcademicUnit().Update(ctx, child)
 	requireNoError(t, err)
-	found, err := ss.AcademicUnit().Search(ctx, institution.ID.String(), "distinct-comput", 10)
+	found, err := ss.AcademicUnit().Search(ctx, institution.ID, "distinct-comput", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != child.ID {
 		t.Fatalf("Search() = %#v", found)
 	}
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
-		found, err = ss.AcademicUnit().Search(ctx, institution.ID.String(), query, 10)
+		found, err = ss.AcademicUnit().Search(ctx, institution.ID, query, 10)
 		requireNoError(t, err)
 		if len(found) != 1 || found[0].ID != child.ID {
 			t.Fatalf("Search(%q) = %#v, want only %s", query, found, child.ID)
 		}
 	}
-	exact, err := ss.AcademicUnit().GetByName(ctx, institution.ID.String(), child.Name)
+	exact, err := ss.AcademicUnit().GetByName(ctx, institution.ID, child.Name)
 	requireNoError(t, err)
 	if exact.ID != child.ID {
 		t.Fatalf("GetByName() = %#v", exact)
 	}
 	otherInstitution := saveInstitution(t, ctx, ss)
-	if _, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID.String(), child.Name); !store.IsNotFound(err) {
+	if _, err = ss.AcademicUnit().GetByName(ctx, otherInstitution.ID, child.Name); !store.IsNotFound(err) {
 		t.Fatalf("cross-Institution GetByName() error = %v", err)
 	}
-	if _, err = ss.AcademicUnit().Archive(ctx, parent.ID.String(), model.GetMillis()); !store.IsConflict(err) {
+	if _, err = ss.AcademicUnit().Archive(ctx, parent.ID, model.GetMillis()); !store.IsConflict(err) {
 		t.Fatalf("Archive(parent with child) error = %v", err)
 	}
-	archived, err := ss.AcademicUnit().Archive(ctx, child.ID.String(), model.GetMillis())
+	archived, err := ss.AcademicUnit().Archive(ctx, child.ID, model.GetMillis())
 	requireNoError(t, err)
 	if archived.ArchivedAt.Millis() == 0 {
 		t.Fatalf("Archive(child) = %#v", archived)
 	}
-	if _, err = ss.AcademicUnit().Get(ctx, child.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.AcademicUnit().Get(ctx, child.ID); !store.IsNotFound(err) {
 		t.Fatalf("Get(archived) error = %v", err)
 	}
 }
@@ -237,7 +237,7 @@ func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "computing")
 	leaf := saveAcademicUnit(t, ctx, ss, institution.ID.String(), child.ID.String(), "software")
 
-	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, leaf.ID.String())
+	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, leaf.ID)
 	requireNoError(t, err)
 	if len(ancestors) != 3 ||
 		ancestors[0].ID != leaf.ID ||
@@ -245,7 +245,7 @@ func testAcademicUnitStoreListAncestors(t *testing.T, ss store.Store) {
 		ancestors[2].ID != root.ID {
 		t.Fatalf("ListAncestors() = %#v", ancestors)
 	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, model.NewId()); !store.IsNotFound(err) {
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, model.NewAcademicUnitID()); !store.IsNotFound(err) {
 		t.Fatalf("ListAncestors(missing) error = %v", err)
 	}
 }
@@ -272,12 +272,12 @@ func testAcademicUnitStoreGet(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 
-	got, err := ss.AcademicUnit().Get(ctx, unit.ID.String())
+	got, err := ss.AcademicUnit().Get(ctx, unit.ID)
 	requireNoError(t, err)
 	if *got != *unit {
 		t.Fatalf("Get() = %#v, want %#v", got, unit)
 	}
-	if _, err := ss.AcademicUnit().Get(ctx, model.NewId()); !store.IsNotFound(err) {
+	if _, err := ss.AcademicUnit().Get(ctx, model.NewAcademicUnitID()); !store.IsNotFound(err) {
 		t.Fatalf("Get(missing) error = %v, want not found", err)
 	}
 }
@@ -290,12 +290,12 @@ func testAcademicUnitStoreListChildren(t *testing.T, ss store.Store) {
 	childB := saveAcademicUnit(t, ctx, ss, institution.ID.String(), rootA.ID.String(), "software")
 	childA := saveAcademicUnit(t, ctx, ss, institution.ID.String(), rootA.ID.String(), "computing")
 
-	roots, err := ss.AcademicUnit().ListChildren(ctx, institution.ID.String(), "")
+	roots, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, "")
 	requireNoError(t, err)
 	if len(roots) != 2 || roots[0].ID != rootA.ID || roots[1].ID != rootB.ID {
 		t.Fatalf("ListChildren(root) = %#v", roots)
 	}
-	children, err := ss.AcademicUnit().ListChildren(ctx, institution.ID.String(), rootA.ID.String())
+	children, err := ss.AcademicUnit().ListChildren(ctx, institution.ID, rootA.ID)
 	requireNoError(t, err)
 	if len(children) != 2 || children[0].ID != childA.ID || children[1].ID != childB.ID {
 		t.Fatalf("ListChildren(%s) = %#v", rootA.ID.String(), children)
@@ -316,7 +316,7 @@ func testAcademicUnitStoreUpdate(t *testing.T, ss store.Store) {
 	if updated.ParentID != secondRoot.ID || updated.DisplayName != "Applied Computing" {
 		t.Fatalf("Update() = %#v", updated)
 	}
-	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, updated.ID.String())
+	ancestors, err := ss.AcademicUnit().ListAncestors(ctx, updated.ID)
 	requireNoError(t, err)
 	if len(ancestors) != 2 || ancestors[0].ID != updated.ID ||
 		ancestors[1].ID != secondRoot.ID {
@@ -389,10 +389,10 @@ func testAcademicUnitStoreRejectConcurrentCycle(t *testing.T, ss store.Store) {
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("concurrent updates: successes=%d conflicts=%d", successes, conflicts)
 	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, first.ID.String()); err != nil {
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, first.ID); err != nil {
 		t.Fatalf("first hierarchy after concurrent updates: %v", err)
 	}
-	if _, err := ss.AcademicUnit().ListAncestors(ctx, second.ID.String()); err != nil {
+	if _, err := ss.AcademicUnit().ListAncestors(ctx, second.ID); err != nil {
 		t.Fatalf("second hierarchy after concurrent updates: %v", err)
 	}
 }
@@ -401,7 +401,7 @@ func testAcademicUnitStoreRejectCrossInstitutionParent(t *testing.T, ss store.St
 	ctx := context.Background()
 	first := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, first.ID.String(), "", "engineering")
-	requireNoError(t, ss.Institution().Archive(ctx, first.ID.String(), model.GetMillis()))
+	requireNoError(t, ss.Institution().Archive(ctx, first.ID, model.GetMillis()))
 
 	second, err := ss.Institution().Save(ctx, &model.Institution{
 		Name:        "second-" + model.NewId(),

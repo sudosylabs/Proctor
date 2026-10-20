@@ -251,14 +251,14 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 	service := newRoleBindingService(
 		persistence, &roleBindingRoleStoreFake{events: &events},
 		relationshipUserStoreTestFake{},
-		&roleAuthorizerFake{events: &events, bindingScope: store.UserVisibilityScope{AcademicUnitRootIDs: []string{rootID}}},
+		&roleAuthorizerFake{events: &events, bindingScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.AcademicUnitID(rootID)}}},
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &roleBindingEffectsFake{events: &events}, time.Now,
 	)
 	if _, err := service.List(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(persistence.visibility.AcademicUnitRootIDs, []string{rootID}) || persistence.visibility.InstitutionWide {
+	if !reflect.DeepEqual(persistence.visibility.AcademicUnitRootIDs, []model.AcademicUnitID{model.AcademicUnitID(rootID)}) || persistence.visibility.InstitutionWide {
 		t.Fatalf("visibility = %#v", persistence.visibility)
 	}
 }

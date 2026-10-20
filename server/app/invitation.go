@@ -278,13 +278,13 @@ func (v InvitationView) String() string {
 }
 
 type invitationClassReader interface {
-	Get(context.Context, string) (*model.Class, error)
+	Get(context.Context, model.ClassID) (*model.Class, error)
 }
 type invitationPeriodReader interface {
-	Get(context.Context, string) (*model.AcademicPeriod, error)
+	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 }
 type invitationAcademicUnitReader interface {
-	Get(context.Context, string) (*model.AcademicUnit, error)
+	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
 }
 type invitationRoleReader interface {
 	Get(context.Context, string) (*model.Role, error)
@@ -370,10 +370,10 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
 	if len(constraint.AcademicUnitRootIDs) > 0 {
-		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: constraint.AcademicUnitRootIDs[0]}
+		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: constraint.AcademicUnitRootIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeAcademicUnit, resource.ID
 	} else if len(constraint.ClassIDs) > 0 {
-		resource = model.Resource{Type: model.ResourceClass, ID: constraint.ClassIDs[0]}
+		resource = model.Resource{Type: model.ResourceClass, ID: constraint.ClassIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeClass, resource.ID
 	}
 	if err = a.authorization.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
@@ -383,7 +383,7 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 		return store.InvitationVisibilityScope{}, authorizationDeniedError()
 	}
 	return store.InvitationVisibilityScope{InstitutionWide: constraint.InstitutionWide,
-		AcademicUnitRootIDs: append([]string(nil), constraint.AcademicUnitRootIDs...), ClassIDs: append([]string(nil), constraint.ClassIDs...)}, nil
+		AcademicUnitRootIDs: append([]model.AcademicUnitID(nil), constraint.AcademicUnitRootIDs...), ClassIDs: append([]model.ClassID(nil), constraint.ClassIDs...)}, nil
 }
 
 type invitationAuditAdapter struct{ audit mutationAuditAdapter }
@@ -1170,11 +1170,11 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 				return nil, "", err
 			}
 		}
-		class, err := s.classes.Get(ctx, classID.String())
+		class, err := s.classes.Get(ctx, classID)
 		if err != nil || class.ID != classID {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
-		period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
+		period, err := s.periods.Get(ctx, class.AcademicPeriodID)
 		if err != nil || period.ID != class.AcademicPeriodID {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
@@ -1211,7 +1211,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 				return nil, "", err
 			}
 		}
-		unit, err := s.academicUnits.Get(ctx, unitID.String())
+		unit, err := s.academicUnits.Get(ctx, unitID)
 		if err != nil || unit.ID != unitID || unit.IsArchived() {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
@@ -1332,11 +1332,11 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	if err = s.authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource); err != nil {
 		return InvitationView{}, err
 	}
-	class, err := s.classes.Get(ctx, classID)
+	class, err := s.classes.Get(ctx, parsedClassID)
 	if err != nil {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
-	period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
+	period, err := s.periods.Get(ctx, class.AcademicPeriodID)
 	if err != nil {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
@@ -1463,7 +1463,7 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	if err = s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource); err != nil {
 		return InvitationView{}, err
 	}
-	unit, err := s.academicUnits.Get(ctx, unitID.String())
+	unit, err := s.academicUnits.Get(ctx, unitID)
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
@@ -1598,7 +1598,7 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 			return InvitationView{}, err
 		}
 	}
-	unit, err := s.academicUnits.Get(ctx, unitID.String())
+	unit, err := s.academicUnits.Get(ctx, unitID)
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}

@@ -42,8 +42,8 @@ type institutionStub struct {
 	id     string
 }
 
-func (s *institutionStub) Get(_ context.Context, id string) (*model.Institution, error) {
-	s.id = id
+func (s *institutionStub) Get(_ context.Context, id model.InstitutionID) (*model.Institution, error) {
+	s.id = id.String()
 	return s.result, s.err
 }
 
@@ -110,7 +110,7 @@ func TestTimerPreservesExactErrorAndRecordsFailure(t *testing.T) {
 		sequenceClock(startedAt, startedAt.Add(time.Millisecond)),
 	)
 
-	got, err := layer.Institution().Get(context.Background(), model.NewId())
+	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
 	if got != nil {
 		t.Fatalf("Get() result = %#v, want nil", got)
 	}
@@ -132,7 +132,7 @@ func TestRecorderPanicCannotChangeStoreSemantics(t *testing.T) {
 		time.Now,
 	)
 
-	got, err := layer.Institution().Get(context.Background(), model.NewId())
+	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
 	if err != nil || got != want {
 		t.Fatalf("Get() = %#v, %v", got, err)
 	}

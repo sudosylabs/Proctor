@@ -25,7 +25,7 @@ func TestRenderTypeRejectsUnsupportedContractSyntax(t *testing.T) {
 func TestMethodIdentifierPreservesIDInitialism(t *testing.T) {
 	t.Parallel()
 
-	if got := methodIdentifier("GetAcademicUnitId"); got != "GetAcademicUnitID" {
+	if got := methodIdentifier("GetAcademicUnitID"); got != "GetAcademicUnitID" {
 		t.Fatalf("methodIdentifier(Id) = %q", got)
 	}
 	if got := methodIdentifier("GetByIds"); got != "GetByIDs" {

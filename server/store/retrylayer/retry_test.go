@@ -30,7 +30,7 @@ type institutionStub struct {
 	saveErr      error
 }
 
-func (s *institutionStub) Get(context.Context, string) (*model.Institution, error) {
+func (s *institutionStub) Get(context.Context, model.InstitutionID) (*model.Institution, error) {
 	s.getAttempts++
 	return s.get()
 }
@@ -299,7 +299,7 @@ func TestRetryAllowlistedReadPreservesEventualResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := layer.Institution().Get(context.Background(), model.NewId())
+	got, err := layer.Institution().Get(context.Background(), model.NewInstitutionID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func TestRetryReturnsExactTransientErrorAfterBoundedAttempts(t *testing.T) {
 	stub := &institutionStub{get: func() (*model.Institution, error) { return nil, transientErr }}
 	layer := newLayer(t, stub, func(err error) bool { return err == transientErr }, 3, time.Nanosecond)
 
-	_, gotErr := layer.Institution().Get(context.Background(), model.NewId())
+	_, gotErr := layer.Institution().Get(context.Background(), model.NewInstitutionID())
 	if gotErr != transientErr {
 		t.Fatalf("Get() error = %v, want exact transient error %v", gotErr, transientErr)
 	}
@@ -644,7 +644,7 @@ func TestRetryCancellationStopsBeforeAnotherAttempt(t *testing.T) {
 	cancel()
 
 	startedAt := time.Now()
-	_, gotErr := layer.Institution().Get(ctx, model.NewId())
+	_, gotErr := layer.Institution().Get(ctx, model.NewInstitutionID())
 	if gotErr != context.Canceled {
 		t.Fatalf("Get() error = %v, want context.Canceled", gotErr)
 	}
@@ -666,7 +666,7 @@ func TestRetryDeadlineStopsBeforeAnotherAttempt(t *testing.T) {
 	defer cancel()
 
 	startedAt := time.Now()
-	_, gotErr := layer.Institution().Get(ctx, model.NewId())
+	_, gotErr := layer.Institution().Get(ctx, model.NewInstitutionID())
 	if gotErr != context.DeadlineExceeded {
 		t.Fatalf("Get() error = %v, want context.DeadlineExceeded", gotErr)
 	}

@@ -239,7 +239,7 @@ func (s SQLAuditStore) List(
 				SELECT id FROM academic_units WHERE id = ANY(?)
 				UNION ALL SELECT child.id FROM academic_units child
 				JOIN allowed_units parent ON child.parent_id = parent.id
-			)`, pq.Array(options.Visibility.AcademicUnitRootIDs)).Where(`
+			)`, pq.Array(idStrings(options.Visibility.AcademicUnitRootIDs))).Where(`
 				audit_events.action = ANY(?) AND (
 					(audit_events.scope_type = 'academic_unit' AND audit_events.scope_id IN (SELECT id FROM allowed_units))
 					OR (audit_events.scope_type = 'class' AND EXISTS (

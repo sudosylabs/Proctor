@@ -429,7 +429,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		ClassID: visibleClass.ID, UserID: first.ID, StartsAt: model.TimeFromMillis(activeAt - 10),
 	})
 	requireNoError(t, err)
-	_, err = ss.ClassMember().End(ctx, firstMembership.Membership.ID.String(), firstMembership.Membership.Revision, activeAt+100)
+	_, err = ss.ClassMember().End(ctx, firstMembership.Membership.ID, firstMembership.Membership.Revision, activeAt+100)
 	requireNoError(t, err)
 	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: second.ID, Kind: model.AffiliationStudent,
@@ -484,14 +484,14 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("List(without visibility) = %#v, want empty", denied)
 	}
 	classVisible, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
 	})
 	requireNoError(t, err)
 	if len(classVisible) != 1 || classVisible[0].ID != first.ID {
 		t.Fatalf("List(class visibility) = %#v, want only %s", classVisible, first.ID)
 	}
 	byHiddenEmail, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
 		Query:      first.Email, Limit: 10,
 	})
 	requireNoError(t, err)
@@ -499,7 +499,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("List(scoped email search) = %#v, want no email oracle", byHiddenEmail)
 	}
 	unitVisible, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
 	})
 	requireNoError(t, err)
 	visibleIDs := map[model.UserID]bool{}
@@ -514,7 +514,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}
 	classMemberVisible, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{
-			ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+			ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
 		},
 		Limit: 10,
 	})
@@ -535,8 +535,8 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	}
 	unionVisible, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility: store.UserVisibilityScope{
-			AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()},
-			ClassIDs:            []string{siblingClass.ID.String()},
+			AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID},
+			ClassIDs:            []model.ClassID{siblingClass.ID},
 			ActiveAt:            model.TimeFromMillis(activeAt),
 		},
 		Limit: 10,
@@ -551,9 +551,9 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("List(union visibility) = %#v, want relationship subtree plus sibling Class roster", unionVisible)
 	}
 	match, err := ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
-		ClassIDs: []string{visibleClass.ID.String()},
-		AcademicUnitRootIDs: []string{
-			siblingUnit.ID.String(), fixture.programme.AcademicUnitID.String(),
+		ClassIDs: []model.ClassID{visibleClass.ID},
+		AcademicUnitRootIDs: []model.AcademicUnitID{
+			siblingUnit.ID, fixture.programme.AcademicUnitID,
 		},
 		ActiveAt: model.TimeFromMillis(activeAt),
 	})
@@ -562,8 +562,8 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("MatchVisibility(class) = %#v, want exact Class", match)
 	}
 	match, err = ss.User().MatchVisibility(ctx, unitRoleHolder.ID.String(), store.UserVisibilityScope{
-		AcademicUnitRootIDs: []string{
-			siblingUnit.ID.String(), fixture.programme.AcademicUnitID.String(),
+		AcademicUnitRootIDs: []model.AcademicUnitID{
+			siblingUnit.ID, fixture.programme.AcademicUnitID,
 		},
 		ActiveAt: model.TimeFromMillis(activeAt),
 	})
@@ -572,14 +572,14 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("MatchVisibility(unit) = %#v, want matching root", match)
 	}
 	match, err = ss.User().MatchVisibility(ctx, unitMember.ID.String(), store.UserVisibilityScope{
-		ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
 	})
 	requireNoError(t, err)
 	if match != (store.UserVisibilityMatch{}) {
 		t.Fatalf("MatchVisibility(class-member unit nonmember) = %#v, want no match", match)
 	}
 	match, err = ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
-		ClassMemberAcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassMemberAcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
 	})
 	requireNoError(t, err)
 	if match.ScopeType != model.RoleScopeAcademicUnit || match.ScopeID != fixture.programme.AcademicUnitID.String() {
@@ -593,21 +593,21 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("MatchVisibility(institution class member) = %#v, want actual Class", match)
 	}
 	match, err = ss.User().MatchVisibility(ctx, archivedRoleHolder.ID.String(), store.UserVisibilityScope{
-		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
 	})
 	requireNoError(t, err)
 	if match != (store.UserVisibilityMatch{}) {
 		t.Fatalf("MatchVisibility(archived Role holder) = %#v, want no match", match)
 	}
 	match, err = ss.User().MatchVisibility(ctx, second.ID.String(), store.UserVisibilityScope{
-		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}, ActiveAt: model.TimeFromMillis(activeAt),
 	})
 	requireNoError(t, err)
 	if match != (store.UserVisibilityMatch{}) {
 		t.Fatalf("MatchVisibility(future relation) = %#v, want no match", match)
 	}
 	if _, err = ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{"malformed"}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{"malformed"}, ActiveAt: model.TimeFromMillis(activeAt)}, Limit: 10,
 	}); err == nil {
 		t.Fatal("List accepted a malformed visibility ID")
 	}
@@ -630,7 +630,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		}
 	}
 	scopedLiteral, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
 		Query:      "Literal%Family!", Limit: 10,
 	})
 	requireNoError(t, err)
@@ -658,12 +658,12 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		t.Fatalf("SetDisabledWithAudit() = %#v", result)
 	}
 	scopedDefault, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
 		Limit:      10,
 	})
 	requireNoError(t, err)
 	scopedInclusive, err := ss.User().List(ctx, store.UserListOptions{
-		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt)},
+		Visibility: store.UserVisibilityScope{ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt)},
 		Limit:      10, IncludeDisabled: true,
 	})
 	requireNoError(t, err)
@@ -688,7 +688,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 		}
 	}
 	match, err = ss.User().MatchVisibility(ctx, first.ID.String(), store.UserVisibilityScope{
-		ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: model.TimeFromMillis(activeAt),
+		ClassIDs: []model.ClassID{visibleClass.ID}, ActiveAt: model.TimeFromMillis(activeAt),
 	})
 	requireNoError(t, err)
 	if match != (store.UserVisibilityMatch{}) {
@@ -724,7 +724,7 @@ func testUserVisibilityIntervalPrecision(t *testing.T, ss store.Store) {
 	for _, anchor := range []string{"academic unit member", "class member", "role binding"} {
 		t.Run(anchor, func(t *testing.T) {
 			user := saveUser(t, ctx, ss)
-			visibility := store.UserVisibilityScope{AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}}
+			visibility := store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}}
 			wantMatch := store.UserVisibilityMatch{ScopeType: model.RoleScopeAcademicUnit, ScopeID: fixture.programme.AcademicUnitID.String()}
 			switch anchor {
 			case "academic unit member":
@@ -741,7 +741,7 @@ func testUserVisibilityIntervalPrecision(t *testing.T, ss store.Store) {
 					ClassID: class.ID, UserID: user.ID, StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
 				})
 				requireNoError(t, err)
-				visibility = store.UserVisibilityScope{ClassIDs: []string{class.ID.String()}}
+				visibility = store.UserVisibilityScope{ClassIDs: []model.ClassID{class.ID}}
 				wantMatch = store.UserVisibilityMatch{ScopeType: model.RoleScopeClass, ScopeID: class.ID.String()}
 			case "role binding":
 				role, err := ss.Role().Save(ctx, &model.Role{

@@ -148,10 +148,10 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID string) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.AcademicUnit().Archive(ctx, resource.ID, at)
+				return ss.AcademicUnit().Archive(ctx, model.AcademicUnitID(resource.ID), at)
 			}
 			return ss.AcademicUnit().ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-				ID: resource.ID, ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.AcademicUnitID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
 	case model.ResourceAcademicPeriod:
@@ -168,10 +168,10 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID string) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.AcademicPeriod().Archive(ctx, resource.ID, at)
+				return ss.AcademicPeriod().Archive(ctx, model.AcademicPeriodID(resource.ID), at)
 			}
 			return ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
-				ID: resource.ID, ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.AcademicPeriodID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
 	case model.ResourceClass:
@@ -187,11 +187,11 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID string) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.Class().Archive(ctx, resource.ID, at)
+				return ss.Class().Archive(ctx, model.ClassID(resource.ID), at)
 			}
 			return ss.Class().ArchiveWithAudit(ctx, &store.ClassArchive{
-				ID: resource.ID, ExpectedRevision: created.Revision,
-				ExpectedAcademicUnitID: parents.programme.AcademicUnitID.String(),
+				ID: model.ClassID(resource.ID), ExpectedRevision: created.Revision,
+				ExpectedAcademicUnitID: parents.programme.AcademicUnitID,
 				ArchiveAt:              at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
@@ -207,10 +207,10 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID string) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.Programme().Archive(ctx, resource.ID, at)
+				return ss.Programme().Archive(ctx, model.ProgrammeID(resource.ID), at)
 			}
 			return ss.Programme().ArchiveWithAudit(ctx, &store.ProgrammeArchive{
-				ID: resource.ID, ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.ProgrammeID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
 	case model.ResourceProgrammeLevel:
@@ -225,10 +225,10 @@ func academicArchiveFixture(
 		resource.ID = created.ID.String()
 		return resource, func(at int64, auditID string) (academicArchivedModel, error) {
 			if auditID == "" {
-				return ss.ProgrammeLevel().Archive(ctx, resource.ID, at)
+				return ss.ProgrammeLevel().Archive(ctx, model.ProgrammeLevelID(resource.ID), at)
 			}
 			return ss.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
-				ID: resource.ID, ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
+				ID: model.ProgrammeLevelID(resource.ID), ArchiveAt: at, AuditEventID: auditID, AuditAt: model.GetMillis(),
 			})
 		}
 	default:

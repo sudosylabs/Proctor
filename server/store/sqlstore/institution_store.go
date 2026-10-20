@@ -123,14 +123,14 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 	})
 }
 
-func (s SQLInstitutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {
+func (s SQLInstitutionStore) Get(ctx context.Context, id model.InstitutionID) (*model.Institution, error) {
 	var row institutionRow
 	query := s.institutionsQuery.Where(sq.Eq{
 		"institutions.id":          id,
 		"institutions.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("institution", id, err)
+		return nil, translateError("institution", id.String(), err)
 	}
 	return row.model()
 }
@@ -227,7 +227,7 @@ func (s SQLInstitutionStore) updateInstitution(
 	})
 }
 
-func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt int64) error {
+func (s SQLInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt int64) error {
 	if archiveAt <= 0 {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)
 	}
@@ -244,9 +244,9 @@ func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt i
 		id,
 	)
 	if err != nil {
-		return fmt.Errorf("archive institution: %w", translateError("institution", id, err))
+		return fmt.Errorf("archive institution: %w", translateError("institution", id.String(), err))
 	}
-	return requireAffected(result, "institution", id)
+	return requireAffected(result, "institution", id.String())
 }
 
 func newInstitutionRow(institution *model.Institution) institutionRow {

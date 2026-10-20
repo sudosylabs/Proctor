@@ -73,12 +73,12 @@ func classMemberResource(members ClassMemberApplication) resource {
 }
 
 func (module classMemberResourceModule) list(request operationRequest) (operationResult, error) {
-	classID, err := request.params.RequireClassId()
+	classID, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
 	if usesMembershipPaging(request.request) {
-		scope := model.Resource{Type: model.ResourceClass, ID: classID}
+		scope := model.Resource{Type: model.ResourceClass, ID: classID.String()}
 		query, after, err := membershipPageQuery(request.request, scope)
 		if err != nil {
 			return operationResult{}, err
@@ -110,7 +110,7 @@ func (module classMemberResourceModule) list(request operationRequest) (operatio
 }
 
 func (module classMemberResourceModule) enroll(request operationRequest) (operationResult, error) {
-	classID, err := request.params.RequireClassId()
+	classID, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -126,7 +126,7 @@ func (module classMemberResourceModule) enroll(request operationRequest) (operat
 }
 
 func (module classMemberResourceModule) end(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireClassMemberId()
+	id, err := request.params.RequireClassMemberID()
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -64,13 +64,13 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 		},
 		ArchiveTeacherUnitBeforeAccept: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_unit_archive", "academic_units", "UPDATE academic_units", 8154700260827, func() error {
-				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID.String(), model.GetMillis())
+				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID, model.GetMillis())
 				return err
 			}, operation)
 		},
 		ArchiveTeacherUnitBeforeMail: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_mail_unit_archive", "academic_units", "UPDATE academic_units", 8154700260828, func() error {
-				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID.String(), model.GetMillis())
+				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID, model.GetMillis())
 				return err
 			}, operation)
 		},

@@ -414,8 +414,8 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		acceptedInvitation.AcceptedUserID != invitationUser.ID {
 		t.Fatalf("admission terminal Invitation = %#v, %v", acceptedInvitation, err)
 	}
-	invitationAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitationUser.ID.String())
-	invitationClassMembers, _ := persistence.ClassMember().ListByUser(context.Background(), invitationUser.ID.String())
+	invitationAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitationUser.ID)
+	invitationClassMembers, _ := persistence.ClassMember().ListByUser(context.Background(), invitationUser.ID)
 	invitationBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitationUser.ID.String())
 	if len(invitationAffiliations) != 1 || invitationAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
 		len(invitationClassMembers) != 1 || invitationClassMembers[0].ID != acceptedInvitation.AcceptedClassMemberID ||

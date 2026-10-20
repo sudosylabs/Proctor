@@ -21,12 +21,12 @@ import (
 )
 
 type ListClassMembersQuery struct {
-	ClassID  string
+	ClassID  model.ClassID
 	ActiveAt int64
 }
 
 type EnrollClassMemberCommand struct {
-	ClassID                       string
+	ClassID                       model.ClassID
 	UserID                        string
 	StartAt                       int64
 	EndAt                         int64
@@ -45,7 +45,7 @@ type EnrollClassMemberCommand struct {
 }
 
 type EndClassMemberCommand struct {
-	ID                        string
+	ID                        model.ClassMemberID
 	IdempotencyKey            string
 	BatchScopeID              string
 	batchReplayed             *bool
@@ -57,16 +57,16 @@ type EndClassMemberCommand struct {
 }
 
 type classMemberStore interface {
-	Get(context.Context, string) (*model.ClassMember, error)
-	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
+	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
+	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, store.ClassMemberPageOptions) (*store.ClassMemberPage, error)
 	EnrollWithAudit(context.Context, *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error)
 	EndWithAudit(context.Context, *store.ClassMemberEnd) (*model.ClassMember, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
+	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error)
 }
 
 type classMemberClassStore interface {
-	Get(context.Context, string) (*model.Class, error)
+	Get(context.Context, model.ClassID) (*model.Class, error)
 }
 
 type classMemberUserStore interface {
@@ -186,11 +186,11 @@ func (a *App) ListClassMembers(ctx context.Context, invocation Invocation, query
 }
 
 func (s *classMemberService) List(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
-	resource, err := s.authorizeClass(ctx, invocation, strings.TrimSpace(query.ClassID), model.ActionClassMembersView)
+	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
 	if err != nil {
 		return nil, err
 	}
-	members, err := s.store.ListByClass(ctx, resource.ID, query.ActiveAt)
+	members, err := s.store.ListByClass(ctx, model.ClassID(resource.ID), query.ActiveAt)
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}
@@ -205,15 +205,12 @@ func (a *App) EnrollClassMember(ctx context.Context, invocation Invocation, comm
 }
 
 func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
-	classID := strings.TrimSpace(command.ClassID)
+	classID := command.ClassID
 	resource, err := s.authorizeClass(ctx, invocation, classID, model.ActionClassMembersManage)
 	if err != nil {
 		return nil, err
 	}
-	parsedClassID, err := model.ParseClassID(classID)
-	if err != nil {
-		return nil, apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
-	}
+	parsedClassID := classID
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
@@ -229,14 +226,14 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		if parseErr != nil {
 			return nil, apperror.New("request.invalid").WithField("field", "expected_previous_id").Wrap(parseErr)
 		}
-		retainedPrevious, err = s.store.Get(ctx, previousID.String())
+		retainedPrevious, err = s.store.Get(ctx, previousID)
 		if err != nil {
 			return nil, classMemberStoreErrors.Translate(err)
 		}
 		if retainedPrevious.UserID != userID {
 			return nil, apperror.New("resource.not_found").WithField("resource", "class_member")
 		}
-		if _, err = s.authorizeClass(ctx, invocation, retainedPrevious.ClassID.String(), model.ActionClassMembersManage); err != nil {
+		if _, err = s.authorizeClass(ctx, invocation, retainedPrevious.ClassID, model.ActionClassMembersManage); err != nil {
 			return nil, concealMembershipAuthorizationError(err, "class_member")
 		}
 		if command.batchAuthorization != nil {
@@ -316,7 +313,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	var previous *model.ClassMember
 	possibleReplay := command.batchRetainedOutcome
 	if !command.batchRetainedOutcome {
-		active, listErr := s.store.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(candidate.StartsAt))
+		active, listErr := s.store.ListActiveByUser(ctx, userID, model.MillisFromTime(candidate.StartsAt))
 		if listErr != nil {
 			return nil, classMemberStoreErrors.Translate(listErr)
 		}
@@ -347,10 +344,10 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		if previous.ClassID == candidate.ClassID {
 			return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
 		}
-		if _, err = s.authorizeClass(ctx, invocation, previous.ClassID.String(), model.ActionClassMembersManage); err != nil {
+		if _, err = s.authorizeClass(ctx, invocation, previous.ClassID, model.ActionClassMembersManage); err != nil {
 			return nil, concealMembershipAuthorizationError(err, "class_member")
 		}
-		previousClass, err = s.classes.Get(ctx, previous.ClassID.String())
+		previousClass, err = s.classes.Get(ctx, previous.ClassID)
 		if err != nil {
 			return nil, classMemberStoreErrors.Translate(err)
 		}
@@ -467,8 +464,8 @@ func (a *App) EndClassMember(ctx context.Context, invocation Invocation, command
 }
 
 func (s *classMemberService) End(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_member_id")
 	}
 	if err := s.authorization.AuthorizePreflight(
@@ -480,7 +477,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
 			ID      string `json:"id"`
 			ScopeID string `json:"scope_id,omitempty"`
-		}{id, strings.TrimSpace(command.BatchScopeID)})
+		}{id.String(), strings.TrimSpace(command.BatchScopeID)})
 		if err != nil {
 			return nil, err
 		}
@@ -513,21 +510,21 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}
-	resource, err := s.authorizeClass(ctx, invocation, current.ClassID.String(), model.ActionClassMembersManage)
+	resource, err := s.authorizeClass(ctx, invocation, current.ClassID, model.ActionClassMembersManage)
 	if err != nil {
 		return nil, concealMembershipAuthorizationError(err, "class_member")
 	}
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.ClassID.String() {
 		return nil, apperror.New("resource.not_found").WithField("resource", "class_member")
 	}
-	class, err := s.classes.Get(ctx, current.ClassID.String())
+	class, err := s.classes.Get(ctx, current.ClassID)
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}
 	idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
-	}{id, strings.TrimSpace(command.BatchScopeID)})
+	}{id.String(), strings.TrimSpace(command.BatchScopeID)})
 	if err != nil {
 		return nil, err
 	}
@@ -597,11 +594,11 @@ func (s *classMemberService) publishEnrollmentChanged(ctx context.Context, resul
 	s.publishMembershipChanged(ctx, result.Membership.UserID, classIDs...)
 }
 
-func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID string, action model.Action) (model.Resource, error) {
-	if !model.IsValidId(classID) {
+func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID model.ClassID, action model.Action) (model.Resource, error) {
+	if !classID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "class_id")
 	}
-	resource := model.Resource{Type: model.ResourceClass, ID: classID}
+	resource := model.Resource{Type: model.ResourceClass, ID: classID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
@@ -618,7 +615,7 @@ var classMemberStoreErrors = apperror.AdministrationStoreTable("class_member", "
 type ListClassMembersPageQuery struct {
 	AfterUserID model.UserID
 	AfterID     model.ClassMemberID
-	ClassID     string
+	ClassID     model.ClassID
 	MembershipPageQuery
 }
 
@@ -633,7 +630,7 @@ func (a *App) ListClassMembersPage(ctx context.Context, invocation Invocation, q
 }
 
 func (s *classMemberService) ListPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
-	resource, err := s.authorizeClass(ctx, invocation, strings.TrimSpace(query.ClassID), model.ActionClassMembersView)
+	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
 	if err != nil {
 		return nil, err
 	}

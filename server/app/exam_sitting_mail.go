@@ -35,13 +35,13 @@ func (adapter sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	class, err := adapter.classes.Get(ctx, request.ClassID.String())
+	class, err := adapter.classes.Get(ctx, request.ClassID)
 	if err != nil {
 		return nil, err
 	}
 	priorClassName := class.DisplayName
 	if request.PriorClassID.IsValid() && request.PriorClassID != request.ClassID {
-		priorClass, priorErr := adapter.classes.Get(ctx, request.PriorClassID.String())
+		priorClass, priorErr := adapter.classes.Get(ctx, request.PriorClassID)
 		if priorErr != nil {
 			return nil, priorErr
 		}

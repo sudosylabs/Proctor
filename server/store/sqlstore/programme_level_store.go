@@ -130,23 +130,19 @@ func (s SQLProgrammeLevelStore) Save(
 	return s.createProgrammeLevel(ctx, &candidate, nil)
 }
 
-func (s SQLProgrammeLevelStore) Get(ctx context.Context, id string) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Get(ctx context.Context, id model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
 		"programme_levels.id":          id,
 		"programme_levels.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme_level", id, err)
+		return nil, translateError("programme_level", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLProgrammeLevelStore) GetByName(
-	ctx context.Context,
-	programmeID string,
-	name string,
-) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) GetByName(ctx context.Context, programmeID model.ProgrammeID, name string) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
 		"programme_levels.programme_id": programmeID,
@@ -154,15 +150,12 @@ func (s SQLProgrammeLevelStore) GetByName(
 		"programme_levels.archived_at":  nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme_level", programmeID+"/"+name, err)
+		return nil, translateError("programme_level", programmeID.String()+"/"+name, err)
 	}
 	return row.model()
 }
 
-func (s SQLProgrammeLevelStore) ListByProgramme(
-	ctx context.Context,
-	programmeID string,
-) ([]*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) ListByProgramme(ctx context.Context, programmeID model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
 	query := s.programmeLevelsQuery.
 		Where(sq.Eq{
 			"programme_levels.programme_id": programmeID,
@@ -185,12 +178,7 @@ func (s SQLProgrammeLevelStore) ListByProgramme(
 	return levels, nil
 }
 
-func (s SQLProgrammeLevelStore) SearchByProgramme(
-	ctx context.Context,
-	programmeID string,
-	term string,
-	limit int,
-) ([]*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) SearchByProgramme(ctx context.Context, programmeID model.ProgrammeID, term string, limit int) ([]*model.ProgrammeLevel, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("programme_level", "limit", limit)
 	}
@@ -288,11 +276,7 @@ func (s SQLProgrammeLevelStore) UpdateWithAudit(ctx context.Context, input *stor
 	return s.updateProgrammeLevel(ctx, &candidate, candidate.ProgrammeID.String(), &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeLevelStore) Archive(
-	ctx context.Context,
-	id string,
-	archiveAt int64,
-) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) Archive(ctx context.Context, id model.ProgrammeLevelID, archiveAt int64) (*model.ProgrammeLevel, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archived_at", archiveAt)
 	}
@@ -300,13 +284,13 @@ func (s SQLProgrammeLevelStore) Archive(
 }
 
 func (s SQLProgrammeLevelStore) ArchiveWithAudit(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)
 	}
 	return s.archiveProgrammeLevel(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id string, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.ProgrammeLevel, error) {
+func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id model.ProgrammeLevelID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.ProgrammeLevel, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme level archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ProgrammeLevel, error) {
 		if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -314,7 +298,7 @@ func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id st
 		var row programmeLevelRow
 		query := s.programmeLevelsQuery.Where(sq.Eq{"programme_levels.id": id, "programme_levels.archived_at": nil})
 		if err := tx.GetBuilder(ctx, &row, query); err != nil {
-			return nil, translateError("programme_level", id, err)
+			return nil, translateError("programme_level", id.String(), err)
 		}
 		if err := requireAcademicRevision("programme_level", expectedRevision, row.Revision); err != nil {
 			return nil, err
@@ -330,7 +314,7 @@ func (s SQLProgrammeLevelStore) archiveProgrammeLevel(ctx context.Context, id st
 		if err != nil {
 			return nil, fmt.Errorf("archive programme level: %w", err)
 		}
-		if err := requireRevisionAffected(ctx, tx, result, "programme_level", "programme_levels", id); err != nil {
+		if err = requireRevisionAffected(ctx, tx, result, "programme_level", "programme_levels", id.String()); err != nil {
 			return nil, err
 		}
 		if err := tx.GetBuilder(ctx, &row, s.programmeLevelsQuery.Where(sq.Eq{"programme_levels.id": id})); err != nil {

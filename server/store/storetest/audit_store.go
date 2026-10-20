@@ -115,7 +115,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 	scoped, err := ss.Audit().List(ctx, store.AuditListOptions{
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
-			AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()},
+			AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID},
 			AllowedActions:      []string{string(model.ActionAcademicUnitMembersManage), string(model.ActionClassMembersManage)},
 		},
 	})
@@ -171,7 +171,7 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		Limit: 10,
 		Visibility: store.AuditVisibilityScope{
 			AcademicInstitutionWide: true,
-			AcademicUnitRootIDs:     []string{fixture.programme.AcademicUnitID.String()},
+			AcademicUnitRootIDs:     []model.AcademicUnitID{fixture.programme.AcademicUnitID},
 			AllowedActions:          []string{string(model.ActionAcademicUnitMembersManage)},
 		},
 	})

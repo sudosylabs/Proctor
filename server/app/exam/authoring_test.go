@@ -568,12 +568,12 @@ type membershipsFake struct {
 	err         error
 }
 
-func (f *membershipsFake) ListActiveByUser(_ context.Context, userID string, at time.Time) ([]*model.AcademicUnitMember, error) {
+func (f *membershipsFake) ListActiveByUser(_ context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	*f.order = append(*f.order, "membership")
 	if f.lookup != nil {
-		return f.lookup(userID, at)
+		return f.lookup(userID.String(), at)
 	}
-	if items, ok := f.itemsByUser[userID]; ok {
+	if items, ok := f.itemsByUser[userID.String()]; ok {
 		return items, f.err
 	}
 	return f.items, f.err

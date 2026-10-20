@@ -66,7 +66,7 @@ func TestClassMemberHTTPUsesDTOAndRouteOwnedClass(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if classMembers.enrollCommand.ClassID != classID || classMembers.enrollCommand.UserID != userID {
+	if classMembers.enrollCommand.ClassID != model.ClassID(classID) || classMembers.enrollCommand.UserID != userID {
 		t.Fatalf("command = %#v", classMembers.enrollCommand)
 	}
 	var body map[string]any
@@ -92,7 +92,7 @@ func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	if listed.Code != http.StatusOK || members.listQuery.ClassID != classID || members.listQuery.ActiveAt != 0 {
+	if listed.Code != http.StatusOK || members.listQuery.ClassID != model.ClassID(classID) || members.listQuery.ActiveAt != 0 {
 		t.Fatalf("list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
 	}
 
@@ -100,7 +100,7 @@ func TestClassMemberResourceForwardsHistoryAndEndsMembership(t *testing.T) {
 	end.Header.Set("Authorization", "Bearer credential")
 	ended := httptest.NewRecorder()
 	httpAPI.ServeHTTP(ended, end)
-	if ended.Code != http.StatusOK || members.endCommand.ID != member.ID.String() || ended.Header().Get("Cache-Control") != "no-store" {
+	if ended.Code != http.StatusOK || members.endCommand.ID != member.ID || ended.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("end status/command/cache = %d/%#v/%q: %s", ended.Code, members.endCommand, ended.Header().Get("Cache-Control"), ended.Body.String())
 	}
 }

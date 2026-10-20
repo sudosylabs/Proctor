@@ -18,11 +18,11 @@ import (
 )
 
 type ListAffiliationsQuery struct {
-	UserID string
+	UserID model.UserID
 }
 
 type CreateAffiliationCommand struct {
-	UserID                    string
+	UserID                    model.UserID
 	Kind                      model.AffiliationKind
 	StartAt                   int64
 	EndAt                     int64
@@ -36,7 +36,7 @@ type CreateAffiliationCommand struct {
 }
 
 type EndAffiliationCommand struct {
-	ID                        string
+	ID                        model.AffiliationID
 	IdempotencyKey            string
 	BatchScopeType            model.RoleScopeType
 	BatchScopeID              string
@@ -49,14 +49,14 @@ type EndAffiliationCommand struct {
 }
 
 type affiliationStore interface {
-	Get(context.Context, string) (*model.Affiliation, error)
-	ListByUser(context.Context, string) ([]*model.Affiliation, error)
+	Get(context.Context, model.AffiliationID) (*model.Affiliation, error)
+	ListByUser(context.Context, model.UserID) ([]*model.Affiliation, error)
 	Create(context.Context, *store.AffiliationCreation) (*model.Affiliation, error)
 	EndWithAudit(context.Context, *store.AffiliationEnd) (*model.Affiliation, error)
 }
 
 type affiliationEnrollmentReader interface {
-	ListByUser(context.Context, string) ([]*model.ClassMember, error)
+	ListByUser(context.Context, model.UserID) ([]*model.ClassMember, error)
 }
 
 type affiliationAuthorizer interface {
@@ -101,11 +101,11 @@ func (a *App) ListAffiliations(ctx context.Context, invocation Invocation, query
 }
 
 func (s *affiliationService) List(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
-	userID := strings.TrimSpace(query.UserID)
-	if !model.IsValidId(userID) {
+	userID := query.UserID
+	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeUserRead(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeUserRead(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
 	affiliations, err := s.store.ListByUser(ctx, userID)
@@ -123,7 +123,7 @@ func (a *App) CreateAffiliation(ctx context.Context, invocation Invocation, comm
 }
 
 func (s *affiliationService) Create(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
-	resource, err := s.authorizeUser(ctx, invocation, strings.TrimSpace(command.UserID))
+	resource, err := s.authorizeUser(ctx, invocation, command.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,22 +198,22 @@ func (a *App) EndAffiliation(ctx context.Context, invocation Invocation, command
 }
 
 func (s *affiliationService) End(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "affiliation_id")
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, affiliationStoreErrors.Translate(err)
 	}
-	resource, err := s.authorizeUser(ctx, invocation, current.UserID.String())
+	resource, err := s.authorizeUser(ctx, invocation, current.UserID)
 	if err != nil {
 		return nil, err
 	}
 	if current.Kind == model.AffiliationStudent && !command.batchRetainedOutcome {
-		enrollments, err := s.enrollments.ListByUser(ctx, current.UserID.String())
-		if err != nil {
-			return nil, affiliationStoreErrors.Translate(err)
+		enrollments, listErr := s.enrollments.ListByUser(ctx, current.UserID)
+		if listErr != nil {
+			return nil, affiliationStoreErrors.Translate(listErr)
 		}
 		for _, enrollment := range enrollments {
 			// Open-ended enrollment (EndsAt absent) blocks ending a student affiliation.
@@ -226,7 +226,7 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`
-	}{id, command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
+	}{id.String(), command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +270,11 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	return result, nil
 }
 
-func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invocation, userID string) (model.Resource, error) {
-	if !model.IsValidId(userID) {
+func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invocation, userID model.UserID) (model.Resource, error) {
+	if !userID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	resource := model.Resource{Type: model.ResourceUser, ID: userID}
+	resource := model.Resource{Type: model.ResourceUser, ID: userID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionUserManage, resource); err != nil {
 		return model.Resource{}, err
 	}

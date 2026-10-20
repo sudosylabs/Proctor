@@ -98,7 +98,7 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create status = %d: %s", created.Code, created.Body.String())
 	}
-	if members.createCommand.AcademicUnitID != unitID || members.createCommand.UserID != userID {
+	if members.createCommand.AcademicUnitID != model.AcademicUnitID(unitID) || members.createCommand.UserID != userID {
 		t.Fatalf("command = %#v", members.createCommand)
 	}
 	var body map[string]any
@@ -113,7 +113,7 @@ func TestAcademicUnitMemberResourceRunsThroughRoutingKernel(t *testing.T) {
 	list.Header.Set("Authorization", "Bearer credential")
 	listed := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listed, list)
-	if listed.Code != http.StatusOK || members.listQuery.AcademicUnitID != unitID || members.listQuery.ActiveAt != 0 {
+	if listed.Code != http.StatusOK || members.listQuery.AcademicUnitID != model.AcademicUnitID(unitID) || members.listQuery.ActiveAt != 0 {
 		t.Fatalf("list status/query = %d/%#v: %s", listed.Code, members.listQuery, listed.Body.String())
 	}
 }

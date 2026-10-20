@@ -57,7 +57,7 @@ func TestProgrammeLevelArchiveSerializesWithClassCreation(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
+			_, archiveErr = persistence.ProgrammeLevel().ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{ID: level.ID, ArchiveAt: model.GetMillis(), AuditEventID: attempt.ID.String(), AuditAt: model.GetMillis()})
 		}()
 		go func() {
 			defer wait.Done()

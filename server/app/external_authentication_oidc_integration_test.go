@@ -236,15 +236,15 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		!user.EmailVerified {
 		t.Fatalf("provisioned OIDC user = %#v, %v", user, err)
 	}
-	affiliations, err := persistence.Affiliation().ListByUser(context.Background(), user.ID.String())
+	affiliations, err := persistence.Affiliation().ListByUser(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	academicMemberships, err := persistence.AcademicUnitMember().ListByUser(context.Background(), user.ID.String())
+	academicMemberships, err := persistence.AcademicUnitMember().ListByUser(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	classMemberships, err := persistence.ClassMember().ListByUser(context.Background(), user.ID.String())
+	classMemberships, err := persistence.ClassMember().ListByUser(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,8 +319,8 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		acceptedInvitation.AcceptedUserID != invitedUser.ID {
 		t.Fatalf("OIDC terminal Invitation = %#v, %v", acceptedInvitation, err)
 	}
-	invitedAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitedUser.ID.String())
-	invitedMemberships, _ := persistence.ClassMember().ListByUser(context.Background(), invitedUser.ID.String())
+	invitedAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitedUser.ID)
+	invitedMemberships, _ := persistence.ClassMember().ListByUser(context.Background(), invitedUser.ID)
 	invitedBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitedUser.ID.String())
 	if len(invitedAffiliations) != 1 || invitedAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
 		len(invitedMemberships) != 1 || invitedMemberships[0].ID != acceptedInvitation.AcceptedClassMemberID ||

@@ -163,7 +163,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 		if !model.IsValidId(command.AcademicUnitID) {
 			return nil, invalidPersonalAccessTokenRequest("academic_unit_id")
 		}
-		if _, err := s.academicUnits.Get(ctx, command.AcademicUnitID); err != nil {
+		if _, err = s.academicUnits.Get(ctx, model.AcademicUnitID(command.AcademicUnitID)); err != nil {
 			return nil, personalAccessTokenFailure("academic_unit", err)
 		}
 	}

@@ -348,7 +348,7 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 		OriginInvitationID: invitation.ID, OriginAcademicUnitMemberID: accepted.AcademicUnitMember.ID,
 		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(endAt).Add(time.Hour)})
 	requireNoError(t, err)
-	_, err = ss.AcademicUnitMember().End(ctx, accepted.AcademicUnitMember.ID.String(), accepted.AcademicUnitMember.Revision, endAt)
+	_, err = ss.AcademicUnitMember().End(ctx, accepted.AcademicUnitMember.ID, accepted.AcademicUnitMember.Revision, endAt)
 	requireNoError(t, err)
 	endedPackage, err := ss.RoleBinding().Get(ctx, accepted.RoleBinding.ID.String())
 	requireNoError(t, err)

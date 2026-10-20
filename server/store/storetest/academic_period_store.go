@@ -115,7 +115,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	if _, err := ss.AcademicPeriod().Create(ctx, &store.AcademicPeriodCreation{Period: rolledBackCreate, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("Create() succeeded without its audit attempt")
 	}
-	if _, err := ss.AcademicPeriod().Get(ctx, rolledBackCreate.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.AcademicPeriod().Get(ctx, rolledBackCreate.ID); !store.IsNotFound(err) {
 		t.Fatalf("create survived audit rollback: %v", err)
 	}
 
@@ -144,7 +144,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	if _, err := ss.AcademicPeriod().UpdateWithAudit(ctx, &store.AcademicPeriodUpdate{Period: &rolledBack, AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 	}
-	persisted, err := ss.AcademicPeriod().Get(ctx, updated.ID.String())
+	persisted, err := ss.AcademicPeriod().Get(ctx, updated.ID)
 	requireNoError(t, err)
 	if persisted.DisplayName != updated.DisplayName {
 		t.Fatalf("update survived audit rollback: %#v", persisted)
@@ -159,17 +159,17 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	}
 
 	archiveAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
+	archived, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: updated.ID, ArchiveAt: model.GetMillis(), AuditEventID: archiveAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if !archived.IsArchived() {
 		t.Fatalf("ArchiveWithAudit() = %#v", archived)
 	}
 
 	archiveRollback := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "rolled-back-archive", 500)
-	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
+	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: archiveRollback.ID, ArchiveAt: model.GetMillis(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}); err == nil {
 		t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 	}
-	if _, err := ss.AcademicPeriod().Get(ctx, archiveRollback.ID.String()); err != nil {
+	if _, err := ss.AcademicPeriod().Get(ctx, archiveRollback.ID); err != nil {
 		t.Fatalf("archive survived audit rollback: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func testAcademicPeriodStoreMutationAuditAtomicity(t *testing.T, ss store.Store)
 	withClass := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "period-with-class", 1_000)
 	saveClass(t, ctx, ss, level.ID.String(), withClass.ID.String(), "period-dependency-class")
 	blockedAttempt := saveAcademicPeriodAuditAttempt(t, ctx, ss, institution.ID.String())
-	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.ID.String(), ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
+	if _, err := ss.AcademicPeriod().ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{ID: withClass.ID, ArchiveAt: model.GetMillis(), AuditEventID: blockedAttempt.ID.String(), AuditAt: model.GetMillis()}); !store.IsConflict(err) {
 		t.Fatalf("archive with active class error = %v, want conflict", err)
 	}
 }
@@ -212,13 +212,13 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	period, err := ss.AcademicPeriod().Update(ctx, period)
 	requireNoError(t, err)
 	found, err := ss.AcademicPeriod().ListVisible(
-		ctx, store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID.String(), InstitutionWide: true}, "summer", 10,
+		ctx, store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID, InstitutionWide: true}, "summer", 10,
 	)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != period.ID {
 		t.Fatalf("ListVisible(search) = %#v", found)
 	}
-	visibility := store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID.String(), InstitutionWide: true}
+	visibility := store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID, InstitutionWide: true}
 	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
 		found, err = ss.AcademicPeriod().ListVisible(ctx, visibility, query, 10)
 		requireNoError(t, err)
@@ -226,7 +226,7 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 			t.Fatalf("ListVisible(%q) = %#v, want only %s", query, found, period.ID)
 		}
 	}
-	archived, err := ss.AcademicPeriod().Archive(ctx, period.ID.String(), model.GetMillis())
+	archived, err := ss.AcademicPeriod().Archive(ctx, period.ID, model.GetMillis())
 	requireNoError(t, err)
 	if !archived.IsArchived() {
 		t.Fatalf("Archive() = %#v", archived)
@@ -266,12 +266,12 @@ func testAcademicPeriodStoreGet(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	period := saveAcademicPeriod(t, ctx, ss, institution.ID.String(), "2026-2027", 1_800_000_000_000)
 
-	got, err := ss.AcademicPeriod().Get(ctx, period.ID.String())
+	got, err := ss.AcademicPeriod().Get(ctx, period.ID)
 	requireNoError(t, err)
 	if *got != *period {
 		t.Fatalf("Get() = %#v, want %#v", got, period)
 	}
-	if _, err := ss.AcademicPeriod().Get(ctx, model.NewId()); !store.IsNotFound(err) {
+	if _, err := ss.AcademicPeriod().Get(ctx, model.NewAcademicPeriodID()); !store.IsNotFound(err) {
 		t.Fatalf("Get(missing) error = %v, want not found", err)
 	}
 }
@@ -304,14 +304,14 @@ func testAcademicPeriodStoreListVisible(t *testing.T, ss store.Store) {
 	saveAcademicUnitPeriod(t, ctx, ss, sibling.ID, "hidden-period", 1_830_000_000_000)
 
 	periods, err := ss.AcademicPeriod().ListVisible(ctx, store.AcademicPeriodVisibilityScope{
-		InstitutionID: institution.ID.String(), AcademicUnitRootIDs: []string{root.ID.String()},
+		InstitutionID: institution.ID, AcademicUnitRootIDs: []model.AcademicUnitID{root.ID},
 	}, "", 100)
 	requireNoError(t, err)
 	if len(periods) != 3 || periods[0].ID != institutionPeriod.ID || periods[1].ID != rootPeriod.ID || periods[2].ID != childPeriod.ID {
 		t.Fatalf("ListVisible() = %#v", periods)
 	}
 	empty, err := ss.AcademicPeriod().ListVisible(ctx, store.AcademicPeriodVisibilityScope{
-		InstitutionID: institution.ID.String(),
+		InstitutionID: institution.ID,
 	}, "", 100)
 	requireNoError(t, err)
 	if len(empty) != 0 {

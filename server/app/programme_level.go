@@ -17,33 +17,33 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type GetProgrammeLevelQuery struct{ ID string }
+type GetProgrammeLevelQuery struct{ ID model.ProgrammeLevelID }
 type ListProgrammeLevelsQuery struct {
-	ProgrammeID string
+	ProgrammeID model.ProgrammeID
 	Query       string
 	Limit       int
 }
 type CreateProgrammeLevelCommand struct {
-	ProgrammeID string
+	ProgrammeID model.ProgrammeID
 	Name        string
 	DisplayName string
 	Description string
 }
 type UpdateProgrammeLevelCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.ProgrammeLevelID
 	Name             *string
 	DisplayName      *string
 	Description      *string
 }
 type ArchiveProgrammeLevelCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.ProgrammeLevelID
 }
 
 type programmeLevelStore interface {
-	Get(context.Context, string) (*model.ProgrammeLevel, error)
-	SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error)
+	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
+	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
 	Create(context.Context, *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
 	UpdateWithAudit(context.Context, *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
 	ArchiveWithAudit(context.Context, *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
@@ -72,11 +72,11 @@ func (a *App) GetProgrammeLevel(ctx context.Context, invocation Invocation, quer
 }
 
 func (s *programmeLevelService) Get(ctx context.Context, invocation Invocation, query GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: id}); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()}); err != nil {
 		return nil, err
 	}
 	level, err := s.store.Get(ctx, id)
@@ -91,11 +91,11 @@ func (a *App) ListProgrammeLevels(ctx context.Context, invocation Invocation, qu
 }
 
 func (s *programmeLevelService) List(ctx context.Context, invocation Invocation, query ListProgrammeLevelsQuery) ([]*model.ProgrammeLevel, error) {
-	programmeID := strings.TrimSpace(query.ProgrammeID)
-	if !model.IsValidId(programmeID) {
+	programmeID := query.ProgrammeID
+	if !programmeID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID}); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}); err != nil {
 		return nil, err
 	}
 	levels, err := s.store.SearchByProgramme(
@@ -115,11 +115,11 @@ func (a *App) CreateProgrammeLevel(ctx context.Context, invocation Invocation, c
 }
 
 func (s *programmeLevelService) Create(ctx context.Context, invocation Invocation, command CreateProgrammeLevelCommand) (*model.ProgrammeLevel, error) {
-	programmeID := strings.TrimSpace(command.ProgrammeID)
-	if !model.IsValidId(programmeID) {
+	programmeID := command.ProgrammeID
+	if !programmeID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	resource := model.Resource{Type: model.ResourceProgramme, ID: programmeID}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: programmeID.String()}
 	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, resource)
 	if err != nil {
 		return nil, err
@@ -128,10 +128,7 @@ func (s *programmeLevelService) Create(ctx context.Context, invocation Invocatio
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id").Wrap(err)
 	}
-	programmeTypedID, err := model.ParseProgrammeID(programmeID)
-	if err != nil {
-		return nil, apperror.New("request.invalid").WithField("field", "programme_id").Wrap(err)
-	}
+	programmeTypedID := programmeID
 	candidate := &model.ProgrammeLevel{
 		ProgrammeID: programmeTypedID,
 		Name:        command.Name,
@@ -243,7 +240,7 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
 				ExpectedRevision: current.Revision,
-				ID:               current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -252,12 +249,11 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 	return err
 }
 
-func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation Invocation, id string) (*model.ProgrammeLevel, model.RoleScopeType, string, error) {
-	id = strings.TrimSpace(id)
-	if !model.IsValidId(id) {
+func (s *programmeLevelService) levelForMutation(ctx context.Context, invocation Invocation, id model.ProgrammeLevelID) (*model.ProgrammeLevel, model.RoleScopeType, string, error) {
+	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id})
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeLevelManage, model.Resource{Type: model.ResourceProgrammeLevel, ID: id.String()})
 	if err != nil {
 		return nil, "", "", err
 	}

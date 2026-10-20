@@ -28,7 +28,7 @@ type onboardingImportClassStoreFake struct {
 	err   error
 }
 
-func (f onboardingImportClassStoreFake) Get(context.Context, string) (*model.Class, error) {
+func (f onboardingImportClassStoreFake) Get(context.Context, model.ClassID) (*model.Class, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -45,11 +45,11 @@ type onboardingImportUnitStoreFake struct {
 	value *model.AcademicUnit
 }
 
-func (f onboardingImportUnitStoreFake) Get(context.Context, string) (*model.AcademicUnit, error) {
+func (f onboardingImportUnitStoreFake) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	return f.value, nil
 }
-func (f onboardingImportUnitStoreFake) GetByName(_ context.Context, institutionID, name string) (*model.AcademicUnit, error) {
-	if f.value == nil || institutionID != f.value.InstitutionID.String() || name != f.value.Name {
+func (f onboardingImportUnitStoreFake) GetByName(_ context.Context, institutionID model.InstitutionID, name string) (*model.AcademicUnit, error) {
+	if f.value == nil || institutionID != f.value.InstitutionID || name != f.value.Name {
 		return nil, store.NewErrNotFound("academic_unit", name)
 	}
 	return f.value, nil
@@ -93,11 +93,11 @@ func (f onboardingImportPersistenceFake) GetOnboardingImport(context.Context, mo
 	return f.value, nil
 }
 
-func (f onboardingImportInstitutionStoreFake) Get(context.Context, string) (*model.Institution, error) {
+func (f onboardingImportInstitutionStoreFake) Get(context.Context, model.InstitutionID) (*model.Institution, error) {
 	return f.value, nil
 }
 
-func (f onboardingImportPeriodStoreFake) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (f onboardingImportPeriodStoreFake) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	return f.value, nil
 }
 

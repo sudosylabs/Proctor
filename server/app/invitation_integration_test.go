@@ -81,7 +81,7 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 		t.Fatalf("first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
 	}
 	page, err := persistence.Invitation().List(context.Background(), store.InvitationListOptions{
-		Visibility: store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}, Limit: 10})
+		Visibility: store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}, Limit: 10})
 	if err != nil || len(page.Items) != 2 {
 		t.Fatalf("persisted batch Invitations = %#v, %v", page, err)
 	}
@@ -104,7 +104,7 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 		t.Fatalf("replayed Invitation batch = %d: %s", replay.Code, replay.Body.String())
 	}
 	page, err = persistence.Invitation().List(context.Background(), store.InvitationListOptions{
-		Visibility: store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}, Limit: 10})
+		Visibility: store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}, Limit: 10})
 	if err != nil || len(page.Items) != 2 {
 		t.Fatalf("replayed batch Invitations = %#v, %v", page, err)
 	}
@@ -215,7 +215,7 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	if err != nil || user.Email != "invited.student@example.edu" || !user.EmailVerified {
 		t.Fatalf("accepted user = %#v, %v", user, err)
 	}
-	members, err := primaryStore.ClassMember().ListByClass(context.Background(), class.ID.String(), model.GetMillis())
+	members, err := primaryStore.ClassMember().ListByClass(context.Background(), class.ID, model.GetMillis())
 	if err != nil || len(members) != 1 || members[0].UserID != user.ID {
 		t.Fatalf("class members = %#v, %v", members, err)
 	}

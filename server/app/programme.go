@@ -17,33 +17,33 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type GetProgrammeQuery struct{ ID string }
+type GetProgrammeQuery struct{ ID model.ProgrammeID }
 type ListProgrammesQuery struct {
-	AcademicUnitID string
+	AcademicUnitID model.AcademicUnitID
 	Query          string
 	Limit          int
 }
 type CreateProgrammeCommand struct {
-	AcademicUnitID string
+	AcademicUnitID model.AcademicUnitID
 	Name           string
 	DisplayName    string
 	Description    string
 }
 type UpdateProgrammeCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.ProgrammeID
 	Name             *string
 	DisplayName      *string
 	Description      *string
 }
 type ArchiveProgrammeCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.ProgrammeID
 }
 
 type programmeStore interface {
-	Get(context.Context, string) (*model.Programme, error)
-	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Programme, error)
+	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
 	Create(context.Context, *store.ProgrammeCreation) (*model.Programme, error)
 	UpdateWithAudit(context.Context, *store.ProgrammeUpdate) (*model.Programme, error)
 	ArchiveWithAudit(context.Context, *store.ProgrammeArchive) (*model.Programme, error)
@@ -75,11 +75,11 @@ func (a *App) GetProgramme(ctx context.Context, invocation Invocation, query Get
 }
 
 func (s *programmeService) Get(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	resource := model.Resource{Type: model.ResourceProgramme, ID: id}
+	resource := model.Resource{Type: model.ResourceProgramme, ID: id.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, resource); err != nil {
 		return nil, err
 	}
@@ -95,11 +95,11 @@ func (a *App) ListProgrammes(ctx context.Context, invocation Invocation, query L
 }
 
 func (s *programmeService) List(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
-	unitID := strings.TrimSpace(query.AcademicUnitID)
-	if !model.IsValidId(unitID) {
+	unitID := query.AcademicUnitID
+	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}); err != nil {
 		return nil, err
 	}
 	programmes, err := s.store.SearchByAcademicUnit(
@@ -119,11 +119,11 @@ func (a *App) CreateProgramme(ctx context.Context, invocation Invocation, comman
 }
 
 func (s *programmeService) Create(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
-	unitID := strings.TrimSpace(command.AcademicUnitID)
-	if !model.IsValidId(unitID) {
+	unitID := command.AcademicUnitID
+	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
 	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
 	if err != nil {
 		return nil, err
@@ -132,10 +132,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id").Wrap(err)
 	}
-	academicUnitID, err := model.ParseAcademicUnitID(unitID)
-	if err != nil {
-		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
-	}
+	academicUnitID := unitID
 	candidate := &model.Programme{
 		AcademicUnitID: academicUnitID,
 		Name:           command.Name,
@@ -247,7 +244,7 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 		func(ctx context.Context, reference mutationAttemptReference) (*model.Programme, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeArchive{
 				ExpectedRevision: current.Revision,
-				ID:               current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -256,12 +253,11 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 	return err
 }
 
-func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id string) (*model.Programme, model.RoleScopeType, string, error) {
-	id = strings.TrimSpace(id)
-	if !model.IsValidId(id) {
+func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id model.ProgrammeID) (*model.Programme, model.RoleScopeType, string, error) {
+	if !id.IsValid() {
 		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_id")
 	}
-	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id})
+	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id.String()})
 	if err != nil {
 		return nil, "", "", err
 	}

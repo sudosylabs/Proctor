@@ -66,12 +66,12 @@ func academicUnitMemberResource(members AcademicUnitMemberApplication) resource 
 }
 
 func (module academicUnitMemberResourceModule) list(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
 	if usesMembershipPaging(request.request) {
-		scope := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
+		scope := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
 		query, after, err := membershipPageQuery(request.request, scope)
 		if err != nil {
 			return operationResult{}, err
@@ -103,7 +103,7 @@ func (module academicUnitMemberResourceModule) list(request operationRequest) (o
 }
 
 func (module academicUnitMemberResourceModule) create(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -119,7 +119,7 @@ func (module academicUnitMemberResourceModule) create(request operationRequest) 
 }
 
 func (module academicUnitMemberResourceModule) end(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireAcademicUnitMemberId()
+	id, err := request.params.RequireAcademicUnitMemberID()
 	if err != nil {
 		return operationResult{}, err
 	}

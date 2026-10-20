@@ -22,7 +22,7 @@ import (
 // CreateAcademicUnitCommand contains caller-controlled Academic Unit fields.
 // Installation ownership and persistence lifecycle fields are not inputs.
 type CreateAcademicUnitCommand struct {
-	ParentID       string
+	ParentID       model.AcademicUnitID
 	Name           string
 	DisplayName    string
 	Description    string
@@ -31,7 +31,7 @@ type CreateAcademicUnitCommand struct {
 
 type UpdateAcademicUnitCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.AcademicUnitID
 	ParentID         *string
 	Name             *string
 	DisplayName      *string
@@ -40,12 +40,12 @@ type UpdateAcademicUnitCommand struct {
 
 type ArchiveAcademicUnitCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.AcademicUnitID
 }
 
 type academicUnitCommandStore interface {
 	Create(context.Context, *store.AcademicUnitCreation) (*model.AcademicUnit, error)
-	Get(context.Context, string) (*model.AcademicUnit, error)
+	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
 	UpdateWithAudit(context.Context, *store.AcademicUnitUpdate) (*model.AcademicUnit, error)
 	ArchiveWithAudit(context.Context, *store.AcademicUnitArchive) (*model.AcademicUnit, error)
 }
@@ -161,11 +161,11 @@ func (s *academicUnitCommandService) Create(
 		}
 		authorized = institution
 	} else {
-		if !model.IsValidId(parentID) {
+		if !parentID.IsValid() {
 			return nil, apperror.New("request.invalid").WithField("field", "parent_id")
 		}
 		action = model.ActionAcademicUnitManage
-		authorized = model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
+		authorized = model.Resource{Type: model.ResourceAcademicUnit, ID: parentID.String()}
 		if err := s.authorization.Authorize(ctx, invocation, action, authorized); err != nil {
 			return nil, err
 		}
@@ -184,13 +184,7 @@ func (s *academicUnitCommandService) Create(
 	if err != nil {
 		return nil, apperror.New("administration.unavailable").WithField("resource", "institution").Wrap(err)
 	}
-	var parentUnitID model.AcademicUnitID
-	if parentID != "" {
-		parentUnitID, err = model.ParseAcademicUnitID(parentID)
-		if err != nil {
-			return nil, apperror.New("request.invalid").WithField("field", "parent_id").Wrap(err)
-		}
-	}
+	parentUnitID := parentID
 	candidate := &model.AcademicUnit{
 		InstitutionID: model.InstitutionID(institutionID),
 		ParentID:      model.AcademicUnitID(parentUnitID),
@@ -204,7 +198,7 @@ func (s *academicUnitCommandService) Create(
 	}
 	idempotency, err := newCommandIdempotency(invocation, "academic_unit.create.v1", command.IdempotencyKey, struct {
 		ParentID, Name, DisplayName, Description string
-	}{command.ParentID, command.Name, command.DisplayName, command.Description})
+	}{command.ParentID.String(), command.Name, command.DisplayName, command.Description})
 	if err != nil {
 		return nil, err
 	}
@@ -263,10 +257,10 @@ func (s *academicUnitCommandService) Update(
 	invocation Invocation,
 	command UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
-	if !model.IsValidId(command.ID) {
+	if !command.ID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID.String()}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitManage, resource,
 	); err != nil {
@@ -357,10 +351,10 @@ func (s *academicUnitCommandService) Archive(
 	invocation Invocation,
 	command ArchiveAcademicUnitCommand,
 ) error {
-	if !model.IsValidId(command.ID) {
+	if !command.ID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID.String()}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitManage, resource,
 	); err != nil {

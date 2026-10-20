@@ -1195,7 +1195,7 @@ func testExamSubmissionAccessFences(t *testing.T, ctx context.Context, ss store.
 	t.Run("lost exact Class membership", func(t *testing.T) {
 		fixture := newExamAttemptFixture(t, ctx, ss)
 		connected, focusAccess := connectFocusLossFixture(t, ctx, ss, fixture, "submission-membership-connect")
-		_, err := ss.ClassMember().End(ctx, fixture.membership.ID.String(), fixture.membership.Revision, model.GetMillis())
+		_, err := ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, model.GetMillis())
 		requireNoError(t, err)
 		time.Sleep(100 * time.Millisecond)
 		access := submissionAccess(focusAccess, fixture.sitting.ExamRevisionID, connected.Workspace.Cursor, 0)

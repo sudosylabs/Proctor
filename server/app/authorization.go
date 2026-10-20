@@ -37,10 +37,10 @@ type authorizationDecisionAudit interface {
 }
 
 type resolvedAuthorizationResource struct {
-	institutionID                  string
-	academicUnitID                 map[string]struct{}
-	targetAcademicUnitID           string
-	classID                        string
+	institutionID                  model.InstitutionID
+	academicUnitID                 map[model.AcademicUnitID]struct{}
+	targetAcademicUnitID           model.AcademicUnitID
+	classID                        model.ClassID
 	academicPeriodInstitutionOwned bool
 }
 
@@ -225,7 +225,7 @@ func personalAccessTokenAllows(
 		if resource.Type == model.ResourceAcademicPeriod && resolved.academicPeriodInstitutionOwned {
 			return action == model.ActionAcademicPeriodView
 		}
-		_, applies := resolved.academicUnitID[principal.AcademicUnitID.String()]
+		_, applies := resolved.academicUnitID[principal.AcademicUnitID]
 		return applies
 	default:
 		return false
@@ -289,8 +289,8 @@ func (s *accessControlService) authorizeUserAccountState(
 		return apperror.New("resource.not_found").WithField("resource", "institution")
 	}
 	resolved := resolvedAuthorizationResource{
-		institutionID:  institution.ID.String(),
-		academicUnitID: make(map[string]struct{}),
+		institutionID:  institution.ID,
+		academicUnitID: make(map[model.AcademicUnitID]struct{}),
 	}
 	allowed, appErr := s.evaluateResolved(ctx, principal, model.ActionUserManage, resource, definition, resolved)
 	if appErr != nil {
@@ -356,7 +356,7 @@ func (s *accessControlService) authorizeUserViewThroughClass(
 		model.ActionUserView,
 		userResource,
 		model.RoleScopeInstitution,
-		resolved.institutionID,
+		resolved.institutionID.String(),
 		metadata,
 		allowed,
 	); appErr != nil {
@@ -425,20 +425,20 @@ func authorizationAuditScope(
 ) (model.RoleScopeType, string) {
 	switch resource.Type {
 	case model.ResourceInstitution:
-		return model.RoleScopeInstitution, resolved.institutionID
+		return model.RoleScopeInstitution, resolved.institutionID.String()
 	case model.ResourceAcademicUnit:
 		return model.RoleScopeAcademicUnit, resource.ID
 	case model.ResourceAcademicPeriod:
 		if resolved.targetAcademicUnitID == "" {
-			return model.RoleScopeInstitution, resolved.institutionID
+			return model.RoleScopeInstitution, resolved.institutionID.String()
 		}
-		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
+		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID.String()
 	case model.ResourceProgramme, model.ResourceProgrammeLevel, model.ResourceExam, model.ResourceExamSitting, model.ResourceSubmission:
-		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID
+		return model.RoleScopeAcademicUnit, resolved.targetAcademicUnitID.String()
 	case model.ResourceClass:
 		return model.RoleScopeClass, resource.ID
 	case model.ResourceUser:
-		return model.RoleScopeInstitution, resolved.institutionID
+		return model.RoleScopeInstitution, resolved.institutionID.String()
 	default:
 		return "", ""
 	}
@@ -452,7 +452,7 @@ func roleBindingApplies(
 ) bool {
 	switch binding.ScopeType {
 	case model.RoleScopeInstitution:
-		return definition.InheritInstitutionScope && binding.ScopeID == resolved.institutionID
+		return definition.InheritInstitutionScope && model.InstitutionID(binding.ScopeID) == resolved.institutionID
 	case model.RoleScopeAcademicUnit:
 		if !definition.InheritAcademicUnitScopes {
 			return false
@@ -460,11 +460,11 @@ func roleBindingApplies(
 		if resource.Type == model.ResourceAcademicPeriod && resolved.academicPeriodInstitutionOwned {
 			return definition.Action == model.ActionAcademicPeriodView
 		}
-		_, applies := resolved.academicUnitID[binding.ScopeID]
+		_, applies := resolved.academicUnitID[model.AcademicUnitID(binding.ScopeID)]
 		return applies
 	case model.RoleScopeClass:
 		return resource.Type == model.ResourceClass &&
-			binding.ScopeID == resolved.classID
+			model.ClassID(binding.ScopeID) == resolved.classID
 	default:
 		return false
 	}

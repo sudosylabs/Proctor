@@ -101,11 +101,11 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 			return deniedErr
 		}}, &academicUnitCommandAuditor{events: events, beginID: model.NewId()}, &academicUnitCommandEffectsFake{events: events}, &academicUnitEffectFailureReporterFake{events: events}, now, model.NewId)
 		return func(expected *int64) error {
-				_, err := service.Update(ctx, invocation, UpdateAcademicUnitCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				_, err := service.Update(ctx, invocation, UpdateAcademicUnitCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
 			},
 			func(expected *int64) error {
-				return service.Archive(ctx, invocation, ArchiveAcademicUnitCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				return service.Archive(ctx, invocation, ArchiveAcademicUnitCommand{ID: current.ID, ExpectedRevision: expected})
 			},
 			func(operation string) int64 {
 				if operation == "archive" {
@@ -118,11 +118,11 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 		persistence := &programmeStoreFake{events: events, current: current}
 		service := newProgrammeService(persistence, authorization, audit, now, model.NewId)
 		return func(expected *int64) error {
-				_, err := service.Update(ctx, invocation, UpdateProgrammeCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				_, err := service.Update(ctx, invocation, UpdateProgrammeCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
 			},
 			func(expected *int64) error {
-				return service.Archive(ctx, invocation, ArchiveProgrammeCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				return service.Archive(ctx, invocation, ArchiveProgrammeCommand{ID: current.ID, ExpectedRevision: expected})
 			},
 			func(operation string) int64 {
 				if operation == "archive" {
@@ -135,11 +135,11 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 		persistence := &programmeLevelStoreFake{events: events, current: current}
 		service := newProgrammeLevelService(persistence, authorization, audit, now, model.NewId)
 		return func(expected *int64) error {
-				_, err := service.Update(ctx, invocation, UpdateProgrammeLevelCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				_, err := service.Update(ctx, invocation, UpdateProgrammeLevelCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
 			},
 			func(expected *int64) error {
-				return service.Archive(ctx, invocation, ArchiveProgrammeLevelCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				return service.Archive(ctx, invocation, ArchiveProgrammeLevelCommand{ID: current.ID, ExpectedRevision: expected})
 			},
 			func(operation string) int64 {
 				if operation == "archive" {
@@ -152,11 +152,11 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 		persistence := &academicPeriodStoreFake{events: events, current: current}
 		service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: events, err: deniedErr}, audit, now, model.NewId)
 		return func(expected *int64) error {
-				_, err := service.Update(ctx, invocation, UpdateAcademicPeriodCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				_, err := service.Update(ctx, invocation, UpdateAcademicPeriodCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
 			},
 			func(expected *int64) error {
-				return service.Archive(ctx, invocation, ArchiveAcademicPeriodCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				return service.Archive(ctx, invocation, ArchiveAcademicPeriodCommand{ID: current.ID, ExpectedRevision: expected})
 			},
 			func(operation string) int64 {
 				if operation == "archive" {
@@ -169,11 +169,11 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 		persistence := &classStoreFake{events: events, current: current, unitID: model.NewId()}
 		service := newClassService(persistence, authorization, audit, now, model.NewId)
 		return func(expected *int64) error {
-				_, err := service.Update(ctx, invocation, UpdateClassCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				_, err := service.Update(ctx, invocation, UpdateClassCommand{ID: current.ID, ExpectedRevision: expected})
 				return err
 			},
 			func(expected *int64) error {
-				return service.Archive(ctx, invocation, ArchiveClassCommand{ID: current.ID.String(), ExpectedRevision: expected})
+				return service.Archive(ctx, invocation, ArchiveClassCommand{ID: current.ID, ExpectedRevision: expected})
 			},
 			func(operation string) int64 {
 				if operation == "archive" {

@@ -198,7 +198,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	if progressed.Previous != nil {
 		t.Fatalf("cross-period progression rewrote source: %#v", progressed)
 	}
-	history, err := ss.ClassMember().ListByUser(ctx, student.ID.String())
+	history, err := ss.ClassMember().ListByUser(ctx, student.ID)
 	requireNoError(t, err)
 	if len(history) != 2 || history[1].ID != source.Membership.ID || history[1].EndsAt.Valid {
 		t.Fatalf("progression history = %#v", history)
@@ -217,7 +217,7 @@ func testStudentProgressionCrossPeriod(t *testing.T, ss store.Store) {
 	if _, err = ss.ClassMember().EnrollWithAudit(ctx, replay); err != nil || !replay.Replayed {
 		t.Fatalf("progression replay = %v replayed=%v", err, replay.Replayed)
 	}
-	afterReplay, err := ss.ClassMember().ListByUser(ctx, student.ID.String())
+	afterReplay, err := ss.ClassMember().ListByUser(ctx, student.ID)
 	requireNoError(t, err)
 	if len(afterReplay) != 2 {
 		t.Fatalf("progression replay duplicated history: %#v", afterReplay)
@@ -302,7 +302,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	if duplicate.ID != canonical.ID || !loserCommand.Batch.Duplicate {
 		t.Fatalf("duplicate outcome = %#v metadata=%#v, want canonical %s", duplicate, loserCommand.Batch, canonical.ID)
 	}
-	if _, err = ss.Affiliation().Get(ctx, loserCandidate.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.Affiliation().Get(ctx, loserCandidate.ID); !store.IsNotFound(err) {
 		t.Fatalf("duplicate candidate was persisted: %v", err)
 	}
 	loserReplayAudit := saveAffiliationAuditAttempt(t, ctx, ss, institution.ID.String(), duplicateTarget.ID.String())
@@ -328,7 +328,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 		AuditAt: model.MillisFromTime(at), Command: secondCommand}); !store.IsConflict(err) {
 		t.Fatalf("academic administration import after authority ended error = %v", err)
 	}
-	if _, err = ss.Affiliation().Get(ctx, secondCandidate.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.Affiliation().Get(ctx, secondCandidate.ID); !store.IsNotFound(err) {
 		t.Fatalf("unauthorized import row mutated affiliation: %v", err)
 	}
 	jsonTarget := saveUser(t, ctx, ss)
@@ -343,7 +343,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 		AuditAt: model.MillisFromTime(at), Command: jsonCommand}); !store.IsConflict(err) {
 		t.Fatalf("JSON row after authority ended error = %v", err)
 	}
-	if _, err = ss.Affiliation().Get(ctx, jsonCandidate.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.Affiliation().Get(ctx, jsonCandidate.ID); !store.IsNotFound(err) {
 		t.Fatalf("unauthorized JSON row mutated affiliation: %v", err)
 	}
 }
@@ -830,7 +830,7 @@ func testInvitationAdministrationPaginationIsStable(t *testing.T, ss store.Store
 		created[invitation.ID] = struct{}{}
 	}
 
-	visibility := store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}
+	visibility := store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}
 	first, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: visibility, Limit: 2})
 	requireNoError(t, err)
 	if len(first.Items) != 2 || !first.More {
@@ -1010,7 +1010,7 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
 
-	visibility := store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}
+	visibility := store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}
 	page, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: visibility,
 		Purpose: model.InvitationPurposeStudentClass, State: model.InvitationPending,
 		TargetEmail: invitation.TargetEmail, TargetID: class.ID.String(), Limit: 1})
@@ -1020,13 +1020,13 @@ func testInvitationAdministrationLifecycle(t *testing.T, ss store.Store) {
 		t.Fatalf("Invitation administration list = %#v", page)
 	}
 	rootPage, err := ss.Invitation().List(ctx, store.InvitationListOptions{Visibility: store.InvitationVisibilityScope{
-		AcademicUnitRootIDs: []string{fixture.programme.AcademicUnitID.String()}}, TargetEmail: invitation.TargetEmail, Limit: 10})
+		AcademicUnitRootIDs: []model.AcademicUnitID{fixture.programme.AcademicUnitID}}, TargetEmail: invitation.TargetEmail, Limit: 10})
 	requireNoError(t, err)
 	if len(rootPage.Items) != 1 || rootPage.Items[0].Invitation.ID != invitation.ID {
 		t.Fatalf("Academic Unit subtree Invitation list = %#v", rootPage)
 	}
 	if _, err = ss.Invitation().GetForAdministration(ctx, invitation.ID,
-		store.InvitationVisibilityScope{ClassIDs: []string{model.NewClassID().String()}}); !store.IsNotFound(err) {
+		store.InvitationVisibilityScope{ClassIDs: []model.ClassID{model.NewClassID()}}); !store.IsNotFound(err) {
 		t.Fatalf("out-of-scope Invitation detail error = %v", err)
 	}
 
@@ -2128,7 +2128,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 		t.Fatalf("accepted Invitation credential delivery = %#v", obsolete)
 	}
 	progressedAt := accepted.ClassMember.StartsAt.Add(24 * time.Hour)
-	ended, err := ss.ClassMember().End(ctx, accepted.ClassMember.ID.String(), accepted.ClassMember.Revision, model.MillisFromTime(progressedAt))
+	ended, err := ss.ClassMember().End(ctx, accepted.ClassMember.ID, accepted.ClassMember.Revision, model.MillisFromTime(progressedAt))
 	requireNoError(t, err)
 	newMembership := &model.ClassMember{ClassID: class.ID, AcademicPeriodID: fixture.period.ID, UserID: accepted.User.ID,
 		StartsAt: progressedAt, EndsAt: accepted.ClassMember.EndsAt}
@@ -2142,7 +2142,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 		replayed.Affiliation.ID != accepted.Affiliation.ID || replayed.ClassMember.ID != ended.ID || replayed.ClassMember.ID == newMembership.ID {
 		t.Fatalf("replayed AcceptStudentClass() = %#v", replayed)
 	}
-	listed, err := ss.ClassMember().ListByClass(ctx, class.ID.String(), model.MillisFromTime(accepted.ClassMember.StartsAt))
+	listed, err := ss.ClassMember().ListByClass(ctx, class.ID, model.MillisFromTime(accepted.ClassMember.StartsAt))
 	requireNoError(t, err)
 	if len(listed) != 1 || listed[0].ID != accepted.ClassMember.ID {
 		t.Fatalf("Class members after replay = %#v", listed)

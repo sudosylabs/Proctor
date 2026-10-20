@@ -320,7 +320,7 @@ type correctionMembershipFake struct {
 	err   error
 }
 
-func (m *correctionMembershipFake) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
+func (m *correctionMembershipFake) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error) {
 	m.f.order = append(m.f.order, "membership")
 	if m.empty {
 		return nil, m.err

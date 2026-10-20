@@ -55,7 +55,7 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 	persistence := &auditListingStoreFake{events: &events, list: []*model.AuditEvent{event}}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{
 		events: &events, scope: store.AuditVisibilityScope{
-			AcademicUnitRootIDs: []string{rootID},
+			AcademicUnitRootIDs: []model.AcademicUnitID{model.AcademicUnitID(rootID)},
 			AllowedActions:      []string{string(model.ActionClassMembersManage)},
 		},
 	})
@@ -63,7 +63,7 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(persistence.input.Visibility.AcademicUnitRootIDs, []string{rootID}) {
+	if !reflect.DeepEqual(persistence.input.Visibility.AcademicUnitRootIDs, []model.AcademicUnitID{model.AcademicUnitID(rootID)}) {
 		t.Fatalf("persistence visibility = %#v", persistence.input.Visibility)
 	}
 	if len(got) != 1 || got[0].ActorID != event.ActorID || got[0].SessionID.IsValid() ||

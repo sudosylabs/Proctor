@@ -50,13 +50,13 @@ type Params struct {
 	UserID                  string
 	InstitutionID           string
 	AcademicUnitID          string
-	ProgrammeId             string
-	ProgrammeLevelId        string
-	AcademicPeriodId        string
-	ClassId                 string
-	AffiliationId           string
-	AcademicUnitMemberId    string
-	ClassMemberId           string
+	ProgrammeID             string
+	ProgrammeLevelID        string
+	AcademicPeriodID        string
+	ClassID                 string
+	AffiliationID           string
+	AcademicUnitMemberID    string
+	ClassMemberID           string
 	PersonalAccessTokenId   string
 	SessionID               string
 	DesktopRegistrationID   string
@@ -100,13 +100,13 @@ func ParamsFromRequest(request *http.Request) Params {
 		UserID:                  strings.TrimSpace(variables["user_id"]),
 		InstitutionID:           strings.TrimSpace(variables["institution_id"]),
 		AcademicUnitID:          strings.TrimSpace(variables["academic_unit_id"]),
-		ProgrammeId:             strings.TrimSpace(variables["programme_id"]),
-		ProgrammeLevelId:        strings.TrimSpace(variables["programme_level_id"]),
-		AcademicPeriodId:        strings.TrimSpace(variables["academic_period_id"]),
-		ClassId:                 strings.TrimSpace(variables["class_id"]),
-		AffiliationId:           strings.TrimSpace(variables["affiliation_id"]),
-		AcademicUnitMemberId:    strings.TrimSpace(variables["academic_unit_member_id"]),
-		ClassMemberId:           strings.TrimSpace(variables["class_member_id"]),
+		ProgrammeID:             strings.TrimSpace(variables["programme_id"]),
+		ProgrammeLevelID:        strings.TrimSpace(variables["programme_level_id"]),
+		AcademicPeriodID:        strings.TrimSpace(variables["academic_period_id"]),
+		ClassID:                 strings.TrimSpace(variables["class_id"]),
+		AffiliationID:           strings.TrimSpace(variables["affiliation_id"]),
+		AcademicUnitMemberID:    strings.TrimSpace(variables["academic_unit_member_id"]),
+		ClassMemberID:           strings.TrimSpace(variables["class_member_id"]),
 		PersonalAccessTokenId:   strings.TrimSpace(variables["personal_access_token_id"]),
 		SessionID:               strings.TrimSpace(variables["session_id"]),
 		DesktopRegistrationID:   strings.TrimSpace(variables["desktop_registration_id"]),
@@ -124,19 +124,19 @@ func ParamsFromRequest(request *http.Request) Params {
 }
 
 func (p Params) RequireExternalIdentityID() (string, error) {
-	return requirePathId("external_identity_id", p.ExternalIdentityID)
+	return requirePathID("external_identity_id", p.ExternalIdentityID)
 }
 
 func (p Params) RequireInvitationID() (string, error) {
-	return requirePathId("invitation_id", p.InvitationID)
+	return requirePathID("invitation_id", p.InvitationID)
 }
 
 func (p Params) RequireOnboardingImportID() (string, error) {
-	return requirePathId("onboarding_import_id", p.OnboardingImportID)
+	return requirePathID("onboarding_import_id", p.OnboardingImportID)
 }
 
 func (p Params) RequireStudentProgressionID() (string, error) {
-	return requirePathId("student_progression_id", p.StudentProgressionID)
+	return requirePathID("student_progression_id", p.StudentProgressionID)
 }
 
 func (p Params) RequireProviderId() (string, error) {
@@ -147,55 +147,55 @@ func (p Params) RequireProviderId() (string, error) {
 }
 
 func (p Params) RequireUserId() (string, error) {
-	return requirePathId("user_id", p.UserID)
+	return requirePathID("user_id", p.UserID)
 }
 
 func (p Params) RequireInstitutionId() (string, error) {
-	return requirePathId("institution_id", p.InstitutionID)
+	return requirePathID("institution_id", p.InstitutionID)
 }
 
-func (p Params) RequireAcademicUnitId() (string, error) {
-	return requirePathId("academic_unit_id", p.AcademicUnitID)
+func (p Params) RequireAcademicUnitID() (model.AcademicUnitID, error) {
+	return pathID[model.AcademicUnitID](p.AcademicUnitID)
 }
 
-func (p Params) RequireProgrammeId() (string, error) {
-	return requirePathId("programme_id", p.ProgrammeId)
+func (p Params) RequireProgrammeID() (model.ProgrammeID, error) {
+	return pathID[model.ProgrammeID](p.ProgrammeID)
 }
 
-func (p Params) RequireProgrammeLevelId() (string, error) {
-	return requirePathId("programme_level_id", p.ProgrammeLevelId)
+func (p Params) RequireProgrammeLevelID() (model.ProgrammeLevelID, error) {
+	return pathID[model.ProgrammeLevelID](p.ProgrammeLevelID)
 }
 
-func (p Params) RequireAcademicPeriodId() (string, error) {
-	return requirePathId("academic_period_id", p.AcademicPeriodId)
+func (p Params) RequireAcademicPeriodID() (model.AcademicPeriodID, error) {
+	return pathID[model.AcademicPeriodID](p.AcademicPeriodID)
 }
 
-func (p Params) RequireClassId() (string, error) {
-	return requirePathId("class_id", p.ClassId)
+func (p Params) RequireClassID() (model.ClassID, error) {
+	return pathID[model.ClassID](p.ClassID)
 }
 
-func (p Params) RequireAffiliationId() (string, error) {
-	return requirePathId("affiliation_id", p.AffiliationId)
+func (p Params) RequireAffiliationID() (model.AffiliationID, error) {
+	return pathID[model.AffiliationID](p.AffiliationID)
 }
 
-func (p Params) RequireAcademicUnitMemberId() (string, error) {
-	return requirePathId("academic_unit_member_id", p.AcademicUnitMemberId)
+func (p Params) RequireAcademicUnitMemberID() (model.AcademicUnitMemberID, error) {
+	return pathID[model.AcademicUnitMemberID](p.AcademicUnitMemberID)
 }
 
-func (p Params) RequireClassMemberId() (string, error) {
-	return requirePathId("class_member_id", p.ClassMemberId)
+func (p Params) RequireClassMemberID() (model.ClassMemberID, error) {
+	return pathID[model.ClassMemberID](p.ClassMemberID)
 }
 
 func (p Params) RequirePersonalAccessTokenId() (string, error) {
-	return requirePathId("personal_access_token_id", p.PersonalAccessTokenId)
+	return requirePathID("personal_access_token_id", p.PersonalAccessTokenId)
 }
 
 func (p Params) RequireSessionId() (string, error) {
-	return requirePathId("session_id", p.SessionID)
+	return requirePathID("session_id", p.SessionID)
 }
 
 func (p Params) RequireDesktopRegistrationId() (model.DesktopRegistrationID, error) {
-	value, err := requirePathId("desktop_registration_id", p.DesktopRegistrationID)
+	value, err := requirePathID("desktop_registration_id", p.DesktopRegistrationID)
 	if err != nil {
 		return "", err
 	}
@@ -220,62 +220,76 @@ func withRequestParams(next http.Handler) http.Handler {
 }
 
 func (p Params) RequireRoleId() (string, error) {
-	return requirePathId("role_id", p.RoleId)
+	return requirePathID("role_id", p.RoleId)
 }
 
 func (p Params) RequireRoleBindingId() (string, error) {
-	return requirePathId("role_binding_id", p.RoleBindingId)
+	return requirePathID("role_binding_id", p.RoleBindingId)
 }
 
 func (p Params) RequireJobId() (string, error) {
-	return requirePathId("job_id", p.JobID)
+	return requirePathID("job_id", p.JobID)
 }
 
 func (p Params) RequireMailDeliveryID() (string, error) {
-	return requirePathId("mail_delivery_id", p.MailDeliveryID)
+	return requirePathID("mail_delivery_id", p.MailDeliveryID)
 }
 
 func (p Params) RequireExamId() (string, error) {
-	return requirePathId("exam_id", p.ExamID)
+	return requirePathID("exam_id", p.ExamID)
 }
 
 func (p Params) RequireExamRevisionId() (string, error) {
-	return requirePathId("exam_revision_id", p.ExamRevisionID)
+	return requirePathID("exam_revision_id", p.ExamRevisionID)
 }
 
 func (p Params) RequireExamSittingId() (string, error) {
-	return requirePathId("exam_sitting_id", p.ExamSittingID)
+	return requirePathID("exam_sitting_id", p.ExamSittingID)
 }
 
 func (p Params) RequireExamAttemptId() (string, error) {
-	return requirePathId("exam_attempt_id", p.ExamAttemptID)
+	return requirePathID("exam_attempt_id", p.ExamAttemptID)
 }
 
 func (p Params) RequireSubmissionId() (string, error) {
-	return requirePathId("submission_id", p.SubmissionID)
+	return requirePathID("submission_id", p.SubmissionID)
 }
 
 func (p Params) RequireRetentionHoldID() (string, error) {
-	return requirePathId("retention_hold_id", p.RetentionHoldID)
+	return requirePathID("retention_hold_id", p.RetentionHoldID)
 }
 
 func (p Params) RequireIntegrityFlagID() (string, error) {
-	return requirePathId("integrity_flag_id", p.IntegrityFlagID)
+	return requirePathID("integrity_flag_id", p.IntegrityFlagID)
 }
 
 func (p Params) RequireExamResourceId() (string, error) {
-	return requirePathId("exam_resource_id", p.ExamResourceID)
+	return requirePathID("exam_resource_id", p.ExamResourceID)
 }
 
 func (p Params) RequireStarterWorkspaceEntryId() (string, error) {
-	return requirePathId("starter_workspace_entry_id", p.StarterWorkspaceEntryID)
+	return requirePathID("starter_workspace_entry_id", p.StarterWorkspaceEntryID)
 }
 
 func (p Params) RequireAttemptWorkspaceEntryId() (string, error) {
-	return requirePathId("attempt_workspace_entry_id", p.AttemptWorkspaceEntryID)
+	return requirePathID("attempt_workspace_entry_id", p.AttemptWorkspaceEntryID)
 }
 
-func requirePathId(name, id string) (string, error) {
+// pathID converts a canonical path variable into its typed model identifier,
+// rejecting anything that is not a valid identifier as an invalid request.
+func pathID[T interface {
+	~string
+	IsValid() bool
+}](value string) (T, error) {
+	id := T(value)
+	if !id.IsValid() {
+		var zero T
+		return zero, invalidRequestError(nil)
+	}
+	return id, nil
+}
+
+func requirePathID(name, id string) (string, error) {
 	if !model.IsValidId(id) {
 		return "", invalidRequestError(nil)
 	}
@@ -283,9 +297,9 @@ func requirePathId(name, id string) (string, error) {
 }
 
 func (p Params) RequireExamExportID() (string, error) {
-	return requirePathId("exam_export_id", p.ExamExportID)
+	return requirePathID("exam_export_id", p.ExamExportID)
 }
 
 func (p Params) RequireSecurityPreflightID() (string, error) {
-	return requirePathId("security_preflight_id", p.SecurityPreflightID)
+	return requirePathID("security_preflight_id", p.SecurityPreflightID)
 }

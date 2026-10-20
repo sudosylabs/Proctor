@@ -31,7 +31,7 @@ func testAcademicUnitMemberPaging(t *testing.T, ss store.Store) {
 		member, err := ss.AcademicUnitMember().Save(ctx, candidate)
 		requireNoError(t, err)
 		if i == 0 {
-			_, err := ss.AcademicUnitMember().End(ctx, member.ID.String(), member.Revision, at+10)
+			_, err := ss.AcademicUnitMember().End(ctx, member.ID, member.Revision, at+10)
 			requireNoError(t, err)
 			next := &model.AcademicUnitMember{AcademicUnitID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
 			_, err = ss.AcademicUnitMember().Save(ctx, next)
@@ -43,7 +43,7 @@ func testAcademicUnitMemberPaging(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 
 	for _, activeAt := range []int64{0, at, at + 10, at + 200} {
-		expected, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, scope.ID.String(), activeAt)
+		expected, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, scope.ID, activeAt)
 		requireNoError(t, err)
 		expectedIDs := make([]string, len(expected))
 		for i, member := range expected {
@@ -119,7 +119,7 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 		member := enrolled.Membership
 		if i == 0 {
-			_, err := ss.ClassMember().End(ctx, member.ID.String(), member.Revision, at+10)
+			_, err := ss.ClassMember().End(ctx, member.ID, member.Revision, at+10)
 			requireNoError(t, err)
 			next := &model.ClassMember{ClassID: scope.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(at + 10)}
 			_, err = ss.ClassMember().Enroll(ctx, next)
@@ -134,7 +134,7 @@ func testClassMemberPaging(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 
 	for _, activeAt := range []int64{0, at, at + 10, at + 200} {
-		expected, err := ss.ClassMember().ListByClass(ctx, scope.ID.String(), activeAt)
+		expected, err := ss.ClassMember().ListByClass(ctx, scope.ID, activeAt)
 		requireNoError(t, err)
 		expectedIDs := make([]string, len(expected))
 		for i, member := range expected {

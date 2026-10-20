@@ -92,7 +92,7 @@ func TestClassResourceRunsThroughRoutingKernelWithNarrowDependencies(t *testing.
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID.String() ||
+	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID ||
 		classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
 		t.Fatalf("command = %#v", classes.createCommand)
 	}
@@ -324,7 +324,7 @@ func TestClassHTTPMapsBothParentsAndIgnoresServerOwnedFields(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID.String() || classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
+	if classes.createCommand.ProgrammeLevelID != class.ProgrammeLevelID || classes.createCommand.AcademicPeriodID != class.AcademicPeriodID.String() {
 		t.Fatalf("command = %#v", classes.createCommand)
 	}
 	var body classResponse

@@ -328,7 +328,7 @@ func (s SQLUserStore) List(
 				UNION ALL SELECT child.id FROM academic_units child
 				JOIN class_member_allowed_units parent ON child.parent_id = parent.id
 				WHERE child.archived_at IS NULL
-			)`, pq.Array(options.Visibility.AcademicUnitRootIDs), pq.Array(options.Visibility.ClassMemberAcademicUnitRootIDs)).Where(`(
+			)`, pq.Array(idStrings(options.Visibility.AcademicUnitRootIDs)), pq.Array(idStrings(options.Visibility.ClassMemberAcademicUnitRootIDs))).Where(`(
 			EXISTS (
 				SELECT 1 FROM academic_unit_members aum
 				WHERE aum.user_id = users.id AND aum.archived_at IS NULL
@@ -354,7 +354,7 @@ func (s SQLUserStore) List(
 				AND rb.start_at <= ? AND (rb.end_at IS NULL OR rb.end_at > ?)
 				AND ((rb.scope_type = 'academic_unit' AND rb.scope_id IN (SELECT id FROM user_allowed_units))
 					OR (rb.scope_type = 'class' AND p.academic_unit_id IN (SELECT id FROM user_allowed_units)))
-			))`, activeAt, activeAt, activeAt, activeAt, pq.Array(options.Visibility.ClassIDs),
+			))`, activeAt, activeAt, activeAt, activeAt, pq.Array(idStrings(options.Visibility.ClassIDs)),
 				options.Visibility.ClassMemberInstitutionWide, activeAt, activeAt)
 		}
 	}
@@ -578,9 +578,19 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	return result, nil
 }
 
-func validVisibilityIDs(ids []string) bool {
+// idStrings converts typed identifiers to the text form bound as SQL array
+// parameters.
+func idStrings[T ~string](ids []T) []string {
+	out := make([]string, len(ids))
+	for index, id := range ids {
+		out[index] = string(id)
+	}
+	return out
+}
+
+func validVisibilityIDs[T interface{ IsValid() bool }](ids []T) bool {
 	for _, id := range ids {
-		if !model.IsValidId(id) {
+		if !id.IsValid() {
 			return false
 		}
 	}
@@ -697,8 +707,8 @@ func (s SQLUserStore) MatchVisibility(
 		JOIN users u ON u.id = i.user_id AND u.archived_at IS NULL AND u.disabled_at IS NULL
 		ORDER BY matches.priority, matches.scope_id
 		LIMIT 1`, userID, model.TimeUTC(visibility.ActiveAt),
-		pq.Array(visibility.AcademicUnitRootIDs), pq.Array(visibility.ClassMemberAcademicUnitRootIDs),
-		pq.Array(visibility.ClassIDs), visibility.ClassMemberInstitutionWide)
+		pq.Array(idStrings(visibility.AcademicUnitRootIDs)), pq.Array(idStrings(visibility.ClassMemberAcademicUnitRootIDs)),
+		pq.Array(idStrings(visibility.ClassIDs)), visibility.ClassMemberInstitutionWide)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.UserVisibilityMatch{}, nil
 	}

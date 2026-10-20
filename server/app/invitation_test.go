@@ -209,23 +209,23 @@ func (f *invitationStoreFake) AcceptExternalIdentity(_ context.Context, input *s
 
 type invitationClassStoreFake struct{ class *model.Class }
 
-func (f invitationClassStoreFake) Get(context.Context, string) (*model.Class, error) {
+func (f invitationClassStoreFake) Get(context.Context, model.ClassID) (*model.Class, error) {
 	return f.class, nil
 }
 
-func (f invitationClassStoreFake) GetAcademicUnitId(context.Context, string) (string, error) {
+func (f invitationClassStoreFake) GetAcademicUnitID(context.Context, string) (string, error) {
 	return model.NewAcademicUnitID().String(), nil
 }
 
 type invitationPeriodStoreFake struct{ period *model.AcademicPeriod }
 
-func (f invitationPeriodStoreFake) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (f invitationPeriodStoreFake) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	return f.period, nil
 }
 
 type invitationAcademicUnitStoreFake struct{ unit *model.AcademicUnit }
 
-func (f invitationAcademicUnitStoreFake) Get(context.Context, string) (*model.AcademicUnit, error) {
+func (f invitationAcademicUnitStoreFake) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	return f.unit, nil
 }
 

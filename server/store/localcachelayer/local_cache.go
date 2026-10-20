@@ -127,20 +127,20 @@ func New(
 	return layer, nil
 }
 
-func (s *academicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStore) Get(ctx context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if !model.IsValidId(id) {
+	if !id.IsValid() {
 		return s.AcademicPeriodStore.Get(ctx, id)
 	}
-	key := academicPeriodKey(id)
+	key := academicPeriodKey(id.String())
 	s.layer.cacheMu.Lock()
 	generation := s.layer.generation
 	data, found, err := s.layer.cache.Get(ctx, key)
 	if err == nil && found {
 		var period model.AcademicPeriod
-		if json.Unmarshal(data, &period) == nil && period.ID.String() == id && period.Validate() == nil {
+		if json.Unmarshal(data, &period) == nil && period.ID == id && period.Validate() == nil {
 			s.layer.cacheMu.Unlock()
 			s.layer.observe(Operation{name: "academic_period.get"}, OutcomeHit)
 			return &period, nil
@@ -203,10 +203,10 @@ func (s *academicPeriodStore) Update(ctx context.Context, candidate *model.Acade
 	return period, err
 }
 
-func (s *academicPeriodStore) Archive(ctx context.Context, id string, at int64) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStore) Archive(ctx context.Context, id model.AcademicPeriodID, at int64) (*model.AcademicPeriod, error) {
 	period, err := s.AcademicPeriodStore.Archive(ctx, id, at)
 	if err == nil {
-		s.invalidateAfterMutation(ctx, id)
+		s.invalidateAfterMutation(ctx, id.String())
 	}
 	return period, err
 }

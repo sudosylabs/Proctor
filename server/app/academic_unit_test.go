@@ -93,17 +93,13 @@ func (s *academicUnitReadStore) Save(
 ) (*model.AcademicUnit, error) {
 	panic("unexpected Save")
 }
-func (s *academicUnitReadStore) Get(
-	context.Context, string,
-) (*model.AcademicUnit, error) {
+func (s *academicUnitReadStore) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	s.getCalls++
 	return s.unit, s.err
 }
-func (s *academicUnitReadStore) ListChildren(
-	_ context.Context, _ string, parentID string,
-) ([]*model.AcademicUnit, error) {
+func (s *academicUnitReadStore) ListChildren(_ context.Context, _ model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	s.listCalls++
-	s.lastParentID = parentID
+	s.lastParentID = parentID.String()
 	return s.children, s.err
 }
 func (s *academicUnitReadStore) ListAncestors(
@@ -111,9 +107,7 @@ func (s *academicUnitReadStore) ListAncestors(
 ) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (s *academicUnitReadStore) Search(
-	_ context.Context, _ string, query string, limit int,
-) ([]*model.AcademicUnit, error) {
+func (s *academicUnitReadStore) Search(_ context.Context, _ model.InstitutionID, query string, limit int) ([]*model.AcademicUnit, error) {
 	s.searchCalls++
 	s.lastQuery, s.lastLimit = query, limit
 	return s.searchResults, s.err
@@ -144,7 +138,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 	_, err := service.Get(
 		context.Background(),
 		NewInvocation(model.Principal{}, model.RequestMetadata{}),
-		GetAcademicUnitQuery{ID: model.NewId()},
+		GetAcademicUnitQuery{ID: model.NewAcademicUnitID()},
 	)
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v, want authorization.denied", err)
@@ -171,7 +165,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 		}),
 	)
 	got, err := service.Get(
-		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID.String()},
+		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID},
 	)
 	if err != nil {
 		t.Fatal(err)

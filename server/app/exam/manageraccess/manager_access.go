@@ -19,7 +19,7 @@ import (
 // role permissions and the Exam Manager relationship. Decision times use UTC
 // microsecond precision and include the membership start but exclude its end.
 type Memberships interface {
-	ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)
+	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error)
 }
 
 // SelectAction chooses the caller's ordinary action only for a current Exam
@@ -46,7 +46,7 @@ func SelectAction(ctx context.Context, memberships Memberships, userID model.Use
 // HasCurrentMembership checks the exact Academic Unit at the supplied time.
 // It grants no role permission and implies no Exam Manager relationship.
 func HasCurrentMembership(ctx context.Context, memberships Memberships, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
-	items, err := memberships.ListActiveByUser(ctx, userID.String(), model.TimeUTC(at))
+	items, err := memberships.ListActiveByUser(ctx, userID, model.TimeUTC(at))
 	if err != nil {
 		return false, err
 	}

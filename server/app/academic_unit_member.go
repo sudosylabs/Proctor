@@ -19,12 +19,12 @@ import (
 )
 
 type ListAcademicUnitMembersQuery struct {
-	AcademicUnitID string
+	AcademicUnitID model.AcademicUnitID
 	ActiveAt       int64
 }
 
 type CreateAcademicUnitMemberCommand struct {
-	AcademicUnitID            string
+	AcademicUnitID            model.AcademicUnitID
 	UserID                    string
 	StartAt                   int64
 	IdempotencyKey            string
@@ -37,7 +37,7 @@ type CreateAcademicUnitMemberCommand struct {
 }
 
 type EndAcademicUnitMemberCommand struct {
-	ID                        string
+	ID                        model.AcademicUnitMemberID
 	IdempotencyKey            string
 	BatchScopeID              string
 	batchReplayed             *bool
@@ -49,8 +49,8 @@ type EndAcademicUnitMemberCommand struct {
 }
 
 type academicUnitMemberStore interface {
-	Get(context.Context, string) (*model.AcademicUnitMember, error)
-	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error)
+	ListByAcademicUnit(context.Context, model.AcademicUnitID, int64) ([]*model.AcademicUnitMember, error)
 	ListPageByAcademicUnit(context.Context, store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error)
 	Create(context.Context, *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
 	EndWithAudit(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
@@ -89,11 +89,11 @@ func (a *App) ListAcademicUnitMembers(ctx context.Context, invocation Invocation
 }
 
 func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(query.AcademicUnitID), model.ActionAcademicUnitMembersView)
+	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err
 	}
-	members, err := s.store.ListByAcademicUnit(ctx, resource.ID, query.ActiveAt)
+	members, err := s.store.ListByAcademicUnit(ctx, model.AcademicUnitID(resource.ID), query.ActiveAt)
 	if err != nil {
 		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
@@ -108,7 +108,7 @@ func (a *App) CreateAcademicUnitMember(ctx context.Context, invocation Invocatio
 }
 
 func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(command.AcademicUnitID), model.ActionAcademicUnitMembersManage)
+	resource, err := s.authorizeUnit(ctx, invocation, command.AcademicUnitID, model.ActionAcademicUnitMembersManage)
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +195,8 @@ func (a *App) EndAcademicUnitMember(ctx context.Context, invocation Invocation, 
 }
 
 func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id")
 	}
 	if err := s.authorization.AuthorizePreflight(
@@ -208,7 +208,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if err != nil {
 		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
-	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID.String(), model.ActionAcademicUnitMembersManage)
+	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID, model.ActionAcademicUnitMembersManage)
 	if err != nil {
 		return nil, concealMembershipAuthorizationError(err, "academic_unit_member")
 	}
@@ -218,7 +218,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
-	}{id, strings.TrimSpace(command.BatchScopeID)})
+	}{id.String(), strings.TrimSpace(command.BatchScopeID)})
 	if err != nil {
 		return nil, err
 	}
@@ -281,11 +281,11 @@ func concealMembershipAuthorizationError(err error, resource string) error {
 	return err
 }
 
-func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID string, action model.Action) (model.Resource, error) {
-	if !model.IsValidId(unitID) {
+func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID model.AcademicUnitID, action model.Action) (model.Resource, error) {
+	if !unitID.IsValid() {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Resource{}, err
 	}
@@ -301,7 +301,7 @@ var academicUnitMemberStoreErrors = apperror.AdministrationStoreTable("academic_
 type ListAcademicUnitMembersPageQuery struct {
 	AfterUserID    model.UserID
 	AfterID        model.AcademicUnitMemberID
-	AcademicUnitID string
+	AcademicUnitID model.AcademicUnitID
 	MembershipPageQuery
 }
 
@@ -316,7 +316,7 @@ func (a *App) ListAcademicUnitMembersPage(ctx context.Context, invocation Invoca
 }
 
 func (s *academicUnitMemberService) ListPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
-	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(query.AcademicUnitID), model.ActionAcademicUnitMembersView)
+	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err
 	}

@@ -131,23 +131,19 @@ func (s SQLProgrammeStore) Save(ctx context.Context, programme *model.Programme)
 	return s.createProgramme(ctx, &candidate, nil)
 }
 
-func (s SQLProgrammeStore) Get(ctx context.Context, id string) (*model.Programme, error) {
+func (s SQLProgrammeStore) Get(ctx context.Context, id model.ProgrammeID) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.id":          id,
 		"programmes.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme", id, err)
+		return nil, translateError("programme", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLProgrammeStore) GetByName(
-	ctx context.Context,
-	academicUnitID string,
-	name string,
-) (*model.Programme, error) {
+func (s SQLProgrammeStore) GetByName(ctx context.Context, academicUnitID model.AcademicUnitID, name string) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.academic_unit_id": academicUnitID,
@@ -155,15 +151,12 @@ func (s SQLProgrammeStore) GetByName(
 		"programmes.archived_at":      nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("programme", academicUnitID+"/"+name, err)
+		return nil, translateError("programme", academicUnitID.String()+"/"+name, err)
 	}
 	return row.model()
 }
 
-func (s SQLProgrammeStore) ListByAcademicUnit(
-	ctx context.Context,
-	academicUnitID string,
-) ([]*model.Programme, error) {
+func (s SQLProgrammeStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID) ([]*model.Programme, error) {
 	query := s.programmesQuery.
 		Where(sq.Eq{
 			"programmes.academic_unit_id": academicUnitID,
@@ -186,12 +179,7 @@ func (s SQLProgrammeStore) ListByAcademicUnit(
 	return programmes, nil
 }
 
-func (s SQLProgrammeStore) SearchByAcademicUnit(
-	ctx context.Context,
-	academicUnitID string,
-	term string,
-	limit int,
-) ([]*model.Programme, error) {
+func (s SQLProgrammeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, term string, limit int) ([]*model.Programme, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("programme", "limit", limit)
 	}
@@ -286,11 +274,7 @@ func (s SQLProgrammeStore) UpdateWithAudit(
 	return s.updateProgramme(ctx, &candidate, candidate.AcademicUnitID.String(), &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeStore) Archive(
-	ctx context.Context,
-	id string,
-	archiveAt int64,
-) (*model.Programme, error) {
+func (s SQLProgrammeStore) Archive(ctx context.Context, id model.ProgrammeID, archiveAt int64) (*model.Programme, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "archived_at", archiveAt)
 	}
@@ -301,14 +285,14 @@ func (s SQLProgrammeStore) ArchiveWithAudit(
 	ctx context.Context,
 	input *store.ProgrammeArchive,
 ) (*model.Programme, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme", "archive", nil)
 	}
 	return s.archiveProgramme(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id string, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.Programme, error) {
+func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.ProgrammeID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.Programme, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "programme archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Programme, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -318,7 +302,7 @@ func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id string, arch
 			"programmes.id": id, "programmes.archived_at": nil,
 		})
 		if err := tx.GetBuilder(ctx, &row, query); err != nil {
-			return nil, translateError("programme", id, err)
+			return nil, translateError("programme", id.String(), err)
 		}
 		if err := requireAcademicRevision("programme", expectedRevision, row.Revision); err != nil {
 			return nil, err
@@ -338,7 +322,7 @@ func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id string, arch
 		if err != nil {
 			return nil, fmt.Errorf("archive programme: %w", err)
 		}
-		if err := requireRevisionAffected(ctx, tx, result, "programme", "programmes", id); err != nil {
+		if err = requireRevisionAffected(ctx, tx, result, "programme", "programmes", id.String()); err != nil {
 			return nil, err
 		}
 		if err := tx.GetBuilder(ctx, &row, s.programmesQuery.Where(sq.Eq{"programmes.id": id})); err != nil {

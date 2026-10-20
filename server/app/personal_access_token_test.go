@@ -664,7 +664,7 @@ type personalAccessTokenAcademicUnitStoreFake struct {
 	unit   *model.AcademicUnit
 }
 
-func (s *personalAccessTokenAcademicUnitStoreFake) Get(context.Context, string) (*model.AcademicUnit, error) {
+func (s *personalAccessTokenAcademicUnitStoreFake) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	if s.events != nil {
 		*s.events = append(*s.events, "academic_unit")
 	}

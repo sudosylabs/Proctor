@@ -127,7 +127,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			requireNoError(t, saveErr)
 			bindings = append(bindings, saved)
 		}
-		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID.String(), store.UserVisibilityScope{AcademicUnitRootIDs: []string{root.ID.String()}})
+		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID.String(), store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{root.ID}})
 		requireNoError(t, err)
 		seen := map[model.RoleBindingID]bool{}
 		for _, binding := range visible {

@@ -89,7 +89,7 @@ func programmeLevelResource(programmeLevels ProgrammeLevelApplication) resource 
 }
 
 func (module programmeLevelResourceModule) list(request operationRequest) (operationResult, error) {
-	programmeID, err := request.params.RequireProgrammeId()
+	programmeID, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -117,7 +117,7 @@ func (module programmeLevelResourceModule) list(request operationRequest) (opera
 }
 
 func (module programmeLevelResourceModule) create(request operationRequest) (operationResult, error) {
-	programmeID, err := request.params.RequireProgrammeId()
+	programmeID, err := request.params.RequireProgrammeID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -142,7 +142,7 @@ func (module programmeLevelResourceModule) create(request operationRequest) (ope
 }
 
 func (module programmeLevelResourceModule) get(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeLevelId()
+	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -156,7 +156,7 @@ func (module programmeLevelResourceModule) get(request operationRequest) (operat
 }
 
 func (module programmeLevelResourceModule) patch(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeLevelId()
+	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -184,7 +184,7 @@ func (module programmeLevelResourceModule) patch(request operationRequest) (oper
 }
 
 func (module programmeLevelResourceModule) archive(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireProgrammeLevelId()
+	id, err := request.params.RequireProgrammeLevelID()
 	if err != nil {
 		return operationResult{}, err
 	}

@@ -138,7 +138,7 @@ func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation)
 		len(a.searchScope.ClassIDs) > 0 {
 		return a.searchScope, nil
 	}
-	return store.UserVisibilityScope{ClassIDs: []string{"class-a"}, ActiveAt: model.TimeFromMillis(100)}, nil
+	return store.UserVisibilityScope{ClassIDs: []model.ClassID{"class-a"}, ActiveAt: model.TimeFromMillis(100)}, nil
 }
 func (a *userProfileAuthorizerFake) AuthorizeProfileRead(context.Context, Invocation, string) (bool, error) {
 	*a.events = append(*a.events, "authorize-read")
@@ -194,7 +194,7 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	if users == nil || len(users) != 0 {
 		t.Fatalf("users = %#v, want non-nil empty", users)
 	}
-	if !reflect.DeepEqual(persistence.listOptions.Visibility.ClassIDs, []string{"class-a"}) {
+	if !reflect.DeepEqual(persistence.listOptions.Visibility.ClassIDs, []model.ClassID{"class-a"}) {
 		t.Fatalf("visibility = %#v", persistence.listOptions.Visibility)
 	}
 }
@@ -206,7 +206,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 		scope store.UserVisibilityScope
 	}{
 		{name: "academic unit", scope: store.UserVisibilityScope{
-			AcademicUnitRootIDs: []string{model.NewAcademicUnitID().String()}, ActiveAt: model.TimeFromMillis(100),
+			AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100),
 		}},
 		{name: "institution class members", scope: store.UserVisibilityScope{
 			ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(100),
@@ -260,7 +260,7 @@ func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
 	persistence := &userProfileStoreFake{events: &events, current: user}
 	service := newUserProfileService(
 		&userProfileSearchStoreFake{userProfileStoreFake: persistence, values: []*model.User{user}},
-		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []string{model.NewId()}, ActiveAt: model.TimeFromMillis(100)}},
+		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100)}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
 	users, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})

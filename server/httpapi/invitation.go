@@ -502,7 +502,7 @@ func invitationCursorSpec() opaqueCursorSpec[invitationCursor] {
 }
 
 func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -511,7 +511,7 @@ func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueAcademicUnitRoleInvitation(request.context, request.invocation(), application.IssueAcademicUnitRoleInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -566,7 +566,7 @@ func (m invitationResourceModule) acceptInstitutionRole(request operationRequest
 }
 
 func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequest) (operationResult, error) {
-	unitID, err := request.params.RequireAcademicUnitId()
+	unitID, err := request.params.RequireAcademicUnitID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -575,7 +575,7 @@ func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequ
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueTeacherAcademicUnitInvitation(request.context, request.invocation(), application.IssueTeacherAcademicUnitInvitationCommand{
-		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, AcademicUnitID: unitID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})
@@ -601,7 +601,7 @@ func (m invitationResourceModule) acceptTeacherAcademicUnit(request operationReq
 }
 
 func (m invitationResourceModule) issueStudentClass(request operationRequest) (operationResult, error) {
-	classID, err := request.params.RequireClassId()
+	classID, err := request.params.RequireClassID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -610,7 +610,7 @@ func (m invitationResourceModule) issueStudentClass(request operationRequest) (o
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueStudentClassInvitation(request.context, request.invocation(), application.IssueStudentClassInvitationCommand{
-		TargetEmail: body.Email, ClassID: classID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, ClassID: classID.String(), IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 		SuggestedUsername: body.SuggestedUsername, SuggestedDisplayName: body.SuggestedDisplayName,
 		SuggestedFirstName: body.SuggestedFirstName, SuggestedLastName: body.SuggestedLastName, SuggestedLocale: body.SuggestedLocale, SuggestedTimezone: body.SuggestedTimezone,
 	})

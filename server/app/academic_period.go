@@ -18,7 +18,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type GetAcademicPeriodQuery struct{ ID string }
+type GetAcademicPeriodQuery struct{ ID model.AcademicPeriodID }
 type ListAcademicPeriodsQuery struct {
 	Query string
 	Limit int
@@ -32,17 +32,17 @@ type CreateAcademicPeriodCommand struct {
 }
 type UpdateAcademicPeriodCommand struct {
 	ExpectedRevision               *int64
-	ID                             string
+	ID                             model.AcademicPeriodID
 	Name, DisplayName, Description *string
 	StartAt, EndAt                 *int64
 }
 type ArchiveAcademicPeriodCommand struct {
 	ExpectedRevision *int64
-	ID               string
+	ID               model.AcademicPeriodID
 }
 
 type academicPeriodStore interface {
-	Get(context.Context, string) (*model.AcademicPeriod, error)
+	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 	ListVisible(context.Context, store.AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
 	Create(context.Context, *store.AcademicPeriodCreation) (*model.AcademicPeriod, error)
 	UpdateWithAudit(context.Context, *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error)
@@ -72,11 +72,11 @@ func (a *App) GetAcademicPeriod(ctx context.Context, invocation Invocation, quer
 }
 
 func (s *academicPeriodService) Get(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
-	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodView, model.Resource{Type: model.ResourceAcademicPeriod, ID: id}); err != nil {
+	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodView, model.Resource{Type: model.ResourceAcademicPeriod, ID: id.String()}); err != nil {
 		return nil, err
 	}
 	period, err := s.get(ctx, id)
@@ -189,11 +189,11 @@ func (a *App) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, c
 }
 
 func (s *academicPeriodService) Update(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id}
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodManage, resource); err != nil {
 		return nil, err
 	}
@@ -252,11 +252,11 @@ func (a *App) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, 
 }
 
 func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id}
+	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id.String()}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodManage, resource); err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
 				ExpectedRevision: current.Revision,
-				ID:               current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				ID:               current.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -319,9 +319,8 @@ func academicPeriodOwnerScopeType(owner model.AcademicPeriodOwner) model.RoleSco
 	return model.RoleScopeInstitution
 }
 
-func (s *academicPeriodService) get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
-	id = strings.TrimSpace(id)
-	if !model.IsValidId(id) {
+func (s *academicPeriodService) get(ctx context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
 	period, err := s.store.Get(ctx, id)

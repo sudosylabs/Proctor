@@ -35,17 +35,17 @@ func (*academicUnitMutationStore) Create(context.Context, *store.AcademicUnitCre
 func (*academicUnitMutationStore) Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
 	panic("unexpected Save")
 }
-func (s *academicUnitMutationStore) Get(context.Context, string) (*model.AcademicUnit, error) {
+func (s *academicUnitMutationStore) Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error) {
 	*s.events = append(*s.events, "get")
 	return s.current, nil
 }
-func (*academicUnitMutationStore) ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error) {
+func (*academicUnitMutationStore) ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListChildren")
 }
 func (*academicUnitMutationStore) ListAncestors(context.Context, string) ([]*model.AcademicUnit, error) {
 	panic("unexpected ListAncestors")
 }
-func (*academicUnitMutationStore) Search(context.Context, string, string, int) ([]*model.AcademicUnit, error) {
+func (*academicUnitMutationStore) Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error) {
 	panic("unexpected Search")
 }
 func (*academicUnitMutationStore) Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error) {
@@ -109,7 +109,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
 	got, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
-		ID: unitID, ParentID: &newParentID,
+		ID: model.AcademicUnitID(unitID), ParentID: &newParentID,
 		DisplayName: stringPointer("Applied Computing"),
 	})
 	if err != nil || got != &updated {
@@ -157,7 +157,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
 	)
 	emptyParent := ""
-	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: unitID, ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
+	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Update() error = %v, want authorization.denied", err)
 	}
 	assertAcademicUnitCreateEvents(t, events,
@@ -194,7 +194,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
 	)
 	_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
-		ID: unitID, ParentID: stringPointer(model.NewId()),
+		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewId()),
 	})
 	if !apperror.Is(err, "academic_unit.conflict") || auditor.failCode != "academic_unit.conflict" {
 		t.Fatalf("Update() error = %v, failure audit = %q", err, auditor.failCode)
@@ -233,11 +233,11 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 		&academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
-	err := service.Archive(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: unitID})
+	err := service.Archive(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persistence.archiveInput == nil || persistence.archiveInput.ID != unitID ||
+	if persistence.archiveInput == nil || persistence.archiveInput.ID != model.AcademicUnitID(unitID) ||
 		persistence.archiveInput.ArchiveAt != 500 ||
 		persistence.archiveInput.AuditEventID != auditor.beginID {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)

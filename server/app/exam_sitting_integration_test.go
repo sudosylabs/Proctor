@@ -291,7 +291,7 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("close live replay = %#v, %v", closedReplay, appErr)
 	}
 
-	if _, err := persistence.AcademicUnitMember().End(ctx, managerMembership.ID.String(), managerMembership.Revision, model.GetMillis()-100); err != nil {
+	if _, err = persistence.AcademicUnitMember().End(ctx, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{

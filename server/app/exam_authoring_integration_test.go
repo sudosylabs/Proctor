@@ -185,7 +185,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.AcademicUnitMember().End(ctx, managerMembership.ID.String(), managerMembership.Revision, model.GetMillis()-100); err != nil {
+	if _, err = persistence.AcademicUnitMember().End(ctx, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
@@ -247,7 +247,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	currentExamRevision := int64(4)
 	membershipEndedAt := model.GetMillis() - 100
-	if _, err := persistence.AcademicUnitMember().End(ctx, membership.ID.String(), membership.Revision, membershipEndedAt); err != nil {
+	if _, err = persistence.AcademicUnitMember().End(ctx, membership.ID, membership.Revision, membershipEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID})

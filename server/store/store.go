@@ -126,9 +126,9 @@ type ExamListVisibility struct {
 	ActorUserID                 model.UserID
 	OrdinaryMembershipAt        time.Time
 	OrdinaryInstitutionWide     bool
-	OrdinaryAcademicUnitRootIDs []string
+	OrdinaryAcademicUnitRootIDs []model.AcademicUnitID
 	OverrideInstitutionWide     bool
-	OverrideAcademicUnitRootIDs []string
+	OverrideAcademicUnitRootIDs []model.AcademicUnitID
 }
 
 type ExamListOptions struct {
@@ -890,11 +890,11 @@ type FileStore interface {
 // InstitutionStore persists the institution represented by this installation.
 type InstitutionStore interface {
 	Save(context.Context, *model.Institution) (*model.Institution, error)
-	Get(context.Context, string) (*model.Institution, error)
+	Get(context.Context, model.InstitutionID) (*model.Institution, error)
 	GetSingleton(context.Context) (*model.Institution, error)
 	Update(context.Context, *model.Institution) (*model.Institution, error)
 	UpdateWithAudit(context.Context, *InstitutionUpdate) (*model.Institution, error)
-	Archive(context.Context, string, int64) error
+	Archive(context.Context, model.InstitutionID, int64) error
 }
 
 type InstitutionUpdate struct {
@@ -920,7 +920,7 @@ type AcademicUnitUpdate struct {
 type AcademicUnitArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
-	ID               string
+	ID               model.AcademicUnitID
 	ArchiveAt        int64
 	AuditEventID     string
 	AuditAt          int64
@@ -933,13 +933,13 @@ type AcademicUnitStore interface {
 	UpdateWithAudit(context.Context, *AcademicUnitUpdate) (*model.AcademicUnit, error)
 	ArchiveWithAudit(context.Context, *AcademicUnitArchive) (*model.AcademicUnit, error)
 	Save(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
-	Get(context.Context, string) (*model.AcademicUnit, error)
-	GetByName(context.Context, string, string) (*model.AcademicUnit, error)
-	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
-	ListAncestors(context.Context, string) ([]*model.AcademicUnit, error)
-	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
+	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
+	GetByName(context.Context, model.InstitutionID, string) (*model.AcademicUnit, error)
+	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error)
+	ListAncestors(context.Context, model.AcademicUnitID) ([]*model.AcademicUnit, error)
+	Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error)
 	Update(context.Context, *model.AcademicUnit) (*model.AcademicUnit, error)
-	Archive(context.Context, string, int64) (*model.AcademicUnit, error)
+	Archive(context.Context, model.AcademicUnitID, int64) (*model.AcademicUnit, error)
 }
 
 // ProgrammeStore persists courses of study owned by academic units.
@@ -958,7 +958,7 @@ type ProgrammeUpdate struct {
 type ProgrammeArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
-	ID               string
+	ID               model.ProgrammeID
 	ArchiveAt        int64
 	AuditEventID     string
 	AuditAt          int64
@@ -969,12 +969,12 @@ type ProgrammeStore interface {
 	UpdateWithAudit(context.Context, *ProgrammeUpdate) (*model.Programme, error)
 	ArchiveWithAudit(context.Context, *ProgrammeArchive) (*model.Programme, error)
 	Save(context.Context, *model.Programme) (*model.Programme, error)
-	Get(context.Context, string) (*model.Programme, error)
-	GetByName(context.Context, string, string) (*model.Programme, error)
-	ListByAcademicUnit(context.Context, string) ([]*model.Programme, error)
-	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Programme, error)
+	Get(context.Context, model.ProgrammeID) (*model.Programme, error)
+	GetByName(context.Context, model.AcademicUnitID, string) (*model.Programme, error)
+	ListByAcademicUnit(context.Context, model.AcademicUnitID) ([]*model.Programme, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Programme, error)
 	Update(context.Context, *model.Programme) (*model.Programme, error)
-	Archive(context.Context, string, int64) (*model.Programme, error)
+	Archive(context.Context, model.ProgrammeID, int64) (*model.Programme, error)
 }
 
 // ProgrammeLevelStore persists reusable curriculum stages owned by programmes.
@@ -993,7 +993,7 @@ type ProgrammeLevelUpdate struct {
 type ProgrammeLevelArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
-	ID               string
+	ID               model.ProgrammeLevelID
 	ArchiveAt        int64
 	AuditEventID     string
 	AuditAt          int64
@@ -1004,20 +1004,20 @@ type ProgrammeLevelStore interface {
 	UpdateWithAudit(context.Context, *ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
 	ArchiveWithAudit(context.Context, *ProgrammeLevelArchive) (*model.ProgrammeLevel, error)
 	Save(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
-	Get(context.Context, string) (*model.ProgrammeLevel, error)
-	GetByName(context.Context, string, string) (*model.ProgrammeLevel, error)
-	ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error)
-	SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error)
+	Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error)
+	GetByName(context.Context, model.ProgrammeID, string) (*model.ProgrammeLevel, error)
+	ListByProgramme(context.Context, model.ProgrammeID) ([]*model.ProgrammeLevel, error)
+	SearchByProgramme(context.Context, model.ProgrammeID, string, int) ([]*model.ProgrammeLevel, error)
 	Update(context.Context, *model.ProgrammeLevel) (*model.ProgrammeLevel, error)
-	Archive(context.Context, string, int64) (*model.ProgrammeLevel, error)
+	Archive(context.Context, model.ProgrammeLevelID, int64) (*model.ProgrammeLevel, error)
 }
 
 // AcademicPeriodVisibilityScope constrains list/search to institution-owned
 // periods plus unit-owned periods visible through authorized subtree roots.
 type AcademicPeriodVisibilityScope struct {
-	InstitutionID       string
+	InstitutionID       model.InstitutionID
 	InstitutionWide     bool
-	AcademicUnitRootIDs []string
+	AcademicUnitRootIDs []model.AcademicUnitID
 }
 
 // AcademicPeriodStore persists institution- or Academic-Unit-owned enrollment
@@ -1037,7 +1037,7 @@ type AcademicPeriodUpdate struct {
 type AcademicPeriodArchive struct {
 	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
 	ExpectedRevision int64
-	ID               string
+	ID               model.AcademicPeriodID
 	ArchiveAt        int64
 	AuditEventID     string
 	AuditAt          int64
@@ -1049,11 +1049,11 @@ type AcademicPeriodStore interface {
 	UpdateWithAudit(context.Context, *AcademicPeriodUpdate) (*model.AcademicPeriod, error)
 	ArchiveWithAudit(context.Context, *AcademicPeriodArchive) (*model.AcademicPeriod, error)
 	Save(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
-	Get(context.Context, string) (*model.AcademicPeriod, error)
+	Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error)
 	GetByOwnerName(context.Context, model.Resource, string) (*model.AcademicPeriod, error)
 	ListVisible(context.Context, AcademicPeriodVisibilityScope, string, int) ([]*model.AcademicPeriod, error)
 	Update(context.Context, *model.AcademicPeriod) (*model.AcademicPeriod, error)
-	Archive(context.Context, string, int64) (*model.AcademicPeriod, error)
+	Archive(context.Context, model.AcademicPeriodID, int64) (*model.AcademicPeriod, error)
 }
 
 // ClassStore persists concrete programme-level rosters for academic periods.
@@ -1065,15 +1065,15 @@ type ClassCreation struct {
 
 type ClassUpdate struct {
 	Class                  *model.Class
-	ExpectedAcademicUnitID string
+	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
 	AuditEventID           string
 	AuditAt                int64
 }
 
 type ClassArchive struct {
-	ID                     string
-	ExpectedAcademicUnitID string
+	ID                     model.ClassID
+	ExpectedAcademicUnitID model.AcademicUnitID
 	ExpectedRevision       int64
 	ArchiveAt              int64
 	AuditEventID           string
@@ -1085,14 +1085,14 @@ type ClassStore interface {
 	UpdateWithAudit(context.Context, *ClassUpdate) (*model.Class, error)
 	ArchiveWithAudit(context.Context, *ClassArchive) (*model.Class, error)
 	Save(context.Context, *model.Class) (*model.Class, error)
-	Get(context.Context, string) (*model.Class, error)
-	GetByName(context.Context, string, string, string) (*model.Class, error)
-	ListByProgrammeLevel(context.Context, string) ([]*model.Class, error)
-	ListByAcademicPeriod(context.Context, string) ([]*model.Class, error)
-	SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Class, error)
-	GetAcademicUnitId(context.Context, string) (string, error)
+	Get(context.Context, model.ClassID) (*model.Class, error)
+	GetByName(context.Context, model.ProgrammeLevelID, model.AcademicPeriodID, string) (*model.Class, error)
+	ListByProgrammeLevel(context.Context, model.ProgrammeLevelID) ([]*model.Class, error)
+	ListByAcademicPeriod(context.Context, model.AcademicPeriodID) ([]*model.Class, error)
+	SearchByAcademicUnit(context.Context, model.AcademicUnitID, string, int) ([]*model.Class, error)
+	GetAcademicUnitID(context.Context, model.ClassID) (model.AcademicUnitID, error)
 	Update(context.Context, *model.Class) (*model.Class, error)
-	Archive(context.Context, string, int64) (*model.Class, error)
+	Archive(context.Context, model.ClassID, int64) (*model.Class, error)
 }
 
 // UserListOptions is a bounded persistence query. IncludeDisabled is effective
@@ -1115,14 +1115,14 @@ type UserVisibilityScope struct {
 	// visibility: current Academic Unit membership, Class membership, and
 	// active-Role bindings are visibility anchors.
 	InstitutionWide     bool
-	AcademicUnitRootIDs []string
+	AcademicUnitRootIDs []model.AcademicUnitID
 	// For UserStore directory queries, ClassMemberInstitutionWide,
 	// ClassMemberAcademicUnitRootIDs, and ClassIDs are class.members.view roster
 	// visibility. They expose current Class members only and never Academic Unit
 	// members or Role-Binding holders.
 	ClassMemberInstitutionWide     bool
-	ClassMemberAcademicUnitRootIDs []string
-	ClassIDs                       []string
+	ClassMemberAcademicUnitRootIDs []model.AcademicUnitID
+	ClassIDs                       []model.ClassID
 	// ActiveAt is the UTC microsecond decision time shared with current role
 	// authorization. Visibility anchors include their start and exclude their end.
 	ActiveAt time.Time
@@ -1652,8 +1652,8 @@ type InvitationMaintenanceResult struct {
 // subtrees and ClassIDs name exact Class grants.
 type InvitationVisibilityScope struct {
 	InstitutionWide     bool
-	AcademicUnitRootIDs []string
-	ClassIDs            []string
+	AcademicUnitRootIDs []model.AcademicUnitID
+	ClassIDs            []model.ClassID
 }
 
 // InvitationDeliverySummary is the approved operational projection of the
@@ -2158,7 +2158,7 @@ type AffiliationCreation struct {
 }
 
 type AffiliationEnd struct {
-	ID               string
+	ID               model.AffiliationID
 	ExpectedRevision int64
 	EndAt            int64
 	AuditEventID     string
@@ -2172,10 +2172,10 @@ type AffiliationStore interface {
 	Create(context.Context, *AffiliationCreation) (*model.Affiliation, error)
 	EndWithAudit(context.Context, *AffiliationEnd) (*model.Affiliation, error)
 	Save(context.Context, *model.Affiliation) (*model.Affiliation, error)
-	Get(context.Context, string) (*model.Affiliation, error)
-	ListByUser(context.Context, string) ([]*model.Affiliation, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.Affiliation, error)
-	End(context.Context, string, int64, int64) (*model.Affiliation, error)
+	Get(context.Context, model.AffiliationID) (*model.Affiliation, error)
+	ListByUser(context.Context, model.UserID) ([]*model.Affiliation, error)
+	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.Affiliation, error)
+	End(context.Context, model.AffiliationID, int64, int64) (*model.Affiliation, error)
 }
 
 // AcademicUnitMemberStore persists organizational membership without roles.
@@ -2191,7 +2191,7 @@ type AcademicUnitMemberCreation struct {
 }
 
 type AcademicUnitMemberEnd struct {
-	ID                        string
+	ID                        model.AcademicUnitMemberID
 	ExpectedRevision          int64
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
@@ -2207,14 +2207,14 @@ type AcademicUnitMemberStore interface {
 	Create(context.Context, *AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
 	EndWithAudit(context.Context, *AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 	Save(context.Context, *model.AcademicUnitMember) (*model.AcademicUnitMember, error)
-	Get(context.Context, string) (*model.AcademicUnitMember, error)
-	ListByUser(context.Context, string) ([]*model.AcademicUnitMember, error)
-	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	Get(context.Context, model.AcademicUnitMemberID) (*model.AcademicUnitMember, error)
+	ListByUser(context.Context, model.UserID) ([]*model.AcademicUnitMember, error)
+	ListByAcademicUnit(context.Context, model.AcademicUnitID, int64) ([]*model.AcademicUnitMember, error)
 	ListPageByAcademicUnit(context.Context, AcademicUnitMemberPageOptions) (*AcademicUnitMemberPage, error)
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived memberships are excluded; no active memberships is an empty list.
-	ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)
-	End(context.Context, string, int64, int64) (*model.AcademicUnitMember, error)
+	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error)
+	End(context.Context, model.AcademicUnitMemberID, int64, int64) (*model.AcademicUnitMember, error)
 }
 
 type ClassEnrollmentResult struct {
@@ -2242,7 +2242,7 @@ type ClassMemberEnrollment struct {
 }
 
 type ClassMemberEnd struct {
-	ID                        string
+	ID                        model.ClassMemberID
 	ExpectedRevision          int64
 	ExpectedRecipientRevision int64
 	EndAt                     int64
@@ -2259,12 +2259,12 @@ type ClassMemberStore interface {
 	EnrollWithAudit(context.Context, *ClassMemberEnrollment) (*ClassEnrollmentResult, error)
 	EndWithAudit(context.Context, *ClassMemberEnd) (*model.ClassMember, error)
 	Enroll(context.Context, *model.ClassMember) (*ClassEnrollmentResult, error)
-	Get(context.Context, string) (*model.ClassMember, error)
-	ListByUser(context.Context, string) ([]*model.ClassMember, error)
-	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
+	Get(context.Context, model.ClassMemberID) (*model.ClassMember, error)
+	ListByUser(context.Context, model.UserID) ([]*model.ClassMember, error)
+	ListByClass(context.Context, model.ClassID, int64) ([]*model.ClassMember, error)
 	ListPageByClass(context.Context, ClassMemberPageOptions) (*ClassMemberPage, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
-	End(context.Context, string, int64, int64) (*model.ClassMember, error)
+	ListActiveByUser(context.Context, model.UserID, int64) ([]*model.ClassMember, error)
+	End(context.Context, model.ClassMemberID, int64, int64) (*model.ClassMember, error)
 }
 
 // PasswordCredentialStore persists one encoded password hash per local user.
@@ -2571,7 +2571,7 @@ type AuditListOptions struct {
 type AuditVisibilityScope struct {
 	InstitutionWide         bool
 	AcademicInstitutionWide bool
-	AcademicUnitRootIDs     []string
+	AcademicUnitRootIDs     []model.AcademicUnitID
 	AllowedActions          []string
 }
 

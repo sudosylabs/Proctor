@@ -97,12 +97,12 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	if addedLater.Exam.Revision != 5 {
 		t.Fatalf("later Manager = %#v", addedLater)
 	}
-	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID.String(), at.Add(8*time.Minute))
+	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID, at.Add(8*time.Minute))
 	requireNoError(t, err)
 	if len(memberships) != 1 {
 		t.Fatalf("later memberships = %#v", memberships)
 	}
-	_, err = ss.AcademicUnitMember().End(ctx, memberships[0].ID.String(), memberships[0].Revision, model.MillisFromTime(memberships[0].CreatedAt.Add(time.Millisecond)))
+	_, err = ss.AcademicUnitMember().End(ctx, memberships[0].ID, memberships[0].Revision, model.MillisFromTime(memberships[0].CreatedAt.Add(time.Millisecond)))
 	requireNoError(t, err)
 	_, err = ss.ExamAuthoring().TransferOwner(ctx, newExamManagerMutation(t, ctx, ss, examID, target.ID, later.ID, 5, at.Add(9*time.Minute), false), examCommand(target.ID, "exam.owner.transfer.v1", "ineligible-transfer", "ineligible-transfer-command"))
 	assertExamManagerConflict(t, err, "exam_manager_ineligible")

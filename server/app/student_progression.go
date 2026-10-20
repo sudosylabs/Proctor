@@ -79,14 +79,14 @@ func (a *App) StudentProgressionReport(ctx context.Context, invocation Invocatio
 }
 
 func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
-	sourcePeriodID, sourceClassID := strings.TrimSpace(command.SourcePeriodID), strings.TrimSpace(command.SourceClassID)
-	destinationPeriodID, destinationClassID := strings.TrimSpace(command.DestinationPeriodID), strings.TrimSpace(command.DestinationClassID)
-	if !model.IsValidId(sourcePeriodID) || !model.IsValidId(sourceClassID) || !model.IsValidId(destinationPeriodID) || !model.IsValidId(destinationClassID) ||
+	sourcePeriodID, sourceClassID := model.AcademicPeriodID(strings.TrimSpace(command.SourcePeriodID)), model.ClassID(strings.TrimSpace(command.SourceClassID))
+	destinationPeriodID, destinationClassID := model.AcademicPeriodID(strings.TrimSpace(command.DestinationPeriodID)), model.ClassID(strings.TrimSpace(command.DestinationClassID))
+	if !sourcePeriodID.IsValid() || !sourceClassID.IsValid() || !destinationPeriodID.IsValid() || !destinationClassID.IsValid() ||
 		sourceClassID == destinationClassID || command.EffectiveAt <= 0 {
 		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
-	for _, classID := range []string{sourceClassID, destinationClassID} {
-		resource := model.Resource{Type: model.ResourceClass, ID: classID}
+	for _, classID := range []model.ClassID{sourceClassID, destinationClassID} {
+		resource := model.Resource{Type: model.ResourceClass, ID: classID.String()}
 		for _, action := range []model.Action{model.ActionAcademicProgressionManage, model.ActionClassMembersManage} {
 			if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
 				return OnboardingImportView{}, err
@@ -112,11 +112,11 @@ func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocat
 	if sourceClass.AcademicPeriodID != sourcePeriod.ID || destinationClass.AcademicPeriodID != destinationPeriod.ID || sourceClass.IsArchived() || destinationClass.IsArchived() {
 		return OnboardingImportView{}, apperror.New("student_progression.target_conflict")
 	}
-	sourceLevel, err := s.levels.Get(ctx, sourceClass.ProgrammeLevelID.String())
+	sourceLevel, err := s.levels.Get(ctx, sourceClass.ProgrammeLevelID)
 	if err != nil {
 		return OnboardingImportView{}, studentProgressionError(err)
 	}
-	destinationLevel, err := s.levels.Get(ctx, destinationClass.ProgrammeLevelID.String())
+	destinationLevel, err := s.levels.Get(ctx, destinationClass.ProgrammeLevelID)
 	if err != nil {
 		return OnboardingImportView{}, studentProgressionError(err)
 	}
@@ -201,28 +201,28 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 			}
 		}
 	}
-	sourcePeriod, err := s.periods.Get(ctx, current.SourcePeriodID.String())
+	sourcePeriod, err := s.periods.Get(ctx, current.SourcePeriodID)
 	if err != nil {
 		return err
 	}
 	if sourcePeriod.Revision != current.SourcePeriodRevision {
 		return apperror.New("student_progression.target_conflict")
 	}
-	destinationPeriod, err := s.periods.Get(ctx, current.DestinationPeriodID.String())
+	destinationPeriod, err := s.periods.Get(ctx, current.DestinationPeriodID)
 	if err != nil {
 		return err
 	}
 	if destinationPeriod.Revision != current.DestinationPeriodRevision {
 		return apperror.New("student_progression.target_conflict")
 	}
-	sourceClass, err := s.classes.Get(ctx, current.SourceClassID.String())
+	sourceClass, err := s.classes.Get(ctx, current.SourceClassID)
 	if err != nil {
 		return err
 	}
 	if sourceClass.Revision != current.SourceClassRevision {
 		return apperror.New("student_progression.target_conflict")
 	}
-	destinationClass, err := s.classes.Get(ctx, current.DestinationClassID.String())
+	destinationClass, err := s.classes.Get(ctx, current.DestinationClassID)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 			rows = append(rows, row)
 			continue
 		}
-		affiliations, affiliationErr := s.affiliations.ListActiveByUser(ctx, member.UserID.String(), current.EffectiveAt.UnixMilli())
+		affiliations, affiliationErr := s.affiliations.ListActiveByUser(ctx, member.UserID, current.EffectiveAt.UnixMilli())
 		if affiliationErr != nil {
 			return affiliationErr
 		}
@@ -271,7 +271,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 			rows = append(rows, row)
 			continue
 		}
-		active, activeErr := s.classMembers.ListActiveByUser(ctx, member.UserID.String(), current.EffectiveAt.UnixMilli())
+		active, activeErr := s.classMembers.ListActiveByUser(ctx, member.UserID, current.EffectiveAt.UnixMilli())
 		if activeErr != nil {
 			return activeErr
 		}

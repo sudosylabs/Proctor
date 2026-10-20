@@ -135,7 +135,7 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
 	if !academic.InstitutionWide && len(academic.AcademicUnitRootIDs) > 0 {
-		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: academic.AcademicUnitRootIDs[0]}
+		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: academic.AcademicUnitRootIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeAcademicUnit, resource.ID
 	}
 	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, model.ActionAcademicAuditView, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
@@ -146,7 +146,7 @@ func (a auditListingAuthorization) AuthorizeView(ctx context.Context, invocation
 	}
 	return store.AuditVisibilityScope{
 		AcademicInstitutionWide: academic.InstitutionWide,
-		AcademicUnitRootIDs:     append([]string(nil), academic.AcademicUnitRootIDs...),
+		AcademicUnitRootIDs:     append([]model.AcademicUnitID(nil), academic.AcademicUnitRootIDs...),
 		AllowedActions:          academicAuditActions(),
 	}, nil
 }

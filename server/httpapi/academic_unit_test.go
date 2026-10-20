@@ -51,7 +51,7 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 	invocation application.Invocation,
 	query application.GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
-	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID.String() {
+	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID {
 		return nil, apperror.New("request.invalid")
 	}
 	if a.getErr != nil {
@@ -314,7 +314,7 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 			}
 			wantCommand := application.CreateAcademicUnitCommand{
-				ParentID: tt.wantParentID, Name: "computing",
+				ParentID: model.AcademicUnitID(tt.wantParentID), Name: "computing",
 				DisplayName: "Computing", Description: "School",
 			}
 			if fakeApplication.createCommand != wantCommand {
@@ -374,7 +374,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	if patchResponse.Code != http.StatusOK {
 		t.Fatalf("patch status = %d: %s", patchResponse.Code, patchResponse.Body.String())
 	}
-	if fakeApplication.updateCommand.ID != unit.ID.String() ||
+	if fakeApplication.updateCommand.ID != unit.ID ||
 		fakeApplication.updateCommand.ParentID == nil ||
 		*fakeApplication.updateCommand.ParentID != parentID ||
 		fakeApplication.updateCommand.Name == nil ||
@@ -394,7 +394,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	if archiveResponse.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("archive cache control = %q", archiveResponse.Header().Get("Cache-Control"))
 	}
-	if fakeApplication.archiveCommand.ID != unit.ID.String() {
+	if fakeApplication.archiveCommand.ID != unit.ID {
 		t.Fatalf("archive command = %#v", fakeApplication.archiveCommand)
 	}
 }

@@ -197,35 +197,25 @@ func (s SQLAcademicUnitMemberStore) Save(
 	})
 }
 
-func (s SQLAcademicUnitMemberStore) Get(
-	ctx context.Context,
-	id string,
-) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) Get(ctx context.Context, id model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
 		"academic_unit_members.id":          id,
 		"academic_unit_members.archived_at": nil,
 	})); err != nil {
-		return nil, translateError("academic_unit_member", id, err)
+		return nil, translateError("academic_unit_member", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLAcademicUnitMemberStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.AcademicUnitMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"academic_unit_members.user_id":     userID,
 		"academic_unit_members.archived_at": nil,
 	}).OrderBy("academic_unit_members.start_at DESC", "academic_unit_members.id"))
 }
 
-func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(
-	ctx context.Context,
-	unitID string,
-	at int64,
-) ([]*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, unitID model.AcademicUnitID, at int64) ([]*model.AcademicUnitMember, error) {
 	query := s.query.Where(sq.Eq{
 		"academic_unit_members.academic_unit_id": unitID,
 		"academic_unit_members.archived_at":      nil,
@@ -238,11 +228,7 @@ func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(
 	return s.selectMembers(ctx, query.OrderBy("academic_unit_members.user_id", "academic_unit_members.id"))
 }
 
-func (s SQLAcademicUnitMemberStore) ListActiveByUser(
-	ctx context.Context,
-	userID string,
-	at time.Time,
-) ([]*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	activeAt := model.TimeUTC(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"academic_unit_members.user_id":     userID,
@@ -252,13 +238,8 @@ func (s SQLAcademicUnitMemberStore) ListActiveByUser(
 		OrderBy("academic_unit_members.academic_unit_id", "academic_unit_members.id"))
 }
 
-func (s SQLAcademicUnitMemberStore) End(
-	ctx context.Context,
-	id string,
-	expectedRevision int64,
-	endAt int64,
-) (*model.AcademicUnitMember, error) {
-	if !model.IsValidId(id) || expectedRevision <= 0 || endAt <= 0 {
+func (s SQLAcademicUnitMemberStore) End(ctx context.Context, id model.AcademicUnitMemberID, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+	if !id.IsValid() || expectedRevision <= 0 || endAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic unit member end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicUnitMember, error) {
@@ -270,7 +251,7 @@ func (s SQLAcademicUnitMemberStore) End(
 }
 
 func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*academicUnitMemberMutationResult, error) {
@@ -390,25 +371,25 @@ func decodeAcademicUnitMemberMutationOutcome(version int, data []byte) (*academi
 	return &academicUnitMemberMutationResult{Value: &model.AcademicUnitMember{ID: id}, NoOp: outcome.NoOp}, nil
 }
 func (s SQLAcademicUnitMemberStore) hydrateAcademicUnitMemberMutationOutcome(ctx context.Context, tx *sqlxTxWrapper, value *academicUnitMemberMutationResult) (*academicUnitMemberMutationResult, error) {
-	hydrated, err := s.getAcademicUnitMemberInTransaction(ctx, tx, value.Value.ID.String())
+	hydrated, err := s.getAcademicUnitMemberInTransaction(ctx, tx, value.Value.ID)
 	if err != nil {
 		return nil, err
 	}
 	value.Value = hydrated
 	return value, nil
 }
-func (s SQLAcademicUnitMemberStore) getAcademicUnitMemberInTransaction(ctx context.Context, tx sqlxExecutor, id string) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) getAcademicUnitMemberInTransaction(ctx context.Context, tx sqlxExecutor, id model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
-		return nil, translateError("academic_unit_member", id, err)
+		return nil, translateError("academic_unit_member", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id string, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
+func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, tx sqlxExecutor, id model.AcademicUnitMemberID, expectedRevision, endAt int64) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := tx.GetBuilder(ctx, &row, s.query.Where(sq.Eq{"academic_unit_members.id": id, "academic_unit_members.archived_at": nil})); err != nil {
-		return nil, translateError("academic_unit_member", id, err)
+		return nil, translateError("academic_unit_member", id.String(), err)
 	}
 	current, err := row.model()
 	if err != nil {
@@ -427,7 +408,7 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 	if err != nil {
 		return nil, fmt.Errorf("end academic unit member: %w", err)
 	}
-	if err := requireAffected(result, "academic_unit_member", id); err != nil {
+	if err = requireAffected(result, "academic_unit_member", id.String()); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=?,end_at=?

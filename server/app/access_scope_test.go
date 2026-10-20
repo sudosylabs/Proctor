@@ -78,7 +78,7 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() || len(resolved.academicUnitID) != 2 {
+	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID || len(resolved.academicUnitID) != 2 {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	if scope, id := authorizationAuditScope(model.Resource{Type: model.ResourceExam, ID: examID.String()}, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
@@ -113,7 +113,7 @@ func TestAccessScopeResolverMapsAcademicPeriodOwnerScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() || len(resolved.academicUnitID) != 2 {
+	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID || len(resolved.academicUnitID) != 2 {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
@@ -159,8 +159,8 @@ func TestAccessScopeResolverMapsProgrammeAndLevelToOwningSubtree(t *testing.T) {
 		if resolveErr != nil {
 			t.Fatalf("resolve %s: %v", resource.Type, resolveErr)
 		}
-		if resolved.institutionID != institutionID.String() ||
-			resolved.targetAcademicUnitID != unitID.String() ||
+		if resolved.institutionID != institutionID ||
+			resolved.targetAcademicUnitID != unitID ||
 			len(resolved.academicUnitID) != 2 {
 			t.Fatalf("resolved %s = %#v", resource.Type, resolved)
 		}
@@ -177,12 +177,12 @@ type accessAcademicPeriodStoreFake struct {
 	err     error
 }
 
-func (s *accessAcademicPeriodStoreFake) Get(_ context.Context, id string) (*model.AcademicPeriod, error) {
+func (s *accessAcademicPeriodStoreFake) Get(_ context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	s.gets++
 	if s.err != nil {
 		return nil, s.err
 	}
-	if period := s.periods[id]; period != nil {
+	if period := s.periods[id.String()]; period != nil {
 		return period, nil
 	}
 	if s.period == nil {
@@ -374,7 +374,7 @@ func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() {
+	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
@@ -408,7 +408,7 @@ func TestAccessScopeResolverMapsSubmissionToOwningAcademicUnit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.institutionID != institutionID.String() || resolved.targetAcademicUnitID != unitID.String() ||
+	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID ||
 		len(resolved.academicUnitID) != 1 {
 		t.Fatalf("resolved = %#v", resolved)
 	}
@@ -610,7 +610,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(query.AcademicUnitRootIDs) != 1 || query.AcademicUnitRootIDs[0] != childID.String() || query.InstitutionWide {
+	if len(query.AcademicUnitRootIDs) != 1 || query.AcademicUnitRootIDs[0] != childID || query.InstitutionWide {
 		t.Fatalf("query = %#v", query)
 	}
 	principal.CredentialScopes = []string{string(model.ActionClassView)}
@@ -675,7 +675,7 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 		t.Fatal(err)
 	}
 	if visibility.InstitutionWide || !visibility.ClassMemberInstitutionWide ||
-		!reflect.DeepEqual(visibility.AcademicUnitRootIDs, []string{unitID.String()}) ||
+		!reflect.DeepEqual(visibility.AcademicUnitRootIDs, []model.AcademicUnitID{unitID}) ||
 		len(visibility.ClassMemberAcademicUnitRootIDs) != 0 || len(visibility.ClassIDs) != 0 ||
 		!visibility.ActiveAt.Equal(model.TimeUTC(now)) {
 		t.Fatalf("user visibility = %#v", visibility)
@@ -890,7 +890,7 @@ type accessInstitutionStoreFake struct {
 	err         error
 }
 
-func (s *accessInstitutionStoreFake) Get(context.Context, string) (*model.Institution, error) {
+func (s *accessInstitutionStoreFake) Get(context.Context, model.InstitutionID) (*model.Institution, error) {
 	return s.institution, s.err
 }
 func (s *accessInstitutionStoreFake) GetSingleton(context.Context) (*model.Institution, error) {
@@ -904,9 +904,9 @@ type accessAcademicUnitStoreFake struct {
 	err           error
 }
 
-func (s *accessAcademicUnitStoreFake) ListAncestors(_ context.Context, id string) ([]*model.AcademicUnit, error) {
+func (s *accessAcademicUnitStoreFake) ListAncestors(_ context.Context, id model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	s.listAncestors++
-	return s.ancestors[id], s.err
+	return s.ancestors[id.String()], s.err
 }
 
 type accessClassStoreFake struct {
@@ -914,7 +914,7 @@ type accessClassStoreFake struct {
 	gets int
 }
 
-func (s *accessClassStoreFake) Get(context.Context, string) (*model.Class, error) {
+func (s *accessClassStoreFake) Get(context.Context, model.ClassID) (*model.Class, error) {
 	s.gets++
 	return nil, store.NewErrNotFound("class", "")
 }
@@ -924,7 +924,7 @@ type accessProgrammeStoreFake struct {
 	programme *model.Programme
 }
 
-func (s *accessProgrammeStoreFake) Get(context.Context, string) (*model.Programme, error) {
+func (s *accessProgrammeStoreFake) Get(context.Context, model.ProgrammeID) (*model.Programme, error) {
 	if s.programme == nil {
 		return nil, store.NewErrNotFound("programme", "")
 	}
@@ -936,7 +936,7 @@ type accessProgrammeLevelStoreFake struct {
 	level *model.ProgrammeLevel
 }
 
-func (s *accessProgrammeLevelStoreFake) Get(context.Context, string) (*model.ProgrammeLevel, error) {
+func (s *accessProgrammeLevelStoreFake) Get(context.Context, model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	if s.level == nil {
 		return nil, store.NewErrNotFound("programme_level", "")
 	}

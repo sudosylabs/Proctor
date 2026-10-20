@@ -313,10 +313,10 @@ func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocat
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	scopeType, scopeID := model.RoleScopeInstitution, institution.ID.String()
 	if len(constraint.AcademicUnitRootIDs) > 0 {
-		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: constraint.AcademicUnitRootIDs[0]}
+		resource = model.Resource{Type: model.ResourceAcademicUnit, ID: constraint.AcademicUnitRootIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeAcademicUnit, resource.ID
 	} else if len(constraint.ClassIDs) > 0 {
-		resource = model.Resource{Type: model.ResourceClass, ID: constraint.ClassIDs[0]}
+		resource = model.Resource{Type: model.ResourceClass, ID: constraint.ClassIDs[0].String()}
 		scopeType, scopeID = model.RoleScopeClass, resource.ID
 	}
 	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource, scopeType, scopeID, invocation.RequestMetadata(), allowed); err != nil {
@@ -327,8 +327,8 @@ func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocat
 	}
 	return store.UserVisibilityScope{
 		InstitutionWide:     constraint.InstitutionWide,
-		AcademicUnitRootIDs: append([]string(nil), constraint.AcademicUnitRootIDs...),
-		ClassIDs:            append([]string(nil), constraint.ClassIDs...),
+		AcademicUnitRootIDs: append([]model.AcademicUnitID(nil), constraint.AcademicUnitRootIDs...),
+		ClassIDs:            append([]model.ClassID(nil), constraint.ClassIDs...),
 	}, nil
 }
 

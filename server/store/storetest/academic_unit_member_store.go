@@ -29,12 +29,12 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
-	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID.String(), start+1)
+	active, err := ss.AcademicUnitMember().ListByAcademicUnit(ctx, unit.ID, start+1)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].ID != saved.ID {
 		t.Fatalf("ListByAcademicUnit() = %#v", active)
 	}
-	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+1))
+	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
 	requireNoError(t, err)
 	if len(byUser) != 1 || byUser[0].AcademicUnitID != unit.ID {
 		t.Fatalf("ListActiveByUser() = %#v", byUser)
@@ -46,12 +46,12 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if !errors.As(err, &conflict) {
 		t.Fatalf("duplicate active membership error = %v", err)
 	}
-	ended, err := ss.AcademicUnitMember().End(ctx, saved.ID.String(), saved.Revision, start+10)
+	ended, err := ss.AcademicUnitMember().End(ctx, saved.ID, saved.Revision, start+10)
 	requireNoError(t, err)
 	if ended.EndsAt.Millis() != start+10 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.ID.String())
+	history, err := ss.AcademicUnitMember().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(history) != 1 || !history[0].EndsAt.Valid {
 		t.Fatalf("ListByUser() = %#v", history)
@@ -75,7 +75,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	endAt := model.TimeFromMillis(start + 20)
 	endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: auditedUser.ID},
 		model.MailTemplateAcademicUnitAssignmentEnded, endAt)
-	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID.String(),
+	endedAudited, err := ss.AcademicUnitMember().EndWithAudit(ctx, &store.AcademicUnitMemberEnd{ID: created.ID,
 		ExpectedRevision: created.Revision, ExpectedRecipientRevision: auditedUser.Revision, Notice: endNotice,
 		EndAt: start + 20, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
@@ -83,7 +83,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if endedAudited.Revision != created.Revision+1 {
 		t.Fatalf("EndWithAudit() = %#v", endedAudited)
 	}
-	if _, err := ss.AcademicUnitMember().End(ctx, created.ID.String(), created.Revision, start+21); !store.IsConflict(err) {
+	if _, err := ss.AcademicUnitMember().End(ctx, created.ID, created.Revision, start+21); !store.IsConflict(err) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 }
@@ -112,7 +112,7 @@ func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store)
 		{"after end in same millisecond", end.Add(time.Microsecond), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			active, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), test.at)
+			active, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID, test.at)
 			requireNoError(t, err)
 			if test.active {
 				if len(active) != 1 || active[0].ID != member.ID {

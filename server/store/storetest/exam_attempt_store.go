@@ -395,7 +395,7 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	}
 
 	endedAt := model.GetMillis()
-	endedMembership, err := ss.ClassMember().End(ctx, fixture.membership.ID.String(), fixture.membership.Revision, endedAt)
+	endedMembership, err := ss.ClassMember().End(ctx, fixture.membership.ID, fixture.membership.Revision, endedAt)
 	requireNoError(t, err)
 	// Membership timestamps have millisecond precision while PostgreSQL decides
 	// current eligibility with a higher-precision clock. Cross the millisecond

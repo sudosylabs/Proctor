@@ -153,7 +153,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		strings.Contains(jsonBatch.Body.String(), jsonBatchUser.Email) {
 		t.Fatalf("academic JSON batch = %d: %s", jsonBatch.Code, jsonBatch.Body.String())
 	}
-	jsonAffiliations, err := persistence.Affiliation().ListByUser(context.Background(), jsonBatchUser.ID.String())
+	jsonAffiliations, err := persistence.Affiliation().ListByUser(context.Background(), jsonBatchUser.ID)
 	if err != nil || len(jsonAffiliations) != 1 || jsonAffiliations[0].Kind != model.AffiliationStaff {
 		t.Fatalf("JSON batch affiliations = %#v, %v", jsonAffiliations, err)
 	}
@@ -189,7 +189,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		strings.Contains(csvReport.Body.String(), csvBatchUser.Email) || csvReport.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("academic CSV report = %d %q headers=%v", csvReport.Code, csvReport.Body.String(), csvReport.Header())
 	}
-	csvAffiliations, err := persistence.Affiliation().ListByUser(context.Background(), csvBatchUser.ID.String())
+	csvAffiliations, err := persistence.Affiliation().ListByUser(context.Background(), csvBatchUser.ID)
 	if err != nil || len(csvAffiliations) != 1 || csvAffiliations[0].Kind != model.AffiliationStaff {
 		t.Fatalf("CSV batch affiliations = %#v, %v", csvAffiliations, err)
 	}
@@ -301,7 +301,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		strings.Contains(progressionReport.Body.String(), student.Email) || progressionReport.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("progression report = %d %q headers=%v", progressionReport.Code, progressionReport.Body.String(), progressionReport.Header())
 	}
-	progressionHistory, err := persistence.ClassMember().ListByUser(context.Background(), student.ID.String())
+	progressionHistory, err := persistence.ClassMember().ListByUser(context.Background(), student.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

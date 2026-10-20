@@ -18,13 +18,13 @@ import (
 
 // GetAcademicUnitQuery identifies one academic unit to retrieve.
 type GetAcademicUnitQuery struct {
-	ID string
+	ID model.AcademicUnitID
 }
 
 // ListAcademicUnitsQuery lists direct children of a parent unit. An empty
 // ParentID lists root units of the installation institution.
 type ListAcademicUnitsQuery struct {
-	ParentID string
+	ParentID model.AcademicUnitID
 }
 
 // SearchAcademicUnitsQuery searches academic units by name within the
@@ -143,9 +143,9 @@ type academicUnitQueryService struct {
 }
 
 type academicUnitReader interface {
-	Get(context.Context, string) (*model.AcademicUnit, error)
-	ListChildren(context.Context, string, string) ([]*model.AcademicUnit, error)
-	Search(context.Context, string, string, int) ([]*model.AcademicUnit, error)
+	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
+	ListChildren(context.Context, model.InstitutionID, model.AcademicUnitID) ([]*model.AcademicUnit, error)
+	Search(context.Context, model.InstitutionID, string, int) ([]*model.AcademicUnit, error)
 }
 
 func newAcademicUnitQueryService(
@@ -172,11 +172,11 @@ func (s *academicUnitQueryService) Get(
 	invocation Invocation,
 	query GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
-	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: id}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: id.String()}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionAcademicUnitView, resource,
 	); err != nil {
@@ -204,12 +204,12 @@ func (s *academicUnitQueryService) List(
 	invocation Invocation,
 	query ListAcademicUnitsQuery,
 ) ([]*model.AcademicUnit, error) {
-	parentID := strings.TrimSpace(query.ParentID)
-	if parentID != "" && !model.IsValidId(parentID) {
+	parentID := query.ParentID
+	if parentID != "" && !parentID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "parent_id")
 	}
 	if parentID != "" {
-		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
+		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID.String()}
 		if err := s.authorization.Authorize(
 			ctx, invocation, model.ActionAcademicUnitView, resource,
 		); err != nil {
@@ -233,7 +233,7 @@ func (s *academicUnitQueryService) List(
 			return nil, err
 		}
 	}
-	units, err := s.academicUnits.ListChildren(ctx, institution.ID, parentID)
+	units, err := s.academicUnits.ListChildren(ctx, model.InstitutionID(institution.ID), parentID)
 	if err != nil {
 		return nil, academicUnitStoreErrors.Translate(err)
 	}
@@ -263,7 +263,7 @@ func (s *academicUnitQueryService) Search(
 	}
 	units, err := s.academicUnits.Search(
 		ctx,
-		institution.ID,
+		model.InstitutionID(institution.ID),
 		strings.TrimSpace(query.Query),
 		normalizeAdministrationLimit(query.Limit),
 	)

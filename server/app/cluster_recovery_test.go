@@ -382,9 +382,9 @@ func (s *recoveryAuthorizationStore) Close() error                              
 type recoveryInstitutionStore struct{ root *recoveryAuthorizationStore }
 type recoveryAuditStore struct{ store.AuditStore }
 
-func (s recoveryInstitutionStore) Get(_ context.Context, id string) (*model.Institution, error) {
-	if s.root.institution == nil || s.root.institution.ID.String() != id {
-		return nil, store.NewErrNotFound("institution", id)
+func (s recoveryInstitutionStore) Get(_ context.Context, id model.InstitutionID) (*model.Institution, error) {
+	if s.root.institution == nil || s.root.institution.ID != id {
+		return nil, store.NewErrNotFound("institution", id.String())
 	}
 	cloned := *s.root.institution
 	return &cloned, nil
@@ -401,7 +401,7 @@ func (recoveryInstitutionStore) Update(context.Context, *model.Institution) (*mo
 func (recoveryInstitutionStore) UpdateWithAudit(context.Context, *store.InstitutionUpdate) (*model.Institution, error) {
 	return nil, errors.New("unused")
 }
-func (recoveryInstitutionStore) Archive(context.Context, string, int64) error {
+func (recoveryInstitutionStore) Archive(context.Context, model.InstitutionID, int64) error {
 	return errors.New("unused")
 }
 

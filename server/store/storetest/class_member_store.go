@@ -66,22 +66,22 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 		transfer.Previous.Revision != first.Membership.Revision+1 {
 		t.Fatalf("transfer Enroll() = %#v", transfer)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+11)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+11)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].ID != transfer.Membership.ID {
 		t.Fatalf("ListActiveByUser() = %#v", active)
 	}
-	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
+	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(history) != 2 {
 		t.Fatalf("ListByUser() = %#v", history)
 	}
-	ended, err := ss.ClassMember().End(ctx, transfer.Membership.ID.String(), transfer.Membership.Revision, start+20)
+	ended, err := ss.ClassMember().End(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+20)
 	requireNoError(t, err)
 	if ended.EndsAt.Millis() != start+20 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	if _, err := ss.ClassMember().End(ctx, transfer.Membership.ID.String(), transfer.Membership.Revision, start+21); !store.IsConflict(err) {
+	if _, err = ss.ClassMember().End(ctx, transfer.Membership.ID, transfer.Membership.Revision, start+21); !store.IsConflict(err) {
 		t.Fatalf("stale End() error = %v", err)
 	}
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{
@@ -145,7 +145,7 @@ func testAuditedClassMemberLifecycle(
 	}); err == nil {
 		t.Fatal("transfer succeeded without its audit attempt")
 	}
-	unchanged, err := ss.ClassMember().Get(ctx, created.Membership.ID.String())
+	unchanged, err := ss.ClassMember().Get(ctx, created.Membership.ID)
 	requireNoError(t, err)
 	if unchanged.EndsAt.Valid || unchanged.Revision != created.Membership.Revision {
 		t.Fatalf("prior enrollment close survived transfer audit rollback: %#v", unchanged)
@@ -219,7 +219,7 @@ func testAuditedClassMemberLifecycle(
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplayDestination.ID.String())
 	requireClassMemberDuplicateAudit(t, ctx, ss, duplicateReplaySource.ID.String())
 
-	history, err := ss.ClassMember().ListByUser(ctx, user.ID.String())
+	history, err := ss.ClassMember().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(history) != 2 || history[1].ID != created.Membership.ID ||
 		history[1].EndsAt.Millis() != model.MillisFromTime(second.StartsAt) || history[1].Revision != 2 {
@@ -229,7 +229,7 @@ func testAuditedClassMemberLifecycle(
 	endAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	endNotice := classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+30))
 	ended, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
-		ID: transferred.Membership.ID.String(), ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
+		ID: transferred.Membership.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
 		EndAt: start + 30, Notice: endNotice, AuditEventID: endAttempt.ID.String(), AuditAt: model.GetMillis(),
 	})
 	requireNoError(t, err)
@@ -241,7 +241,7 @@ func testAuditedClassMemberLifecycle(
 
 	staleAttempt := saveClassMemberAuditAttempt(t, ctx, ss, secondClass.ID.String())
 	if _, err := ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
-		ID: ended.ID.String(), ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
+		ID: ended.ID, ExpectedRevision: transferred.Membership.Revision, ExpectedRecipientRevision: user.Revision,
 		EndAt:        start + 31,
 		Notice:       classMemberPreparedMail(t, transferred.Membership, model.MailTemplateAcademicClassEnrollmentEnded, model.TimeFromMillis(start+31)),
 		AuditEventID: staleAttempt.ID.String(), AuditAt: model.GetMillis(),
@@ -264,7 +264,7 @@ func testAuditedClassMemberLifecycle(
 	}); err == nil {
 		t.Fatal("EnrollWithAudit() succeeded without its audit attempt")
 	}
-	if _, err := ss.ClassMember().Get(ctx, rolledBack.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.ClassMember().Get(ctx, rolledBack.ID); !store.IsNotFound(err) {
 		t.Fatalf("enrollment survived audit rollback: %v", err)
 	}
 
@@ -312,7 +312,7 @@ func testAuditedClassMemberLifecycle(
 	}); !store.IsConflict(err) {
 		t.Fatalf("queued notice raced recipient disable error=%v", err)
 	}
-	if _, err = ss.ClassMember().Get(ctx, staleQueuedMember.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.ClassMember().Get(ctx, staleQueuedMember.ID); !store.IsNotFound(err) {
 		t.Fatalf("recipient-disable race committed membership: %v", err)
 	}
 	ineligibleMember := &model.ClassMember{ClassID: firstClass.ID, AcademicPeriodID: firstClass.AcademicPeriodID,
@@ -342,7 +342,7 @@ func testAuditedClassMemberLifecycle(
 	}))
 	requireNoError(t, err)
 	if _, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{
-		ID: ineligibleMember.ID.String(), ExpectedRevision: ineligibleMember.Revision,
+		ID: ineligibleMember.ID, ExpectedRevision: ineligibleMember.Revision,
 		ExpectedRecipientRevision: disabledRecipientRevision, EndAt: staleEndAt, Notice: staleEndNotice,
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, firstClass.ID.String()).ID.String(), AuditAt: model.GetMillis(),
 	}); !store.IsConflict(err) {
@@ -351,7 +351,7 @@ func testAuditedClassMemberLifecycle(
 	if enabledResult.User.Revision == disabledRecipientRevision {
 		t.Fatal("recipient enable did not advance User revision")
 	}
-	unchangedAfterEnable, err := ss.ClassMember().Get(ctx, ineligibleMember.ID.String())
+	unchangedAfterEnable, err := ss.ClassMember().Get(ctx, ineligibleMember.ID)
 	requireNoError(t, err)
 	if unchangedAfterEnable.EndsAt.Valid {
 		t.Fatalf("recipient-enable race ended membership: %#v", unchangedAfterEnable)
@@ -414,7 +414,7 @@ func testDistinctPeriodClassMemberEnrollment(t *testing.T, ss store.Store, first
 	if next.Previous != nil {
 		t.Fatalf("distinct-period enrollment replaced prior membership: %#v", next)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
 	requireNoError(t, err)
 	if len(active) != 2 || first.Membership.AcademicPeriodID == next.Membership.AcademicPeriodID {
 		t.Fatalf("distinct-period active enrollments = %#v", active)
@@ -490,7 +490,7 @@ func testConcurrentClassMemberEnrollment(
 	if successes != 1 {
 		t.Fatalf("concurrent enrollment successes = %d, errors = %v", successes, errs)
 	}
-	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID.String(), start+1)
+	active, err := ss.ClassMember().ListActiveByUser(ctx, user.ID, start+1)
 	requireNoError(t, err)
 	if len(active) != 1 {
 		t.Fatalf("active concurrent enrollments = %#v", active)

@@ -34,7 +34,7 @@ func (s *academicPeriodStoreFake) CreateIdempotently(_ context.Context, input *s
 	return &store.AcademicPeriodCommandResult{Value: input.Period}, nil
 }
 
-func (s *academicPeriodStoreFake) Get(context.Context, string) (*model.AcademicPeriod, error) {
+func (s *academicPeriodStoreFake) Get(context.Context, model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	*s.events = append(*s.events, "get-period")
 	return s.current, nil
 }
@@ -79,7 +79,7 @@ func (a *academicPeriodAuthorizerFake) AuthorizeAcademicPeriodOwner(_ context.Co
 }
 func (a *academicPeriodAuthorizerFake) AuthorizeAcademicPeriodList(context.Context, Invocation) (store.AcademicPeriodVisibilityScope, error) {
 	*a.events = append(*a.events, "authorize-period-list")
-	return store.AcademicPeriodVisibilityScope{InstitutionID: a.resource.ID, InstitutionWide: true}, a.err
+	return store.AcademicPeriodVisibilityScope{InstitutionID: model.InstitutionID(a.resource.ID), InstitutionWide: true}, a.err
 }
 
 func TestAcademicPeriodCreateRejectsInvalidHalfOpenIntervalBeforeAudit(t *testing.T) {
@@ -116,7 +116,7 @@ func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
 	persistence := &academicPeriodStoreFake{events: &events, current: period}
 	service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "2026-revised"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID.String(), Name: &name})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID, Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,15 +142,15 @@ func TestAcademicPeriodLookupOperationsAuthorizeBeforeReading(t *testing.T) {
 	t.Parallel()
 	operations := map[string]func(*academicPeriodService) error{
 		"get": func(service *academicPeriodService) error {
-			_, err := service.Get(context.Background(), Invocation{}, GetAcademicPeriodQuery{ID: model.NewId()})
+			_, err := service.Get(context.Background(), Invocation{}, GetAcademicPeriodQuery{ID: model.NewAcademicPeriodID()})
 			return err
 		},
 		"update": func(service *academicPeriodService) error {
-			_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: model.NewId()})
+			_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
 			return err
 		},
 		"archive": func(service *academicPeriodService) error {
-			return service.Archive(context.Background(), Invocation{}, ArchiveAcademicPeriodCommand{ID: model.NewId()})
+			return service.Archive(context.Background(), Invocation{}, ArchiveAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
 		},
 	}
 	for name, operation := range operations {

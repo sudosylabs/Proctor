@@ -94,7 +94,7 @@ func (module affiliationResourceModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
-	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
+	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: model.UserID(userID)})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -110,7 +110,7 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
+	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: model.UserID(userID), Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -118,7 +118,7 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 }
 
 func (module affiliationResourceModule) end(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireAffiliationId()
+	id, err := request.params.RequireAffiliationID()
 	if err != nil {
 		return operationResult{}, err
 	}

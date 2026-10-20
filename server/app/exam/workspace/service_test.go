@@ -399,7 +399,7 @@ type fakeMemberships struct {
 	err    error
 }
 
-func (f fakeMemberships) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
+func (f fakeMemberships) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error) {
 	return []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}, f.err
 }
 

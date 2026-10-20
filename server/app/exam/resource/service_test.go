@@ -519,7 +519,7 @@ type membershipFake struct {
 	err   error
 }
 
-func (m *membershipFake) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
+func (m *membershipFake) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.AcademicUnitMember, error) {
 	m.f.order = append(m.f.order, "membership")
 	if m.items == nil {
 		return []*model.AcademicUnitMember{{AcademicUnitID: m.f.unitID, UserID: m.f.userID}}, m.err

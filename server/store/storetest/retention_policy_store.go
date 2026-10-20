@@ -210,7 +210,7 @@ func testRetentionPolicyReplacementInstitution(t *testing.T, ctx context.Context
 	bootstrap *model.InstallationBootstrapResult,
 ) {
 	t.Helper()
-	requireNoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID.String(), model.GetMillis()))
+	requireNoError(t, stores.Institution().Archive(ctx, bootstrap.Institution.ID, model.GetMillis()))
 	if policy, err := stores.RetentionPolicy().Get(ctx); !store.IsNotFound(err) || policy != nil {
 		t.Fatalf("Get without an active Institution = %#v, %v", policy, err)
 	}

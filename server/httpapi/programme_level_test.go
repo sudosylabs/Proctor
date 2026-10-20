@@ -91,7 +91,7 @@ func TestProgrammeLevelHTTPMapsDTOWithoutPermissionPreflight(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if levels.createCommand.ProgrammeID != level.ProgrammeID.String() || levels.createCommand.Name != level.Name {
+	if levels.createCommand.ProgrammeID != level.ProgrammeID || levels.createCommand.Name != level.Name {
 		t.Fatalf("create command = %#v", levels.createCommand)
 	}
 	var body programmeLevelResponse

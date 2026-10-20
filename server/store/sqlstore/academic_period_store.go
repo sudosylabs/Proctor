@@ -184,14 +184,14 @@ func (s SQLAcademicPeriodStore) Save(
 	})
 }
 
-func (s SQLAcademicPeriodStore) Get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) Get(ctx context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	var row academicPeriodRow
 	query := s.academicPeriodsQuery.Where(sq.Eq{
 		"academic_periods.id":          id,
 		"academic_periods.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("academic_period", id, err)
+		return nil, translateError("academic_period", id.String(), err)
 	}
 	return row.model()
 }
@@ -227,7 +227,7 @@ func (s SQLAcademicPeriodStore) ListVisible(
 	term string,
 	limit int,
 ) ([]*model.AcademicPeriod, error) {
-	if !model.IsValidId(visibility.InstitutionID) || limit < 1 || limit > 200 ||
+	if !visibility.InstitutionID.IsValid() || limit < 1 || limit > 200 ||
 		len(visibility.AcademicUnitRootIDs) > 256 || !validVisibilityIDs(visibility.AcademicUnitRootIDs) {
 		return nil, store.NewErrInvalidInput("academic_period", "visibility", visibility)
 	}
@@ -251,7 +251,7 @@ func (s SQLAcademicPeriodStore) ListVisible(
 				) SELECT id FROM visible_units
 			))
 		)`, model.ResourceInstitution, visibility.InstitutionID, model.ResourceAcademicUnit,
-			pq.Array(visibility.AcademicUnitRootIDs), visibility.InstitutionID)
+			pq.Array(idStrings(visibility.AcademicUnitRootIDs)), visibility.InstitutionID)
 	} else {
 		query = query.Where("FALSE")
 	}
@@ -335,11 +335,7 @@ func (s SQLAcademicPeriodStore) updateAcademicPeriod(ctx context.Context, candid
 	})
 }
 
-func (s SQLAcademicPeriodStore) Archive(
-	ctx context.Context,
-	id string,
-	archiveAt int64,
-) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) Archive(ctx context.Context, id model.AcademicPeriodID, archiveAt int64) (*model.AcademicPeriod, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archived_at", archiveAt)
 	}
@@ -347,13 +343,13 @@ func (s SQLAcademicPeriodStore) Archive(
 }
 
 func (s SQLAcademicPeriodStore) ArchiveWithAudit(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
 	}
 	return s.archiveAcademicPeriod(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
-func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id string, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.AcademicPeriod, error) {
+func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id model.AcademicPeriodID, archiveAt, expectedRevision int64, audit *academicMutationAudit) (*model.AcademicPeriod, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "academic period archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.AcademicPeriod, error) {
 		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -361,7 +357,7 @@ func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id st
 		var row academicPeriodRow
 		query := s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": id, "academic_periods.archived_at": nil})
 		if err := tx.GetBuilder(ctx, &row, query); err != nil {
-			return nil, translateError("academic_period", id, err)
+			return nil, translateError("academic_period", id.String(), err)
 		}
 		if err := requireAcademicRevision("academic_period", expectedRevision, row.Revision); err != nil {
 			return nil, err
@@ -380,7 +376,7 @@ func (s SQLAcademicPeriodStore) archiveAcademicPeriod(ctx context.Context, id st
 		if err != nil {
 			return nil, fmt.Errorf("archive academic period: %w", err)
 		}
-		if err := requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", id); err != nil {
+		if err = requireRevisionAffected(ctx, tx, result, "academic_period", "academic_periods", id.String()); err != nil {
 			return nil, err
 		}
 		if err := tx.GetBuilder(ctx, &row, s.academicPeriodsQuery.Where(sq.Eq{"academic_periods.id": id})); err != nil {
