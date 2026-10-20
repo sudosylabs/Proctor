@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -241,7 +242,7 @@ func (s *academicAdministrationBatchService) Run(ctx context.Context, invocation
 		itemKey := invitationBatchItemIdempotencyKey(command.IdempotencyKey, item.IdempotencyKey)
 		retained := false
 		if s.outcomes != nil {
-			lookup := &store.CommandIdempotency{UserID: invocation.Principal().UserID, Operation: academicAdministrationCommandOperation(command.Operation), KeyDigest: sha256.Sum256([]byte(itemKey)), Retention: commandIdempotencyRetention, Wait: commandIdempotencyWait}
+			lookup := &store.CommandIdempotency{UserID: invocation.Principal().UserID, Operation: academicAdministrationCommandOperation(command.Operation), KeyDigest: sha256.Sum256([]byte(itemKey)), Retention: applicationidempotency.Retention, Wait: applicationidempotency.Wait}
 			retained, err = s.outcomes.Has(ctx, lookup)
 			if err != nil {
 				outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "administration.unavailable"

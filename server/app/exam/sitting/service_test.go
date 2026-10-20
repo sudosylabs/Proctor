@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -32,7 +33,7 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	}
 
-	got, err := fixture.service.Schedule(context.Background(), fixture.call, command)
+	got, err := fixture.service.Schedule(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 		fixture.persistence.schedule.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailScheduled {
 		t.Fatalf("store schedule = %#v, command=%#v", fixture.persistence.schedule, fixture.persistence.command)
 	}
-	wantIdempotency, err := prepareScheduleIdempotency(fixture.call, command)
+	wantIdempotency, err := prepareScheduleIdempotency(fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestGetAuthorizesExactSittingResource(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
-	got, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID, fixture.sittingID)
+	got, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
-	if err := fixture.service.AuthorizeView(context.Background(), fixture.call, fixture.sittingID); err != nil {
+	if err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.persistence.resolveID != fixture.sittingID || fixture.authorizer.action != model.ActionExamSittingView ||
@@ -101,7 +102,7 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	}
 
 	fixture.memberships.items = nil
-	if err := fixture.service.AuthorizeView(context.Background(), fixture.call, fixture.sittingID); err != nil {
+	if err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.authorizer.action != model.ActionExamSittingViewOverride {
@@ -131,7 +132,7 @@ func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *tes
 			if test.failMembership {
 				f.memberships.err = errors.New("membership unavailable")
 			}
-			unit, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID)
+			unit, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID)
 			wantAllowed := !test.removeManager && !test.denyPermission
 			if (err == nil) != wantAllowed {
 				t.Fatalf("AuthorizeBrowserActivityView() = %s, %v", unit, err)
@@ -156,16 +157,16 @@ func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *tes
 func TestBrowserActivityRechecksMembershipBetweenPagesAndFailsClosedOnAudit(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: f.sitting(t)}
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); err != nil {
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); err != nil {
 		t.Fatal(err)
 	}
 	f.access.snapshot.ActorIsManager = false
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); err == nil || !f.authorizer.denied {
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); err == nil || !f.authorizer.denied {
 		t.Fatal("later page retained removed Manager authority")
 	}
 	auditErr := errors.New("audit unavailable")
 	f.authorizer.denyErr = auditErr
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.call, f.sittingID); !errors.Is(err, auditErr) {
+	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); !errors.Is(err, auditErr) {
 		t.Fatalf("audit failure = %v", err)
 	}
 }
@@ -174,12 +175,12 @@ func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
-	override, err := fixture.service.AuthorizeManage(context.Background(), fixture.call, fixture.sittingID)
+	override, err := fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
 	if err != nil || override || fixture.authorizer.action != model.ActionExamSittingManage {
 		t.Fatalf("ordinary manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
 	fixture.memberships.items = nil
-	override, err = fixture.service.AuthorizeManage(context.Background(), fixture.call, fixture.sittingID)
+	override, err = fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
 	if err != nil || !override || fixture.authorizer.action != model.ActionExamSittingManageOverride {
 		t.Fatalf("override manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
@@ -190,7 +191,7 @@ func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManager
 	fixture := newFixture(t)
 	submissionID := model.NewSubmissionID()
 
-	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.call, fixture.examID, submissionID); err != nil {
+	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.authorizer.action != model.ActionSubmissionView ||
@@ -199,7 +200,7 @@ func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManager
 	}
 
 	fixture.memberships.items = nil
-	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.call, fixture.examID, submissionID); err != nil {
+	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.authorizer.action != model.ActionSubmissionViewOverride {
@@ -212,21 +213,21 @@ func TestAuthorizeSubmissionReviewAndReleaseUseDistinctCurrentPermissions(t *tes
 	fixture := newFixture(t)
 	submissionID := model.NewSubmissionID()
 
-	override, err := fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.call, fixture.examID, submissionID)
+	override, err := fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionReview {
 		t.Fatalf("ordinary Review authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
-	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.call, fixture.examID, submissionID)
+	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionRelease {
 		t.Fatalf("ordinary release authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
 
 	fixture.memberships.items = nil
-	override, err = fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.call, fixture.examID, submissionID)
+	override, err = fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReviewOverride {
 		t.Fatalf("Review override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
-	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.call, fixture.examID, submissionID)
+	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
 	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReleaseOverride {
 		t.Fatalf("release override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
 	}
@@ -243,7 +244,7 @@ func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 	fixture.persistence.items = []store.ExamSittingSnapshot{{Sitting: first}, {Sitting: &second}}
 	overlapStart, overlapEnd := testNow.Add(30*time.Minute), testNow.Add(4*time.Hour)
 
-	page, err := fixture.service.List(context.Background(), fixture.call, ListQuery{
+	page, err := fixture.service.List(context.Background(), fixture.invocation, ListQuery{
 		ExamID: fixture.examID, ClassID: fixture.classID, States: []model.ExamSittingState{model.ExamSittingScheduled},
 		OverlapStartAt: overlapStart, OverlapEndAt: overlapEnd, Limit: 1,
 	})
@@ -282,7 +283,7 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ScheduledStartAt: &changedStart, ScheduledEndAt: &changedEnd, IdempotencyKey: "test-key",
 	}
-	got, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, command)
+	got, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +297,7 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || fixture.persistence.command == nil {
 		t.Fatalf("store update = %#v, command=%#v", input, fixture.persistence.command)
 	}
-	wantIdempotency, err := prepareScheduleUpdateIdempotency(fixture.call, command)
+	wantIdempotency, err := prepareScheduleUpdateIdempotency(fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +331,7 @@ func TestUpdateScheduleReturnsCurrentNoChangesOnlyForCurrentActiveScheduledState
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current}
 	revisionID := fixture.revisionID
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
@@ -349,7 +350,7 @@ func TestUpdateScheduleSendsStaleNoOpToStore(t *testing.T) {
 	fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_sitting_revision", nil)
 	revisionID := fixture.revisionID
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
@@ -371,7 +372,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_archived", nil)
 		revisionID := fixture.revisionID
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
@@ -392,7 +393,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 		revisionID := fixture.revisionID
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
@@ -409,7 +410,7 @@ func TestScheduleUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testin
 	fixture.memberships.items = nil
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
+	_, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -427,7 +428,7 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 	fixture.authorizer.err = errors.New("denied")
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
+	_, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -441,7 +442,7 @@ func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	testFixture := newFixture(t)
 	failure := errors.New("membership unavailable")
 	testFixture.memberships.err = failure
-	_, err := testFixture.service.Schedule(context.Background(), testFixture.call, ScheduleCommand{
+	_, err := testFixture.service.Schedule(context.Background(), testFixture.invocation, ScheduleCommand{
 		ExamID: testFixture.examID, ExamRevisionID: testFixture.revisionID, ClassID: testFixture.classID,
 		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
 	})
@@ -464,7 +465,7 @@ func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
 	}
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
 
-	got, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
+	got, err := fixture.service.Schedule(context.Background(), fixture.invocation, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
@@ -492,7 +493,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		}
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: updated}, Replayed: true}
 
-		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			ScheduledStartAt: &start, ScheduledEndAt: &end, IdempotencyKey: "test-key",
 		})
@@ -514,7 +515,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		}
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: canceled}, Replayed: true}
 
-		_, err := fixture.service.Cancel(context.Background(), fixture.call, CancelCommand{
+		_, err := fixture.service.Cancel(context.Background(), fixture.invocation, CancelCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			PrivateReason: "Manager canceled", IdempotencyKey: "test-key",
 		})
@@ -534,7 +535,7 @@ func TestGetRejectsMismatchedExamOwnership(t *testing.T) {
 	foreign.ExamID = model.NewExamID()
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: foreign}
 
-	_, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID, fixture.sittingID)
+	_, err := fixture.service.Get(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID)
 	assertFaultCode(t, err, "exam.sitting.unavailable")
 }
 
@@ -627,7 +628,7 @@ func TestUpdateRejectsMismatchedStoreOutcome(t *testing.T) {
 	start := testNow.Add(2 * time.Hour)
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: foreign}}
 
-	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		ScheduledStartAt: &start, IdempotencyKey: "test-key",
 	})
@@ -651,7 +652,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 		PrivateReason: "Room became unavailable", IdempotencyKey: "test-key",
 	}
-	got, err := fixture.service.Cancel(context.Background(), fixture.call, command)
+	got, err := fixture.service.Cancel(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +665,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	if fixture.persistence.cancel.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailCancelled {
 		t.Fatalf("cancellation mail = %#v, store=%#v", fixture.mail.request, fixture.persistence.cancel.Mail)
 	}
-	wantIdempotency, err := prepareTransitionIdempotency(fixture.call, idempotencyOperationCancel, PauseCommand(command))
+	wantIdempotency, err := prepareTransitionIdempotency(fixture.invocation, idempotencyOperationCancel, PauseCommand(command))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +685,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 
 type fixture struct {
 	service     *Service
-	call        Call
+	invocation  invocation.Invocation
 	userID      model.UserID
 	unitID      model.AcademicUnitID
 	examID      model.ExamID
@@ -730,7 +731,7 @@ func TestListNoShowsAuthorizesClosingSittingAndReturnsBoundedPage(t *testing.T) 
 	ids := []model.UserID{model.NewUserID(), model.NewUserID(), model.NewUserID()}
 	slices.SortFunc(ids, func(left, right model.UserID) int { return strings.Compare(left.String(), right.String()) })
 	fixture.persistence.noShows = []store.ExamSittingNoShow{{CandidateUserID: ids[0]}, {CandidateUserID: ids[1]}, {CandidateUserID: ids[2]}}
-	page, err := fixture.service.ListNoShows(context.Background(), fixture.call, fixture.examID, fixture.sittingID,
+	page, err := fixture.service.ListNoShows(context.Background(), fixture.invocation, fixture.examID, fixture.sittingID,
 		model.UserID(""), 2)
 	if err != nil || len(page.Items) != 2 || !page.HasMore || page.Items[1].CandidateUserID != ids[1] ||
 		fixture.persistence.noShowOptions.Limit != 3 {
@@ -758,7 +759,7 @@ func newFixture(t *testing.T) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), userID: userID,
+	return fixture{service: service, invocation: invocation.New(testPrincipal(userID), model.RequestMetadata{}), userID: userID,
 		unitID: unitID, examID: examID, revisionID: revisionID, classID: classID, sittingID: sittingID,
 		persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor,
 		systemAudit: systemAudit, effects: effects, jobs: jobs, mail: mail}
@@ -924,12 +925,12 @@ type authorizerFake struct {
 	denyErr  error
 }
 
-func (fake *authorizerFake) Authorize(_ context.Context, _ Call, action model.Action, resource model.Resource) error {
+func (fake *authorizerFake) Authorize(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource) error {
 	fake.action, fake.resource = action, resource
 	return fake.err
 }
 
-func (fake *authorizerFake) Deny(_ context.Context, _ Call, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
+func (fake *authorizerFake) Deny(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.AcademicUnitID) error {
 	fake.action, fake.resource, fake.denied = action, resource, true
 	if fake.denyErr != nil {
 		return fake.denyErr
@@ -948,7 +949,7 @@ type auditorFake struct {
 	failErr   error
 }
 
-func (fake *auditorFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
+func (fake *auditorFake) Begin(_ context.Context, _ invocation.Invocation, action model.Action, resource model.Resource, _ model.RoleScopeType, _, operation string, value, _ map[string]any) (model.AuditEventID, error) {
 	fake.action, fake.resource, fake.operation, fake.value = action, resource, operation, value
 	return model.AuditEventID(fake.id), fake.err
 }
@@ -1004,13 +1005,13 @@ type systemAuditorFake struct {
 	resource                model.Resource
 	scopeType               model.RoleScopeType
 	scopeID                 string
-	call                    SystemCall
+	system                  invocation.System
 	value                   map[string]any
 	err, failErr            error
 }
 
-func (fake *systemAuditorFake) Begin(_ context.Context, call SystemCall, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
-	fake.call, fake.action, fake.resource, fake.operation, fake.value = call, action, resource, operation, value
+func (fake *systemAuditorFake) Begin(_ context.Context, system invocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+	fake.system, fake.action, fake.resource, fake.operation, fake.value = system, action, resource, operation, value
 	fake.scopeType, fake.scopeID = scopeType, scopeID
 	return model.AuditEventID(fake.id), fake.err
 }

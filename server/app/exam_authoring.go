@@ -65,24 +65,24 @@ type ConfigureExamDraftBrowserPolicyCommand struct {
 }
 
 type examUseCases interface {
-	Create(context.Context, examengine.Call, examengine.CreateCommand) (examengine.View, error)
-	Get(context.Context, examengine.Call, model.ExamID) (examengine.View, error)
-	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
-	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
-	ConfigureDraftNativePolicy(context.Context, examengine.Call, examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error)
-	ConfigureDraftBrowserPolicy(context.Context, examengine.Call, examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error)
-	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
-	Archive(context.Context, examengine.Call, examengine.ArchiveCommand) (model.Exam, error)
-	ListManagers(context.Context, examengine.Call, examengine.ListManagersQuery) (examengine.ManagerPage, error)
-	AddManager(context.Context, examengine.Call, examengine.AddManagerCommand) (examengine.ManagerChange, error)
-	RemoveManager(context.Context, examengine.Call, examengine.RemoveManagerCommand) (examengine.ManagerChange, error)
-	TransferOwner(context.Context, examengine.Call, examengine.TransferOwnerCommand) (examengine.ManagerChange, error)
-	AuthorizeView(context.Context, examengine.Call, model.ExamID) error
+	Create(context.Context, Invocation, examengine.CreateCommand) (examengine.View, error)
+	Get(context.Context, Invocation, model.ExamID) (examengine.View, error)
+	EditDraftText(context.Context, Invocation, examengine.EditDraftTextCommand) (examengine.View, error)
+	ConfigureDraftFocusLoss(context.Context, Invocation, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
+	ConfigureDraftNativePolicy(context.Context, Invocation, examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error)
+	ConfigureDraftBrowserPolicy(context.Context, Invocation, examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error)
+	List(context.Context, Invocation, examengine.ListQuery) (examengine.CatalogPage, error)
+	Archive(context.Context, Invocation, examengine.ArchiveCommand) (model.Exam, error)
+	ListManagers(context.Context, Invocation, examengine.ListManagersQuery) (examengine.ManagerPage, error)
+	AddManager(context.Context, Invocation, examengine.AddManagerCommand) (examengine.ManagerChange, error)
+	RemoveManager(context.Context, Invocation, examengine.RemoveManagerCommand) (examengine.ManagerChange, error)
+	TransferOwner(context.Context, Invocation, examengine.TransferOwnerCommand) (examengine.ManagerChange, error)
+	AuthorizeView(context.Context, Invocation, model.ExamID) error
 }
 
 func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (result ExamView, resultErr error) {
 	defer func() { a.recordOperational("exam", "create", resultErr) }()
-	view, err := a.exams.Create(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.CreateCommand{
+	view, err := a.exams.Create(ctx, invocation, examengine.CreateCommand{
 		AcademicUnitID: command.AcademicUnitID, Title: command.Title,
 		InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
 	})
@@ -93,7 +93,7 @@ func (a *App) CreateExam(ctx context.Context, invocation Invocation, command Cre
 }
 
 func (a *App) GetExam(ctx context.Context, invocation Invocation, query GetExamQuery) (ExamView, error) {
-	view, err := a.exams.Get(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID)
+	view, err := a.exams.Get(ctx, invocation, query.ExamID)
 	if err != nil {
 		return ExamView{}, examError(err, true)
 	}
@@ -101,7 +101,7 @@ func (a *App) GetExam(ctx context.Context, invocation Invocation, query GetExamQ
 }
 
 func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, command EditExamDraftTextCommand) (ExamView, error) {
-	view, err := a.exams.EditDraftText(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.EditDraftTextCommand{
+	view, err := a.exams.EditDraftText(ctx, invocation, examengine.EditDraftTextCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		Title: command.Title, InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
 	})
@@ -112,7 +112,7 @@ func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, comm
 }
 
 func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invocation, command ConfigureExamDraftFocusLossCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftFocusLoss(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftFocusLossCommand{
+	view, err := a.exams.ConfigureDraftFocusLoss(ctx, invocation, examengine.ConfigureDraftFocusLossCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		FocusLoss:      model.FocusLossPolicy{Enabled: command.Enabled, MinimumDuration: command.MinimumDuration, IncidentCount: command.IncidentCount, Window: command.Window, Outcome: command.Outcome},
 		IdempotencyKey: command.IdempotencyKey,
@@ -124,7 +124,7 @@ func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invoca
 }
 
 func (a *App) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftBrowserPolicyCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftBrowserPolicyCommand{
+	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, invocation, examengine.ConfigureDraftBrowserPolicyCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		Policy: command.Policy.Clone(), IdempotencyKey: command.IdempotencyKey,
 	})
@@ -159,12 +159,12 @@ func presentExamChildError(err error, conceal bool, unavailable apperror.Code, c
 
 type examAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a examAuthorizationAdapter) Authorize(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+func (a examAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
-func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examengine.Call, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
-	principal := call.Principal()
+func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, invocation Invocation, _ model.AcademicUnitID) (store.ExamListVisibility, error) {
+	principal := invocation.Principal()
 	decisionAt := model.TimeUTC(a.authorization.now())
 	ordinary, err := a.authorization.authorizedScopesAt(ctx, principal, model.ActionExamView, model.ResourceExam, decisionAt)
 	if err != nil {
@@ -185,7 +185,7 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 		action = model.ActionExamViewOverride
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
-	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, action, resource, model.RoleScopeInstitution, institution.ID.String(), call.RequestMetadata(), hasOrdinary || hasOverride); err != nil {
+	if err := a.authorization.audit.RecordAuthorizationDecision(ctx, principal, action, resource, model.RoleScopeInstitution, institution.ID.String(), invocation.RequestMetadata(), hasOrdinary || hasOverride); err != nil {
 		return store.ExamListVisibility{}, err
 	}
 	if !hasOrdinary && !hasOverride {
@@ -199,8 +199,8 @@ func (a examAuthorizationAdapter) AuthorizeList(ctx context.Context, call examen
 
 type examAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examAuditAdapter) Begin(ctx context.Context, call examengine.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
+func (a examAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
 }
 func (a examAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)
@@ -257,7 +257,7 @@ var _ examengine.Effects = examRealtimeEffects{}
 var _ examengine.EffectFailures = examRealtimeEffects{}
 
 func (a *App) ConfigureExamDraftNativePolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftNativePolicyCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftNativePolicy(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftNativePolicyCommand{
+	view, err := a.exams.ConfigureDraftNativePolicy(ctx, invocation, examengine.ConfigureDraftNativePolicyCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		NativePolicy:   command.NativePolicy.Clone(),
 		IdempotencyKey: command.IdempotencyKey,

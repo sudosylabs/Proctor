@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -48,7 +48,7 @@ func TestExamSittingSystemAuditAdapterRetainsJobIdentityAtAcademicUnitScope(t *t
 		t.Fatal(err)
 	}
 	sittingID, unitID := model.NewExamSittingID(), model.NewAcademicUnitID()
-	call := examsitting.SystemCall{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
+	call := appinvocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
 	id, err := (examSittingSystemAuditAdapter{audit: service}).Begin(context.Background(), call,
 		model.ActionExamSittingManage, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()},
 		model.RoleScopeAcademicUnit, unitID.String(), "advance_due", map[string]any{

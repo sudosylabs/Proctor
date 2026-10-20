@@ -8,32 +8,8 @@
 package app
 
 import (
-	"errors"
-	"time"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
-
-const (
-	commandIdempotencyRetention = 24 * time.Hour
-	commandIdempotencyWait      = 2 * time.Second
-)
-
-func newCommandIdempotency(invocation Invocation, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	prepared, err := applicationidempotency.Prepare(invocation.Principal().UserID, operation, key, semantic)
-	var semanticError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &semanticError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
 
 func replayAuditData(value map[string]any, originalAuditID string) map[string]any {
 	result := make(map[string]any, len(value)+2)

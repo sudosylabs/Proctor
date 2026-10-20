@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -41,13 +43,13 @@ func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, user
 func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	revisionID, classID := model.NewExamRevisionID(), model.NewClassID()
 	start := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
 	end := start.Add(2 * time.Hour)
 
-	scheduled, err := prepareScheduleIdempotency(call, ScheduleCommand{ExamID: examID, ExamRevisionID: revisionID,
+	scheduled, err := prepareScheduleIdempotency(invocation, ScheduleCommand{ExamID: examID, ExamRevisionID: revisionID,
 		ClassID: classID, ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "schedule-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +58,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 		fmt.Sprintf(`{"exam_id":%q,"exam_revision_id":%q,"class_id":%q,"scheduled_start_at":"2026-08-24T10:00:00Z","scheduled_end_at":"2026-08-24T12:00:00Z"}`, examID, revisionID, classID))
 
 	changedEnd := end.Add(time.Hour)
-	updated, err := prepareScheduleUpdateIdempotency(call, UpdateScheduleCommand{ExamID: examID, SittingID: sittingID,
+	updated, err := prepareScheduleUpdateIdempotency(invocation, UpdateScheduleCommand{ExamID: examID, SittingID: sittingID,
 		ExpectedRevision: 2, ScheduledEndAt: &changedEnd, IdempotencyKey: "update-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +68,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 
 	transition := PauseCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, PrivateReason: "room unavailable", IdempotencyKey: "transition-key"}
 	for _, operation := range []string{idempotencyOperationCancel, idempotencyOperationPause, idempotencyOperationResume, idempotencyOperationClose} {
-		prepared, prepareErr := prepareTransitionIdempotency(call, operation, transition)
+		prepared, prepareErr := prepareTransitionIdempotency(invocation, operation, transition)
 		if prepareErr != nil {
 			t.Fatal(prepareErr)
 		}
@@ -74,7 +76,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 			fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"expected_revision":3,"private_reason":"room unavailable"}`, examID, sittingID))
 	}
 
-	extended, err := prepareExtensionIdempotency(call, ExtendCommand{ExamID: examID, SittingID: sittingID,
+	extended, err := prepareExtensionIdempotency(invocation, ExtendCommand{ExamID: examID, SittingID: sittingID,
 		ExpectedRevision: 4, ScheduledEndAt: changedEnd, PrivateReason: "extra time", IdempotencyKey: "extend-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -106,8 +108,8 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := prepareIdempotency(call, "operation", "", struct{}{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
 	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}

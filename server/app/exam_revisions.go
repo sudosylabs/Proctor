@@ -39,14 +39,14 @@ type ListExamRevisionsQuery struct {
 }
 
 type examRevisionUseCases interface {
-	Publish(context.Context, examengine.Call, examengine.PublishRevisionCommand) (store.ExamRevisionSummary, error)
-	Get(context.Context, examengine.Call, model.ExamID, model.ExamRevisionID) (store.ExamRevisionSummary, error)
-	List(context.Context, examengine.Call, examengine.ListRevisionsQuery) (examengine.RevisionPage, error)
+	Publish(context.Context, Invocation, examengine.PublishRevisionCommand) (store.ExamRevisionSummary, error)
+	Get(context.Context, Invocation, model.ExamID, model.ExamRevisionID) (store.ExamRevisionSummary, error)
+	List(context.Context, Invocation, examengine.ListRevisionsQuery) (examengine.RevisionPage, error)
 }
 
 func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, command PublishExamRevisionCommand) (result ExamRevisionSummary, resultErr error) {
 	defer func() { a.recordOperational("exam", "publish_revision", resultErr) }()
-	summary, err := a.examRevisions.Publish(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.PublishRevisionCommand{
+	summary, err := a.examRevisions.Publish(ctx, invocation, examengine.PublishRevisionCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
@@ -56,7 +56,7 @@ func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, co
 }
 
 func (a *App) GetExamRevision(ctx context.Context, invocation Invocation, query GetExamRevisionQuery) (ExamRevisionSummary, error) {
-	summary, err := a.examRevisions.Get(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID, query.RevisionID)
+	summary, err := a.examRevisions.Get(ctx, invocation, query.ExamID, query.RevisionID)
 	if err != nil {
 		return ExamRevisionSummary{}, examError(err, true)
 	}
@@ -64,7 +64,7 @@ func (a *App) GetExamRevision(ctx context.Context, invocation Invocation, query 
 }
 
 func (a *App) ListExamRevisions(ctx context.Context, invocation Invocation, query ListExamRevisionsQuery) (ExamRevisionPage, error) {
-	page, err := a.examRevisions.List(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ListRevisionsQuery{
+	page, err := a.examRevisions.List(ctx, invocation, examengine.ListRevisionsQuery{
 		ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit,
 	})
 	if err != nil {

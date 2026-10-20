@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -21,15 +22,15 @@ func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing
 	f := newFixture(t)
 	ctx := context.Background()
 	for range 40 {
-		release, err := f.service.enterControl(ctx, f.call, false)
+		release, err := f.service.enterControl(ctx, f.invocation, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		release()
 	}
-	otherPrincipal := f.call.Principal()
+	otherPrincipal := f.invocation.Principal()
 	otherPrincipal.SessionID = model.NewSessionID()
-	other := NewCall(otherPrincipal, f.call.RequestMetadata())
+	other := invocation.New(otherPrincipal, f.invocation.RequestMetadata())
 	if _, err := f.service.enterControl(ctx, other, false); err == nil {
 		t.Fatal("Session replacement refilled control allowance")
 	}

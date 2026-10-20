@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -233,7 +234,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := newCommandIdempotency(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
 		UserID    string              `json:"user_id"`
 		RoleID    string              `json:"role_id"`
 		ScopeType model.RoleScopeType `json:"scope_type"`
@@ -311,7 +312,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if command.BatchScopeID != "" && (command.BatchScopeType != current.ScopeType || strings.TrimSpace(command.BatchScopeID) != current.ScopeID) {
 		return nil, apperror.New("resource.not_found").WithField("resource", "role_binding")
 	}
-	idempotency, err := newCommandIdempotency(invocation, "role_binding.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "role_binding.end.v1", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`

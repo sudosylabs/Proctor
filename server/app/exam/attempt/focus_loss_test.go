@@ -48,7 +48,7 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 		RetainedEvidenceCount: 1, Flag: flag, FlagCreated: true, CandidateWarningCreated: true,
 		ManagerNotificationRequired: true}
 
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{
 		SchemaVersion: model.FocusLossSignalSchemaVersion,
 		AttemptID:     f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 3, Sequence: 11, DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
@@ -62,7 +62,7 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 		!result.FlagCreated || !result.CandidateWarningCreated || result.SuspensionCreated || f.effects.focusLoss != 1 {
 		t.Fatalf("result=%#v effects=%#v", result, f.effects)
 	}
-	principal := f.call.Principal()
+	principal := f.invocation.Principal()
 	access := f.persistence.focusAccess
 	if access.AttemptID != f.attemptID || access.ParticipationID != participationID || access.ConnectionID != f.connectionID ||
 		access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID || access.Generation != 3 ||
@@ -109,7 +109,7 @@ func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testi
 	f.persistence.lateFocusTarget = target
 	f.persistence.lateFocusResult = &store.ExamAttemptFocusLossDiscrepancyResult{Target: *target,
 		Discrepancy: discrepancy}
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{
 		SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID, ParticipationID: participationID,
 		ConnectionID: f.connectionID, Generation: 3, Sequence: 12, DurationMilliseconds: 2100,
 		Source: model.FocusLossSourceDocumentHidden, ContinuityCredential: credential})
@@ -137,7 +137,7 @@ func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t 
 		t.Run(fmt.Sprintf("schema_%d", schemaVersion), func(t *testing.T) {
 			t.Parallel()
 			f := newFixture(t)
-			_, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{
+			_, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{
 				SchemaVersion: schemaVersion, AttemptID: f.attemptID,
 				ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 				Generation: 1, Sequence: 1, DurationMilliseconds: 500,
@@ -170,7 +170,7 @@ func TestEvaluateFocusLossDisabledPolicyReturnsDiagnosticAcknowledgementWithoutE
 		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, AttemptID: f.attemptID,
 		ParticipationID: participationID, Generation: 1, Signal: signal, AcceptedSequence: 1,
 		DatabaseTime: signal.ReceivedAt, CollectionEnabled: false, DiagnosticCount: 1}
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 1, Sequence: 1,
 		DurationMilliseconds: 700, Source: model.FocusLossSourceWindowBlur, ContinuityCredential: credential})
 	if err != nil || !result.PolicyDisabled || result.Qualified || result.FlagCreated || result.CandidateWarningCreated ||
@@ -203,7 +203,7 @@ func TestEvaluateFocusLossDuplicateAcknowledgesPriorDecisionWithoutRepeatingEffe
 		DatabaseTime: signal.ReceivedAt, CollectionEnabled: true, Qualified: true, ThresholdCrossed: true,
 		PolicyOutcome: model.IntegrityOutcomeFlagAndWarn, RetainedEvidenceCount: 1, Flag: flag,
 		FlagCreated: true, CandidateWarningCreated: true, ManagerNotificationRequired: true, Duplicate: true}
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 8,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
@@ -222,7 +222,7 @@ func TestEvaluateFocusLossDuplicateReplaysPriorSuspensionWithoutRepeatingEffects
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, command.Generation)
 	f.persistence.focusResult = stored
 
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, command)
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, command)
 	if err != nil || !result.Duplicate || !result.FlagCreated || !result.ManagerNotificationRequired ||
 		!result.ConnectionClosed || !result.SuspensionCreated || f.effects.focusLoss != 0 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
@@ -237,7 +237,7 @@ func TestEvaluateFocusLossProjectsCommittedPolicySuspensionAndPublishesOnce(t *t
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, command.Generation)
 	f.persistence.focusResult = stored
 
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, command)
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestEvaluateFocusLossRejectsEnforcementForAnotherConnection(t *testing.T) {
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, command.Generation)
 	f.persistence.focusResult = stored
 
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, command)
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, command)
 	if err == nil || result != (FocusLossEvaluation{}) || f.effects.focusLoss != 0 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -286,7 +286,7 @@ func TestEvaluateFocusLossRejectsInconsistentSuspensionAggregate(t *testing.T) {
 			f.persistence.focusTarget = focusLossTargetFixture(f, participationID, command.Generation)
 			f.persistence.focusResult = stored
 
-			result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, command)
+			result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, command)
 			if err == nil || result != (FocusLossEvaluation{}) || f.effects.focusLoss != 0 {
 				t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 			}
@@ -311,7 +311,7 @@ func TestEvaluateFocusLossRejectsThresholdWithoutItsOpenFlag(t *testing.T) {
 		DatabaseTime: receivedAt, CollectionEnabled: true, Qualified: true, ThresholdCrossed: true,
 		PolicyOutcome: model.IntegrityOutcomeFlag, RetainedEvidenceCount: 1}
 
-	result, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
+	result, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 4,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
@@ -327,7 +327,7 @@ func TestEvaluateFocusLossMapsChangedSameSequenceToStableConflict(t *testing.T) 
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, 2)
 	f.persistence.focusErr = store.NewErrConflict("exam_attempt_focus_loss", "focus_loss_sequence", errors.New("changed claim"))
 
-	_, err := f.service.EvaluateFocusLoss(context.Background(), f.call, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
+	_, err := f.service.EvaluateFocusLoss(context.Background(), f.invocation, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 8,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})

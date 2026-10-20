@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -174,10 +175,10 @@ func (a *controlAdmission) refund(user model.UserID) {
 	}
 }
 
-func (service *Service) enterControl(ctx context.Context, call Call, live bool) (func(), error) {
+func (service *Service) enterControl(ctx context.Context, invocation invocation.Invocation, live bool) (func(), error) {
 	budget := &service.deliveryControls
 	if live {
 		budget = &service.liveControls
 	}
-	return budget.enter(ctx, call.principal.UserID, service.deps.Now())
+	return budget.enter(ctx, invocation.Principal().UserID, service.deps.Now())
 }

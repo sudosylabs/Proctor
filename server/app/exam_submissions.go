@@ -35,7 +35,7 @@ func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 	command SubmitExamAttemptCommand,
 ) (response ExamSubmissionReceipt, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "submit", resultErr) }()
-	result, err := a.examAttempts.Submit(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examAttempts.Submit(ctx, invocation,
 		examattempt.SubmitCommand{Access: command.Access, ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID,
 			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, FinalFocusLossSequence: command.FinalFocusLossSequence,
 			IdempotencyKey: command.IdempotencyKey})
@@ -48,7 +48,7 @@ func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 func (a *App) GetExamSubmission(ctx context.Context, invocation Invocation,
 	query GetExamSubmissionQuery,
 ) (ExamSubmissionManagerView, error) {
-	result, err := a.examAttempts.GetSubmission(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	result, err := a.examAttempts.GetSubmission(ctx, invocation, query)
 	if err != nil {
 		return ExamSubmissionManagerView{}, examAttemptError(err, true)
 	}
@@ -62,7 +62,7 @@ func (a *App) ListExamSubmissionManifest(ctx context.Context, invocation Invocat
 	query ListExamSubmissionManifestQuery,
 ) (ExamSubmissionManifestPage, error) {
 	result, err := a.examAttempts.ListSubmissionManifest(ctx,
-		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+		invocation, query)
 	if err != nil {
 		return ExamSubmissionManifestPage{}, examAttemptError(err, true)
 	}
@@ -73,7 +73,7 @@ func (a *App) OpenExamSubmissionFile(ctx context.Context, invocation Invocation,
 	query OpenExamSubmissionFileQuery,
 ) (OpenedExamAttemptContent, error) {
 	result, err := a.examAttempts.OpenSubmissionFile(ctx,
-		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+		invocation, query)
 	if err != nil {
 		return OpenedExamAttemptContent{}, examAttemptError(err, true)
 	}

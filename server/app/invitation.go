@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -560,7 +561,7 @@ func (s *invitationService) RunBatch(ctx context.Context, invocation Invocation,
 		var canonicalFingerprint [sha256.Size]byte
 		if duplicate && (command.Operation == InvitationBatchResend || command.Operation == InvitationBatchRevoke) {
 			canonicalItem := itemsByKey[winner]
-			canonical, canonicalErr := newCommandIdempotency(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
+			canonical, canonicalErr := applicationidempotency.Prepare(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
 				invitationLifecycleIdempotencySemantic{ID: strings.TrimSpace(canonicalItem.InvitationID), Revision: canonicalItem.ExpectedRevision})
 			if canonicalErr != nil || canonical == nil {
 				outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
@@ -941,7 +942,7 @@ func (s *invitationService) Resend(ctx context.Context, invocation Invocation, c
 			}
 		}
 	}
-	idempotency, err := newCommandIdempotency(invocation, "invitation.resend.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.resend.v1", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -1036,7 +1037,7 @@ func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, c
 			}
 		}
 	}
-	idempotency, err := newCommandIdempotency(invocation, "invitation.revoke.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.revoke.v1", command.IdempotencyKey,
 		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
@@ -1345,7 +1346,7 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := newCommandIdempotency(invocation, "invitation.student_class.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.student_class.issue.v1", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1479,7 +1480,7 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := newCommandIdempotency(invocation, "invitation.teacher_academic_unit.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.teacher_academic_unit.issue.v1", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1614,7 +1615,7 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := newCommandIdempotency(invocation, "invitation.academic_unit_role.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.academic_unit_role.issue.v1", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1658,7 +1659,7 @@ func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""
-	idempotency, err := newCommandIdempotency(invocation, "invitation.institution_role.issue.v1", command.IdempotencyKey, semantic)
+	idempotency, err := applicationidempotency.Prepare(invocation, "invitation.institution_role.issue.v1", command.IdempotencyKey, semantic)
 	if err != nil {
 		return InvitationView{}, err
 	}

@@ -13,6 +13,7 @@ import (
 	"io"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -69,13 +70,13 @@ type OpenSubmissionFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
-func (service *Service) OpenSubmissionFile(ctx context.Context, call Call,
+func (service *Service) OpenSubmissionFile(ctx context.Context, invocation invocation.Invocation,
 	query OpenSubmissionFileQuery,
 ) (*OpenedContent, error) {
 	if !query.EntryID.IsValid() {
 		return nil, apperror.Invalid("exam.attempt.invalid", "submission_entry_id")
 	}
-	if _, err := service.resolveManagedSubmission(ctx, call, query.GetSubmissionQuery); err != nil {
+	if _, err := service.resolveManagedSubmission(ctx, invocation, query.GetSubmissionQuery); err != nil {
 		return nil, err
 	}
 	selector, err := service.deps.Submissions.ResolveFile(ctx, query.SubmissionID, query.EntryID)
@@ -118,13 +119,13 @@ func validSubmissionFileSelector(selector *store.ExamSubmissionFileSelector,
 	}
 }
 
-func (service *Service) ListSubmissionManifest(ctx context.Context, call Call,
+func (service *Service) ListSubmissionManifest(ctx context.Context, invocation invocation.Invocation,
 	query ListSubmissionManifestQuery,
 ) (SubmissionManifestPage, error) {
 	if query.Limit < 1 || query.Limit > model.ExamSubmissionManifestReadMaximum {
 		return SubmissionManifestPage{}, apperror.Invalid("exam.attempt.invalid", "submission_manifest")
 	}
-	if _, err := service.resolveManagedSubmission(ctx, call, query.GetSubmissionQuery); err != nil {
+	if _, err := service.resolveManagedSubmission(ctx, invocation, query.GetSubmissionQuery); err != nil {
 		return SubmissionManifestPage{}, err
 	}
 	stored, err := service.deps.Submissions.ListManifest(ctx, store.ExamSubmissionManifestListOptions{
@@ -176,8 +177,8 @@ func validSubmissionManifestItem(item store.ExamSubmissionManifestItem) bool {
 	}
 }
 
-func (service *Service) GetSubmission(ctx context.Context, call Call, query GetSubmissionQuery) (*ManagedSubmission, error) {
-	authorization, err := service.resolveManagedSubmission(ctx, call, query)
+func (service *Service) GetSubmission(ctx context.Context, invocation invocation.Invocation, query GetSubmissionQuery) (*ManagedSubmission, error) {
+	authorization, err := service.resolveManagedSubmission(ctx, invocation, query)
 	if err != nil {
 		return nil, err
 	}
@@ -192,13 +193,13 @@ func (service *Service) GetSubmission(ctx context.Context, call Call, query GetS
 	return &ManagedSubmission{Authorization: *authorization, Submission: *submission}, nil
 }
 
-func (service *Service) resolveManagedSubmission(ctx context.Context, call Call,
+func (service *Service) resolveManagedSubmission(ctx context.Context, invocation invocation.Invocation,
 	query GetSubmissionQuery,
 ) (*store.ExamSubmissionAuthorization, error) {
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() || !query.SubmissionID.IsValid() {
 		return nil, apperror.Invalid("exam.attempt.invalid", "submission")
 	}
-	if err := service.deps.Managers.AuthorizeSubmissionView(ctx, call, query.SubmissionID); err != nil {
+	if err := service.deps.Managers.AuthorizeSubmissionView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
 	authorization, err := service.deps.Submissions.Resolve(ctx, query.SubmissionID)
@@ -220,15 +221,15 @@ func validSubmissionAuthorization(value *store.ExamSubmissionAuthorization, subm
 		value.AttemptID.IsValid() && value.CandidateUserID.IsValid() && value.AcademicUnitID.IsValid()
 }
 
-func (service *Service) Submit(ctx context.Context, call Call, command SubmitCommand) (SubmissionResult, error) {
-	workspaceAccess, err := workspaceMutationSelector(call, command.Access)
+func (service *Service) Submit(ctx context.Context, invocation invocation.Invocation, command SubmitCommand) (SubmissionResult, error) {
+	workspaceAccess, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return SubmissionResult{}, err
 	}
 	if !command.ExpectedCurrentRevisionID.IsValid() || command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 {
 		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "submission")
 	}
-	idempotency, err := prepareSubmissionIdempotency(call, command.IdempotencyKey, workspaceAccess.AttemptID,
+	idempotency, err := prepareSubmissionIdempotency(invocation, command.IdempotencyKey, workspaceAccess.AttemptID,
 		command.ExpectedCurrentRevisionID, command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence)
 	if err != nil {
 		return SubmissionResult{}, err
@@ -250,7 +251,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if !submissionID.IsValid() {
 		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "submission_id")
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionSealOperation,
 		map[string]any{"exam_attempt_id": access.AttemptID.String()})

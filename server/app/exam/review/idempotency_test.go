@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -41,11 +43,11 @@ func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, user
 func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	submissionID, reviewID := model.NewSubmissionID(), model.NewSubmissionReviewID()
 	flagID := model.NewIntegrityFlagID()
 
-	decision, err := prepareDecisionIdempotency(call, SaveDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID,
+	decision, err := prepareDecisionIdempotency(invocation, SaveDecisionCommand{SubmissionID: submissionID, ReviewID: reviewID,
 		FlagID: flagID, ExpectedReviewRevision: 2, ExpectedDecisionRevision: 1, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "verified", IdempotencyKey: "decision-key"})
 	if err != nil {
@@ -55,7 +57,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 		fmt.Sprintf(`{"submission_id":%q,"submission_review_id":%q,"integrity_flag_id":%q,"expected_review_revision":2,"expected_decision_revision":1,"outcome":"confirmed","private_rationale":"verified"}`,
 			submissionID, reviewID, flagID))
 
-	draft, err := prepareDraftIdempotency(call, UpdateDraftCommand{SubmissionID: submissionID, ReviewID: reviewID,
+	draft, err := prepareDraftIdempotency(invocation, UpdateDraftCommand{SubmissionID: submissionID, ReviewID: reviewID,
 		ExpectedReviewRevision: 2, ManagerNotes: "private", StudentRemarksMarkdown: "Visible", IdempotencyKey: "draft-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +67,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 			submissionID, reviewID))
 
 	for _, operation := range []string{store.ExamIntegrityReviewFinalizeOperation, store.ExamIntegrityReviewReleaseOperation} {
-		terminal, prepareErr := prepareTerminalIdempotency(call, operation, "terminal-key", submissionID, reviewID, 3)
+		terminal, prepareErr := prepareTerminalIdempotency(invocation, operation, "terminal-key", submissionID, reviewID, 3)
 		if prepareErr != nil {
 			t.Fatal(prepareErr)
 		}
@@ -94,8 +96,8 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := prepareIdempotency(call, "operation", "", struct{}{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
 	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}

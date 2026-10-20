@@ -14,6 +14,8 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -46,12 +48,12 @@ type RemoveManagerCommand = AddManagerCommand
 type TransferOwnerCommand = AddManagerCommand
 type ManagerChange = store.ExamManagerCommandResult
 
-func (a *Authoring) ListManagers(ctx context.Context, call Call, query ListManagersQuery) (ManagerPage, error) {
+func (a *Authoring) ListManagers(ctx context.Context, invocation invocation.Invocation, query ListManagersQuery) (ManagerPage, error) {
 	if !query.ExamID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeGrantedAt.IsZero() != query.BeforeUserID.IsZero()) {
 		return ManagerPage{}, apperror.Invalid("exam.invalid", "manager_list")
 	}
-	if _, _, err := a.authorizeManagement(ctx, call, query.ExamID, model.TimeUTC(a.now())); err != nil {
+	if _, _, err := a.authorizeManagement(ctx, invocation, query.ExamID, model.TimeUTC(a.now())); err != nil {
 		return ManagerPage{}, err
 	}
 	items, err := a.persistence.ListManagers(ctx, store.ExamManagerListOptions{
@@ -69,16 +71,16 @@ func (a *Authoring) ListManagers(ctx context.Context, call Call, query ListManag
 	return page, nil
 }
 
-func (a *Authoring) AddManager(ctx context.Context, call Call, command AddManagerCommand) (ManagerChange, error) {
-	return a.changeManager(ctx, call, command, managerAddition, a.persistence.AddManager)
+func (a *Authoring) AddManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand) (ManagerChange, error) {
+	return a.changeManager(ctx, invocation, command, managerAddition, a.persistence.AddManager)
 }
 
-func (a *Authoring) RemoveManager(ctx context.Context, call Call, command RemoveManagerCommand) (ManagerChange, error) {
-	return a.changeManager(ctx, call, command, managerRemoval, a.persistence.RemoveManager)
+func (a *Authoring) RemoveManager(ctx context.Context, invocation invocation.Invocation, command RemoveManagerCommand) (ManagerChange, error) {
+	return a.changeManager(ctx, invocation, command, managerRemoval, a.persistence.RemoveManager)
 }
 
-func (a *Authoring) TransferOwner(ctx context.Context, call Call, command TransferOwnerCommand) (ManagerChange, error) {
-	return a.changeManager(ctx, call, command, ownershipTransfer, a.persistence.TransferOwner)
+func (a *Authoring) TransferOwner(ctx context.Context, invocation invocation.Invocation, command TransferOwnerCommand) (ManagerChange, error) {
+	return a.changeManager(ctx, invocation, command, ownershipTransfer, a.persistence.TransferOwner)
 }
 
 type managerMutation func(context.Context, *store.ExamManagerMutation, *store.CommandIdempotency) (*store.ExamManagerCommandResult, error)
@@ -112,12 +114,12 @@ var (
 		}}
 )
 
-func (a *Authoring) changeManager(ctx context.Context, call Call, command AddManagerCommand, transition managerTransition, mutate managerMutation) (ManagerChange, error) {
-	principal := call.Principal()
+func (a *Authoring) changeManager(ctx context.Context, invocation invocation.Invocation, command AddManagerCommand, transition managerTransition, mutate managerMutation) (ManagerChange, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || !command.UserID.IsValid() || command.ExpectedExamRevision < 1 {
 		return ManagerChange{}, apperror.Invalid("exam.invalid", "manager_command")
 	}
-	idempotency, err := prepareIdempotency(call, transition.idempotencyOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, transition.idempotencyOperation, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
 		UserID               string `json:"user_id"`
 		ExpectedExamRevision int64  `json:"expected_exam_revision"`
@@ -126,7 +128,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		return ManagerChange{}, err
 	}
 	decisionAt := model.TimeUTC(a.now())
-	access, action, err := a.authorizeManagement(ctx, call, command.ExamID, decisionAt)
+	access, action, err := a.authorizeManagement(ctx, invocation, command.ExamID, decisionAt)
 	if err != nil {
 		return ManagerChange{}, err
 	}
@@ -152,7 +154,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if transition.eligibilityRequired {
 		auditData["target_eligible"] = eligible
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), transition.operation, auditData, nil)
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), transition.operation, auditData, nil)
 	if err != nil {
 		return ManagerChange{}, err
 	}
@@ -222,8 +224,8 @@ func (a *Authoring) prepareManagerNotices(ctx context.Context, ownerID, targetID
 	return notices, nil
 }
 
-func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID model.ExamID, at time.Time) (*store.ExamAccessSnapshot, model.Action, error) {
-	principal := call.Principal()
+func (a *Authoring) authorizeManagement(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, at time.Time) (*store.ExamAccessSnapshot, model.Action, error) {
+	principal := invocation.Principal()
 	access, err := a.persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return nil, "", examStoreErrors.Translate(err)
@@ -235,7 +237,7 @@ func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID m
 	if err != nil {
 		return nil, "", err
 	}
-	if err := a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
+	if err := a.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return nil, "", err
 	}
 	return access, action, nil

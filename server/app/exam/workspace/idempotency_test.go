@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -41,7 +43,7 @@ func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, user
 func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID().String()
 	version := model.WorkspaceContentVersion("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 	tests := []struct {
@@ -55,7 +57,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 		{idempotencyOperationRemoveEntry, "remove-key", "", entryID, "", "", "", fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":2,"entry_id":%q}`, examID, entryID), 0},
 	}
 	for _, test := range tests {
-		prepared, err := prepareWorkspaceIdempotency(call, test.operation, test.key, examID, 2,
+		prepared, err := prepareWorkspaceIdempotency(invocation, test.operation, test.key, examID, 2,
 			model.WorkspaceContentVersion(test.version), test.entryID, test.path, test.mediaType, test.size, test.sha)
 		if err != nil {
 			t.Fatal(err)
@@ -66,14 +68,14 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 
 func TestReplacementIdempotencyIncludesExpectedContentVersion(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID().String()
-	first, err := prepareWorkspaceIdempotency(call, idempotencyOperationReplaceFile, "replace-key", examID, 2,
+	first, err := prepareWorkspaceIdempotency(invocation, idempotencyOperationReplaceFile, "replace-key", examID, 2,
 		model.WorkspaceContentVersion("aaaaaaaaaaaaaaaaaaaaaaaaaa"), entryID, "", "text/plain", 1, "checksum")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := prepareWorkspaceIdempotency(call, idempotencyOperationReplaceFile, "replace-key", examID, 2,
+	second, err := prepareWorkspaceIdempotency(invocation, idempotencyOperationReplaceFile, "replace-key", examID, 2,
 		model.WorkspaceContentVersion("bbbbbbbbbbbbbbbbbbbbbbbbbb"), entryID, "", "text/plain", 1, "checksum")
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +106,8 @@ func TestWorkspaceIdempotencyOperationCompatibility(t *testing.T) {
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := prepareIdempotency(call, "operation", "", struct{}{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
 	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}

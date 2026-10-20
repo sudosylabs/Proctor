@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -149,7 +150,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
-	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.add.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.add.v1", command.IdempotencyKey, struct {
 		AcademicUnitID string `json:"academic_unit_id"`
 		UserID         string `json:"user_id"`
 		StartAt        int64  `json:"start_at"`
@@ -215,7 +216,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.AcademicUnitID.String() {
 		return nil, apperror.New("resource.not_found").WithField("resource", "academic_unit_member")
 	}
-	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
 	}{id.String(), strings.TrimSpace(command.BatchScopeID)})

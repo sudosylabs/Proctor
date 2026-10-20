@@ -20,21 +20,21 @@ type ExamExportQuery = examengine.ExportQuery
 type ExamExportDownload = examengine.ExportDownload
 
 type examExportUseCases interface {
-	Create(context.Context, examengine.Call, examengine.CreateExportCommand) (*model.ExamExport, error)
-	Get(context.Context, examengine.Call, examengine.ExportQuery) (*model.ExamExport, error)
-	Open(context.Context, examengine.Call, examengine.ExportQuery) (*examengine.ExportDownload, error)
+	Create(context.Context, Invocation, examengine.CreateExportCommand) (*model.ExamExport, error)
+	Get(context.Context, Invocation, examengine.ExportQuery) (*model.ExamExport, error)
+	Open(context.Context, Invocation, examengine.ExportQuery) (*examengine.ExportDownload, error)
 	BuildFromJob(context.Context, store.ExamExportBuild) error
 }
 
 func (a *App) CreateExamExport(ctx context.Context, invocation Invocation, command CreateExamExportCommand) (*model.ExamExport, error) {
-	result, err := a.examExports.Create(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examExports.Create(ctx, invocation, command)
 	return result, examError(err, true)
 }
 func (a *App) GetExamExport(ctx context.Context, invocation Invocation, query ExamExportQuery) (*model.ExamExport, error) {
-	result, err := a.examExports.Get(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	result, err := a.examExports.Get(ctx, invocation, query)
 	return result, examError(err, true)
 }
 func (a *App) OpenExamExport(ctx context.Context, invocation Invocation, query ExamExportQuery) (*ExamExportDownload, error) {
-	result, err := a.examExports.Open(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	result, err := a.examExports.Open(ctx, invocation, query)
 	return result, examError(err, true)
 }

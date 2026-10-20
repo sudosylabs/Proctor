@@ -58,8 +58,8 @@ func TestExamResourceFacadeForwardsUploadsWithoutConsumingOrNormalizingInput(t *
 			if fake.command != test.command || body.Len() != int(create.Size) {
 				t.Fatalf("upload changed before reaching child: %#v, unread bytes = %d", fake.command, body.Len())
 			}
-			if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
-				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+			if fake.ctx != ctx || !reflect.DeepEqual(fake.invocation.Principal(), invocation.Principal()) || fake.invocation.RequestMetadata() != invocation.RequestMetadata() {
+				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.invocation)
 			}
 		})
 	}
@@ -143,35 +143,35 @@ func TestExamResourceFacadePreservesErrorConcealmentAndSafeFields(t *testing.T) 
 
 type examResourceFacadeFake struct {
 	examResourceUseCases
-	ctx       context.Context
-	call      examresource.Call
-	command   any
-	result    store.ExamResourceRecord
-	reordered []store.ExamResourceRecord
-	err       error
+	ctx        context.Context
+	invocation Invocation
+	command    any
+	result     store.ExamResourceRecord
+	reordered  []store.ExamResourceRecord
+	err        error
 }
 
-func (fake *examResourceFacadeFake) Create(ctx context.Context, call examresource.Call, command examresource.CreateCommand) (store.ExamResourceRecord, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examResourceFacadeFake) Create(ctx context.Context, invocation Invocation, command examresource.CreateCommand) (store.ExamResourceRecord, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examResourceFacadeFake) ReplaceContent(ctx context.Context, call examresource.Call, command examresource.ReplaceContentCommand) (store.ExamResourceRecord, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examResourceFacadeFake) ReplaceContent(ctx context.Context, invocation Invocation, command examresource.ReplaceContentCommand) (store.ExamResourceRecord, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examResourceFacadeFake) EditMetadata(ctx context.Context, call examresource.Call, command examresource.EditMetadataCommand) (store.ExamResourceRecord, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examResourceFacadeFake) EditMetadata(ctx context.Context, invocation Invocation, command examresource.EditMetadataCommand) (store.ExamResourceRecord, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examResourceFacadeFake) Reorder(ctx context.Context, call examresource.Call, command examresource.ReorderCommand) ([]store.ExamResourceRecord, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examResourceFacadeFake) Reorder(ctx context.Context, invocation Invocation, command examresource.ReorderCommand) ([]store.ExamResourceRecord, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.reordered, fake.err
 }
 
-func (fake *examResourceFacadeFake) Remove(ctx context.Context, call examresource.Call, command examresource.RemoveCommand) (store.ExamResourceRecord, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examResourceFacadeFake) Remove(ctx context.Context, invocation Invocation, command examresource.RemoveCommand) (store.ExamResourceRecord, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }

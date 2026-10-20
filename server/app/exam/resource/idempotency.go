@@ -8,10 +8,8 @@
 package resource
 
 import (
-	"errors"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -24,24 +22,8 @@ const (
 	idempotencyOperationRemoveResource         = "exam.resource.remove.v1"
 )
 
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
-
-func prepareResourceIdempotency(call Call, operation, key string, examID model.ExamID, revision int64, resourceID, name, description string, media model.ExamResourceMediaType, size int64, sha string, ids []string) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, operation, key, struct {
+func prepareResourceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64, resourceID, name, description string, media model.ExamResourceMediaType, size int64, sha string, ids []string) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, operation, key, struct {
 		ExamID                string   `json:"exam_id"`
 		ExpectedDraftRevision int64    `json:"expected_draft_revision"`
 		ResourceID            string   `json:"resource_id,omitempty"`
@@ -54,8 +36,8 @@ func prepareResourceIdempotency(call Call, operation, key string, examID model.E
 	}{examID.String(), revision, resourceID, name, description, string(media), size, sha, ids})
 }
 
-func prepareMetadataIdempotency(call Call, command EditMetadataCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, idempotencyOperationEditResourceMetadata, command.IdempotencyKey, struct {
+func prepareMetadataIdempotency(invocation invocation.Invocation, command EditMetadataCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, idempotencyOperationEditResourceMetadata, command.IdempotencyKey, struct {
 		ExamID                string  `json:"exam_id"`
 		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
 		ResourceID            string  `json:"resource_id"`

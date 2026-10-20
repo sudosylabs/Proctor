@@ -12,8 +12,6 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -244,7 +242,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		if err := a.exams.AuthorizeView(ctx, examengine.NewCall(principal, metadata), examID); err != nil {
+		if err := a.exams.AuthorizeView(ctx, NewInvocation(principal, metadata), examID); err != nil {
 			return examError(err, true)
 		}
 		return nil
@@ -254,7 +252,7 @@ func (a *App) AuthorizeWebSocketSubscription(
 		if err != nil {
 			return invalidRealtimeRequest("subscription")
 		}
-		if err := a.examSittings.AuthorizeView(ctx, examsitting.NewCall(principal, metadata), sittingID); err != nil {
+		if err := a.examSittings.AuthorizeView(ctx, NewInvocation(principal, metadata), sittingID); err != nil {
 			return examSittingError(err, true)
 		}
 		return nil

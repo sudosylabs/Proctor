@@ -8,11 +8,10 @@
 package sitting
 
 import (
-	"errors"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,24 +26,8 @@ const (
 	idempotencyOperationClose          = "exam.sitting.close.v1"
 )
 
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
-
-func prepareScheduleIdempotency(call Call, command ScheduleCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, idempotencyOperationSchedule, command.IdempotencyKey, struct {
+func prepareScheduleIdempotency(invocation invocation.Invocation, command ScheduleCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, idempotencyOperationSchedule, command.IdempotencyKey, struct {
 		ExamID           model.ExamID         `json:"exam_id"`
 		ExamRevisionID   model.ExamRevisionID `json:"exam_revision_id"`
 		ClassID          model.ClassID        `json:"class_id"`
@@ -53,8 +36,8 @@ func prepareScheduleIdempotency(call Call, command ScheduleCommand) (*store.Comm
 	}{command.ExamID, command.ExamRevisionID, command.ClassID, command.ScheduledStartAt, command.ScheduledEndAt})
 }
 
-func prepareScheduleUpdateIdempotency(call Call, command UpdateScheduleCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, idempotencyOperationUpdateSchedule, command.IdempotencyKey, struct {
+func prepareScheduleUpdateIdempotency(invocation invocation.Invocation, command UpdateScheduleCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, idempotencyOperationUpdateSchedule, command.IdempotencyKey, struct {
 		ExamID           model.ExamID          `json:"exam_id"`
 		SittingID        model.ExamSittingID   `json:"exam_sitting_id"`
 		ExpectedRevision int64                 `json:"expected_revision"`
@@ -65,8 +48,8 @@ func prepareScheduleUpdateIdempotency(call Call, command UpdateScheduleCommand) 
 	}{command.ExamID, command.SittingID, command.ExpectedRevision, command.ExamRevisionID, command.ClassID, command.ScheduledStartAt, command.ScheduledEndAt})
 }
 
-func prepareTransitionIdempotency(call Call, operation string, command PauseCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, operation, command.IdempotencyKey, struct {
+func prepareTransitionIdempotency(invocation invocation.Invocation, operation string, command PauseCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, operation, command.IdempotencyKey, struct {
 		ExamID           model.ExamID        `json:"exam_id"`
 		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
 		ExpectedRevision int64               `json:"expected_revision"`
@@ -74,8 +57,8 @@ func prepareTransitionIdempotency(call Call, operation string, command PauseComm
 	}{command.ExamID, command.SittingID, command.ExpectedRevision, command.PrivateReason})
 }
 
-func prepareExtensionIdempotency(call Call, command ExtendCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, idempotencyOperationExtend, command.IdempotencyKey, struct {
+func prepareExtensionIdempotency(invocation invocation.Invocation, command ExtendCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, idempotencyOperationExtend, command.IdempotencyKey, struct {
 		ExamID           model.ExamID        `json:"exam_id"`
 		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
 		ExpectedRevision int64               `json:"expected_revision"`

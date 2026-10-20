@@ -14,7 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -147,13 +147,13 @@ func (useCases examSittingSealingJobUseCases) ListExamSittingSealTargetsFromJob(
 func (useCases examSittingSealingJobUseCases) SealExamAttemptForSittingCloseFromJob(ctx context.Context,
 	target store.ExamSubmissionAutomaticSealTarget, jobID model.JobID, attemptID model.JobAttemptID,
 ) (examattempt.AutomaticSubmissionResult, error) {
-	return useCases.attempts.SealForSittingClose(ctx, examattempt.SystemCall{JobID: jobID, AttemptID: attemptID}, target)
+	return useCases.attempts.SealForSittingClose(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, target)
 }
 
 func (useCases examSittingSealingJobUseCases) FinishExamSittingSealingFromJob(ctx context.Context,
 	sittingID model.ExamSittingID, jobID model.JobID, attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	result, err := useCases.sittings.FinishSealing(ctx, examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}, sittingID)
+	result, err := useCases.sittings.FinishSealing(ctx, appinvocation.System{JobID: jobID, AttemptID: attemptID}, sittingID)
 	return &result, err
 }
 

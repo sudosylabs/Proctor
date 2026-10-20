@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -219,7 +220,7 @@ func (s *accessPolicyService) Replace(ctx context.Context, invocation Invocation
 	if err != nil {
 		return AccessPolicyView{}, err
 	}
-	idempotency, err := newCommandIdempotency(invocation, "access_policy.replace.v1", command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, "access_policy.replace.v1", command.IdempotencyKey,
 		struct {
 			ExpectedRevision       int64                      `json:"expected_revision"`
 			Settings               model.AccessPolicySettings `json:"settings"`

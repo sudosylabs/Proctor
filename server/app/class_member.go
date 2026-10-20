@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -243,7 +244,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if command.batchRetainedOutcome {
 		candidate := &model.ClassMember{ClassID: parsedClassID, UserID: userID, StartsAt: model.TimeFromMillis(command.StartAt), EndsAt: model.OptionalTimeFromMillis(command.EndAt)}
 		candidate.PrepareCreate(memberID, at)
-		idempotency, commandErr := newCommandIdempotency(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
+		idempotency, commandErr := applicationidempotency.Prepare(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
 			ClassID            string `json:"class_id"`
 			UserID             string `json:"user_id"`
 			StartAt            int64  `json:"start_at"`
@@ -352,7 +353,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			return nil, classMemberStoreErrors.Translate(err)
 		}
 	}
-	idempotency, err := newCommandIdempotency(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
 		ClassID            string `json:"class_id"`
 		UserID             string `json:"user_id"`
 		StartAt            int64  `json:"start_at"`
@@ -474,7 +475,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		return nil, err
 	}
 	if command.batchRetainedOutcome {
-		idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
+		idempotency, err := applicationidempotency.Prepare(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
 			ID      string `json:"id"`
 			ScopeID string `json:"scope_id,omitempty"`
 		}{id.String(), strings.TrimSpace(command.BatchScopeID)})
@@ -521,7 +522,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}
-	idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
 		ScopeID string `json:"scope_id,omitempty"`
 	}{id.String(), strings.TrimSpace(command.BatchScopeID)})

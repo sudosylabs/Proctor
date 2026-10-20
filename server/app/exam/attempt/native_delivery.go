@@ -13,6 +13,8 @@ import (
 	"slices"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,8 +39,8 @@ type NativeDeliverySummaryCommand struct {
 	Summary        model.UnretainedDeliverySummary
 }
 
-func nativeDeliverySelector(call Call, query NativeDeliveryQuery) (store.NativeDeliveryAccess, error) {
-	p := call.Principal()
+func nativeDeliverySelector(invocation invocation.Invocation, query NativeDeliveryQuery) (store.NativeDeliveryAccess, error) {
+	p := invocation.Principal()
 	if p.Validate() != nil || p.CredentialType != model.CredentialSessionAccess {
 		return store.NativeDeliveryAccess{}, apperror.New("authentication.token_invalid")
 	}
@@ -56,13 +58,13 @@ func nativeDeliverySelector(call Call, query NativeDeliveryQuery) (store.NativeD
 	return store.NativeDeliveryAccess{Access: store.CandidateAttemptAccess{AttemptID: a.AttemptID, ConnectionID: a.ConnectionID, ContinuityCredentialHash: credentialHash, CandidateUserID: p.UserID, SessionID: p.SessionID, DesktopRegistrationID: p.DesktopRegistrationID, DPoPKeyThumbprint: p.DPoPKeyThumbprint}, StreamID: query.StreamID}, nil
 }
 
-func (service *Service) NativeDeliveryStatus(ctx context.Context, call Call, query NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) NativeDeliveryStatus(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	a, err := nativeDeliverySelector(call, query)
+	a, err := nativeDeliverySelector(invocation, query)
 	if err != nil {
 		return nil, err
 	}
@@ -75,13 +77,13 @@ func (service *Service) NativeDeliveryStatus(ctx context.Context, call Call, que
 	}
 	return value, nil
 }
-func (service *Service) NativeDeliveryReceipt(ctx context.Context, call Call, query NativeDeliveryQuery, sequence int64) (*model.NativeBatchReceipt, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) NativeDeliveryReceipt(ctx context.Context, invocation invocation.Invocation, query NativeDeliveryQuery, sequence int64) (*model.NativeBatchReceipt, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	a, err := nativeDeliverySelector(call, query)
+	a, err := nativeDeliverySelector(invocation, query)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +99,7 @@ func (service *Service) NativeDeliveryReceipt(ctx context.Context, call Call, qu
 	}
 	return value, nil
 }
-func (service *Service) beginNativeDeliveryAudit(ctx context.Context, call Call, access store.NativeDeliveryAccess, operation string) (model.AuditEventID, error) {
+func (service *Service) beginNativeDeliveryAudit(ctx context.Context, invocation invocation.Invocation, access store.NativeDeliveryAccess, operation string) (model.AuditEventID, error) {
 	target, err := service.deps.Persistence.ResolveNativeDeliveryTarget(ctx, access)
 	if err != nil {
 		return "", deliveryStoreError(err)
@@ -105,22 +107,22 @@ func (service *Service) beginNativeDeliveryAudit(ctx context.Context, call Call,
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrNativeDeliveryInvalid)
 	}
-	return service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID})
+	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"stream_id": access.StreamID})
 }
-func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, call Call, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := nativeDeliverySelector(call, command.Query)
+	access, err := nativeDeliverySelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_gaps")
 	}
-	idempotency, err := prepareIdempotency(call, store.NativeDeliveryGapsOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryGapsOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.DeclareDeliveryGaps
@@ -128,7 +130,7 @@ func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, call Call
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginNativeDeliveryAudit(ctx, call, access, store.NativeDeliveryGapsOperation)
+	audit, err := service.beginNativeDeliveryAudit(ctx, invocation, access, store.NativeDeliveryGapsOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -149,20 +151,20 @@ func (service *Service) DeclareNativeDeliveryGaps(ctx context.Context, call Call
 	}
 	return value, nil
 }
-func (service *Service) SealNativeDelivery(ctx context.Context, call Call, command NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) SealNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := nativeDeliverySelector(call, command.Query)
+	access, err := nativeDeliverySelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_final")
 	}
-	idempotency, err := prepareIdempotency(call, store.NativeDeliveryFinalOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryFinalOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.FinalDeliveryDeclaration
@@ -170,7 +172,7 @@ func (service *Service) SealNativeDelivery(ctx context.Context, call Call, comma
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginNativeDeliveryAudit(ctx, call, access, store.NativeDeliveryFinalOperation)
+	audit, err := service.beginNativeDeliveryAudit(ctx, invocation, access, store.NativeDeliveryFinalOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -191,20 +193,20 @@ func (service *Service) SealNativeDelivery(ctx context.Context, call Call, comma
 	}
 	return value, nil
 }
-func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, call Call, command NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, invocation invocation.Invocation, command NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := nativeDeliverySelector(call, command.Query)
+	access, err := nativeDeliverySelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Summary.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_summary")
 	}
-	idempotency, err := prepareIdempotency(call, store.NativeDeliverySummaryOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliverySummaryOperation, command.IdempotencyKey, struct {
 		AttemptID model.ExamAttemptID
 		StreamID  string
 		Summary   model.UnretainedDeliverySummary
@@ -212,7 +214,7 @@ func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, call Ca
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginNativeDeliveryAudit(ctx, call, access, store.NativeDeliverySummaryOperation)
+	audit, err := service.beginNativeDeliveryAudit(ctx, invocation, access, store.NativeDeliverySummaryOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -250,8 +252,8 @@ type NativeDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) AppendNativeDelivery(ctx context.Context, call Call, command NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
-	access, err := nativeDeliverySelector(call, command.Query)
+func (service *Service) AppendNativeDelivery(ctx context.Context, invocation invocation.Invocation, command NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+	access, err := nativeDeliverySelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -271,14 +273,14 @@ func (service *Service) AppendNativeDelivery(ctx context.Context, call Call, com
 	if err != nil {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
-	idempotency, err := prepareIdempotency(call, store.NativeDeliveryAppendOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.NativeDeliveryAppendOperation, command.IdempotencyKey, struct {
 		AttemptID model.ExamAttemptID
 		Batch     model.NativeSecurityBatch
 	}{access.Access.AttemptID, command.Batch})
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginNativeDeliveryAudit(ctx, call, access, store.NativeDeliveryAppendOperation)
+	audit, err := service.beginNativeDeliveryAudit(ctx, invocation, access, store.NativeDeliveryAppendOperation)
 	if err != nil {
 		return nil, err
 	}

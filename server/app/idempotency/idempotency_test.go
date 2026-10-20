@@ -9,12 +9,17 @@ package idempotency
 
 import (
 	"crypto/sha256"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+func caller(userID model.UserID) invocation.Invocation {
+	return invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
+}
 
 func TestPreparePinsCommandIdentity(t *testing.T) {
 	t.Parallel()
@@ -23,7 +28,7 @@ func TestPreparePinsCommandIdentity(t *testing.T) {
 		Title  string `json:"title"`
 	}
 	userID := model.NewUserID()
-	got, err := Prepare(userID, "exam.create.v1", "retry-key", semantics{ExamID: "exam-1", Title: "Networks"})
+	got, err := Prepare(caller(userID), "exam.create.v1", "retry-key", semantics{ExamID: "exam-1", Title: "Networks"})
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
@@ -39,7 +44,7 @@ func TestPreparePinsCommandIdentity(t *testing.T) {
 
 func TestPrepareEmptyKey(t *testing.T) {
 	t.Parallel()
-	got, err := Prepare(model.UserID("invalid is irrelevant"), "operation", "", make(chan int))
+	got, err := Prepare(caller("invalid is irrelevant"), "operation", "", make(chan int))
 	if err != nil || got != nil {
 		t.Fatalf("Prepare empty key = %#v, %v; want nil, nil", got, err)
 	}
@@ -47,19 +52,26 @@ func TestPrepareEmptyKey(t *testing.T) {
 
 func TestPrepareRejectsInvalidPrincipal(t *testing.T) {
 	t.Parallel()
-	_, err := Prepare("", "operation", "key", struct{}{})
-	if !errors.Is(err, ErrInvalidPrincipal) {
-		t.Fatalf("Prepare error = %v; want ErrInvalidPrincipal", err)
+	_, err := Prepare(caller(""), "operation", "key", struct{}{})
+	if !apperror.Is(err, "idempotency.key_invalid") {
+		t.Fatalf("Prepare error = %v; want idempotency.key_invalid", err)
 	}
 }
 
 func TestPrepareWrapsSemanticEncodingFailure(t *testing.T) {
 	t.Parallel()
-	_, err := Prepare(model.NewUserID(), "operation", "key", struct {
+	_, err := Prepare(caller(model.NewUserID()), "operation", "key", struct {
 		Unsupported chan int `json:"unsupported"`
 	}{Unsupported: make(chan int)})
-	var encodingError *SemanticEncodingError
-	if !errors.As(err, &encodingError) {
-		t.Fatalf("Prepare error = %v; want SemanticEncodingError", err)
+	if !apperror.Is(err, "request.invalid") {
+		t.Fatalf("Prepare error = %v; want request.invalid", err)
+	}
+}
+
+func TestRequireRejectsEmptyKeyBeforeEncoding(t *testing.T) {
+	t.Parallel()
+	got, err := Require(caller(""), "operation", "", make(chan int))
+	if got != nil || !apperror.Is(err, "idempotency.key_required") {
+		t.Fatalf("Require empty key = %#v, %v; want idempotency.key_required", got, err)
 	}
 }

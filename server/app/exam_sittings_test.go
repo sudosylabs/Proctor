@@ -16,6 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -58,8 +59,8 @@ func TestAuthorizeWebSocketSittingSubscriptionUsesRelationshipGate(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.sittingID != sittingID || child.call.Principal().UserID != principal.UserID {
-		t.Fatalf("authorization = %s %#v", child.sittingID, child.call)
+	if child.sittingID != sittingID || child.invocation.Principal().UserID != principal.UserID {
+		t.Fatalf("authorization = %s %#v", child.sittingID, child.invocation)
 	}
 }
 
@@ -130,12 +131,12 @@ func TestExamSittingFacadeForwardsCommandsAndPreservesInvocationAndResults(t *te
 			if err != nil || got != result || fake.command != test.command {
 				t.Fatalf("command = %#v, result = %#v, %v", fake.command, got, err)
 			}
-			if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
-				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+			if fake.ctx != ctx || !reflect.DeepEqual(fake.invocation.Principal(), invocation.Principal()) || fake.invocation.RequestMetadata() != invocation.RequestMetadata() {
+				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.invocation)
 			}
-			principal := fake.call.Principal()
+			principal := fake.invocation.Principal()
 			principal.CredentialScopes[0] = "changed"
-			if fake.call.Principal().CredentialScopes[0] != "exam:manage" || invocation.Principal().CredentialScopes[0] != "exam:manage" {
+			if fake.invocation.Principal().CredentialScopes[0] != "exam:manage" || invocation.Principal().CredentialScopes[0] != "exam:manage" {
 				t.Fatal("child call exposed mutable principal scopes")
 			}
 		})
@@ -217,7 +218,7 @@ func TestExamSittingLifecycleJobReconcileLeavesClosingToDedicatedSealingJob(t *t
 		t.Fatal(err)
 	}
 	if result == nil || result.Value.Sitting.State != model.ExamSittingClosing ||
-		fake.advanceCall != (examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}) {
+		fake.advanceCall != (appinvocation.System{JobID: jobID, AttemptID: attemptID}) {
 		t.Fatalf("result/call = %#v / %#v", result, fake.advanceCall)
 	}
 
@@ -300,57 +301,57 @@ func (f *examCollectionInvalidationStoreFake) ListCandidateInvalidationTargetsBy
 type examSittingUseCasesFake struct {
 	examSittingUseCases
 	ctx         context.Context
-	call        examsitting.Call
+	invocation  Invocation
 	command     any
 	result      store.ExamSittingSnapshot
 	sittingID   model.ExamSittingID
 	update      examsitting.UpdateScheduleCommand
 	advance     store.ExamSittingLifecycleResult
-	advanceCall examsitting.SystemCall
+	advanceCall appinvocation.System
 	err         error
 }
 
-func (fake *examSittingUseCasesFake) Schedule(ctx context.Context, call examsitting.Call, command examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) Schedule(ctx context.Context, invocation Invocation, command examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) UpdateSchedule(ctx context.Context, call examsitting.Call, command examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command, fake.update = ctx, call, command, command
+func (fake *examSittingUseCasesFake) UpdateSchedule(ctx context.Context, invocation Invocation, command examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command, fake.update = ctx, invocation, command, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) Cancel(ctx context.Context, call examsitting.Call, command examsitting.CancelCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) Cancel(ctx context.Context, invocation Invocation, command examsitting.CancelCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) AuthorizeView(_ context.Context, call examsitting.Call, sittingID model.ExamSittingID) error {
-	fake.call, fake.sittingID = call, sittingID
+func (fake *examSittingUseCasesFake) AuthorizeView(_ context.Context, invocation Invocation, sittingID model.ExamSittingID) error {
+	fake.invocation, fake.sittingID = invocation, sittingID
 	return fake.err
 }
 
-func (fake *examSittingUseCasesFake) Pause(ctx context.Context, call examsitting.Call, command examsitting.PauseCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) Pause(ctx context.Context, invocation Invocation, command examsitting.PauseCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) Resume(ctx context.Context, call examsitting.Call, command examsitting.ResumeCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) Resume(ctx context.Context, invocation Invocation, command examsitting.ResumeCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) Extend(ctx context.Context, call examsitting.Call, command examsitting.ExtendCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) Extend(ctx context.Context, invocation Invocation, command examsitting.ExtendCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) EarlyClose(ctx context.Context, call examsitting.Call, command examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examSittingUseCasesFake) EarlyClose(ctx context.Context, invocation Invocation, command examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) AdvanceDue(_ context.Context, call examsitting.SystemCall, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
+func (fake *examSittingUseCasesFake) AdvanceDue(_ context.Context, call appinvocation.System, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	fake.advanceCall = call
 	return fake.advance, fake.err
 }

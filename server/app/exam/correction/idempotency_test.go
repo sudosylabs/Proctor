@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -41,11 +43,11 @@ func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, user
 func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	examID, sittingID, revisionID := model.NewExamID(), model.NewExamSittingID(), model.NewExamRevisionID()
 	resourceID, stageID := model.NewExamResourceID(), model.NewExamCorrectionResourceStageID()
 
-	staged, err := prepareStageIdempotency(call, StageResourceContentCommand{ExamID: examID, SittingID: sittingID,
+	staged, err := prepareStageIdempotency(invocation, StageResourceContentCommand{ExamID: examID, SittingID: sittingID,
 		BaseRevisionID: revisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID,
 		MediaType: model.ExamResourceMediaPDF, Size: 12, ExpectedSHA256: "digest", IdempotencyKey: "stage-key"})
 	if err != nil {
@@ -55,7 +57,7 @@ func TestIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) {
 		fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"base_revision_id":%q,"target":"replacement","resource_id":%q,"media_type":"application/pdf","size":12,"sha256":"digest"}`,
 			examID, sittingID, revisionID, resourceID))
 
-	applied, err := prepareApplyIdempotency(call, ApplyCommand{ExamID: examID, SittingID: sittingID,
+	applied, err := prepareApplyIdempotency(invocation, ApplyCommand{ExamID: examID, SittingID: sittingID,
 		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: revisionID,
 		Instructions:         OptionalInstructions{Present: true, Markdown: "Updated"},
 		Resources:            []ResourceManifestItem{{ResourceID: resourceID, DisplayName: "Reference", DescriptionMarkdown: "Read it", StageID: stageID}},
@@ -81,8 +83,8 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := prepareIdempotency(call, "operation", "", struct{}{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
 	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}

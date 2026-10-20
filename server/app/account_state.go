@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -78,7 +79,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		return nil, accountStateStoreErrors.Translate(err)
 	}
 	disabled := !command.Enabled
-	idempotency, err := newCommandIdempotency(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
 		UserID  string `json:"user_id"`
 		Enabled bool   `json:"enabled"`
 	}{userID.String(), command.Enabled})

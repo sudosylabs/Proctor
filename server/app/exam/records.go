@@ -14,14 +14,16 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 // RecordsAuthorizer also owns the durable decision for prohibited self-waivers.
 type RecordsAuthorizer interface {
-	Authorize(context.Context, Call, model.Action, model.Resource) error
-	Deny(context.Context, Call, model.Action, model.Resource, model.AcademicUnitID) error
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	Deny(context.Context, invocation.Invocation, model.Action, model.Resource, model.AcademicUnitID) error
 }
 
 type CompleteRecordsCommand struct {
@@ -83,10 +85,10 @@ func NewRecords(persistence store.ExamRecordsStore, access store.ExamAuthoringSt
 		auditor: auditor, recentTTL: recentTTL, now: now, newHoldID: newHoldID}, nil
 }
 
-func (r *Records) authorize(ctx context.Context, call Call, scope model.RetentionHoldScope,
+func (r *Records) authorize(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope,
 	ordinary, override model.Action, excludeSelf bool,
 ) (*store.ExamRecordsScope, model.Action, error) {
-	principal := call.Principal()
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || scope.Validate() != nil {
 		return nil, "", apperror.Invalid("exam.invalid", "scope")
 	}
@@ -99,7 +101,7 @@ func (r *Records) authorize(ctx context.Context, call Call, scope model.Retentio
 		return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("Exam records scope projection is incomplete"))
 	}
 	if excludeSelf && principal.UserID == resolved.CandidateUserID {
-		return nil, "", r.authorizer.Deny(ctx, call, ordinary, scope.Resource(), resolved.AcademicUnitID)
+		return nil, "", r.authorizer.Deny(ctx, invocation, ordinary, scope.Resource(), resolved.AcademicUnitID)
 	}
 	action := ordinary
 	if override != "" {
@@ -115,18 +117,18 @@ func (r *Records) authorize(ctx context.Context, call Call, scope model.Retentio
 			return nil, "", apperror.New("exam.unavailable").Wrap(err)
 		}
 	}
-	if err = r.authorizer.Authorize(ctx, call, action, scope.Resource()); err != nil {
+	if err = r.authorizer.Authorize(ctx, invocation, action, scope.Resource()); err != nil {
 		return nil, "", err
 	}
 	return resolved, action, nil
 }
 
-func (r *Records) GetCompletion(ctx context.Context, call Call, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
+func (r *Records) GetCompletion(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, sittingID model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
 	scope := model.RetentionHoldScope{ExamID: examID, SittingID: sittingID}
 	if !sittingID.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "exam_sitting_id")
 	}
-	if _, _, err := r.authorize(ctx, call, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, false); err != nil {
+	if _, _, err := r.authorize(ctx, invocation, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, false); err != nil {
 		return nil, err
 	}
 	value, err := r.persistence.GetCompletion(ctx, examID, sittingID)
@@ -140,11 +142,11 @@ func (r *Records) GetCompletion(ctx context.Context, call Call, examID model.Exa
 	return value, nil
 }
 
-func (r *Records) FindReviewWaiver(ctx context.Context, call Call, scope model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error) {
+func (r *Records) FindReviewWaiver(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error) {
 	if !scope.SubmissionID.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "submission_id")
 	}
-	if _, _, err := r.authorize(ctx, call, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, true); err != nil {
+	if _, _, err := r.authorize(ctx, invocation, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, true); err != nil {
 		return nil, err
 	}
 	value, found, err := r.persistence.FindReviewWaiver(ctx, scope)
@@ -160,7 +162,7 @@ func (r *Records) FindReviewWaiver(ctx context.Context, call Call, scope model.R
 	return value, nil
 }
 
-func (r *Records) begin(ctx context.Context, call Call, scope *store.ExamRecordsScope, action model.Action, operation string,
+func (r *Records) begin(ctx context.Context, invocation invocation.Invocation, scope *store.ExamRecordsScope, action model.Action, operation string,
 	data map[string]any,
 ) (store.ExamRecordsMutation, error) {
 	data["exam_id"] = scope.Scope.ExamID.String()
@@ -170,12 +172,12 @@ func (r *Records) begin(ctx context.Context, call Call, scope *store.ExamRecords
 	if scope.Scope.SubmissionID.IsValid() {
 		data["submission_id"] = scope.Scope.SubmissionID.String()
 	}
-	id, err := r.auditor.Begin(ctx, call, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
+	id, err := r.auditor.Begin(ctx, invocation, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
 		scope.AcademicUnitID.String(), operation, data, nil)
 	if err != nil {
 		return store.ExamRecordsMutation{}, err
 	}
-	return store.ExamRecordsMutation{Scope: scope.Scope, Principal: call.Principal(), Action: action,
+	return store.ExamRecordsMutation{Scope: scope.Scope, Principal: invocation.Principal(), Action: action,
 		AuditEventID: id, AuditAt: model.MillisFromTime(model.TimeUTC(r.now()))}, nil
 }
 
@@ -187,21 +189,21 @@ func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, 
 	return mapped
 }
 
-func (r *Records) CompleteRecords(ctx context.Context, call Call, command CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error) {
+func (r *Records) CompleteRecords(ctx context.Context, invocation invocation.Invocation, command CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error) {
 	if !command.Scope.SittingID.IsValid() || !command.Scope.SubmissionID.IsZero() || command.ExpectedRevision < 1 || command.AcknowledgedEvidenceRevision < 0 {
 		return nil, apperror.Invalid("exam.invalid", "records_completion")
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := prepareIdempotency(call, store.ExamRecordsCompleteOperation, key, command)
+	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsCompleteOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
-	scope, action, err := r.authorize(ctx, call, command.Scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, false)
+	scope, action, err := r.authorize(ctx, invocation, command.Scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, false)
 	if err != nil {
 		return nil, err
 	}
-	mutation, err := r.begin(ctx, call, scope, action, "complete_records", map[string]any{"expected_revision": command.ExpectedRevision,
+	mutation, err := r.begin(ctx, invocation, scope, action, "complete_records", map[string]any{"expected_revision": command.ExpectedRevision,
 		"acknowledged_evidence_revision": command.AcknowledgedEvidenceRevision})
 	if err != nil {
 		return nil, err
@@ -217,22 +219,22 @@ func (r *Records) CompleteRecords(ctx context.Context, call Call, command Comple
 	return result.Completion, nil
 }
 
-func (r *Records) WaiveReview(ctx context.Context, call Call, command WaiveReviewCommand) (*model.SubmissionReviewWaiver, error) {
+func (r *Records) WaiveReview(ctx context.Context, invocation invocation.Invocation, command WaiveReviewCommand) (*model.SubmissionReviewWaiver, error) {
 	if !command.Scope.SubmissionID.IsValid() || command.ExpectedRevision < 0 || command.ExpectedReviewRevision < 0 ||
 		command.ExpectedDeliveryInventoryRevision < 0 || command.ExpectedDiscrepancyCount < 0 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "review_waiver")
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := prepareIdempotency(call, store.ExamRecordsWaiveReviewOperation, key, command)
+	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsWaiveReviewOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
-	scope, action, err := r.authorize(ctx, call, command.Scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, true)
+	scope, action, err := r.authorize(ctx, invocation, command.Scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, true)
 	if err != nil {
 		return nil, err
 	}
-	mutation, err := r.begin(ctx, call, scope, action, "waive_review", map[string]any{"expected_revision": command.ExpectedRevision, "reason_code": command.ReasonCode})
+	mutation, err := r.begin(ctx, invocation, scope, action, "waive_review", map[string]any{"expected_revision": command.ExpectedRevision, "reason_code": command.ReasonCode})
 	if err != nil {
 		return nil, err
 	}
@@ -248,11 +250,11 @@ func (r *Records) WaiveReview(ctx context.Context, call Call, command WaiveRevie
 	return result.Waiver, nil
 }
 
-func (r *Records) ListHolds(ctx context.Context, call Call, query store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
+func (r *Records) ListHolds(ctx context.Context, invocation invocation.Invocation, query store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
 	if query.Limit < 1 || query.Limit > 200 || !query.After.IsZero() && !query.After.IsValid() {
 		return nil, apperror.Invalid("exam.invalid", "hold_page")
 	}
-	if _, _, err := r.authorize(ctx, call, query.Scope, model.ActionExamRecordsHold, model.ActionExamRecordsHoldOverride, false); err != nil {
+	if _, _, err := r.authorize(ctx, invocation, query.Scope, model.ActionExamRecordsHold, model.ActionExamRecordsHoldOverride, false); err != nil {
 		return nil, err
 	}
 	page, err := r.persistence.ListHolds(ctx, query)
@@ -270,17 +272,17 @@ func (r *Records) ListHolds(ctx context.Context, call Call, query store.ExamReco
 	return page, nil
 }
 
-func (r *Records) CreateHold(ctx context.Context, call Call, command CreateRetentionHoldCommand) (*model.RetentionHold, error) {
+func (r *Records) CreateHold(ctx context.Context, invocation invocation.Invocation, command CreateRetentionHoldCommand) (*model.RetentionHold, error) {
 	if model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "retention_hold")
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := prepareIdempotency(call, store.ExamRecordsCreateHoldOperation, key, command)
+	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsCreateHoldOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
-	scope, action, err := r.authorize(ctx, call, command.Scope, model.ActionExamRecordsHold, model.ActionExamRecordsHoldOverride, false)
+	scope, action, err := r.authorize(ctx, invocation, command.Scope, model.ActionExamRecordsHold, model.ActionExamRecordsHoldOverride, false)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +290,7 @@ func (r *Records) CreateHold(ctx context.Context, call Call, command CreateReten
 	if !holdID.IsValid() {
 		return nil, apperror.New("exam.unavailable").Wrap(errors.New("Retention hold identity is invalid"))
 	}
-	mutation, err := r.begin(ctx, call, scope, action, "create_hold", map[string]any{"retention_hold_id": holdID.String(), "reason_code": command.ReasonCode})
+	mutation, err := r.begin(ctx, invocation, scope, action, "create_hold", map[string]any{"retention_hold_id": holdID.String(), "reason_code": command.ReasonCode})
 	if err != nil {
 		return nil, err
 	}
@@ -303,27 +305,27 @@ func (r *Records) CreateHold(ctx context.Context, call Call, command CreateReten
 	return result.Hold, nil
 }
 
-func (r *Records) ReleaseHold(ctx context.Context, call Call, command ReleaseRetentionHoldCommand) (*model.RetentionHold, error) {
+func (r *Records) ReleaseHold(ctx context.Context, invocation invocation.Invocation, command ReleaseRetentionHoldCommand) (*model.RetentionHold, error) {
 	if !command.HoldID.IsValid() || command.ExpectedRevision < 1 || model.ValidateRecordsReason(command.ReasonCode, command.PrivateReason) != nil {
 		return nil, apperror.Invalid("exam.invalid", "retention_hold")
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
-	idempotency, err := prepareIdempotency(call, store.ExamRecordsReleaseHoldOperation, key, command)
+	idempotency, err := applicationidempotency.Require(invocation, store.ExamRecordsReleaseHoldOperation, key, command)
 	if err != nil {
 		return nil, err
 	}
-	scope, action, err := r.authorize(ctx, call, command.Scope, model.ActionRetentionHoldRelease, "", false)
+	scope, action, err := r.authorize(ctx, invocation, command.Scope, model.ActionRetentionHoldRelease, "", false)
 	if err != nil {
 		return nil, err
 	}
-	if !call.Principal().HasStrongAuthentication() {
+	if !invocation.Principal().HasStrongAuthentication() {
 		return nil, apperror.New("authentication.strong_required")
 	}
-	if !call.Principal().IsRecentlyAuthenticated(model.TimeUTC(r.now()), r.recentTTL) {
+	if !invocation.Principal().IsRecentlyAuthenticated(model.TimeUTC(r.now()), r.recentTTL) {
 		return nil, apperror.New("authentication.reauthentication_required")
 	}
-	mutation, err := r.begin(ctx, call, scope, action, "release_hold", map[string]any{"retention_hold_id": command.HoldID.String(),
+	mutation, err := r.begin(ctx, invocation, scope, action, "release_hold", map[string]any{"retention_hold_id": command.HoldID.String(),
 		"expected_revision": command.ExpectedRevision, "reason_code": command.ReasonCode})
 	if err != nil {
 		return nil, err

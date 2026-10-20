@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -40,8 +42,8 @@ type ArchiveCommand struct {
 	IdempotencyKey       string
 }
 
-func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (CatalogPage, error) {
-	principal := call.Principal()
+func (a *Authoring) List(ctx context.Context, invocation invocation.Invocation, query ListQuery) (CatalogPage, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeUpdatedAt.IsZero() != query.BeforeExamID.IsZero()) ||
 		(query.EndsAfter.IsZero() != query.StartsBefore.IsZero()) || (!query.EndsAfter.IsZero() && !query.EndsAfter.Before(query.StartsBefore)) ||
@@ -53,7 +55,7 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 	default:
 		return CatalogPage{}, apperror.Invalid("exam.invalid", "archive_filter")
 	}
-	visibility, err := a.authorizer.AuthorizeList(ctx, call, query.AcademicUnitID)
+	visibility, err := a.authorizer.AuthorizeList(ctx, invocation, query.AcademicUnitID)
 	if err != nil {
 		return CatalogPage{}, err
 	}
@@ -83,12 +85,12 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 	return CatalogPage{Items: items}, nil
 }
 
-func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveCommand) (model.Exam, error) {
-	principal := call.Principal()
+func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocation, command ArchiveCommand) (model.Exam, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedExamRevision < 1 {
 		return model.Exam{}, apperror.Invalid("exam.invalid", "exam_revision")
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationArchive, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationArchive, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
 		ExpectedExamRevision int64  `json:"expected_exam_revision"`
 	}{ExamID: command.ExamID.String(), ExpectedExamRevision: command.ExpectedExamRevision})
@@ -108,10 +110,10 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 		return model.Exam{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Exam{}, err
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_exam_revision": command.ExpectedExamRevision,
 		"exam_revision": command.ExpectedExamRevision + 1,
 	}, nil)

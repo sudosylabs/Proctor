@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -41,7 +43,7 @@ func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, user
 func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	examID, resourceID := model.NewExamID(), model.NewExamResourceID()
 	ids := []string{resourceID.String()}
 	tests := []struct {
@@ -72,7 +74,7 @@ func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 		"reorder": "exam.resource.reorder.v1", "remove": "exam.resource.remove.v1",
 	}
 	for _, test := range tests {
-		prepared, err := prepareResourceIdempotency(call, test.operation, "key", examID, 2, test.resource,
+		prepared, err := prepareResourceIdempotency(invocation, test.operation, "key", examID, 2, test.resource,
 			test.nameValue, test.description, test.media, test.size, test.sha, test.ids)
 		if err != nil {
 			t.Fatalf("%s: %v", test.name, err)
@@ -87,14 +89,14 @@ func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 func TestMetadataIdempotencyPreservesFieldPresence(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
-	call := NewCall(model.Principal{UserID: userID}, model.RequestMetadata{})
+	invocation := invocation.New(model.Principal{UserID: userID}, model.RequestMetadata{})
 	examID, resourceID := model.NewExamID(), model.NewExamResourceID()
 	empty := ""
-	nameOnly, err := prepareMetadataIdempotency(call, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DisplayName: &empty, IdempotencyKey: "same-key"})
+	nameOnly, err := prepareMetadataIdempotency(invocation, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DisplayName: &empty, IdempotencyKey: "same-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptionOnly, err := prepareMetadataIdempotency(call, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DescriptionMarkdown: &empty, IdempotencyKey: "same-key"})
+	descriptionOnly, err := prepareMetadataIdempotency(invocation, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DescriptionMarkdown: &empty, IdempotencyKey: "same-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +111,8 @@ func TestMetadataIdempotencyPreservesFieldPresence(t *testing.T) {
 
 func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
-	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	_, err := prepareIdempotency(call, "operation", "", struct{}{})
+	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
+	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
 	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}

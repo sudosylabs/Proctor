@@ -11,6 +11,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -21,7 +22,7 @@ type nativeReviewAuthorizer struct {
 	calls int
 }
 
-func (a *nativeReviewAuthorizer) AuthorizeView(context.Context, Call, model.SubmissionID) error {
+func (a *nativeReviewAuthorizer) AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error {
 	a.calls++
 	return a.err
 }
@@ -43,15 +44,15 @@ func TestNativeConditionsRequireCurrentDetailedReviewAuthority(t *testing.T) {
 	f.service.deps.Authorizer = auth
 	f.service.deps.Persistence = p
 	query := NativeConditionListQuery{SubmissionID: f.submissionID, Limit: 100}
-	if _, err := f.service.ListNativeConditions(context.Background(), f.call, query); !errors.Is(err, denied) || p.calls != 0 {
+	if _, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); !errors.Is(err, denied) || p.calls != 0 {
 		t.Fatal("private conditions read before authorization")
 	}
 	auth.err = nil
-	if page, err := f.service.ListNativeConditions(context.Background(), f.call, query); err != nil || page.Items == nil || p.calls != 1 || auth.calls != 2 {
+	if page, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); err != nil || page.Items == nil || p.calls != 1 || auth.calls != 2 {
 		t.Fatal("authorized condition read failed")
 	}
 	query.Limit = 101
-	if _, err := f.service.ListNativeConditions(context.Background(), f.call, query); err == nil || p.calls != 1 {
+	if _, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); err == nil || p.calls != 1 {
 		t.Fatal("unbounded review read")
 	}
 }

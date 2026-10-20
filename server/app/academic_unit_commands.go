@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -196,7 +197,7 @@ func (s *academicUnitCommandService) Create(
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("academic_unit.invalid", err)
 	}
-	idempotency, err := newCommandIdempotency(invocation, "academic_unit.create.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "academic_unit.create.v1", command.IdempotencyKey, struct {
 		ParentID, Name, DisplayName, Description string
 	}{command.ParentID.String(), command.Name, command.DisplayName, command.Description})
 	if err != nil {

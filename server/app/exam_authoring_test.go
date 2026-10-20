@@ -31,8 +31,8 @@ func TestCreateExamBuildsChildCallAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(view, child.view) || child.call.Principal().UserID != userID || child.call.RequestMetadata().RequestID != "request-1" {
-		t.Fatalf("view/call = %#v / %#v", view, child.call)
+	if !reflect.DeepEqual(view, child.view) || child.invocation.Principal().UserID != userID || child.invocation.RequestMetadata().RequestID != "request-1" {
+		t.Fatalf("view/call = %#v / %#v", view, child.invocation)
 	}
 	if child.create.IdempotencyKey != "retry-key" {
 		t.Fatalf("idempotency key = %q", child.create.IdempotencyKey)
@@ -162,8 +162,8 @@ func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.authorizeExamID != examID || child.call.Principal().UserID != principal.UserID {
-		t.Fatalf("authorization = %s %#v", child.authorizeExamID, child.call)
+	if child.authorizeExamID != examID || child.invocation.Principal().UserID != principal.UserID {
+		t.Fatalf("authorization = %s %#v", child.authorizeExamID, child.invocation)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 
 type examUseCasesFake struct {
 	nativePolicy    examengine.ConfigureDraftNativePolicyCommand
-	call            examengine.Call
+	invocation      Invocation
 	create          examengine.CreateCommand
 	edit            examengine.EditDraftTextCommand
 	focusLoss       examengine.ConfigureDraftFocusLossCommand
@@ -212,60 +212,60 @@ type examUseCasesFake struct {
 	err             error
 }
 
-func (f *examUseCasesFake) ListManagers(_ context.Context, call examengine.Call, query examengine.ListManagersQuery) (examengine.ManagerPage, error) {
-	f.call, f.managerList = call, query
+func (f *examUseCasesFake) ListManagers(_ context.Context, invocation Invocation, query examengine.ListManagersQuery) (examengine.ManagerPage, error) {
+	f.invocation, f.managerList = invocation, query
 	return f.managerPage, f.err
 }
-func (f *examUseCasesFake) AddManager(_ context.Context, call examengine.Call, command examengine.AddManagerCommand) (examengine.ManagerChange, error) {
-	f.call, f.managerCommand = call, command
+func (f *examUseCasesFake) AddManager(_ context.Context, invocation Invocation, command examengine.AddManagerCommand) (examengine.ManagerChange, error) {
+	f.invocation, f.managerCommand = invocation, command
 	return f.managerChange, f.err
 }
-func (f *examUseCasesFake) RemoveManager(_ context.Context, call examengine.Call, command examengine.RemoveManagerCommand) (examengine.ManagerChange, error) {
-	f.call, f.managerCommand = call, command
+func (f *examUseCasesFake) RemoveManager(_ context.Context, invocation Invocation, command examengine.RemoveManagerCommand) (examengine.ManagerChange, error) {
+	f.invocation, f.managerCommand = invocation, command
 	return f.managerChange, f.err
 }
-func (f *examUseCasesFake) TransferOwner(_ context.Context, call examengine.Call, command examengine.TransferOwnerCommand) (examengine.ManagerChange, error) {
-	f.call, f.managerCommand = call, command
+func (f *examUseCasesFake) TransferOwner(_ context.Context, invocation Invocation, command examengine.TransferOwnerCommand) (examengine.ManagerChange, error) {
+	f.invocation, f.managerCommand = invocation, command
 	return f.managerChange, f.err
 }
 
-func (f *examUseCasesFake) List(_ context.Context, call examengine.Call, query examengine.ListQuery) (examengine.CatalogPage, error) {
-	f.call, f.list = call, query
+func (f *examUseCasesFake) List(_ context.Context, invocation Invocation, query examengine.ListQuery) (examengine.CatalogPage, error) {
+	f.invocation, f.list = invocation, query
 	return f.catalog, f.err
 }
 
-func (f *examUseCasesFake) Archive(_ context.Context, call examengine.Call, command examengine.ArchiveCommand) (model.Exam, error) {
-	f.call, f.archive = call, command
+func (f *examUseCasesFake) Archive(_ context.Context, invocation Invocation, command examengine.ArchiveCommand) (model.Exam, error) {
+	f.invocation, f.archive = invocation, command
 	return f.archived, f.err
 }
 
-func (f *examUseCasesFake) AuthorizeView(_ context.Context, call examengine.Call, examID model.ExamID) error {
-	f.call, f.authorizeExamID = call, examID
+func (f *examUseCasesFake) AuthorizeView(_ context.Context, invocation Invocation, examID model.ExamID) error {
+	f.invocation, f.authorizeExamID = invocation, examID
 	return f.err
 }
 
-func (f *examUseCasesFake) Create(_ context.Context, call examengine.Call, command examengine.CreateCommand) (examengine.View, error) {
-	f.call, f.create = call, command
+func (f *examUseCasesFake) Create(_ context.Context, invocation Invocation, command examengine.CreateCommand) (examengine.View, error) {
+	f.invocation, f.create = invocation, command
 	return f.view, f.err
 }
 
-func (f *examUseCasesFake) Get(_ context.Context, call examengine.Call, _ model.ExamID) (examengine.View, error) {
-	f.call = call
+func (f *examUseCasesFake) Get(_ context.Context, invocation Invocation, _ model.ExamID) (examengine.View, error) {
+	f.invocation = invocation
 	return f.view, f.err
 }
 
-func (f *examUseCasesFake) EditDraftText(_ context.Context, call examengine.Call, command examengine.EditDraftTextCommand) (examengine.View, error) {
-	f.call, f.edit = call, command
+func (f *examUseCasesFake) EditDraftText(_ context.Context, invocation Invocation, command examengine.EditDraftTextCommand) (examengine.View, error) {
+	f.invocation, f.edit = invocation, command
 	return f.view, f.err
 }
 
-func (f *examUseCasesFake) ConfigureDraftFocusLoss(_ context.Context, call examengine.Call, command examengine.ConfigureDraftFocusLossCommand) (examengine.View, error) {
-	f.call, f.focusLoss = call, command
+func (f *examUseCasesFake) ConfigureDraftFocusLoss(_ context.Context, invocation Invocation, command examengine.ConfigureDraftFocusLossCommand) (examengine.View, error) {
+	f.invocation, f.focusLoss = invocation, command
 	return f.view, f.err
 }
 
-func (f *examUseCasesFake) ConfigureDraftBrowserPolicy(_ context.Context, call examengine.Call, command examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error) {
-	f.call, f.browserPolicy = call, command
+func (f *examUseCasesFake) ConfigureDraftBrowserPolicy(_ context.Context, invocation Invocation, command examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error) {
+	f.invocation, f.browserPolicy = invocation, command
 	return f.view, f.err
 }
 
@@ -278,7 +278,7 @@ func testExamPrincipal(userID model.UserID) model.Principal {
 	}
 }
 
-func (f *examUseCasesFake) ConfigureDraftNativePolicy(_ context.Context, call examengine.Call, command examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error) {
-	f.call, f.nativePolicy = call, command
+func (f *examUseCasesFake) ConfigureDraftNativePolicy(_ context.Context, invocation Invocation, command examengine.ConfigureDraftNativePolicyCommand) (examengine.View, error) {
+	f.invocation, f.nativePolicy = invocation, command
 	return f.view, f.err
 }

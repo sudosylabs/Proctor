@@ -12,6 +12,8 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -30,13 +32,13 @@ type CorrectionAcknowledgementResult struct {
 	RuntimeCapabilities  store.CandidateRuntimeCapabilities
 }
 
-func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, command AcknowledgeCorrectionCommand) (CorrectionAcknowledgementResult, error) {
-	selector, err := candidateSelector(call, command.Access.CandidateAccess)
+func (service *Service) AcknowledgeCorrection(ctx context.Context, invocation invocation.Invocation, command AcknowledgeCorrectionCommand) (CorrectionAcknowledgementResult, error) {
+	selector, err := candidateSelector(invocation, command.Access.CandidateAccess)
 	if err != nil || !command.Access.ParticipationID.IsValid() || command.Access.Generation < 1 ||
 		!command.CorrectionRevisionID.IsValid() || !command.ExpectedCurrentRevisionID.IsValid() {
 		return CorrectionAcknowledgementResult{}, apperror.Invalid("exam.attempt.invalid", "correction_acknowledgement")
 	}
-	idempotency, err := prepareIdempotency(call, store.ExamAttemptCorrectionAcknowledgementOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.ExamAttemptCorrectionAcknowledgementOperation, command.IdempotencyKey, struct {
 		AttemptID                 string `json:"exam_attempt_id"`
 		ParticipationID           string `json:"participation_id"`
 		Generation                int64  `json:"generation"`
@@ -60,11 +62,11 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, co
 		return CorrectionAcknowledgementResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent correction acknowledgement target"))
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}
-	if err = service.deps.Auditor.RecordAuthorizationDecision(ctx, call, model.ActionExamSittingParticipate,
+	if err = service.deps.Auditor.RecordAuthorizationDecision(ctx, invocation, model.ActionExamSittingParticipate,
 		resource, model.RoleScopeClass, target.ClassID.String(), true); err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}
-	auditEvent, err := service.deps.Auditor.Prepare(ctx, call, model.ActionExamSittingParticipate,
+	auditEvent, err := service.deps.Auditor.Prepare(ctx, invocation, model.ActionExamSittingParticipate,
 		resource, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptCorrectionAcknowledgementOperation,
 		map[string]any{"exam_attempt_id": target.AttemptID.String(), "correction_revision_id": target.CorrectionRevisionID.String(),
@@ -83,7 +85,7 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, co
 	}
 	// The receipt is immutable; the gates are freshly resolved after commit,
 	// including an exact replay or another correction published in the meantime.
-	presentation, err := service.GetPresentation(ctx, call, command.Access.CandidateAccess)
+	presentation, err := service.GetPresentation(ctx, invocation, command.Access.CandidateAccess)
 	if err != nil {
 		return CorrectionAcknowledgementResult{}, err
 	}

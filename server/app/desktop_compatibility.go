@@ -18,6 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -300,7 +301,7 @@ func (s *desktopCompatibilityService) Replace(
 	if command.IdempotencyKey == "" {
 		return nil, apperror.New("idempotency.key_required")
 	}
-	idempotency, err := newCommandIdempotency(
+	idempotency, err := applicationidempotency.Prepare(
 		invocation,
 		"desktop_compatibility_policy.replace.v1",
 		command.IdempotencyKey,

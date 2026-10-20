@@ -68,7 +68,7 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 	if query.ArchiveFilter == "" {
 		query.ArchiveFilter = ExamArchiveActive
 	}
-	page, err := a.exams.List(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ListQuery{
+	page, err := a.exams.List(ctx, invocation, examengine.ListQuery{
 		AcademicUnitID: query.AcademicUnitID, Query: strings.TrimSpace(query.Query), ArchiveFilter: store.ExamArchiveFilter(query.ArchiveFilter),
 		SittingStates: append([]model.ExamSittingState(nil), query.SittingStates...), EndsAfter: query.EndsAfter, StartsBefore: query.StartsBefore,
 		BeforeUpdatedAt: query.BeforeUpdatedAt, BeforeExamID: query.BeforeExamID, Limit: query.Limit,
@@ -88,7 +88,7 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 }
 
 func (a *App) ArchiveExam(ctx context.Context, invocation Invocation, command ArchiveExamCommand) (model.Exam, error) {
-	exam, err := a.exams.Archive(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ArchiveCommand{
+	exam, err := a.exams.Archive(ctx, invocation, examengine.ArchiveCommand{
 		ExamID: command.ExamID, ExpectedExamRevision: command.ExpectedExamRevision, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {

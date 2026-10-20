@@ -18,7 +18,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -38,14 +38,14 @@ func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentMan
 		}},
 	}
 	principal := examAttemptPrincipal()
-	call := examattempt.NewCall(principal, model.RequestMetadata{RequestID: "submission-view"})
+	call := NewInvocation(principal, model.RequestMetadata{RequestID: "submission-view"})
 	if err := adapter.AuthorizeSubmissionView(context.Background(), call, submissionID); err != nil {
 		t.Fatal(err)
 	}
 	if sittings.examID != examID || sittings.submissionID != submissionID ||
-		sittings.call.Principal().UserID != principal.UserID {
+		sittings.invocation.Principal().UserID != principal.UserID {
 		t.Fatalf("authorization call = exam %s submission %s principal %s", sittings.examID,
-			sittings.submissionID, sittings.call.Principal().UserID)
+			sittings.submissionID, sittings.invocation.Principal().UserID)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		audit := &submissionAuthorizationAuditFake{}
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization}, audit: audit}
-		err := adapter.AuthorizeSubmissionView(context.Background(), examattempt.NewCall(principal, metadata), submissionID)
+		err := adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID)
 		var fault *apperror.Error
 		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" {
 			t.Fatalf("AuthorizeSubmissionView() error = %v, want concealed not found", err)
@@ -101,7 +101,7 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization},
 			audit:       &submissionAuthorizationAuditFake{err: auditErr}}
-		if err := adapter.AuthorizeSubmissionView(context.Background(), examattempt.NewCall(principal, metadata), submissionID); !errors.Is(err, auditErr) {
+		if err := adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID); !errors.Is(err, auditErr) {
 			t.Fatalf("AuthorizeSubmissionView() error = %v, want audit failure", err)
 		}
 	})
@@ -118,15 +118,15 @@ func (fake *submissionAuthorizationStoreFake) Resolve(context.Context, model.Sub
 
 type submissionAuthorizationSittingFake struct {
 	examSittingUseCases
-	call         examsitting.Call
+	invocation   Invocation
 	examID       model.ExamID
 	submissionID model.SubmissionID
 }
 
-func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, call examsitting.Call,
+func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ context.Context, invocation Invocation,
 	examID model.ExamID, submissionID model.SubmissionID,
 ) error {
-	fake.call, fake.examID, fake.submissionID = call, examID, submissionID
+	fake.invocation, fake.examID, fake.submissionID = invocation, examID, submissionID
 	return nil
 }
 
@@ -559,29 +559,29 @@ type examAttemptUseCasesFake struct {
 	workspaceFileBodies  [][]byte
 }
 
-func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ examattempt.Call, command examattempt.ConnectCommand) (examattempt.ConnectionResult, error) {
+func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ Invocation, command examattempt.ConnectCommand) (examattempt.ConnectionResult, error) {
 	fake.connects = append(fake.connects, command)
 	return examattempt.ConnectionResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) RenewParticipation(_ context.Context, _ examattempt.Call, command examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error) {
+func (fake *examAttemptUseCasesFake) RenewParticipation(_ context.Context, _ Invocation, command examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error) {
 	fake.renewals = append(fake.renewals, command)
 	return fake.renewResult, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) EvaluateFocusLoss(_ context.Context, _ examattempt.Call,
+func (fake *examAttemptUseCasesFake) EvaluateFocusLoss(_ context.Context, _ Invocation,
 	command examattempt.FocusLossCommand,
 ) (examattempt.FocusLossEvaluation, error) {
 	fake.focusLoss = append(fake.focusLoss, command)
 	return fake.focusResult, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) Reallow(_ context.Context, _ examattempt.Call, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {
+func (fake *examAttemptUseCasesFake) Reallow(_ context.Context, _ Invocation, command examattempt.ReallowCommand) (examattempt.ReallowResult, error) {
 	fake.reallows = append(fake.reallows, command)
 	return examattempt.ReallowResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) SuspendByManager(_ context.Context, _ examattempt.Call, command examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error) {
+func (fake *examAttemptUseCasesFake) SuspendByManager(_ context.Context, _ Invocation, command examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error) {
 	fake.suspensions = append(fake.suspensions, command)
 	return examattempt.ManualSuspensionResult{}, fake.err
 }
@@ -590,28 +590,28 @@ func (fake *examAttemptUseCasesFake) ScanExpiredParticipations(context.Context, 
 	return examattempt.ExpiryScanResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) CloseConnection(context.Context, examattempt.Call, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error) {
+func (fake *examAttemptUseCasesFake) CloseConnection(context.Context, Invocation, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error) {
 	return examattempt.ConnectionClosedResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) GetPresentation(context.Context, examattempt.Call, examattempt.CandidateAccess) (examattempt.Presentation, error) {
+func (fake *examAttemptUseCasesFake) GetPresentation(context.Context, Invocation, examattempt.CandidateAccess) (examattempt.Presentation, error) {
 	return fake.presentation, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error) {
+func (fake *examAttemptUseCasesFake) ListWorkspace(context.Context, Invocation, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error) {
 	return fake.workspacePage, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListWorkspaceJournal(context.Context, examattempt.Call, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error) {
+func (fake *examAttemptUseCasesFake) ListWorkspaceJournal(context.Context, Invocation, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error) {
 	return examattempt.WorkspaceJournalPage{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) CreateWorkspaceDirectory(_ context.Context, _ examattempt.Call, command examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) CreateWorkspaceDirectory(_ context.Context, _ Invocation, command examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error) {
 	fake.workspaceDirectories = append(fake.workspaceDirectories, command)
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(_ context.Context, _ examattempt.Call, command examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(_ context.Context, _ Invocation, command examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
 	fake.workspaceFiles = append(fake.workspaceFiles, command)
 	body, err := io.ReadAll(command.Body)
 	if err != nil {
@@ -621,79 +621,79 @@ func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(_ context.Context, _ ex
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ReplaceWorkspaceFile(context.Context, examattempt.Call, examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) ReplaceWorkspaceFile(context.Context, Invocation, examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) MoveWorkspaceEntry(context.Context, examattempt.Call, examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) MoveWorkspaceEntry(context.Context, Invocation, examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) DeleteWorkspaceEntry(context.Context, examattempt.Call, examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) DeleteWorkspaceEntry(context.Context, Invocation, examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error) {
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) OpenResource(context.Context, examattempt.Call, examattempt.CandidateAccess, model.ExamResourceID) (*examattempt.OpenedContent, error) {
+func (fake *examAttemptUseCasesFake) OpenResource(context.Context, Invocation, examattempt.CandidateAccess, model.ExamResourceID) (*examattempt.OpenedContent, error) {
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) OpenWorkspaceFile(context.Context, examattempt.Call, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error) {
+func (fake *examAttemptUseCasesFake) OpenWorkspaceFile(context.Context, Invocation, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error) {
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) GetManaged(context.Context, examattempt.Call, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error) {
+func (fake *examAttemptUseCasesFake) GetManaged(context.Context, Invocation, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error) {
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error) {
+func (fake *examAttemptUseCasesFake) ListManaged(context.Context, Invocation, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error) {
 	return examattempt.ManagedAttemptPage{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListCandidateActivity(context.Context, examattempt.Call, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error) {
+func (fake *examAttemptUseCasesFake) ListCandidateActivity(context.Context, Invocation, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error) {
 	return examattempt.CandidateActivityPage{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListSittingCandidateStatuses(context.Context, examattempt.Call, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error) {
+func (fake *examAttemptUseCasesFake) ListSittingCandidateStatuses(context.Context, Invocation, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error) {
 	return examattempt.SittingCandidateStatusesPage{}, fake.err
 }
-func (fake *examAttemptUseCasesFake) StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
+func (fake *examAttemptUseCasesFake) StartBrowserActivity(context.Context, Invocation, examattempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error) {
 	return model.BrowserSourceStatus{}, fake.err
 }
-func (fake *examAttemptUseCasesFake) AppendBrowserActivity(context.Context, examattempt.Call, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
+func (fake *examAttemptUseCasesFake) AppendBrowserActivity(context.Context, Invocation, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
 	return model.BrowserActivityAcknowledgement{}, fake.err
 }
-func (fake *examAttemptUseCasesFake) ListBrowserActivity(context.Context, examattempt.Call, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error) {
+func (fake *examAttemptUseCasesFake) ListBrowserActivity(context.Context, Invocation, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error) {
 	return examattempt.BrowserActivityPage{}, fake.err
 }
-func (fake *examAttemptUseCasesFake) AcknowledgeCorrection(context.Context, examattempt.Call, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error) {
+func (fake *examAttemptUseCasesFake) AcknowledgeCorrection(context.Context, Invocation, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error) {
 	return examattempt.CorrectionAcknowledgementResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) Submit(context.Context, examattempt.Call,
+func (fake *examAttemptUseCasesFake) Submit(context.Context, Invocation,
 	examattempt.SubmitCommand,
 ) (examattempt.SubmissionResult, error) {
 	return examattempt.SubmissionResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) EndByManager(context.Context, examattempt.Call,
+func (fake *examAttemptUseCasesFake) EndByManager(context.Context, Invocation,
 	examattempt.ManagerEndCommand,
 ) (examattempt.SubmissionResult, error) {
 	return examattempt.SubmissionResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) GetSubmission(context.Context, examattempt.Call,
+func (fake *examAttemptUseCasesFake) GetSubmission(context.Context, Invocation,
 	examattempt.GetSubmissionQuery,
 ) (*examattempt.ManagedSubmission, error) {
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) ListSubmissionManifest(context.Context, examattempt.Call,
+func (fake *examAttemptUseCasesFake) ListSubmissionManifest(context.Context, Invocation,
 	examattempt.ListSubmissionManifestQuery,
 ) (examattempt.SubmissionManifestPage, error) {
 	return examattempt.SubmissionManifestPage{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) OpenSubmissionFile(context.Context, examattempt.Call,
+func (fake *examAttemptUseCasesFake) OpenSubmissionFile(context.Context, Invocation,
 	examattempt.OpenSubmissionFileQuery,
 ) (*examattempt.OpenedContent, error) {
 	return nil, fake.err
@@ -705,7 +705,7 @@ func (fake *examAttemptUseCasesFake) ListAutomaticSealTargets(context.Context, m
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) SealForSittingClose(context.Context, examattempt.SystemCall,
+func (fake *examAttemptUseCasesFake) SealForSittingClose(context.Context, appinvocation.System,
 	store.ExamSubmissionAutomaticSealTarget,
 ) (examattempt.AutomaticSubmissionResult, error) {
 	return examattempt.AutomaticSubmissionResult{}, fake.err
@@ -713,65 +713,65 @@ func (fake *examAttemptUseCasesFake) SealForSittingClose(context.Context, examat
 
 var _ examAttemptUseCases = (*examAttemptUseCasesFake)(nil)
 
-func (fake *examAttemptUseCasesFake) PrepareSecurityPreflight(context.Context, examattempt.Call, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
+func (fake *examAttemptUseCasesFake) PrepareSecurityPreflight(context.Context, Invocation, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
 	return nil, errors.New("unexpected preflight prepare")
 }
-func (fake *examAttemptUseCasesFake) ReportSecurityPreflight(context.Context, examattempt.Call, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+func (fake *examAttemptUseCasesFake) ReportSecurityPreflight(context.Context, Invocation, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
 	return nil, errors.New("unexpected preflight report")
 }
 
-func (fake *examAttemptUseCasesFake) RecoverSecurityPolicy(context.Context, examattempt.Call, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+func (fake *examAttemptUseCasesFake) RecoverSecurityPolicy(context.Context, Invocation, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
 	return nil, errors.New("unexpected security recovery")
 }
 
-func (fake *examAttemptUseCasesFake) UpdateSecurityCoverage(context.Context, examattempt.Call, examattempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+func (fake *examAttemptUseCasesFake) UpdateSecurityCoverage(context.Context, Invocation, examattempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
 	return model.SecurityCoverageResult{}, errors.New("unexpected security update")
 }
 
-func (fake *examAttemptUseCasesFake) NativeDeliveryStatus(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
+func (fake *examAttemptUseCasesFake) NativeDeliveryStatus(context.Context, Invocation, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected NativeDeliveryStatus")
 }
 
-func (fake *examAttemptUseCasesFake) NativeDeliveryReceipt(context.Context, examattempt.Call, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
+func (fake *examAttemptUseCasesFake) NativeDeliveryReceipt(context.Context, Invocation, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error) {
 	return nil, errors.New("unexpected NativeDeliveryReceipt")
 }
 
-func (fake *examAttemptUseCasesFake) DeclareNativeDeliveryGaps(context.Context, examattempt.Call, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
+func (fake *examAttemptUseCasesFake) DeclareNativeDeliveryGaps(context.Context, Invocation, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error) {
 	return nil, errors.New("unexpected DeclareNativeDeliveryGaps")
 }
 
-func (fake *examAttemptUseCasesFake) SealNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
+func (fake *examAttemptUseCasesFake) SealNativeDelivery(context.Context, Invocation, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected SealNativeDelivery")
 }
 
-func (fake *examAttemptUseCasesFake) UpdateNativeDeliverySummary(context.Context, examattempt.Call, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
+func (fake *examAttemptUseCasesFake) UpdateNativeDeliverySummary(context.Context, Invocation, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
 	return nil, errors.New("unexpected UpdateNativeDeliverySummary")
 }
 
-func (fake *examAttemptUseCasesFake) AppendNativeDelivery(context.Context, examattempt.Call, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
+func (fake *examAttemptUseCasesFake) AppendNativeDelivery(context.Context, Invocation, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendNativeDelivery")
 }
 
-func (fake *examAttemptUseCasesFake) BrowserSourceStatus(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
+func (fake *examAttemptUseCasesFake) BrowserSourceStatus(context.Context, Invocation, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
 	return nil, fake.err
 }
-func (fake *examAttemptUseCasesFake) BrowserSourceList(context.Context, examattempt.Call, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
+func (fake *examAttemptUseCasesFake) BrowserSourceList(context.Context, Invocation, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
 	return nil, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) BrowserDeliveryReceipts(context.Context, examattempt.Call, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
+func (fake *examAttemptUseCasesFake) BrowserDeliveryReceipts(context.Context, Invocation, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {
 	return nil, errors.New("unexpected BrowserDeliveryReceipts")
 }
-func (fake *examAttemptUseCasesFake) DeclareBrowserDeliveryGaps(context.Context, examattempt.Call, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+func (fake *examAttemptUseCasesFake) DeclareBrowserDeliveryGaps(context.Context, Invocation, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
 	return nil, errors.New("unexpected DeclareBrowserDeliveryGaps")
 }
-func (fake *examAttemptUseCasesFake) SealBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+func (fake *examAttemptUseCasesFake) SealBrowserDelivery(context.Context, Invocation, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
 	return nil, errors.New("unexpected SealBrowserDelivery")
 }
-func (fake *examAttemptUseCasesFake) UpdateBrowserDeliverySummary(context.Context, examattempt.Call, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+func (fake *examAttemptUseCasesFake) UpdateBrowserDeliverySummary(context.Context, Invocation, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
 	return nil, errors.New("unexpected UpdateBrowserDeliverySummary")
 }
-func (fake *examAttemptUseCasesFake) AppendHistoricalBrowserDelivery(context.Context, examattempt.Call, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+func (fake *examAttemptUseCasesFake) AppendHistoricalBrowserDelivery(context.Context, Invocation, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
 	return nil, errors.New("unexpected AppendHistoricalBrowserDelivery")
 }
 
@@ -779,9 +779,9 @@ func (fake *examAttemptUseCasesFake) ScanExpiredDeliveries(context.Context, int)
 	return examattempt.ExpiryScanResult{}, nil
 }
 
-func (fake *examAttemptUseCasesFake) DeliveryBudget(context.Context, examattempt.Call, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+func (fake *examAttemptUseCasesFake) DeliveryBudget(context.Context, Invocation, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
 	return nil, errors.New("unexpected DeliveryBudget")
 }
-func (fake *examAttemptUseCasesFake) StopDeliveryDetails(context.Context, examattempt.Call, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+func (fake *examAttemptUseCasesFake) StopDeliveryDetails(context.Context, Invocation, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
 	return nil, errors.New("unexpected StopDeliveryDetails")
 }

@@ -8,32 +8,14 @@
 package review
 
 import (
-	"errors"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
-
-func prepareDecisionIdempotency(call Call, command SaveDecisionCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, store.ExamIntegrityReviewDecisionOperation, command.IdempotencyKey, struct {
+func prepareDecisionIdempotency(invocation invocation.Invocation, command SaveDecisionCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, store.ExamIntegrityReviewDecisionOperation, command.IdempotencyKey, struct {
 		SubmissionID             string `json:"submission_id"`
 		ReviewID                 string `json:"submission_review_id,omitempty"`
 		FlagID                   string `json:"integrity_flag_id"`
@@ -44,8 +26,8 @@ func prepareDecisionIdempotency(call Call, command SaveDecisionCommand) (*store.
 	}{command.SubmissionID.String(), command.ReviewID.String(), command.FlagID.String(), command.ExpectedReviewRevision, command.ExpectedDecisionRevision, string(command.Outcome), command.PrivateRationale})
 }
 
-func prepareDraftIdempotency(call Call, command UpdateDraftCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, store.ExamIntegrityReviewDraftOperation, command.IdempotencyKey, struct {
+func prepareDraftIdempotency(invocation invocation.Invocation, command UpdateDraftCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, store.ExamIntegrityReviewDraftOperation, command.IdempotencyKey, struct {
 		SubmissionID           string `json:"submission_id"`
 		ReviewID               string `json:"submission_review_id,omitempty"`
 		ExpectedReviewRevision int64  `json:"expected_review_revision"`
@@ -54,10 +36,10 @@ func prepareDraftIdempotency(call Call, command UpdateDraftCommand) (*store.Comm
 	}{command.SubmissionID.String(), command.ReviewID.String(), command.ExpectedReviewRevision, command.ManagerNotes, command.StudentRemarksMarkdown})
 }
 
-func prepareTerminalIdempotency(call Call, operation, key string, submissionID model.SubmissionID,
+func prepareTerminalIdempotency(invocation invocation.Invocation, operation, key string, submissionID model.SubmissionID,
 	reviewID model.SubmissionReviewID, expectedRevision int64,
 ) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, operation, key, struct {
+	return applicationidempotency.Require(invocation, operation, key, struct {
 		SubmissionID     string `json:"submission_id"`
 		ReviewID         string `json:"submission_review_id"`
 		ExpectedRevision int64  `json:"expected_review_revision"`

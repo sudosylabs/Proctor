@@ -72,8 +72,8 @@ func TestExamStarterWorkspaceFacadeForwardsRawCommandsAndStreams(t *testing.T) {
 			if fake.command != test.command || body.Len() != int(create.Size) {
 				t.Fatalf("command changed before reaching child: %#v, unread bytes = %d", fake.command, body.Len())
 			}
-			if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
-				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+			if fake.ctx != ctx || !reflect.DeepEqual(fake.invocation.Principal(), invocation.Principal()) || fake.invocation.RequestMetadata() != invocation.RequestMetadata() {
+				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.invocation)
 			}
 		})
 	}
@@ -105,35 +105,35 @@ func TestExamStarterWorkspaceFacadePreservesErrorConcealmentAndSafeFields(t *tes
 
 type examStarterWorkspaceFacadeFake struct {
 	examStarterWorkspaceUseCases
-	ctx     context.Context
-	call    examworkspace.Call
-	command any
-	result  examworkspace.Result
-	err     error
+	ctx        context.Context
+	invocation Invocation
+	command    any
+	result     examworkspace.Result
+	err        error
 }
 
-func (fake *examStarterWorkspaceFacadeFake) CreateDirectory(ctx context.Context, call examworkspace.Call, command examworkspace.CreateDirectoryCommand) (examworkspace.Result, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examStarterWorkspaceFacadeFake) CreateDirectory(ctx context.Context, invocation Invocation, command examworkspace.CreateDirectoryCommand) (examworkspace.Result, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examStarterWorkspaceFacadeFake) CreateFile(ctx context.Context, call examworkspace.Call, command examworkspace.CreateFileCommand) (examworkspace.Result, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examStarterWorkspaceFacadeFake) CreateFile(ctx context.Context, invocation Invocation, command examworkspace.CreateFileCommand) (examworkspace.Result, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examStarterWorkspaceFacadeFake) MoveEntry(ctx context.Context, call examworkspace.Call, command examworkspace.MoveEntryCommand) (examworkspace.Result, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examStarterWorkspaceFacadeFake) MoveEntry(ctx context.Context, invocation Invocation, command examworkspace.MoveEntryCommand) (examworkspace.Result, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examStarterWorkspaceFacadeFake) ReplaceFile(ctx context.Context, call examworkspace.Call, command examworkspace.ReplaceFileCommand) (examworkspace.Result, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examStarterWorkspaceFacadeFake) ReplaceFile(ctx context.Context, invocation Invocation, command examworkspace.ReplaceFileCommand) (examworkspace.Result, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 
-func (fake *examStarterWorkspaceFacadeFake) RemoveEntry(ctx context.Context, call examworkspace.Call, command examworkspace.RemoveEntryCommand) (examworkspace.Result, error) {
-	fake.ctx, fake.call, fake.command = ctx, call, command
+func (fake *examStarterWorkspaceFacadeFake) RemoveEntry(ctx context.Context, invocation Invocation, command examworkspace.RemoveEntryCommand) (examworkspace.Result, error) {
+	fake.ctx, fake.invocation, fake.command = ctx, invocation, command
 	return fake.result, fake.err
 }
 

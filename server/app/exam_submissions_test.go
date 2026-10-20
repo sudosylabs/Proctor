@@ -60,26 +60,26 @@ type examSubmissionFacadeFake struct {
 	err          error
 }
 
-func (fake *examSubmissionFacadeFake) Submit(_ context.Context, _ examattempt.Call,
+func (fake *examSubmissionFacadeFake) Submit(_ context.Context, _ Invocation,
 	command examattempt.SubmitCommand,
 ) (examattempt.SubmissionResult, error) {
 	fake.submits = append(fake.submits, command)
 	return fake.submitResult, fake.err
 }
 
-func (*examSubmissionFacadeFake) GetSubmission(context.Context, examattempt.Call,
+func (*examSubmissionFacadeFake) GetSubmission(context.Context, Invocation,
 	examattempt.GetSubmissionQuery,
 ) (*examattempt.ManagedSubmission, error) {
 	return nil, nil
 }
 
-func (*examSubmissionFacadeFake) ListSubmissionManifest(context.Context, examattempt.Call,
+func (*examSubmissionFacadeFake) ListSubmissionManifest(context.Context, Invocation,
 	examattempt.ListSubmissionManifestQuery,
 ) (examattempt.SubmissionManifestPage, error) {
 	return examattempt.SubmissionManifestPage{}, nil
 }
 
-func (*examSubmissionFacadeFake) OpenSubmissionFile(context.Context, examattempt.Call,
+func (*examSubmissionFacadeFake) OpenSubmissionFile(context.Context, Invocation,
 	examattempt.OpenSubmissionFileQuery,
 ) (*examattempt.OpenedContent, error) {
 	return nil, nil

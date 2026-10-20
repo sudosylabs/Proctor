@@ -12,17 +12,18 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 type NativeConditionListQuery = store.NativeConditionListOptions
 
-func (service *Service) ListNativeConditions(ctx context.Context, call Call, query NativeConditionListQuery) (*store.NativeConditionPage, error) {
+func (service *Service) ListNativeConditions(ctx context.Context, invocation invocation.Invocation, query NativeConditionListQuery) (*store.NativeConditionPage, error) {
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {
 		return nil, apperror.Invalid("exam.integrity_review.invalid", "native_condition_list")
 	}
-	if err := service.deps.Authorizer.AuthorizeView(ctx, call, query.SubmissionID); err != nil {
+	if err := service.deps.Authorizer.AuthorizeView(ctx, invocation, query.SubmissionID); err != nil {
 		return nil, err
 	}
 	page, err := service.deps.Persistence.ListNativeConditions(ctx, query)

@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -47,8 +48,8 @@ type ManualSuspensionResult struct {
 // audits the attempt, and lets the named Store operation end the live
 // generation and open one manual Suspension episode atomically. Effects are
 // published only for a fresh commit.
-func (service *Service) SuspendByManager(ctx context.Context, call Call, command ManualSuspensionCommand) (ManualSuspensionResult, error) {
-	principal := call.Principal()
+func (service *Service) SuspendByManager(ctx context.Context, invocation invocation.Invocation, command ManualSuspensionCommand) (ManualSuspensionResult, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return ManualSuspensionResult{}, apperror.New("authentication.token_invalid")
 	}
@@ -56,11 +57,11 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 		command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
 		return ManualSuspensionResult{}, apperror.Invalid("exam.attempt.invalid", "manual_suspension")
 	}
-	idempotency, err := prepareManualSuspensionIdempotency(call, command)
+	idempotency, err := prepareManualSuspensionIdempotency(invocation, command)
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return ManualSuspensionResult{}, err
 	}
@@ -75,7 +76,7 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, action,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.Sitting.ClassID.String(),
 		store.ExamAttemptSuspendOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 			"exam_attempt_id": command.AttemptID.String(), "expected_attempt_revision": command.ExpectedAttemptRevision})

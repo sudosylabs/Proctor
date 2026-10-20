@@ -32,7 +32,7 @@ func TestRecursiveWorkspaceDeletionRequiresCandidateSnapshot(t *testing.T) {
 			command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: model.NewAttemptWorkspaceEntryID(), ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
 			test.configure(&command)
-			if _, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, command); err == nil || f.workspace.mutation != nil {
+			if _, err := f.service.DeleteWorkspaceEntry(context.Background(), f.invocation, command); err == nil || f.workspace.mutation != nil {
 				t.Fatalf("error=%v mutation=%#v", err, f.workspace.mutation)
 			}
 		})
@@ -52,14 +52,14 @@ func TestRecursiveWorkspaceDeletionCarriesSnapshotAndSemanticIdentity(t *testing
 	cursor := int64(0)
 	command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
-	result, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, command)
+	result, err := f.service.DeleteWorkspaceEntry(context.Background(), f.invocation, command)
 	if err != nil || !result.Change.Recursive || f.workspace.mutation == nil || !f.workspace.mutation.Recursive ||
 		f.workspace.mutation.ExpectedWorkspaceCursor == nil || *f.workspace.mutation.ExpectedWorkspaceCursor != 0 {
 		t.Fatalf("result=%#v error=%v mutation=%#v", result, err, f.workspace.mutation)
 	}
 	first := *f.workspace.idempotency
 	cursor = 1
-	if _, err = f.service.DeleteWorkspaceEntry(context.Background(), f.call, command); err != nil {
+	if _, err = f.service.DeleteWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	if first.Fingerprint == f.workspace.idempotency.Fingerprint || first.KeyDigest != f.workspace.idempotency.KeyDigest {

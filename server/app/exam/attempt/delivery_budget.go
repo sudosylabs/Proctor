@@ -10,6 +10,8 @@ import (
 	"context"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -24,8 +26,8 @@ type StopDeliveryDetailsCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) DeliveryBudget(ctx context.Context, call Call, query DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) DeliveryBudget(ctx context.Context, invocation invocation.Invocation, query DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -33,7 +35,7 @@ func (service *Service) DeliveryBudget(ctx context.Context, call Call, query Del
 	if !query.ParticipationID.IsValid() {
 		return nil, apperror.Invalid("exam.attempt.invalid", "participation_id")
 	}
-	access, err := nativeDeliverySelector(call, NativeDeliveryQuery{Access: query.Access, StreamID: query.ParticipationID.String()})
+	access, err := nativeDeliverySelector(invocation, NativeDeliveryQuery{Access: query.Access, StreamID: query.ParticipationID.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -46,20 +48,20 @@ func (service *Service) DeliveryBudget(ctx context.Context, call Call, query Del
 	}
 	return value, nil
 }
-func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, command StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) StopDeliveryDetails(ctx context.Context, invocation invocation.Invocation, command StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := candidateSelector(call, command.Access)
+	access, err := candidateSelector(invocation, command.Access)
 	if err != nil {
 		return nil, err
 	}
 	if command.Request.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "stop_delivery_details")
 	}
-	idempotency, err := prepareIdempotency(call, store.DeliveryStopDetailsOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.DeliveryStopDetailsOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Request model.StopDeliveryDetails
 	}{access.AttemptID, command.Request})
@@ -73,7 +75,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	audit, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), store.DeliveryStopDetailsOperation, map[string]any{"family": command.Request.Family})
+	audit, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), store.DeliveryStopDetailsOperation, map[string]any{"family": command.Request.Family})
 	if err != nil {
 		return nil, err
 	}

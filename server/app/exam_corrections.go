@@ -55,12 +55,12 @@ type ExamSittingCorrectionResult struct {
 }
 
 type examCorrectionUseCases interface {
-	StageResourceContent(context.Context, examcorrection.Call, examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error)
-	Apply(context.Context, examcorrection.Call, examcorrection.ApplyCommand) (examcorrection.Result, error)
+	StageResourceContent(context.Context, Invocation, examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error)
+	Apply(context.Context, Invocation, examcorrection.ApplyCommand) (examcorrection.Result, error)
 }
 
 func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, invocation Invocation, command StageExamSittingCorrectionResourceContentCommand) (ExamSittingCorrectionResourceStage, error) {
-	result, err := a.examCorrections.StageResourceContent(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examCorrections.StageResourceContent(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingCorrectionResourceStage{}, examCorrectionError(err, true)
 	}
@@ -72,7 +72,7 @@ func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocat
 	copy(childResources, command.Resources)
 	command.Resources = childResources
 	command.AffectedCapabilities = slices.Clone(command.AffectedCapabilities)
-	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examCorrections.Apply(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingCorrectionResult{}, examCorrectionError(err, true)
 	}
@@ -85,14 +85,14 @@ func examCorrectionError(err error, conceal bool) error {
 
 type examCorrectionAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a examCorrectionAuthorizationAdapter) Authorize(ctx context.Context, call examcorrection.Call, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+func (a examCorrectionAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
 type examCorrectionAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examCorrectionAuditAdapter) Begin(ctx context.Context, call examcorrection.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
+func (a examCorrectionAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
 }
 func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)

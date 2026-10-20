@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,10 +28,10 @@ type ManagerEndCommand struct {
 	IdempotencyKey          string
 }
 
-func (service *Service) EndByManager(ctx context.Context, call Call,
+func (service *Service) EndByManager(ctx context.Context, invocation invocation.Invocation,
 	command ManagerEndCommand,
 ) (SubmissionResult, error) {
-	principal := call.Principal()
+	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return SubmissionResult{}, apperror.New("authentication.token_invalid")
 	}
@@ -38,13 +39,13 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		command.ExpectedAttemptRevision < 1 || !validManagerEndReason(command.PrivateReason) {
 		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "manager_end")
 	}
-	idempotency, err := prepareManagerEndIdempotency(call, command)
+	idempotency, err := prepareManagerEndIdempotency(invocation, command)
 	if err != nil {
 		return SubmissionResult{}, err
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return SubmissionResult{}, err
 	}
@@ -59,7 +60,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, action,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass,
 		sitting.Sitting.ClassID.String(), store.ExamSubmissionManagerEndOperation,
 		map[string]any{"exam_id": command.ExamID.String(),

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -67,22 +68,22 @@ type FocusLossEvaluation struct {
 	DiscrepancyRecorded         bool
 }
 
-func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, command FocusLossCommand) (FocusLossEvaluation, error) {
-	selector, err := focusLossSelector(call, command)
+func (service *Service) EvaluateFocusLoss(ctx context.Context, invocation invocation.Invocation, command FocusLossCommand) (FocusLossEvaluation, error) {
+	selector, err := focusLossSelector(invocation, command)
 	if err != nil {
 		return FocusLossEvaluation{}, err
 	}
 	target, err := service.deps.Persistence.ResolveFocusLossTarget(ctx, selector)
 	if err != nil {
 		if endedFocusLossCandidate(err) {
-			return service.evaluateEndedFocusLoss(ctx, call, command, selector)
+			return service.evaluateEndedFocusLoss(ctx, invocation, command, selector)
 		}
 		return FocusLossEvaluation{}, storeError(storeErrors, err)
 	}
 	if !validFocusLossTarget(target, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss audit target"))
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptFocusLossOperation, map[string]any{
 			"exam_attempt_id": command.AttemptID.String(), "generation": command.Generation, "sequence": command.Sequence,
@@ -101,7 +102,7 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 			if auditErr := service.deps.Auditor.Fail(ctx, auditID, "exam.attempt.state_conflict"); auditErr != nil {
 				return FocusLossEvaluation{}, auditErr
 			}
-			return service.evaluateEndedFocusLoss(ctx, call, command, selector)
+			return service.evaluateEndedFocusLoss(ctx, invocation, command, selector)
 		}
 		return FocusLossEvaluation{}, service.failAudit(ctx, auditID, err)
 	}
@@ -124,7 +125,7 @@ func endedFocusLossCandidate(err error) bool {
 		conflict.Constraint == "exam_sitting_state")
 }
 
-func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, command FocusLossCommand,
+func (service *Service) evaluateEndedFocusLoss(ctx context.Context, invocation invocation.Invocation, command FocusLossCommand,
 	selector store.ExamAttemptFocusLossAccess,
 ) (FocusLossEvaluation, error) {
 	target, err := service.deps.Persistence.ResolveEndedFocusLossTarget(ctx, selector)
@@ -134,7 +135,7 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 	if target == nil || !target.SubmissionID.IsValid() || !validFocusLossTarget(&target.ExamAttemptFocusLossTarget, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late Focus Loss audit target"))
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptFocusLossDiscrepancyOperation, map[string]any{
 			"exam_attempt_id": command.AttemptID.String(), "submission_id": target.SubmissionID.String(),
@@ -175,8 +176,8 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 	return result, nil
 }
 
-func focusLossSelector(call Call, command FocusLossCommand) (store.ExamAttemptFocusLossAccess, error) {
-	selector, err := candidateSelector(call, CandidateAccess{AttemptID: command.AttemptID,
+func focusLossSelector(invocation invocation.Invocation, command FocusLossCommand) (store.ExamAttemptFocusLossAccess, error) {
+	selector, err := candidateSelector(invocation, CandidateAccess{AttemptID: command.AttemptID,
 		ConnectionID: command.ConnectionID, ContinuityCredential: command.ContinuityCredential})
 	if err != nil {
 		return store.ExamAttemptFocusLossAccess{}, err

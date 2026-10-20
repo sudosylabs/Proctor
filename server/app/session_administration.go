@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -203,7 +204,7 @@ func (s *sessionAdministrationService) RevokeAll(
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
-	idempotency, err := newCommandIdempotency(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Prepare(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
 	}{userID.String()})
 	if err != nil {

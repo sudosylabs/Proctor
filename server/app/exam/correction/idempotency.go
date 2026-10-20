@@ -8,34 +8,17 @@
 package correction
 
 import (
-	"errors"
-
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 const idempotencyOperationApplyCorrection = "exam.sitting.correction.apply.v1"
 
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
-
-func prepareStageIdempotency(call Call, command StageResourceContentCommand) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {
+func prepareStageIdempotency(invocation invocation.Invocation, command StageResourceContentCommand) (*store.CommandIdempotency, error) {
+	return applicationidempotency.Require(invocation, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {
 		ExamID         string `json:"exam_id"`
 		SittingID      string `json:"exam_sitting_id"`
 		BaseRevisionID string `json:"base_revision_id"`
@@ -47,7 +30,7 @@ func prepareStageIdempotency(call Call, command StageResourceContentCommand) (*s
 	}{command.ExamID.String(), command.SittingID.String(), command.BaseRevisionID.String(), string(command.Target), command.ResourceID.String(), string(command.MediaType), command.Size, command.ExpectedSHA256})
 }
 
-func prepareApplyIdempotency(call Call, command ApplyCommand) (*store.CommandIdempotency, error) {
+func prepareApplyIdempotency(invocation invocation.Invocation, command ApplyCommand) (*store.CommandIdempotency, error) {
 	var browserPolicy string
 	if command.BrowserPolicy.Present {
 		encoded, err := model.EncodeBrowserPolicy(command.BrowserPolicy.Policy)
@@ -68,7 +51,7 @@ func prepareApplyIdempotency(call Call, command ApplyCommand) (*store.CommandIde
 		resources[index].DescriptionMarkdown = item.DescriptionMarkdown
 		resources[index].StageID = item.StageID.String()
 	}
-	return prepareIdempotency(call, idempotencyOperationApplyCorrection, command.IdempotencyKey, struct {
+	return applicationidempotency.Require(invocation, idempotencyOperationApplyCorrection, command.IdempotencyKey, struct {
 		ExamID                    string                      `json:"exam_id"`
 		SittingID                 string                      `json:"exam_sitting_id"`
 		ExpectedSittingRevision   int64                       `json:"expected_sitting_revision"`

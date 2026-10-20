@@ -29,14 +29,15 @@ func TestUserSettingsApplicationBoundary(t *testing.T) {
 	}
 
 	allowed := map[string]struct{}{
-		"context":                      {},
-		"encoding/json":                {},
-		"errors":                       {},
-		"time":                         {},
-		serverModule + "/app/apperror": {},
-		serverModule + "/app/realtime": {},
-		serverModule + "/model":        {},
-		serverModule + "/store":        {},
+		"context":                         {},
+		"encoding/json":                   {},
+		"errors":                          {},
+		"time":                            {},
+		serverModule + "/app/apperror":    {},
+		serverModule + "/app/idempotency": {},
+		serverModule + "/app/realtime":    {},
+		serverModule + "/model":           {},
+		serverModule + "/store":           {},
 	}
 	for _, spec := range parsed.Imports {
 		importPath, err := strconv.Unquote(spec.Path.Value)

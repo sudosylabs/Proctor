@@ -32,31 +32,31 @@ type OpenExamResourceQuery struct {
 }
 
 type examResourceUseCases interface {
-	Create(context.Context, examresource.Call, examresource.CreateCommand) (store.ExamResourceRecord, error)
-	ReplaceContent(context.Context, examresource.Call, examresource.ReplaceContentCommand) (store.ExamResourceRecord, error)
-	EditMetadata(context.Context, examresource.Call, examresource.EditMetadataCommand) (store.ExamResourceRecord, error)
-	Reorder(context.Context, examresource.Call, examresource.ReorderCommand) ([]store.ExamResourceRecord, error)
-	Remove(context.Context, examresource.Call, examresource.RemoveCommand) (store.ExamResourceRecord, error)
-	List(context.Context, examresource.Call, model.ExamID) ([]store.ExamResourceRecord, error)
-	Open(context.Context, examresource.Call, model.ExamID, model.ExamResourceID) (examresource.Opened, error)
+	Create(context.Context, Invocation, examresource.CreateCommand) (store.ExamResourceRecord, error)
+	ReplaceContent(context.Context, Invocation, examresource.ReplaceContentCommand) (store.ExamResourceRecord, error)
+	EditMetadata(context.Context, Invocation, examresource.EditMetadataCommand) (store.ExamResourceRecord, error)
+	Reorder(context.Context, Invocation, examresource.ReorderCommand) ([]store.ExamResourceRecord, error)
+	Remove(context.Context, Invocation, examresource.RemoveCommand) (store.ExamResourceRecord, error)
+	List(context.Context, Invocation, model.ExamID) ([]store.ExamResourceRecord, error)
+	Open(context.Context, Invocation, model.ExamID, model.ExamResourceID) (examresource.Opened, error)
 }
 
 func (a *App) CreateExamResource(ctx context.Context, invocation Invocation, c CreateExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Create(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
+	result, err := a.examResources.Create(ctx, invocation, c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) ReplaceExamResourceContent(ctx context.Context, invocation Invocation, c ReplaceExamResourceContentCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.ReplaceContent(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
+	result, err := a.examResources.ReplaceContent(ctx, invocation, c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocation, c EditExamResourceMetadataCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.EditMetadata(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
+	result, err := a.examResources.EditMetadata(ctx, invocation, c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
@@ -65,28 +65,28 @@ func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocatio
 
 func (a *App) ReorderExamResources(ctx context.Context, invocation Invocation, c ReorderExamResourcesCommand) ([]ExamResourceRecord, error) {
 	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
-	result, err := a.examResources.Reorder(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
+	result, err := a.examResources.Reorder(ctx, invocation, c)
 	if err != nil {
 		return nil, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) RemoveExamResource(ctx context.Context, invocation Invocation, c RemoveExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Remove(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
+	result, err := a.examResources.Remove(ctx, invocation, c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) ListExamResources(ctx context.Context, invocation Invocation, q ListExamResourcesQuery) ([]ExamResourceRecord, error) {
-	result, err := a.examResources.List(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), q.ExamID)
+	result, err := a.examResources.List(ctx, invocation, q.ExamID)
 	if err != nil {
 		return nil, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) OpenExamResource(ctx context.Context, invocation Invocation, q OpenExamResourceQuery) (OpenedExamResource, error) {
-	result, err := a.examResources.Open(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), q.ExamID, q.ResourceID)
+	result, err := a.examResources.Open(ctx, invocation, q.ExamID, q.ResourceID)
 	if err != nil {
 		return OpenedExamResource{}, examResourceError(err, true)
 	}
@@ -99,14 +99,14 @@ func examResourceError(err error, conceal bool) error {
 
 type examResourceAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a examResourceAuthorizationAdapter) Authorize(ctx context.Context, call examresource.Call, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+func (a examResourceAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
 type examResourceAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examResourceAuditAdapter) Begin(ctx context.Context, call examresource.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
+func (a examResourceAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
 }
 func (a examResourceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)

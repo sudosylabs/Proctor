@@ -31,7 +31,7 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 		t.Fatal(err)
 	}
 	command := PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"}
-	got, err := service.Publish(context.Background(), f.call, command)
+	got, err := service.Publish(context.Background(), f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 	assertStoreIdempotency(t, revisions.idempotency, f.userID, idempotencyOperationPublishRevision, "test-key",
 		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":3}`, f.examID))
 	revisions.replayed = true
-	if _, err = service.Publish(context.Background(), f.call, command); err != nil {
+	if _, err = service.Publish(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	if effects.calls != 1 {
@@ -57,7 +57,7 @@ func TestPublicationUsesOverrideForNonManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Publish(context.Background(), f.call, PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
+	_, err = service.Publish(context.Background(), f.invocation, PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestPublicationMapsCapacityConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Publish(context.Background(), f.call,
+	_, err = service.Publish(context.Background(), f.invocation,
 		PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.revision.capacity_exceeded" {

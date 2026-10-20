@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -174,7 +175,7 @@ func (s *userSettingsService) ReplaceOwn(
 	if !updatedAt.After(current.UpdatedAt) {
 		updatedAt = current.UpdatedAt.Add(time.Millisecond)
 	}
-	idempotency, err := newCommandIdempotency(
+	idempotency, err := applicationidempotency.Prepare(
 		invocation,
 		"user_settings.replace",
 		command.IdempotencyKey,

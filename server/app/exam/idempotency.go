@@ -7,14 +7,6 @@
 
 package exam
 
-import (
-	"errors"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
-	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
-	"github.com/sudosylabs/proctor/server/store"
-)
-
 const (
 	idempotencyOperationConfigureDraftNativePolicy = "exam.draft.native_policy.configure.v1"
 	idempotencyOperationCreate                     = "exam.create.v1"
@@ -27,19 +19,3 @@ const (
 	idempotencyOperationTransferOwner              = "exam.owner.transfer.v1"
 	idempotencyOperationPublishRevision            = "exam.revision.publish.v1"
 )
-
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}

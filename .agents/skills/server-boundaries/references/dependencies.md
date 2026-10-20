@@ -5,8 +5,9 @@
 ~~~text
 identityprovider ← {model, config}
 internal/canonicaljson ← model ← store ← app/job
-{model, store} ← app/apperror ← {app, app/exam, httpapi, websocket}
-{model, store} ← app/idempotency ← {app, app/exam}
+{model, store} ← app/apperror ← {app, app/idempotency, app/exam, httpapi, websocket}
+model ← app/invocation ← {app, app/idempotency, app/exam}
+{model, store, app/apperror, app/invocation} ← app/idempotency ← {app, app/exam}
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
@@ -48,10 +49,11 @@ inside `app/` are application-owned modules, not transports.
 | `store/sqlstore` | `model`, `store`, `config`, `migrations`, `internal/canonicaljson`, SQL libraries | Application services, transports, runtime composition |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, concrete Jobs, transports, concrete adapters |
 | `app/apperror` | `store` error contracts, standard library | SQL, HTTP status, localization, transports, concrete adapters |
-| `app/idempotency` | `model`, `store`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
+| `app/invocation` | `model`, standard library | authorization or audit policy, `store`, parent `app`, Exam modules, transports, concrete adapters |
+| `app/idempotency` | `model`, `store`, `app/apperror`, `app/invocation`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
-| `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/apperror`, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
+| `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/apperror`, `app/invocation`, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
 | `app/exam/manageraccess` | `model`, bounded Store access projection, narrow membership port, standard library | parent `app` or `app/exam`, sibling use cases, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
@@ -59,7 +61,7 @@ inside `app/` are application-owned modules, not transports.
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
-| `app` | `model`, `store`, `app/apperror`, `app/idempotency`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
+| `app` | `model`, `store`, `app/apperror`, `app/invocation`, `app/idempotency`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `httpapi` | `app`, `app/apperror`, `model`, `localization`, `internal/weborigin`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
@@ -83,16 +85,24 @@ declarative package rules enforce the production allowlist with no debt or
 waiver mechanism.
 
 The shared idempotency leaf has an exact inward dependency allowance of
-`model` and `store`. Within the Exam boundary its production consumers are
+`model`, `store`, `app/apperror`, and `app/invocation`. Within the Exam boundary its production consumers are
 limited to `app/exam`, `app/exam/attempt`, `app/exam/correction`,
 `app/exam/resource`, `app/exam/review`, `app/exam/sitting`, and
 `app/exam/workspace`; those command owners retain operation names and semantic
 fingerprints rather than moving policy into the leaf.
 
 The application error leaf `app/apperror` owns the single transport-neutral
-`Error` type, its `Code` vocabulary, and the declarative `StoreTable` that is\nthe only translation of typed Store failures into application errors. It sits\nbelow the parent application
+`Error` type, its `Code` vocabulary, and the declarative `StoreTable` that is
+the only translation of typed Store failures into application errors. It sits
+below the parent application
 so child modules report the same error type without importing their parent;
 transports import it only to read codes and safe fields.
+
+The invocation leaf `app/invocation` owns the one immutable call context and
+the actorless Job `System` identity. It sits below the parent application so
+the parent, the idempotency leaf, and every Exam child share one type; it
+depends only on `model`. Transports keep using the parent's `app.Invocation`
+alias.
 
 The shared Exam Manager eligibility leaf is consumed only by `app/exam`,
 `app/exam/resource`, `app/exam/workspace`, `app/exam/correction`, and

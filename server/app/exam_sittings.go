@@ -14,6 +14,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -64,30 +65,30 @@ type CloseExamSittingCommand = examsitting.EarlyCloseCommand
 type ExtendExamSittingCommand = examsitting.ExtendCommand
 
 type examSittingUseCases interface {
-	Schedule(context.Context, examsitting.Call, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
-	Get(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
-	AuthorizeView(context.Context, examsitting.Call, model.ExamSittingID) error
-	AuthorizeBrowserActivityView(context.Context, examsitting.Call, model.ExamSittingID) (model.AcademicUnitID, error)
-	AuthorizeSubmissionView(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) error
-	AuthorizeSubmissionReview(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
-	AuthorizeSubmissionRelease(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
-	AuthorizeManage(context.Context, examsitting.Call, model.ExamSittingID) (bool, error)
-	List(context.Context, examsitting.Call, examsitting.ListQuery) (examsitting.Page, error)
-	UpdateSchedule(context.Context, examsitting.Call, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
-	Cancel(context.Context, examsitting.Call, examsitting.CancelCommand) (store.ExamSittingSnapshot, error)
-	Pause(context.Context, examsitting.Call, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
-	Resume(context.Context, examsitting.Call, examsitting.ResumeCommand) (store.ExamSittingSnapshot, error)
-	Extend(context.Context, examsitting.Call, examsitting.ExtendCommand) (store.ExamSittingSnapshot, error)
-	EarlyClose(context.Context, examsitting.Call, examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
-	AdvanceDue(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	FinishSealing(context.Context, examsitting.SystemCall, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
-	ListNoShows(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID, model.UserID, int) (examsitting.NoShowPage, error)
+	Schedule(context.Context, Invocation, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
+	Get(context.Context, Invocation, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
+	AuthorizeView(context.Context, Invocation, model.ExamSittingID) error
+	AuthorizeBrowserActivityView(context.Context, Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
+	AuthorizeSubmissionView(context.Context, Invocation, model.ExamID, model.SubmissionID) error
+	AuthorizeSubmissionReview(context.Context, Invocation, model.ExamID, model.SubmissionID) (bool, error)
+	AuthorizeSubmissionRelease(context.Context, Invocation, model.ExamID, model.SubmissionID) (bool, error)
+	AuthorizeManage(context.Context, Invocation, model.ExamSittingID) (bool, error)
+	List(context.Context, Invocation, examsitting.ListQuery) (examsitting.Page, error)
+	UpdateSchedule(context.Context, Invocation, examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error)
+	Cancel(context.Context, Invocation, examsitting.CancelCommand) (store.ExamSittingSnapshot, error)
+	Pause(context.Context, Invocation, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
+	Resume(context.Context, Invocation, examsitting.ResumeCommand) (store.ExamSittingSnapshot, error)
+	Extend(context.Context, Invocation, examsitting.ExtendCommand) (store.ExamSittingSnapshot, error)
+	EarlyClose(context.Context, Invocation, examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error)
+	AdvanceDue(context.Context, appinvocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	FinishSealing(context.Context, appinvocation.System, model.ExamSittingID) (store.ExamSittingLifecycleResult, error)
+	ListNoShows(context.Context, Invocation, model.ExamID, model.ExamSittingID, model.UserID, int) (examsitting.NoShowPage, error)
 	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
 func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (result ExamSittingView, resultErr error) {
 	defer func() { a.recordOperational("exam_sitting", "schedule", resultErr) }()
-	view, err := a.examSittings.Schedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	view, err := a.examSittings.Schedule(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -95,7 +96,7 @@ func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, co
 }
 
 func (a *App) GetExamSitting(ctx context.Context, invocation Invocation, query GetExamSittingQuery) (ExamSittingView, error) {
-	view, err := a.examSittings.Get(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID, query.SittingID)
+	view, err := a.examSittings.Get(ctx, invocation, query.ExamID, query.SittingID)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -103,7 +104,7 @@ func (a *App) GetExamSitting(ctx context.Context, invocation Invocation, query G
 }
 
 func (a *App) ListExamSittings(ctx context.Context, invocation Invocation, query ListExamSittingsQuery) (ExamSittingPage, error) {
-	page, err := a.examSittings.List(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.ListQuery{
+	page, err := a.examSittings.List(ctx, invocation, examsitting.ListQuery{
 		ExamID: query.ExamID, ClassID: query.ClassID, States: append([]model.ExamSittingState(nil), query.States...),
 		OverlapStartAt: query.OverlapStartAt, OverlapEndAt: query.OverlapEndAt,
 		BeforeScheduledStartAt: query.BeforeScheduledStartAt, BeforeSittingID: query.BeforeSittingID, Limit: query.Limit,
@@ -117,7 +118,7 @@ func (a *App) ListExamSittings(ctx context.Context, invocation Invocation, query
 func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
 	query ListExamSittingNoShowsQuery,
 ) (ExamSittingNoShowPage, error) {
-	page, err := a.examSittings.ListNoShows(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	page, err := a.examSittings.ListNoShows(ctx, invocation,
 		query.ExamID, query.SittingID, query.AfterCandidateUserID, query.Limit)
 	if err != nil {
 		return ExamSittingNoShowPage{}, examSittingError(err, true)
@@ -126,7 +127,7 @@ func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
 }
 
 func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocation, command UpdateExamSittingScheduleCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.UpdateSchedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	view, err := a.examSittings.UpdateSchedule(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -134,7 +135,7 @@ func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocati
 }
 
 func (a *App) CancelExamSitting(ctx context.Context, invocation Invocation, command CancelExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Cancel(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	view, err := a.examSittings.Cancel(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -153,13 +154,13 @@ func (a *App) CloseExamSitting(ctx context.Context, invocation Invocation, comma
 	return a.runExamSittingManagerTransition(ctx, invocation, "close", command, a.examSittings.EarlyClose)
 }
 
-type examSittingManagerTransitionUseCase func(context.Context, examsitting.Call, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
+type examSittingManagerTransitionUseCase func(context.Context, Invocation, examsitting.PauseCommand) (store.ExamSittingSnapshot, error)
 
 func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation Invocation, metricEvent string,
 	command PauseExamSittingCommand, run examSittingManagerTransitionUseCase,
 ) (result ExamSittingView, resultErr error) {
 	defer func() { a.recordOperational("exam_sitting", metricEvent, resultErr) }()
-	view, err := run(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	view, err := run(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -167,7 +168,7 @@ func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation In
 }
 
 func (a *App) ExtendExamSitting(ctx context.Context, invocation Invocation, command ExtendExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Extend(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	view, err := a.examSittings.Extend(ctx, invocation, command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -179,7 +180,7 @@ type examSittingLifecycleJobUseCases struct{ sittings examSittingUseCases }
 func (useCases examSittingLifecycleJobUseCases) ReconcileExamSittingLifecycleFromJob(ctx context.Context, sittingID model.ExamSittingID, jobID model.JobID,
 	attemptID model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
-	call := examsitting.SystemCall{JobID: jobID, AttemptID: attemptID}
+	call := appinvocation.System{JobID: jobID, AttemptID: attemptID}
 	result, err := useCases.sittings.AdvanceDue(ctx, call, sittingID)
 	if err != nil {
 		return nil, err
@@ -197,13 +198,13 @@ func examSittingError(err error, conceal bool) error {
 
 type examSittingAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (adapter examSittingAuthorizationAdapter) Authorize(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource) error {
-	return adapter.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+func (adapter examSittingAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return adapter.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
-func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
-	if err := adapter.authorization.audit.RecordAuthorizationDecision(ctx, call.Principal(), action, resource,
-		model.RoleScopeAcademicUnit, unitID.String(), call.RequestMetadata(), false); err != nil {
+func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, unitID model.AcademicUnitID) error {
+	if err := adapter.authorization.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action, resource,
+		model.RoleScopeAcademicUnit, unitID.String(), invocation.RequestMetadata(), false); err != nil {
 		return err
 	}
 	return apperror.New("exam.sitting.not_found")
@@ -211,8 +212,8 @@ func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, call ex
 
 type examSittingAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (adapter examSittingAuditAdapter) Begin(ctx context.Context, call examsitting.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return adapter.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource,
+func (adapter examSittingAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+	return adapter.audit.BeginAtScope(ctx, invocation, action, resource,
 		scopeType, scopeID, operation, value, prior)
 }
 
@@ -222,7 +223,7 @@ func (adapter examSittingAuditAdapter) Fail(ctx context.Context, id model.AuditE
 
 type examSittingSystemAuditAdapter struct{ audit *auditService }
 
-func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call examsitting.SystemCall, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+func (adapter examSittingSystemAuditAdapter) Begin(ctx context.Context, call appinvocation.System, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
 	auditValue := make(map[string]any, len(value)+2)
 	for key, item := range value {
 		auditValue[key] = item

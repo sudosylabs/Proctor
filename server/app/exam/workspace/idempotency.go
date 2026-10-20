@@ -8,10 +8,8 @@
 package workspace
 
 import (
-	"errors"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -24,26 +22,10 @@ const (
 	idempotencyOperationRemoveEntry     = "exam.starter_workspace.entry.remove.v1"
 )
 
-func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, apperror.New("idempotency.key_required")
-	}
-	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
-	var encodingError *applicationidempotency.SemanticEncodingError
-	switch {
-	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
-	case errors.As(err, &encodingError):
-		return nil, apperror.New("request.invalid").Wrap(err)
-	default:
-		return prepared, err
-	}
-}
-
-func prepareWorkspaceIdempotency(call Call, operation, key string, examID model.ExamID, revision int64,
+func prepareWorkspaceIdempotency(invocation invocation.Invocation, operation, key string, examID model.ExamID, revision int64,
 	expectedContentVersion model.WorkspaceContentVersion, entryID, path, mediaType string, size int64, sha256 string,
 ) (*store.CommandIdempotency, error) {
-	return prepareIdempotency(call, operation, key, struct {
+	return applicationidempotency.Require(invocation, operation, key, struct {
 		ExamID                 string `json:"exam_id"`
 		ExpectedDraftRevision  int64  `json:"expected_draft_revision"`
 		ExpectedContentVersion string `json:"expected_content_version,omitempty"`

@@ -305,10 +305,18 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "invocation application",
+		sources:        []pathPattern{exact(serverModule + "/app/invocation")},
+		deniedStandard: standardInfrastructure,
+		project:        only(exact(serverModule + "/model")),
+	},
+	{
 		name:           "idempotency application",
 		sources:        []pathPattern{exact(serverModule + "/app/idempotency")},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/apperror"),
+			exact(serverModule+"/app/invocation"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 		),
@@ -335,6 +343,7 @@ var dependencyRules = []dependencyRule{
 		project: only(
 			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
+			exact(serverModule+"/app/invocation"),
 			exact(serverModule+"/app/exam/manageraccess"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
@@ -351,6 +360,7 @@ var dependencyRules = []dependencyRule{
 		project: only(
 			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
+			exact(serverModule+"/app/invocation"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/app/exam/safemarkdown"),
@@ -410,6 +420,7 @@ var dependencyRules = []dependencyRule{
 		project: only(
 			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
+			exact(serverModule+"/app/invocation"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/app/job"),
@@ -606,6 +617,7 @@ func TestDependencyRulePrecedence(t *testing.T) {
 	}{
 		{packagePath: serverModule + "/app/jobs", wantRule: "concrete jobs"},
 		{packagePath: serverModule + "/app/idempotency", wantRule: "idempotency application"},
+		{packagePath: serverModule + "/app/invocation", wantRule: "invocation application"},
 		{packagePath: serverModule + "/app/apperror", wantRule: "application error vocabulary"},
 		{packagePath: serverModule + "/app/exam/manageraccess", wantRule: "exam manager access"},
 		{packagePath: serverModule + "/app/exam", wantRule: "exam manager access consumers"},
@@ -654,6 +666,25 @@ func TestExamIdempotencyConsumerAllowlist(t *testing.T) {
 	}
 	if !forbiddenImport(serverModule+"/app/exam/attempt/internal", serverModule+"/app/idempotency") {
 		t.Error("descendant of a listed Exam command owner can import the shared idempotency leaf")
+	}
+}
+
+func TestInvocationLeafBoundary(t *testing.T) {
+	t.Parallel()
+	leaf := serverModule + "/app/invocation"
+	for _, consumer := range []string{"/app", "/app/idempotency", "/app/exam", "/app/exam/attempt", "/app/exam/correction",
+		"/app/exam/resource", "/app/exam/review", "/app/exam/sitting", "/app/exam/workspace"} {
+		if forbiddenImport(serverModule+consumer, leaf) {
+			t.Errorf("%s cannot import the shared invocation leaf", consumer)
+		}
+	}
+	if forbiddenImport(leaf, serverModule+"/model") {
+		t.Error("invocation leaf cannot import model")
+	}
+	for _, dependency := range []string{"/app", "/app/apperror", "/app/idempotency", "/app/exam", "/store"} {
+		if !forbiddenImport(leaf, serverModule+dependency) {
+			t.Errorf("invocation leaf can import forbidden dependency %s", dependency)
+		}
 	}
 }
 

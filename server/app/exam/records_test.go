@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +38,7 @@ func TestRecordsRequiresManagerAndExactMembershipOrScopedOverride(t *testing.T) 
 				f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}
 			}
 			command := CompleteRecordsCommand{Scope: persistence.scope.Scope, ExpectedRevision: 1, IdempotencyKey: "completion-key"}
-			value, err := records.CompleteRecords(context.Background(), f.call, command)
+			value, err := records.CompleteRecords(context.Background(), f.invocation, command)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -60,7 +61,7 @@ func TestRecordsRejectsSelfWaiverWithDurableDenial(t *testing.T) {
 	f, records, persistence, authorizer := newRecordsFixture(t)
 	persistence.scope.Scope.SubmissionID = model.NewSubmissionID()
 	persistence.scope.CandidateUserID = f.userID
-	_, err := records.WaiveReview(context.Background(), f.call, WaiveReviewCommand{Scope: persistence.scope.Scope,
+	_, err := records.WaiveReview(context.Background(), f.invocation, WaiveReviewCommand{Scope: persistence.scope.Scope,
 		ReasonCode: "review_not_required", PrivateReason: "Private institutional rationale", IdempotencyKey: "waiver-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.not_found" || !authorizer.denied || persistence.waiver != nil {
@@ -69,7 +70,7 @@ func TestRecordsRejectsSelfWaiverWithDurableDenial(t *testing.T) {
 	if !reflect.DeepEqual(*f.order, []string{"records.resolve", "records.deny_self"}) {
 		t.Fatalf("self access order = %v", *f.order)
 	}
-	if _, err = records.FindReviewWaiver(context.Background(), f.call, persistence.scope.Scope); err == nil {
+	if _, err = records.FindReviewWaiver(context.Background(), f.invocation, persistence.scope.Scope); err == nil {
 		t.Fatal("candidate read private waiver rationale")
 	}
 }
@@ -78,7 +79,7 @@ func TestRecordsWaiverKeepsPrivateRationaleOutOfAudit(t *testing.T) {
 	f, records, persistence, _ := newRecordsFixture(t)
 	persistence.scope.Scope.SubmissionID = model.NewSubmissionID()
 	private := "Private candidate evidence and rationale."
-	value, err := records.WaiveReview(context.Background(), f.call, WaiveReviewCommand{Scope: persistence.scope.Scope,
+	value, err := records.WaiveReview(context.Background(), f.invocation, WaiveReviewCommand{Scope: persistence.scope.Scope,
 		ExpectedReviewRevision: 3, ExpectedDiscrepancyCount: 2, ReasonCode: "review_not_required", PrivateReason: private, IdempotencyKey: "waiver-key"})
 	if err != nil {
 		t.Fatal(err)
@@ -99,14 +100,14 @@ func TestRecordsWaiverKeepsPrivateRationaleOutOfAudit(t *testing.T) {
 func TestRecordsIdempotencyAndAuditFailClosed(t *testing.T) {
 	f, records, persistence, _ := newRecordsFixture(t)
 	command := CompleteRecordsCommand{Scope: persistence.scope.Scope, ExpectedRevision: 1}
-	_, err := records.CompleteRecords(context.Background(), f.call, command)
+	_, err := records.CompleteRecords(context.Background(), f.invocation, command)
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "idempotency.key_required" || len(*f.order) != 0 {
 		t.Fatalf("required key = %v, order=%v", err, *f.order)
 	}
 	command.IdempotencyKey = "completion-key"
 	persistence.err = store.NewErrConflict("authorization", "authority", nil)
-	_, err = records.CompleteRecords(context.Background(), f.call, command)
+	_, err = records.CompleteRecords(context.Background(), f.invocation, command)
 	if !errors.As(err, &fault) || fault.Code() != "exam.not_found" || f.auditor.failedCode != "exam.not_found" {
 		t.Fatalf("current authority failure = %v, audit=%s", err, f.auditor.failedCode)
 	}
@@ -124,7 +125,7 @@ func TestRecordsHoldReleaseRequiresStrongRecentProof(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, records, persistence, _ := newRecordsFixture(t)
-			principal := f.call.Principal()
+			principal := f.invocation.Principal()
 			principal.AuthenticationStrength = model.AuthenticationSingleFactor
 			if tc.strong {
 				principal.AuthenticationStrength = model.AuthenticationMultiFactor
@@ -133,8 +134,8 @@ func TestRecordsHoldReleaseRequiresStrongRecentProof(t *testing.T) {
 			if !tc.recent {
 				principal.AuthenticatedAt = principal.AuthenticatedAt.Add(-time.Hour)
 			}
-			call := NewCall(principal, model.RequestMetadata{})
-			_, err := records.ReleaseHold(context.Background(), call, ReleaseRetentionHoldCommand{Scope: persistence.scope.Scope,
+			invocation := invocation.New(principal, model.RequestMetadata{})
+			_, err := records.ReleaseHold(context.Background(), invocation, ReleaseRetentionHoldCommand{Scope: persistence.scope.Scope,
 				HoldID: model.NewRetentionHoldID(), ExpectedRevision: 1, ReasonCode: "case_closed", PrivateReason: "Case resolved.", IdempotencyKey: "release-key"})
 			if tc.want == "" {
 				if err != nil || persistence.release == nil || persistence.release.RecentAuthenticationTTL != 5*time.Minute {
@@ -168,7 +169,7 @@ type recordsAuthorizerFake struct {
 	denied bool
 }
 
-func (f *recordsAuthorizerFake) Deny(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
+func (f *recordsAuthorizerFake) Deny(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
 	*f.order = append(*f.order, "records.deny_self")
 	f.denied = true
 	return apperror.New("exam.not_found")

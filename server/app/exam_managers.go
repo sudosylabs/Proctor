@@ -37,7 +37,7 @@ type RemoveExamManagerCommand = AddExamManagerCommand
 type TransferExamOwnershipCommand = AddExamManagerCommand
 
 func (a *App) ListExamManagers(ctx context.Context, invocation Invocation, query ListExamManagersQuery) (ExamManagerPage, error) {
-	page, err := a.exams.ListManagers(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ListManagersQuery{
+	page, err := a.exams.ListManagers(ctx, invocation, examengine.ListManagersQuery{
 		ExamID: query.ExamID, BeforeGrantedAt: query.BeforeGrantedAt, BeforeUserID: query.BeforeUserID, Limit: query.Limit,
 	})
 	if err != nil {
@@ -58,10 +58,10 @@ func (a *App) TransferExamOwnership(ctx context.Context, invocation Invocation, 
 	return a.runExamManagerCommand(ctx, invocation, command, a.exams.TransferOwner)
 }
 
-type examManagerUseCase func(context.Context, examengine.Call, examengine.AddManagerCommand) (examengine.ManagerChange, error)
+type examManagerUseCase func(context.Context, Invocation, examengine.AddManagerCommand) (examengine.ManagerChange, error)
 
 func (a *App) runExamManagerCommand(ctx context.Context, invocation Invocation, command AddExamManagerCommand, run examManagerUseCase) (ExamManagerChange, error) {
-	result, err := run(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.AddManagerCommand{
+	result, err := run(ctx, invocation, examengine.AddManagerCommand{
 		ExamID: command.ExamID, UserID: command.UserID, ExpectedExamRevision: command.ExpectedExamRevision, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {

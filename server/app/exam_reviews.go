@@ -13,7 +13,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
-	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -75,22 +74,22 @@ type ListExamIntegrityDiscrepanciesQuery struct {
 }
 
 type examReviewUseCases interface {
-	ListNativeConditions(context.Context, examreview.Call, examreview.NativeConditionListQuery) (*store.NativeConditionPage, error)
-	SaveDecision(context.Context, examreview.Call, examreview.SaveDecisionCommand) (examreview.Result, error)
-	UpdateDraft(context.Context, examreview.Call, examreview.UpdateDraftCommand) (examreview.Result, error)
-	Finalize(context.Context, examreview.Call, examreview.FinalizeCommand) (examreview.Result, error)
-	Release(context.Context, examreview.Call, examreview.ReleaseCommand) (examreview.Result, error)
-	Get(context.Context, examreview.Call, examreview.GetReviewQuery) (*store.ExamSubmissionReviewSnapshot, error)
-	ListFlags(context.Context, examreview.Call, examreview.ListFlagsQuery) (*store.ExamIntegrityFlagPage, error)
-	ListEvidence(context.Context, examreview.Call, examreview.ListEvidenceQuery) (*store.ExamIntegrityEvidencePage, error)
-	ListDiscrepancies(context.Context, examreview.Call, examreview.ListDiscrepanciesQuery) (*store.ExamIntegrityDiscrepancyPage, error)
-	GetStudentResult(context.Context, examreview.Call, examreview.GetStudentResultQuery) (*model.StudentResult, error)
+	ListNativeConditions(context.Context, Invocation, examreview.NativeConditionListQuery) (*store.NativeConditionPage, error)
+	SaveDecision(context.Context, Invocation, examreview.SaveDecisionCommand) (examreview.Result, error)
+	UpdateDraft(context.Context, Invocation, examreview.UpdateDraftCommand) (examreview.Result, error)
+	Finalize(context.Context, Invocation, examreview.FinalizeCommand) (examreview.Result, error)
+	Release(context.Context, Invocation, examreview.ReleaseCommand) (examreview.Result, error)
+	Get(context.Context, Invocation, examreview.GetReviewQuery) (*store.ExamSubmissionReviewSnapshot, error)
+	ListFlags(context.Context, Invocation, examreview.ListFlagsQuery) (*store.ExamIntegrityFlagPage, error)
+	ListEvidence(context.Context, Invocation, examreview.ListEvidenceQuery) (*store.ExamIntegrityEvidencePage, error)
+	ListDiscrepancies(context.Context, Invocation, examreview.ListDiscrepanciesQuery) (*store.ExamIntegrityDiscrepancyPage, error)
+	GetStudentResult(context.Context, Invocation, examreview.GetStudentResultQuery) (*model.StudentResult, error)
 }
 
 func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocation,
 	command SaveExamIntegrityDecisionCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.SaveDecision(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.SaveDecision(ctx, invocation,
 		examreview.SaveDecisionCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			FlagID: command.FlagID, ExpectedReviewRevision: command.ExpectedReviewRevision,
 			ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
@@ -104,7 +103,7 @@ func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocati
 func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command UpdateExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.UpdateDraft(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.UpdateDraft(ctx, invocation,
 		examreview.UpdateDraftCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
 			StudentRemarksMarkdown: command.StudentRemarksMarkdown, IdempotencyKey: command.IdempotencyKey})
@@ -117,7 +116,7 @@ func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocati
 func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command FinalizeExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Finalize(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.Finalize(ctx, invocation,
 		examreview.FinalizeCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
@@ -129,7 +128,7 @@ func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invoca
 func (a *App) ReleaseStudentExamResult(ctx context.Context, invocation Invocation,
 	command ReleaseStudentExamResultCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Release(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.Release(ctx, invocation,
 		examreview.ReleaseCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
@@ -141,7 +140,7 @@ func (a *App) ReleaseStudentExamResult(ctx context.Context, invocation Invocatio
 func (a *App) GetExamIntegrityReview(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) (*ExamSubmissionReviewSnapshot, error) {
-	result, err := a.examReviews.Get(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.Get(ctx, invocation,
 		examreview.GetReviewQuery{SubmissionID: submissionID})
 	if err != nil {
 		return nil, examReviewError(err, true)
@@ -152,7 +151,7 @@ func (a *App) GetExamIntegrityReview(ctx context.Context, invocation Invocation,
 func (a *App) ListExamIntegrityFlags(ctx context.Context, invocation Invocation,
 	query ListExamIntegrityFlagsQuery,
 ) (*ExamIntegrityFlagPage, error) {
-	result, err := a.examReviews.ListFlags(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.ListFlags(ctx, invocation,
 		examreview.ListFlagsQuery(query))
 	if err != nil {
 		return nil, examReviewError(err, true)
@@ -163,7 +162,7 @@ func (a *App) ListExamIntegrityFlags(ctx context.Context, invocation Invocation,
 func (a *App) ListExamIntegrityEvidence(ctx context.Context, invocation Invocation,
 	query ListExamIntegrityEvidenceQuery,
 ) (*ExamIntegrityEvidencePage, error) {
-	result, err := a.examReviews.ListEvidence(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+	result, err := a.examReviews.ListEvidence(ctx, invocation,
 		examreview.ListEvidenceQuery(query))
 	if err != nil {
 		return nil, examReviewError(err, true)
@@ -175,7 +174,7 @@ func (a *App) ListExamIntegrityDiscrepancies(ctx context.Context, invocation Inv
 	query ListExamIntegrityDiscrepanciesQuery,
 ) (*ExamIntegrityDiscrepancyPage, error) {
 	result, err := a.examReviews.ListDiscrepancies(ctx,
-		examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()), examreview.ListDiscrepanciesQuery(query))
+		invocation, examreview.ListDiscrepanciesQuery(query))
 	if err != nil {
 		return nil, examReviewError(err, true)
 	}
@@ -186,7 +185,7 @@ func (a *App) GetStudentExamResult(ctx context.Context, invocation Invocation,
 	attemptID model.ExamAttemptID,
 ) (*StudentExamResult, error) {
 	result, err := a.examReviews.GetStudentResult(ctx,
-		examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
+		invocation,
 		examreview.GetStudentResultQuery{AttemptID: attemptID})
 	if err != nil {
 		return nil, examReviewError(err, true)
@@ -204,46 +203,46 @@ type examIntegrityReviewAuthorizationAdapter struct {
 	audit    authorizationDecisionAudit
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Context, call examreview.Call,
+func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeView(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) error {
 	authorization, err := adapter.resolve(ctx, submissionID)
 	if err != nil {
 		return err
 	}
-	if authorization.CandidateUserID == call.Principal().UserID {
-		return adapter.denySelf(ctx, call, authorization, model.ActionSubmissionView)
+	if authorization.CandidateUserID == invocation.Principal().UserID {
+		return adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionView)
 	}
 	return adapter.sittings.AuthorizeSubmissionView(ctx,
-		examsitting.NewCall(call.Principal(), call.RequestMetadata()), authorization.ExamID, submissionID)
+		invocation, authorization.ExamID, submissionID)
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeReview(ctx context.Context, call examreview.Call,
+func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeReview(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) (bool, error) {
 	authorization, err := adapter.resolve(ctx, submissionID)
 	if err != nil {
 		return false, err
 	}
-	if authorization.CandidateUserID == call.Principal().UserID {
-		return false, adapter.denySelf(ctx, call, authorization, model.ActionSubmissionReview)
+	if authorization.CandidateUserID == invocation.Principal().UserID {
+		return false, adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionReview)
 	}
 	return adapter.sittings.AuthorizeSubmissionReview(ctx,
-		examsitting.NewCall(call.Principal(), call.RequestMetadata()), authorization.ExamID, submissionID)
+		invocation, authorization.ExamID, submissionID)
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeRelease(ctx context.Context, call examreview.Call,
+func (adapter examIntegrityReviewAuthorizationAdapter) AuthorizeRelease(ctx context.Context, invocation Invocation,
 	submissionID model.SubmissionID,
 ) (bool, error) {
 	authorization, err := adapter.resolve(ctx, submissionID)
 	if err != nil {
 		return false, err
 	}
-	if authorization.CandidateUserID == call.Principal().UserID {
-		return false, adapter.denySelf(ctx, call, authorization, model.ActionSubmissionRelease)
+	if authorization.CandidateUserID == invocation.Principal().UserID {
+		return false, adapter.denySelf(ctx, invocation, authorization, model.ActionSubmissionRelease)
 	}
 	return adapter.sittings.AuthorizeSubmissionRelease(ctx,
-		examsitting.NewCall(call.Principal(), call.RequestMetadata()), authorization.ExamID, submissionID)
+		invocation, authorization.ExamID, submissionID)
 }
 
 func (adapter examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Context,
@@ -267,12 +266,12 @@ func (adapter examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Conte
 	return authorization, nil
 }
 
-func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Context, call examreview.Call,
+func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Context, invocation Invocation,
 	authorization *store.ExamIntegrityReviewAuthorization, action model.Action,
 ) error {
-	err := adapter.audit.RecordAuthorizationDecision(ctx, call.Principal(), action,
+	err := adapter.audit.RecordAuthorizationDecision(ctx, invocation.Principal(), action,
 		model.Resource{Type: model.ResourceSubmission, ID: authorization.SubmissionID.String()},
-		model.RoleScopeAcademicUnit, authorization.AcademicUnitID.String(), call.RequestMetadata(), false)
+		model.RoleScopeAcademicUnit, authorization.AcademicUnitID.String(), invocation.RequestMetadata(), false)
 	if err != nil {
 		return err
 	}
@@ -281,8 +280,8 @@ func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Cont
 
 type examIntegrityReviewAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (adapter examIntegrityReviewAuditAdapter) Begin(ctx context.Context, call examreview.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
-	return adapter.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource,
+func (adapter examIntegrityReviewAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any) (model.AuditEventID, error) {
+	return adapter.audit.BeginAtScope(ctx, invocation, action, resource,
 		scopeType, scopeID, operation, value, nil)
 }
 
@@ -352,7 +351,7 @@ type NativeConditionListQuery = examreview.NativeConditionListQuery
 type NativeConditionPage = store.NativeConditionPage
 
 func (a *App) ListNativeConditions(ctx context.Context, invocation Invocation, query NativeConditionListQuery) (*NativeConditionPage, error) {
-	result, err := a.examReviews.ListNativeConditions(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	result, err := a.examReviews.ListNativeConditions(ctx, invocation, query)
 	if err != nil {
 		return nil, examReviewError(err, true)
 	}

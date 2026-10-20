@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -21,7 +22,7 @@ import (
 func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
-	result, err := f.service.SaveDecision(context.Background(), f.call, SaveDecisionCommand{
+	result, err := f.service.SaveDecision(context.Background(), f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
@@ -41,7 +42,7 @@ func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *
 			t.Fatalf("private field %q in audit %#v", forbidden, f.auditor.value)
 		}
 	}
-	wantIdempotency, prepareErr := prepareDecisionIdempotency(f.call, SaveDecisionCommand{
+	wantIdempotency, prepareErr := prepareDecisionIdempotency(f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
@@ -57,10 +58,10 @@ func TestUpdateDraftPassesOwnedIdempotencyToStore(t *testing.T) {
 	f := newReviewFixture(t)
 	command := UpdateDraftCommand{SubmissionID: f.submissionID, ReviewID: f.reviewID, ExpectedReviewRevision: 1,
 		ManagerNotes: "private", StudentRemarksMarkdown: "Visible", IdempotencyKey: "draft-key"}
-	if _, err := f.service.UpdateDraft(context.Background(), f.call, command); err != nil {
+	if _, err := f.service.UpdateDraft(context.Background(), f.invocation, command); err != nil {
 		t.Fatal(err)
 	}
-	want, err := prepareDraftIdempotency(f.call, command)
+	want, err := prepareDraftIdempotency(f.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.replayed = true
-	result, err := f.service.SaveDecision(context.Background(), f.call, SaveDecisionCommand{
+	result, err := f.service.SaveDecision(context.Background(), f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
@@ -84,24 +85,24 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.mode = "finalize"
-	finalized, err := f.service.Finalize(context.Background(), f.call, FinalizeCommand{SubmissionID: f.submissionID,
+	finalized, err := f.service.Finalize(context.Background(), f.invocation, FinalizeCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 2, IdempotencyKey: "test-key"})
 	if err != nil || finalized.Review.State != model.SubmissionReviewFinalized || f.authorizer.reviewCalls != 1 || f.effects.finalized != 1 {
 		t.Fatalf("finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
 	}
-	wantFinalize, prepareErr := prepareTerminalIdempotency(f.call, store.ExamIntegrityReviewFinalizeOperation,
+	wantFinalize, prepareErr := prepareTerminalIdempotency(f.invocation, store.ExamIntegrityReviewFinalizeOperation,
 		"test-key", f.submissionID, f.reviewID, 2)
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
 	}
 	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantFinalize)
 	f.persistence.mode = "release"
-	released, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
+	released, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || released.Review.ReleaseState != model.SubmissionReviewReleased || f.authorizer.releaseCalls != 1 || f.effects.released != 1 {
 		t.Fatalf("released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
 	}
-	wantRelease, prepareErr := prepareTerminalIdempotency(f.call, store.ExamIntegrityReviewReleaseOperation,
+	wantRelease, prepareErr := prepareTerminalIdempotency(f.invocation, store.ExamIntegrityReviewReleaseOperation,
 		"test-key", f.submissionID, f.reviewID, 3)
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
@@ -119,7 +120,7 @@ func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
 	f := newReviewFixture(t)
 	f.persistence.mode = "release"
 	f.persistence.prepareErr = store.NewErrConflict("submission_review", "integrity_review_state", nil)
-	_, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
+	_, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
 	if !errors.As(err, &fault) || fault.Code() != "exam.integrity_review.state_conflict" {
@@ -136,7 +137,7 @@ func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	f.persistence.mode, f.persistence.replayed = "release", true
-	released, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
+	released, err := f.service.Release(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || !released.Replayed || f.effects.released != 0 || f.mail.calls != 0 ||
 		f.persistence.release == nil || f.persistence.release.Notice != nil {
@@ -151,21 +152,23 @@ func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T
 	f.persistence.student = &model.StudentResult{ReviewID: f.reviewID, SubmissionID: f.submissionID,
 		AttemptID: f.attemptID, CandidateUserID: f.userID,
 		StudentRemarksMarkdown: "Safe **text** <script>alert(1)</script> ![remote](https://tracker.example/x)", ReleasedAt: f.at}
-	result, err := f.service.GetStudentResult(context.Background(), f.call, GetStudentResultQuery{AttemptID: f.attemptID})
+	result, err := f.service.GetStudentResult(context.Background(), f.invocation, GetStudentResultQuery{AttemptID: f.attemptID})
 	if err != nil {
 		t.Fatalf("GetStudentResult() error = %v", err)
 	}
 	if result.StudentRemarksMarkdown != "Safe **text**  remote" {
 		t.Fatalf("sanitized remarks = %q", result.StudentRemarksMarkdown)
 	}
-	wrong := f.call
-	wrong.principal.UserID = model.NewUserID()
+	wrongPrincipal := f.invocation.Principal()
+	wrongPrincipal.UserID = model.NewUserID()
+	wrong := invocation.New(wrongPrincipal, f.invocation.RequestMetadata())
 	if _, err = f.service.GetStudentResult(context.Background(), wrong, GetStudentResultQuery{AttemptID: f.attemptID}); err == nil {
 		t.Fatal("GetStudentResult() accepted another candidate")
 	}
-	pat := f.call
-	pat.principal.CredentialType = model.CredentialPersonalAccessToken
-	pat.principal.SessionID = ""
+	patPrincipal := f.invocation.Principal()
+	patPrincipal.CredentialType = model.CredentialPersonalAccessToken
+	patPrincipal.SessionID = ""
+	pat := invocation.New(patPrincipal, f.invocation.RequestMetadata())
 	if _, err = f.service.GetStudentResult(context.Background(), pat, GetStudentResultQuery{AttemptID: f.attemptID}); err == nil {
 		t.Fatal("GetStudentResult() accepted non-Session principal")
 	}
@@ -173,7 +176,7 @@ func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T
 
 type reviewFixture struct {
 	service      *Service
-	call         Call
+	invocation   invocation.Invocation
 	persistence  *reviewStoreFake
 	authorizer   *reviewAuthorizerFake
 	auditor      *reviewAuditorFake
@@ -203,7 +206,7 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 		t.Fatal(err)
 	}
 	f.service = service
-	f.call = NewCall(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+	f.invocation = invocation.New(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: f.at}, model.RequestMetadata{})
 	return f
@@ -293,14 +296,14 @@ type reviewAuthorizerFake struct {
 	releaseCalls     int
 }
 
-func (*reviewAuthorizerFake) AuthorizeView(context.Context, Call, model.SubmissionID) error {
+func (*reviewAuthorizerFake) AuthorizeView(context.Context, invocation.Invocation, model.SubmissionID) error {
 	return nil
 }
-func (fake *reviewAuthorizerFake) AuthorizeReview(_ context.Context, _ Call, id model.SubmissionID) (bool, error) {
+func (fake *reviewAuthorizerFake) AuthorizeReview(_ context.Context, _ invocation.Invocation, id model.SubmissionID) (bool, error) {
 	fake.reviewSubmission, fake.reviewCalls = id, fake.reviewCalls+1
 	return false, nil
 }
-func (fake *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ Call, _ model.SubmissionID) (bool, error) {
+func (fake *reviewAuthorizerFake) AuthorizeRelease(_ context.Context, _ invocation.Invocation, _ model.SubmissionID) (bool, error) {
 	fake.releaseCalls++
 	return false, nil
 }
@@ -311,7 +314,7 @@ type reviewAuditorFake struct {
 	failedCode string
 }
 
-func (fake *reviewAuditorFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (model.AuditEventID, error) {
+func (fake *reviewAuditorFake) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, value map[string]any) (model.AuditEventID, error) {
 	fake.value = value
 	fake.begun++
 	return model.NewAuditEventID(), nil

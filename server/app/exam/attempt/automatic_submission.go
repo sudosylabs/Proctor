@@ -12,6 +12,7 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -53,10 +54,10 @@ func validAutomaticSealTarget(target store.ExamSubmissionAutomaticSealTarget, si
 		target.Generation > 0 && target.ConnectionID.IsValid()
 }
 
-func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall,
+func (service *Service) SealForSittingClose(ctx context.Context, system invocation.System,
 	target store.ExamSubmissionAutomaticSealTarget,
 ) (AutomaticSubmissionResult, error) {
-	if !call.valid() || !validAutomaticSealTarget(target, target.SittingID) {
+	if !system.Valid() || !validAutomaticSealTarget(target, target.SittingID) {
 		return AutomaticSubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "automatic_seal")
 	}
 	preparation, err := service.deps.Submissions.PrepareAutomaticSeal(ctx, target)
@@ -70,8 +71,8 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionAutomaticSealOperation, map[string]any{
 			"exam_id": target.ExamID.String(), "exam_sitting_id": target.SittingID.String(),
-			"exam_attempt_id": target.AttemptID.String(), "job_id": call.JobID.String(),
-			"job_attempt_id": call.AttemptID.String(),
+			"exam_attempt_id": target.AttemptID.String(), "job_id": system.JobID.String(),
+			"job_attempt_id": system.AttemptID.String(),
 		})
 	if err != nil {
 		return AutomaticSubmissionResult{}, err

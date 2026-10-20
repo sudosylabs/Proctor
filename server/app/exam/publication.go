@@ -14,6 +14,8 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -62,12 +64,12 @@ func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthor
 	return &Publication{institutionOrigin: institutionOrigin, store: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
-func (p *Publication) Publish(ctx context.Context, call Call, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
-	principal := call.Principal()
+func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocation, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "publication")
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
 		ExamID                string `json:"exam_id"`
 		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
 	}{command.ExamID.String(), command.ExpectedDraftRevision})
@@ -91,10 +93,10 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = p.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = p.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	auditID, err := p.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
+	auditID, err := p.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 	}, nil)
 	if err != nil {
@@ -122,8 +124,8 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	return *result.Revision, nil
 }
 
-func (p *Publication) Get(ctx context.Context, call Call, examID model.ExamID, revisionID model.ExamRevisionID) (store.ExamRevisionSummary, error) {
-	if err := p.authorizeView(ctx, call, examID); err != nil {
+func (p *Publication) Get(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, revisionID model.ExamRevisionID) (store.ExamRevisionSummary, error) {
+	if err := p.authorizeView(ctx, invocation, examID); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
 	revision, err := p.store.GetSummary(ctx, examID, revisionID)
@@ -136,8 +138,8 @@ func (p *Publication) Get(ctx context.Context, call Call, examID model.ExamID, r
 	return *revision, nil
 }
 
-func (p *Publication) List(ctx context.Context, call Call, query ListRevisionsQuery) (RevisionPage, error) {
-	if err := p.authorizeView(ctx, call, query.ExamID); err != nil {
+func (p *Publication) List(ctx context.Context, invocation invocation.Invocation, query ListRevisionsQuery) (RevisionPage, error) {
+	if err := p.authorizeView(ctx, invocation, query.ExamID); err != nil {
 		return RevisionPage{}, err
 	}
 	if query.Limit < 1 || query.Limit > 200 {
@@ -154,8 +156,8 @@ func (p *Publication) List(ctx context.Context, call Call, query ListRevisionsQu
 	return page, nil
 }
 
-func (p *Publication) authorizeView(ctx context.Context, call Call, examID model.ExamID) error {
-	principal := call.Principal()
+func (p *Publication) authorizeView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) error {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
 		return apperror.Invalid("exam.invalid", "exam_id")
 	}
@@ -170,5 +172,5 @@ func (p *Publication) authorizeView(ctx context.Context, call Call, examID model
 	if err != nil {
 		return apperror.New("exam.unavailable").Wrap(err)
 	}
-	return p.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	return p.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }

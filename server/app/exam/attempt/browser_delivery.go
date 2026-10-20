@@ -12,6 +12,8 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +39,7 @@ type BrowserDeliveryAppendCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, call Call, access store.BrowserDeliveryAccess, operation string) (model.AuditEventID, error) {
+func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, invocation invocation.Invocation, access store.BrowserDeliveryAccess, operation string) (model.AuditEventID, error) {
 	target, err := service.deps.Persistence.ResolveBrowserDeliveryTarget(ctx, access)
 	if err != nil {
 		return "", deliveryStoreError(err)
@@ -45,22 +47,22 @@ func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, call Call
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
-	return service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)})
+	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), operation, map[string]any{"source_session_id": string(access.SourceSessionID)})
 }
-func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, call Call, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := browserSourceSelector(call, command.Query)
+	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_gaps")
 	}
-	idempotency, err := prepareIdempotency(call, store.BrowserDeliveryGapsOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.BrowserDeliveryGapsOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.DeclareDeliveryGaps
@@ -68,7 +70,7 @@ func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, call Cal
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, call, access, store.BrowserDeliveryGapsOperation)
+	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryGapsOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -89,20 +91,20 @@ func (service *Service) DeclareBrowserDeliveryGaps(ctx context.Context, call Cal
 	}
 	return value, nil
 }
-func (service *Service) SealBrowserDelivery(ctx context.Context, call Call, command BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) SealBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := browserSourceSelector(call, command.Query)
+	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Declaration.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_final")
 	}
-	idempotency, err := prepareIdempotency(call, store.BrowserDeliveryFinalOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.BrowserDeliveryFinalOperation, command.IdempotencyKey, struct {
 		AttemptID   model.ExamAttemptID
 		StreamID    string
 		Declaration model.FinalDeliveryDeclaration
@@ -110,7 +112,7 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, call Call, comm
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, call, access, store.BrowserDeliveryFinalOperation)
+	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryFinalOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -132,20 +134,20 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, call Call, comm
 	return value, nil
 }
 
-func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, call Call, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, invocation invocation.Invocation, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := browserSourceSelector(call, command.Query)
+	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
 	if command.Summary.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "delivery_summary")
 	}
-	idem, err := prepareIdempotency(call, store.BrowserDeliverySummaryOperation, command.IdempotencyKey, struct {
+	idem, err := applicationidempotency.Require(invocation, store.BrowserDeliverySummaryOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Source  model.BrowserSourceSessionID
 		Summary model.UnretainedDeliverySummary
@@ -153,7 +155,7 @@ func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, call C
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, call, access, store.BrowserDeliverySummaryOperation)
+	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliverySummaryOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -166,13 +168,13 @@ func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, call C
 	}
 	return value, nil
 }
-func (service *Service) BrowserDeliveryReceipts(ctx context.Context, call Call, query BrowserSourceQuery, first int64, limit int) (*model.BrowserReceiptPage, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) BrowserDeliveryReceipts(ctx context.Context, invocation invocation.Invocation, query BrowserSourceQuery, first int64, limit int) (*model.BrowserReceiptPage, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
 	defer release()
-	access, err := browserSourceSelector(call, query)
+	access, err := browserSourceSelector(invocation, query)
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +200,8 @@ func (service *Service) BrowserDeliveryReceipts(ctx context.Context, call Call, 
 	}
 	return value, nil
 }
-func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, call Call, command BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
-	access, err := browserSourceSelector(call, command.Query)
+func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, invocation invocation.Invocation, command BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error) {
+	access, err := browserSourceSelector(invocation, command.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -207,14 +209,14 @@ func (service *Service) AppendHistoricalBrowserDelivery(ctx context.Context, cal
 		return nil, apperror.Invalid("exam.attempt.invalid", "historical_browser_append")
 	}
 	access.ParticipationID = command.Batch.ParticipationID
-	idem, err := prepareIdempotency(call, store.BrowserDeliveryAppendOperation, command.IdempotencyKey, struct {
+	idem, err := applicationidempotency.Require(invocation, store.BrowserDeliveryAppendOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
 		Batch   model.BrowserActivityBatch
 	}{access.Access.AttemptID, command.Batch})
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginBrowserDeliveryAudit(ctx, call, access, store.BrowserDeliveryAppendOperation)
+	audit, err := service.beginBrowserDeliveryAudit(ctx, invocation, access, store.BrowserDeliveryAppendOperation)
 	if err != nil {
 		return nil, err
 	}

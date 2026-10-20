@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -95,8 +96,8 @@ type WorkspaceJournalPage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListWorkspaceJournal(ctx context.Context, call Call, query WorkspaceJournalQuery) (WorkspaceJournalPage, error) {
-	access, err := candidateSelector(call, query.Access)
+func (service *Service) ListWorkspaceJournal(ctx context.Context, invocation invocation.Invocation, query WorkspaceJournalQuery) (WorkspaceJournalPage, error) {
+	access, err := candidateSelector(invocation, query.Access)
 	if err != nil {
 		return WorkspaceJournalPage{}, err
 	}
@@ -125,8 +126,8 @@ func (service *Service) ListWorkspaceJournal(ctx context.Context, call Call, que
 		Entries: entries, HasMore: stored.HasMore, RefreshRequired: stored.RefreshRequired}, nil
 }
 
-func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call, command CreateWorkspaceDirectoryCommand) (WorkspaceMutationResult, error) {
-	access, err := workspaceMutationSelector(call, command.Access)
+func (service *Service) CreateWorkspaceDirectory(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceDirectoryCommand) (WorkspaceMutationResult, error) {
+	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -134,7 +135,7 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call,
 	if err != nil || path != command.Path {
 		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_command").Wrap(err)
 	}
-	idempotency, err := prepareWorkspaceMutationIdempotency(call, command.IdempotencyKey, access.AttemptID,
+	idempotency, err := prepareWorkspaceMutationIdempotency(invocation, command.IdempotencyKey, access.AttemptID,
 		model.AttemptWorkspaceMutationCreateDirectory, struct {
 			Path string `json:"path"`
 		}{path})
@@ -149,27 +150,27 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call,
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, call, target, &store.ExamAttemptWorkspaceMutation{
+	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{
 		Access: access, Operation: model.AttemptWorkspaceMutationCreateDirectory, EntryID: entryID,
 		DestinationPath: path,
 	}, idempotency, model.StarterWorkspaceEntryDirectory, "")
 }
 
-func (service *Service) CreateWorkspaceFile(ctx context.Context, call Call, command CreateWorkspaceFileCommand) (WorkspaceMutationResult, error) {
+func (service *Service) CreateWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command CreateWorkspaceFileCommand) (WorkspaceMutationResult, error) {
 	entryID := service.deps.NewWorkspaceEntry()
-	return service.stageWorkspaceFile(ctx, call, command.Access, entryID, "", command.Path, "",
+	return service.stageWorkspaceFile(ctx, invocation, command.Access, entryID, "", command.Path, "",
 		command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationCreateFile)
 }
 
-func (service *Service) ReplaceWorkspaceFile(ctx context.Context, call Call, command ReplaceWorkspaceFileCommand) (WorkspaceMutationResult, error) {
-	return service.stageWorkspaceFile(ctx, call, command.Access, command.EntryID, command.ExpectedPath, "",
+func (service *Service) ReplaceWorkspaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceWorkspaceFileCommand) (WorkspaceMutationResult, error) {
+	return service.stageWorkspaceFile(ctx, invocation, command.Access, command.EntryID, command.ExpectedPath, "",
 		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.IdempotencyKey,
 		model.AttemptWorkspaceMutationReplaceFile)
 }
 
-func (service *Service) MoveWorkspaceEntry(ctx context.Context, call Call, command MoveWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
-	access, err := workspaceMutationSelector(call, command.Access)
+func (service *Service) MoveWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command MoveWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
+	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -177,7 +178,7 @@ func (service *Service) MoveWorkspaceEntry(ctx context.Context, call Call, comma
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	idempotency, err := prepareWorkspaceMutationIdempotency(call, command.IdempotencyKey, access.AttemptID,
+	idempotency, err := prepareWorkspaceMutationIdempotency(invocation, command.IdempotencyKey, access.AttemptID,
 		model.AttemptWorkspaceMutationMoveEntry, struct{ EntryID, ExpectedPath, DestinationPath string }{
 			command.EntryID.String(), expected, destination})
 	if err != nil {
@@ -187,13 +188,13 @@ func (service *Service) MoveWorkspaceEntry(ctx context.Context, call Call, comma
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, call, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: model.AttemptWorkspaceMutationMoveEntry, EntryID: command.EntryID, ExpectedPath: expected,
 		DestinationPath: destination}, idempotency, "", "")
 }
 
-func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, command DeleteWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
-	access, err := workspaceMutationSelector(call, command.Access)
+func (service *Service) DeleteWorkspaceEntry(ctx context.Context, invocation invocation.Invocation, command DeleteWorkspaceEntryCommand) (WorkspaceMutationResult, error) {
+	access, err := workspaceMutationSelector(invocation, command.Access)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -206,7 +207,7 @@ func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, com
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	idempotency, err := prepareWorkspaceMutationIdempotency(call, command.IdempotencyKey, access.AttemptID,
+	idempotency, err := prepareWorkspaceMutationIdempotency(invocation, command.IdempotencyKey, access.AttemptID,
 		model.AttemptWorkspaceMutationDeleteEntry, struct {
 			EntryID, ExpectedPath, ExpectedContentVersion string
 			Recursive                                     bool   `json:"recursive,omitempty"`
@@ -219,18 +220,18 @@ func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, com
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	return service.applyWorkspaceMutation(ctx, call, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	return service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: model.AttemptWorkspaceMutationDeleteEntry, EntryID: command.EntryID, ExpectedPath: expected,
 		ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
 		ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor}, idempotency, "", "")
 }
 
-func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutationAccess WorkspaceMutationAccess,
+func (service *Service) stageWorkspaceFile(ctx context.Context, invocation invocation.Invocation, mutationAccess WorkspaceMutationAccess,
 	entryID model.AttemptWorkspaceEntryID, expectedPath, destinationPath string, expectedVersion model.WorkspaceContentVersion,
 	mediaType, expectedSHA string, body io.Reader, size int64, idempotencyKey string,
 	operation model.AttemptWorkspaceMutationKind,
 ) (WorkspaceMutationResult, error) {
-	access, err := workspaceMutationSelector(call, mutationAccess)
+	access, err := workspaceMutationSelector(invocation, mutationAccess)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -262,7 +263,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 			Size                                      int64
 		}{entryID.String(), expectedPath, expectedVersion.String(), mediaType, expectedSHA, size}
 	}
-	idempotency, err := prepareWorkspaceMutationIdempotency(call, idempotencyKey, access.AttemptID, operation, semantic)
+	idempotency, err := prepareWorkspaceMutationIdempotency(invocation, idempotencyKey, access.AttemptID, operation, semantic)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -297,7 +298,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 		}
 		return WorkspaceMutationResult{}, mapped
 	}
-	result, err := service.applyWorkspaceMutation(ctx, call, target, &store.ExamAttemptWorkspaceMutation{Access: access,
+	result, err := service.applyWorkspaceMutation(ctx, invocation, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: operation, EntryID: entryID, ExpectedPath: expectedPath, DestinationPath: destinationPath,
 		ExpectedContentVersion: expectedVersion, ObjectID: objectID}, idempotency, model.StarterWorkspaceEntryFile, version)
 	if err != nil {
@@ -312,8 +313,8 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	return result, nil
 }
 
-func workspaceMutationSelector(call Call, access WorkspaceMutationAccess) (store.ExamAttemptWorkspaceMutationAccess, error) {
-	read, err := candidateSelector(call, access.CandidateAccess)
+func workspaceMutationSelector(invocation invocation.Invocation, access WorkspaceMutationAccess) (store.ExamAttemptWorkspaceMutationAccess, error) {
+	read, err := candidateSelector(invocation, access.CandidateAccess)
 	if err != nil {
 		return store.ExamAttemptWorkspaceMutationAccess{}, err
 	}
@@ -369,11 +370,11 @@ func (service *Service) resolveWorkspaceMutationTarget(ctx context.Context, acce
 	return target, nil
 }
 
-func (service *Service) applyWorkspaceMutation(ctx context.Context, call Call, target *store.ExamAttemptWorkspaceMutationTarget,
+func (service *Service) applyWorkspaceMutation(ctx context.Context, invocation invocation.Invocation, target *store.ExamAttemptWorkspaceMutationTarget,
 	mutation *store.ExamAttemptWorkspaceMutation, idempotency *store.CommandIdempotency,
 	expectedKind model.StarterWorkspaceEntryKind, expectedVersion model.WorkspaceContentVersion,
 ) (WorkspaceMutationResult, error) {
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamAttemptWorkspaceMutationOperation,
 		map[string]any{"exam_attempt_id": mutation.Access.AttemptID.String(),

@@ -33,17 +33,17 @@ type ReplaceExamStarterWorkspaceFileCommand = examworkspace.ReplaceFileCommand
 type RemoveExamStarterWorkspaceEntryCommand = examworkspace.RemoveEntryCommand
 
 type examStarterWorkspaceUseCases interface {
-	List(context.Context, examworkspace.Call, model.ExamID) ([]store.ExamStarterWorkspaceItem, error)
-	OpenFile(context.Context, examworkspace.Call, model.ExamID, model.StarterWorkspaceEntryID) (*examworkspace.OpenedFile, error)
-	CreateDirectory(context.Context, examworkspace.Call, examworkspace.CreateDirectoryCommand) (examworkspace.Result, error)
-	CreateFile(context.Context, examworkspace.Call, examworkspace.CreateFileCommand) (examworkspace.Result, error)
-	MoveEntry(context.Context, examworkspace.Call, examworkspace.MoveEntryCommand) (examworkspace.Result, error)
-	ReplaceFile(context.Context, examworkspace.Call, examworkspace.ReplaceFileCommand) (examworkspace.Result, error)
-	RemoveEntry(context.Context, examworkspace.Call, examworkspace.RemoveEntryCommand) (examworkspace.Result, error)
+	List(context.Context, Invocation, model.ExamID) ([]store.ExamStarterWorkspaceItem, error)
+	OpenFile(context.Context, Invocation, model.ExamID, model.StarterWorkspaceEntryID) (*examworkspace.OpenedFile, error)
+	CreateDirectory(context.Context, Invocation, examworkspace.CreateDirectoryCommand) (examworkspace.Result, error)
+	CreateFile(context.Context, Invocation, examworkspace.CreateFileCommand) (examworkspace.Result, error)
+	MoveEntry(context.Context, Invocation, examworkspace.MoveEntryCommand) (examworkspace.Result, error)
+	ReplaceFile(context.Context, Invocation, examworkspace.ReplaceFileCommand) (examworkspace.Result, error)
+	RemoveEntry(context.Context, Invocation, examworkspace.RemoveEntryCommand) (examworkspace.Result, error)
 }
 
 func (a *App) ListExamStarterWorkspace(ctx context.Context, invocation Invocation, query ListExamStarterWorkspaceQuery) ([]ExamStarterWorkspaceItem, error) {
-	items, err := a.examStarterWorkspace.List(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID)
+	items, err := a.examStarterWorkspace.List(ctx, invocation, query.ExamID)
 	if err != nil {
 		return nil, examStarterWorkspaceError(err, true)
 	}
@@ -51,7 +51,7 @@ func (a *App) ListExamStarterWorkspace(ctx context.Context, invocation Invocatio
 }
 
 func (a *App) OpenExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, query OpenExamStarterWorkspaceFileQuery) (OpenedExamStarterWorkspaceFile, error) {
-	opened, err := a.examStarterWorkspace.OpenFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID, query.EntryID)
+	opened, err := a.examStarterWorkspace.OpenFile(ctx, invocation, query.ExamID, query.EntryID)
 	if err != nil {
 		return OpenedExamStarterWorkspaceFile{}, examStarterWorkspaceError(err, true)
 	}
@@ -59,7 +59,7 @@ func (a *App) OpenExamStarterWorkspaceFile(ctx context.Context, invocation Invoc
 }
 
 func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceDirectoryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.CreateDirectory(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examStarterWorkspace.CreateDirectory(ctx, invocation, command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -67,7 +67,7 @@ func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocatio
 }
 
 func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.CreateFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examStarterWorkspace.CreateFile(ctx, invocation, command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -75,7 +75,7 @@ func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Inv
 }
 
 func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command MoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.MoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examStarterWorkspace.MoveEntry(ctx, invocation, command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -83,7 +83,7 @@ func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invo
 }
 
 func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command ReplaceExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.ReplaceFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examStarterWorkspace.ReplaceFile(ctx, invocation, command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -91,7 +91,7 @@ func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation In
 }
 
 func (a *App) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command RemoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.RemoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	result, err := a.examStarterWorkspace.RemoveEntry(ctx, invocation, command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -104,14 +104,14 @@ func examStarterWorkspaceError(err error, conceal bool) error {
 
 type examStarterWorkspaceAuthorizationAdapter struct{ authorization *accessControlService }
 
-func (a examStarterWorkspaceAuthorizationAdapter) Authorize(ctx context.Context, call examworkspace.Call, action model.Action, resource model.Resource) error {
-	return a.authorization.authorizeCurrentState(ctx, call.Principal(), action, resource, call.RequestMetadata())
+func (a examStarterWorkspaceAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource) error {
+	return a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata())
 }
 
 type examStarterWorkspaceAuditAdapter struct{ audit mutationAuditAdapter }
 
-func (a examStarterWorkspaceAuditAdapter) Begin(ctx context.Context, call examworkspace.Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
-	return a.audit.BeginAtScope(ctx, NewInvocation(call.Principal(), call.RequestMetadata()), action, resource, scopeType, scopeID, operation, value, prior)
+func (a examStarterWorkspaceAuditAdapter) Begin(ctx context.Context, invocation Invocation, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value, prior map[string]any) (model.AuditEventID, error) {
+	return a.audit.BeginAtScope(ctx, invocation, action, resource, scopeType, scopeID, operation, value, prior)
 }
 func (a examStarterWorkspaceAuditAdapter) Fail(ctx context.Context, id model.AuditEventID, code string) error {
 	return a.audit.Fail(ctx, id, code)

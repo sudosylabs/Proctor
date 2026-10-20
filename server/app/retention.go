@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -108,7 +109,7 @@ func (s *retentionPolicyService) CreatePreview(ctx context.Context, invocation I
 	if command.IdempotencyKey == "" {
 		return nil, apperror.New("idempotency.key_required")
 	}
-	idempotency, err := newCommandIdempotency(invocation, store.RetentionPreviewOperation, command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, store.RetentionPreviewOperation, command.IdempotencyKey,
 		struct {
 			InstitutionID  model.InstitutionID
 			PolicyRevision int64
@@ -157,7 +158,7 @@ func (s *retentionPolicyService) ChangeControl(ctx context.Context, invocation I
 	if command.IdempotencyKey == "" {
 		return nil, apperror.New("idempotency.key_required")
 	}
-	idempotency, err := newCommandIdempotency(invocation, store.RetentionControlOperation, command.IdempotencyKey,
+	idempotency, err := applicationidempotency.Prepare(invocation, store.RetentionControlOperation, command.IdempotencyKey,
 		struct {
 			InstitutionID  model.InstitutionID
 			Revision       int64

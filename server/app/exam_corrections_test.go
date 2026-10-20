@@ -157,12 +157,12 @@ func TestCorrectionFacadeConcealsFailuresAndDiscardsResults(t *testing.T) {
 
 func assertCorrectionFacadeInvocation(t *testing.T, fake *examCorrectionUseCasesFake, ctx context.Context, invocation Invocation) {
 	t.Helper()
-	if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
-		t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+	if fake.ctx != ctx || !reflect.DeepEqual(fake.invocation.Principal(), invocation.Principal()) || fake.invocation.RequestMetadata() != invocation.RequestMetadata() {
+		t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.invocation)
 	}
-	principal := fake.call.Principal()
+	principal := fake.invocation.Principal()
 	principal.CredentialScopes[0] = "changed"
-	if !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || invocation.Principal().CredentialScopes[0] != "exam:manage" {
+	if !reflect.DeepEqual(fake.invocation.Principal(), invocation.Principal()) || invocation.Principal().CredentialScopes[0] != "exam:manage" {
 		t.Fatal("child call exposed mutable principal scopes")
 	}
 }
@@ -207,7 +207,7 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 
 type examCorrectionUseCasesFake struct {
 	ctx         context.Context
-	call        examcorrection.Call
+	invocation  Invocation
 	stage       examcorrection.StageResourceContentCommand
 	apply       examcorrection.ApplyCommand
 	stageResult examcorrection.ResourceStage
@@ -215,11 +215,11 @@ type examCorrectionUseCasesFake struct {
 	err         error
 }
 
-func (f *examCorrectionUseCasesFake) StageResourceContent(ctx context.Context, call examcorrection.Call, c examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error) {
-	f.ctx, f.call, f.stage = ctx, call, c
+func (f *examCorrectionUseCasesFake) StageResourceContent(ctx context.Context, invocation Invocation, c examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error) {
+	f.ctx, f.invocation, f.stage = ctx, invocation, c
 	return f.stageResult, f.err
 }
-func (f *examCorrectionUseCasesFake) Apply(ctx context.Context, call examcorrection.Call, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
-	f.ctx, f.call, f.apply = ctx, call, c
+func (f *examCorrectionUseCasesFake) Apply(ctx context.Context, invocation Invocation, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
+	f.ctx, f.invocation, f.apply = ctx, invocation, c
 	return f.applyResult, f.err
 }

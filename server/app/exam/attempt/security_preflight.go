@@ -12,6 +12,8 @@ import (
 	"errors"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -30,8 +32,8 @@ type ReportSecurityPreflightCommand struct {
 	IdempotencyKey string
 }
 
-func (service *Service) securityPreflightAccess(ctx context.Context, call Call, sittingID model.ExamSittingID) (store.SecurityPreflightAccess, error) {
-	principal := call.Principal()
+func (service *Service) securityPreflightAccess(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID) (store.SecurityPreflightAccess, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return store.SecurityPreflightAccess{}, apperror.New("authentication.token_invalid")
 	}
@@ -44,7 +46,7 @@ func (service *Service) securityPreflightAccess(ctx context.Context, call Call, 
 	}
 	return store.SecurityPreflightAccess{SittingID: sittingID, CandidateUserID: principal.UserID, SessionID: principal.SessionID, DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint, DesktopBuild: build.Build, DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision}, nil
 }
-func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sittingID model.ExamSittingID, operation string) (model.AuditEventID, error) {
+func (service *Service) beginPreflightAudit(ctx context.Context, invocation invocation.Invocation, sittingID model.ExamSittingID, operation string) (model.AuditEventID, error) {
 	snapshot, err := service.deps.Sittings.Resolve(ctx, sittingID)
 	if err != nil {
 		return "", storeError(storeErrors, err)
@@ -52,10 +54,10 @@ func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sitt
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != sittingID || !snapshot.Sitting.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Sitting ownership is invalid"))
 	}
-	return service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()})
+	return service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()})
 }
-func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call, command PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) PrepareSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -63,11 +65,11 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 	if !command.SittingID.IsValid() || command.AttemptID != "" && !command.AttemptID.IsValid() || !model.IsValidSHA256Fingerprint(command.NativeRegistryDigest) || !model.IsValidSHA256Fingerprint(command.SourceManifestDigest) || !model.IsValidSHA256Fingerprint(command.ConfigurationManifestFingerprint) {
 		return nil, apperror.Invalid("exam.attempt.invalid", "security_preflight")
 	}
-	access, err := service.securityPreflightAccess(ctx, call, command.SittingID)
+	access, err := service.securityPreflightAccess(ctx, invocation, command.SittingID)
 	if err != nil {
 		return nil, err
 	}
-	idempotency, err := prepareIdempotency(call, store.SecurityPreflightPrepareOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.SecurityPreflightPrepareOperation, command.IdempotencyKey, struct {
 		SittingID     model.ExamSittingID `json:"sitting_id"`
 		AttemptID     model.ExamAttemptID `json:"attempt_id,omitempty"`
 		Registry      string              `json:"native_registry_digest"`
@@ -77,7 +79,7 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginPreflightAudit(ctx, call, command.SittingID, store.SecurityPreflightPrepareOperation)
+	audit, err := service.beginPreflightAudit(ctx, invocation, command.SittingID, store.SecurityPreflightPrepareOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +92,8 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 	}
 	return result, nil
 }
-func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, command ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) ReportSecurityPreflight(ctx context.Context, invocation invocation.Invocation, command ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -99,9 +101,9 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 	if !model.IsValidAgreementID(command.PreflightID) || command.Report.Validate() != nil {
 		return nil, apperror.Invalid("exam.attempt.invalid", "security_preflight_report")
 	}
-	principal := call.Principal()
+	principal := invocation.Principal()
 	// Authenticate before looking up a resource selector or beginning an audit.
-	access, err := service.securityPreflightAccess(ctx, call, "")
+	access, err := service.securityPreflightAccess(ctx, invocation, "")
 	if err != nil {
 		return nil, err
 	}
@@ -110,14 +112,14 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 		return nil, storeError(securityPreflightStoreErrors, err)
 	}
 	access.SittingID = sittingID
-	idempotency, err := prepareIdempotency(call, store.SecurityPreflightReportOperation, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, store.SecurityPreflightReportOperation, command.IdempotencyKey, struct {
 		PreflightID string                        `json:"preflight_id"`
 		Report      model.SecurityPreflightReport `json:"report"`
 	}{command.PreflightID, command.Report})
 	if err != nil {
 		return nil, err
 	}
-	audit, err := service.beginPreflightAudit(ctx, call, sittingID, store.SecurityPreflightReportOperation)
+	audit, err := service.beginPreflightAudit(ctx, invocation, sittingID, store.SecurityPreflightReportOperation)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +140,8 @@ var securityPreflightStoreErrors = storeErrors.With(
 	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCoverageUnsupported, Code: "exam.security.unsupported_capability"},
 )
 
-func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
-	release, admissionErr := service.enterControl(ctx, call, false)
+func (service *Service) RecoverSecurityPolicy(ctx context.Context, invocation invocation.Invocation, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, false)
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
@@ -147,7 +149,7 @@ func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, at
 	if !attemptID.IsValid() {
 		return nil, apperror.Invalid("exam.attempt.invalid", "attempt_id")
 	}
-	access, err := service.securityPreflightAccess(ctx, call, "")
+	access, err := service.securityPreflightAccess(ctx, invocation, "")
 	if err != nil {
 		return nil, err
 	}
@@ -168,20 +170,20 @@ type UpdateSecurityCoverageCommand struct {
 	Coverage        model.SecurityCoverageRenewal
 }
 
-func (service *Service) UpdateSecurityCoverage(ctx context.Context, call Call, command UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
-	release, admissionErr := service.enterControl(ctx, call, true)
+func (service *Service) UpdateSecurityCoverage(ctx context.Context, invocation invocation.Invocation, command UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, true)
 	if admissionErr != nil {
 		return model.SecurityCoverageResult{}, admissionErr
 	}
 	defer release()
-	selector, err := candidateSelector(call, command.Access)
+	selector, err := candidateSelector(invocation, command.Access)
 	if err != nil {
 		return model.SecurityCoverageResult{}, err
 	}
 	if !command.ParticipationID.IsValid() || command.Generation < 1 || command.Coverage.Validate() != nil {
 		return model.SecurityCoverageResult{}, apperror.Invalid("exam.attempt.invalid", "security_coverage")
 	}
-	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, call.Principal())
+	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, invocation.Principal())
 	if err != nil || build.Build.Validate() != nil || build.Build.NativeAgreement == nil || build.CompatibilityPolicyRevision < 1 {
 		return model.SecurityCoverageResult{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)
 	}

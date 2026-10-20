@@ -16,6 +16,8 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -59,33 +61,13 @@ type ConfigureDraftBrowserPolicyCommand struct {
 	IdempotencyKey        string
 }
 
-// Call is immutable security and safe audit context owned by this child
-// package. It prevents the child from importing the parent app package.
-type Call struct {
-	principal model.Principal
-	metadata  model.RequestMetadata
-}
-
-func NewCall(principal model.Principal, metadata model.RequestMetadata) Call {
-	principal.CredentialScopes = append([]string(nil), principal.CredentialScopes...)
-	return Call{principal: principal, metadata: metadata}
-}
-
-func (c Call) Principal() model.Principal {
-	principal := c.principal
-	principal.CredentialScopes = append([]string(nil), principal.CredentialScopes...)
-	return principal
-}
-
-func (c Call) RequestMetadata() model.RequestMetadata { return c.metadata }
-
 type Authorizer interface {
-	Authorize(context.Context, Call, model.Action, model.Resource) error
-	AuthorizeList(context.Context, Call, model.AcademicUnitID) (store.ExamListVisibility, error)
+	Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error
+	AuthorizeList(context.Context, invocation.Invocation, model.AcademicUnitID) (store.ExamListVisibility, error)
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
+	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any, map[string]any) (model.AuditEventID, error)
 	Fail(context.Context, model.AuditEventID, string) error
 }
 
@@ -151,15 +133,15 @@ func NewAuthoring(persistence store.ExamAuthoringStore, memberships manageracces
 	return &Authoring{institutionOrigin: institutionOrigin, persistence: persistence, memberships: memberships, users: users, mail: mail, authorizer: authorizer, auditor: auditor, outcomes: outcomes, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
-func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return View{}, apperror.Invalid("exam.invalid", "principal")
 	}
 	if !command.AcademicUnitID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "academic_unit_id")
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationCreate, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationCreate, command.IdempotencyKey, struct {
 		AcademicUnitID       string `json:"academic_unit_id"`
 		Title                string `json:"title"`
 		InstructionsMarkdown string `json:"instructions_markdown"`
@@ -193,10 +175,10 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 		action = model.ActionExamCreate
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.AcademicUnitID.String()}
-	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
 		"exam_id": examID.String(), "academic_unit_id": command.AcademicUnitID.String(),
 		"creator_user_id": principal.UserID.String(),
 	}, nil)
@@ -223,8 +205,8 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	return project(result.Value), nil
 }
 
-func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) Get(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "exam_id")
 	}
@@ -239,7 +221,7 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	if err != nil {
 		return View{}, err
 	}
-	if err := a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return View{}, err
 	}
 	snapshot, err := a.persistence.Get(ctx, examID, principal.UserID)
@@ -255,8 +237,8 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 // AuthorizeView performs the same current relationship and role decision used
 // by Get without loading authored Draft content. Realtime subscriptions use it
 // so a scoped role alone cannot reveal Exam events to a non-manager.
-func (a *Authoring) AuthorizeView(ctx context.Context, call Call, examID model.ExamID) error {
-	principal := call.Principal()
+func (a *Authoring) AuthorizeView(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) error {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
 		return apperror.Invalid("exam.invalid", "exam_id")
 	}
@@ -271,11 +253,11 @@ func (a *Authoring) AuthorizeView(ctx context.Context, call Call, examID model.E
 	if err != nil {
 		return err
 	}
-	return a.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	return a.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }
 
-func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDraftTextCommand) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Invocation, command EditDraftTextCommand) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
 	}
@@ -287,7 +269,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 		*title = strings.TrimSpace(*title)
 	}
 	instructions := cloneStringPointer(command.InstructionsMarkdown)
-	idempotency, err := prepareIdempotency(call, idempotencyOperationEditDraftText, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationEditDraftText, command.IdempotencyKey, struct {
 		ExamID                string  `json:"exam_id"`
 		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
 		Title                 *string `json:"title"`
@@ -310,7 +292,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
@@ -334,7 +316,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	if instructions != nil {
 		instructions = &candidate.InstructionsMarkdown
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
@@ -368,8 +350,8 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 // ConfigureDraftFocusLoss replaces only the supported Focus Loss rule. The
 // complete policy is reconstructed from authoritative Draft state so callers
 // cannot supply or weaken Connection Loss.
-func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, command ConfigureDraftFocusLossCommand) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftFocusLossCommand) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
 	}
@@ -380,7 +362,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 	if err := policy.Validate(); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "focus_loss").Wrap(err)
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureDraftFocusLoss, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureDraftFocusLoss, command.IdempotencyKey, struct {
 		ExamID                      string                          `json:"exam_id"`
 		ExpectedDraftRevision       int64                           `json:"expected_draft_revision"`
 		Enabled                     bool                            `json:"enabled"`
@@ -409,7 +391,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
@@ -427,7 +409,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
@@ -459,8 +441,8 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 
 // ConfigureDraftBrowserPolicy replaces the complete canonical enforcement
 // value. Publication, rather than this mutable Draft, controls open Sittings.
-func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, command ConfigureDraftBrowserPolicyCommand) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftBrowserPolicyCommand) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
 	}
@@ -475,7 +457,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	if err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "browser_policy").Wrap(err)
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureBrowserPolicy, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureBrowserPolicy, command.IdempotencyKey, struct {
 		ExamID                string          `json:"exam_id"`
 		ExpectedDraftRevision int64           `json:"expected_draft_revision"`
 		Policy                json.RawMessage `json:"browser_policy"`
@@ -496,7 +478,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
@@ -514,7 +496,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1, "browser_policy_enabled": policy.Enabled,
 	}, nil)
@@ -594,8 +576,8 @@ type ConfigureDraftNativePolicyCommand struct {
 	IdempotencyKey        string
 }
 
-func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, command ConfigureDraftNativePolicyCommand) (View, error) {
-	principal := call.Principal()
+func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation invocation.Invocation, command ConfigureDraftNativePolicyCommand) (View, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, apperror.Invalid("exam.invalid", "draft_revision")
 	}
@@ -604,7 +586,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 	if err := policy.Validate(); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "native_policy").Wrap(err)
 	}
-	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureDraftNativePolicy, command.IdempotencyKey, struct {
+	idempotency, err := applicationidempotency.Require(invocation, idempotencyOperationConfigureDraftNativePolicy, command.IdempotencyKey, struct {
 		ExamID                string                     `json:"exam_id"`
 		ExpectedDraftRevision int64                      `json:"expected_draft_revision"`
 		Native                model.NativeSecurityPolicy `json:"native"`
@@ -625,7 +607,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err := a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
@@ -643,7 +625,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
+	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)

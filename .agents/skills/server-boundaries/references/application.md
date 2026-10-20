@@ -9,6 +9,14 @@ GetAcademicUnit(ctx, invocation, query) (*model.AcademicUnit, error)
 
 `app.Invocation` is immutable and explicitly contains the principal and safe call metadata needed for authorization and audit. `context.Context` remains for cancellation, deadlines, and propagation, not hidden security dependencies.
 
+The `app/invocation` leaf owns that one call type so the parent and every Exam
+child module share it without a parent import; `app.Invocation` is its alias
+for transports. Every use case and consumer-owned port takes
+`invocation invocation.Invocation` (the parent spells it `Invocation`), and
+no module declares a local call type or converts between call types.
+Actorless durable Job work carries `invocation.System`, which names the Job
+and Job Attempt and cannot impersonate a User.
+
 Each actor-sensitive use case authorizes immediately before expensive work or mutation. HTTP and WebSocket establish credential and assurance requirements but do not preflight resource permissions or issue decision receipts.
 
 Domain models own local invariants and transitions. Application services own use-case policy, authorization, multi-aggregate coordination, transaction intent, audit, and external effects. Focused service implementations are normally unexported behind `app.App` and consumer-owned interfaces.
@@ -16,8 +24,12 @@ Domain models own local invariants and transitions. Application services own use
 Background jobs call application use cases with a system/service invocation. They do not manipulate stores directly.
 
 The `app/idempotency` leaf owns the shared validation, canonical JSON, and
-SHA-256 preparation algorithm for durable command idempotency. It does not own
-any business operation. Each command owner decides whether a key is required,
+SHA-256 preparation algorithm for durable command idempotency, and reports its
+failures as application errors: `Require` rejects a missing key with
+`idempotency.key_required`, `Prepare` treats the key as optional, and both
+report an invalid acting user as `idempotency.key_invalid` and an unencodable
+semantic document as `request.invalid`. No module wraps it in a local
+preparation helper. It does not own any business operation. Each command owner decides whether a key is required,
 defines its stable operation name, normalizes its own semantic inputs, and
 constructs the semantic document whose compatibility is preserved across
 retries. Exam parent facades forward the bounded raw key; the owning Exam
@@ -79,7 +91,7 @@ name may alias that owned type instead of repeating fields and rebuilding the
 same command. Nested command shapes follow the same ownership rule. Sharing a
 command does not widen a deliberately narrower facade result or change optional
 input presence and collection-copy semantics. The facade retains meaningful
-boundary work: immutable call construction, defensive input copies, error
+boundary work: defensive input copies, error
 concealment, and deliberate input or result transformations. Type sharing does
 not move normalization, authorization, audit, or effect timing out of the owning
 use case.

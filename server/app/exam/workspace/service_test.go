@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -25,7 +26,7 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	body := []byte("package main\n")
-	result, err := fixture.service.CreateFile(context.Background(), fixture.call, CreateFileCommand{
+	result, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "cmd/main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(body), Size: int64(len(body)), IdempotencyKey: "test-key",
 	})
@@ -45,7 +46,7 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 	if fixture.auditor.values["path"] != nil || fixture.auditor.values["sha256"] != nil {
 		t.Fatalf("sensitive values entered audit: %#v", fixture.auditor.values)
 	}
-	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.call, idempotencyOperationCreateFile,
+	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.invocation, idempotencyOperationCreateFile,
 		"test-key", fixture.examID, 1, "", "", "cmd/main.go", "text/x-go", int64(len(body)), strings.Repeat("a", 64))
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
@@ -58,7 +59,7 @@ func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
 	fixture := newServiceFixture(t)
 	at := time.Date(2026, 8, 14, 10, 0, 0, 123456789, time.UTC)
 	fixture.service.now = func() time.Time { return at }
-	_, err := fixture.service.CreateFile(context.Background(), fixture.call, CreateFileCommand{
+	_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "empty.txt", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(nil), Size: 0, IdempotencyKey: "microsecond-file",
 	})
@@ -77,7 +78,7 @@ func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	fixture := newServiceFixture(t)
 	failure := errors.New("membership unavailable")
 	fixture.service.memberships = fakeMemberships{err: failure}
-	_, err := fixture.service.CreateDirectory(context.Background(), fixture.call, CreateDirectoryCommand{
+	_, err := fixture.service.CreateDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key",
 	})
 	if faultCode(err) != "exam.starter_workspace.unavailable" || !errors.Is(err, failure) {
@@ -92,7 +93,7 @@ func TestServiceDoesNotDeleteOrReclaimAStagedObjectAfterUnknownFinalize(t *testi
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	fixture.persistence.finalizeErr = context.DeadlineExceeded
-	_, err := fixture.service.CreateFile(context.Background(), fixture.call, CreateFileCommand{
+	_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
@@ -107,12 +108,12 @@ func TestServiceExactCreateFileRetryReturnsCommittedOutcomeWithoutRepublishing(t
 	command := CreateFileCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Size: 1, IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
-	first, err := fixture.service.CreateFile(context.Background(), fixture.call, command)
+	first, err := fixture.service.CreateFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	command.Body = strings.NewReader("x")
-	replayed, err := fixture.service.CreateFile(context.Background(), fixture.call, command)
+	replayed, err := fixture.service.CreateFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,12 +133,12 @@ func TestServiceExactReplaceFileRetryReturnsCommittedOutcomeWithoutRepublishing(
 		ExpectedContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/plain", ExpectedSHA256: strings.Repeat("a", 64), Size: 1,
 		IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
-	first, err := fixture.service.ReplaceFile(context.Background(), fixture.call, command)
+	first, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	command.Body = strings.NewReader("x")
-	replayed, err := fixture.service.ReplaceFile(context.Background(), fixture.call, command)
+	replayed, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestServiceReplaceRequiresAndCarriesExpectedContentVersion(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	expected := model.WorkspaceContentVersion("wwwwwwwwwwwwwwwwwwwwwwwwww")
-	result, err := fixture.service.ReplaceFile(context.Background(), fixture.call, ReplaceFileCommand{
+	result, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
 		ExamID: fixture.examID, EntryID: model.StarterWorkspaceEntryID("dddddddddddddddddddddddddd"), ExpectedDraftRevision: 1,
 		ExpectedContentVersion: expected, MediaType: "text/plain", ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 		IdempotencyKey: "test-key",
@@ -161,7 +162,7 @@ func TestServiceReplaceRequiresAndCarriesExpectedContentVersion(t *testing.T) {
 	if err != nil || result.DraftRevision != 2 || fixture.persistence.mutation == nil || fixture.persistence.mutation.ExpectedContentVersion != expected {
 		t.Fatalf("result=%#v err=%v mutation=%#v", result, err, fixture.persistence.mutation)
 	}
-	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.call, idempotencyOperationReplaceFile,
+	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.invocation, idempotencyOperationReplaceFile,
 		"test-key", fixture.examID, 1, expected, "dddddddddddddddddddddddddd", "", "text/plain", 1, strings.Repeat("a", 64))
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
@@ -178,17 +179,17 @@ func TestMetadataWorkspaceMutationsPassOwnedIdempotencyToStore(t *testing.T) {
 		path      string
 	}{
 		{name: "create directory", operation: idempotencyOperationCreateDirectory, path: "src", invoke: func(f *serviceFixture, _ model.StarterWorkspaceEntryID) error {
-			_, err := f.service.CreateDirectory(context.Background(), f.call, CreateDirectoryCommand{ExamID: f.examID,
+			_, err := f.service.CreateDirectory(context.Background(), f.invocation, CreateDirectoryCommand{ExamID: f.examID,
 				ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key"})
 			return err
 		}},
 		{name: "move entry", operation: idempotencyOperationMoveEntry, path: "src/main.go", invoke: func(f *serviceFixture, id model.StarterWorkspaceEntryID) error {
-			_, err := f.service.MoveEntry(context.Background(), f.call, MoveEntryCommand{ExamID: f.examID, EntryID: id,
+			_, err := f.service.MoveEntry(context.Background(), f.invocation, MoveEntryCommand{ExamID: f.examID, EntryID: id,
 				ExpectedDraftRevision: 1, Path: "src/main.go", IdempotencyKey: "test-key"})
 			return err
 		}},
 		{name: "remove entry", operation: idempotencyOperationRemoveEntry, invoke: func(f *serviceFixture, id model.StarterWorkspaceEntryID) error {
-			_, err := f.service.RemoveEntry(context.Background(), f.call, RemoveEntryCommand{ExamID: f.examID, EntryID: id,
+			_, err := f.service.RemoveEntry(context.Background(), f.invocation, RemoveEntryCommand{ExamID: f.examID, EntryID: id,
 				ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 			return err
 		}},
@@ -204,7 +205,7 @@ func TestMetadataWorkspaceMutationsPassOwnedIdempotencyToStore(t *testing.T) {
 			if test.operation != idempotencyOperationCreateDirectory {
 				semanticEntryID = entryID.String()
 			}
-			want, err := prepareWorkspaceIdempotency(fixture.call, test.operation, "test-key", fixture.examID,
+			want, err := prepareWorkspaceIdempotency(fixture.invocation, test.operation, "test-key", fixture.examID,
 				1, "", semanticEntryID, test.path, "", 0, "")
 			if err != nil {
 				t.Fatal(err)
@@ -218,7 +219,7 @@ func TestServiceMapsStaleContentVersionAndReclaimsNewObject(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	fixture.persistence.finalizeErr = store.NewErrConflict("exam_starter_workspace_entry", "workspace_content_version", nil)
-	_, err := fixture.service.ReplaceFile(context.Background(), fixture.call, ReplaceFileCommand{
+	_, err := fixture.service.ReplaceFile(context.Background(), fixture.invocation, ReplaceFileCommand{
 		ExamID: fixture.examID, EntryID: model.StarterWorkspaceEntryID("dddddddddddddddddddddddddd"), ExpectedDraftRevision: 1,
 		ExpectedContentVersion: model.WorkspaceContentVersion("wwwwwwwwwwwwwwwwwwwwwwwwww"), MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
@@ -242,7 +243,7 @@ func TestServiceClassifiesInvalidStagedBytesSeparatelyFromBackendFailure(t *test
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newServiceFixture(t)
 			fixture.content.stageErr = test.err
-			_, err := fixture.service.CreateFile(context.Background(), fixture.call, CreateFileCommand{
+			_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
 				ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/plain",
 				ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key",
@@ -262,7 +263,7 @@ func (fakeInvalidWorkspaceContentError) InvalidStarterWorkspaceContent() bool { 
 func TestServiceRejectsInvalidPathsBeforeAuthorizationOrStorage(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
-	_, err := fixture.service.CreateDirectory(context.Background(), fixture.call, CreateDirectoryCommand{
+	_, err := fixture.service.CreateDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "../escape",
 		IdempotencyKey: "test-key",
 	})
@@ -273,7 +274,7 @@ func TestServiceRejectsInvalidPathsBeforeAuthorizationOrStorage(t *testing.T) {
 
 type serviceFixture struct {
 	service     *Service
-	call        Call
+	invocation  invocation.Invocation
 	examID      model.ExamID
 	persistence *fakeWorkspaceStore
 	authorizer  *fakeWorkspaceAuthorizer
@@ -303,7 +304,7 @@ func newServiceFixture(t *testing.T) *serviceFixture {
 		CredentialID: model.PrincipalCredentialID("cccccccccccccccccccccccccc"), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb,
 		AuthenticatedAt: at}
-	return &serviceFixture{service: service, call: NewCall(principal, model.RequestMetadata{}),
+	return &serviceFixture{service: service, invocation: invocation.New(principal, model.RequestMetadata{}),
 		examID: examID, persistence: persistence, authorizer: authorizer, auditor: auditor, effects: effects, content: content}
 }
 
@@ -405,14 +406,14 @@ func (f fakeMemberships) ListActiveByUser(context.Context, model.UserID, time.Ti
 
 type fakeWorkspaceAuthorizer struct{ called bool }
 
-func (f *fakeWorkspaceAuthorizer) Authorize(context.Context, Call, model.Action, model.Resource) error {
+func (f *fakeWorkspaceAuthorizer) Authorize(context.Context, invocation.Invocation, model.Action, model.Resource) error {
 	f.called = true
 	return nil
 }
 
 type fakeWorkspaceAuditor struct{ values map[string]any }
 
-func (f *fakeWorkspaceAuditor) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (model.AuditEventID, error) {
+func (f *fakeWorkspaceAuditor) Begin(_ context.Context, _ invocation.Invocation, _ model.Action, _ model.Resource, _ model.RoleScopeType, _, _ string, values, _ map[string]any) (model.AuditEventID, error) {
 	f.values = values
 	return "iiiiiiiiiiiiiiiiiiiiiiiiii", nil
 }

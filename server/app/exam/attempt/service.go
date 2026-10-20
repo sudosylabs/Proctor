@@ -19,27 +19,10 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/safemarkdown"
+	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
-
-type Call struct {
-	principal model.Principal
-	metadata  model.RequestMetadata
-}
-
-func NewCall(principal model.Principal, metadata model.RequestMetadata) Call {
-	principal.CredentialScopes = append([]string(nil), principal.CredentialScopes...)
-	return Call{principal: principal, metadata: metadata}
-}
-
-func (call Call) Principal() model.Principal {
-	principal := call.principal
-	principal.CredentialScopes = append([]string(nil), principal.CredentialScopes...)
-	return principal
-}
-
-func (call Call) RequestMetadata() model.RequestMetadata { return call.metadata }
 
 type Sittings interface {
 	// Resolve returns stable Sitting ownership metadata. Store remains the
@@ -48,16 +31,16 @@ type Sittings interface {
 }
 
 type ManagerAuthorizer interface {
-	AuthorizeSittingView(context.Context, Call, model.ExamSittingID) error
-	AuthorizeSittingManage(context.Context, Call, model.ExamSittingID) (bool, error)
-	AuthorizeSubmissionView(context.Context, Call, model.SubmissionID) error
-	AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, error)
+	AuthorizeSittingView(context.Context, invocation.Invocation, model.ExamSittingID) error
+	AuthorizeSittingManage(context.Context, invocation.Invocation, model.ExamSittingID) (bool, error)
+	AuthorizeSubmissionView(context.Context, invocation.Invocation, model.SubmissionID) error
+	AuthorizeBrowserActivityView(context.Context, invocation.Invocation, model.ExamSittingID) (model.AcademicUnitID, error)
 }
 
 type Auditor interface {
-	Begin(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
-	Prepare(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (*model.AuditEvent, error)
-	RecordAuthorizationDecision(context.Context, Call, model.Action, model.Resource, model.RoleScopeType, string, bool) error
+	Begin(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (model.AuditEventID, error)
+	Prepare(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, string, map[string]any) (*model.AuditEvent, error)
+	RecordAuthorizationDecision(context.Context, invocation.Invocation, model.Action, model.Resource, model.RoleScopeType, string, bool) error
 	Fail(context.Context, model.AuditEventID, string) error
 	Complete(context.Context, model.AuditEventID, map[string]any) error
 }
@@ -83,15 +66,6 @@ type Effects interface {
 	AttemptSubmitted(context.Context, SubmissionResult) error
 	AttemptSealedForSittingClose(context.Context, AutomaticSubmissionResult) error
 }
-
-// SystemCall identifies the durable Job execution responsible for one
-// actor-less automatic seal. IDs enter only bounded audit metadata.
-type SystemCall struct {
-	JobID     model.JobID
-	AttemptID model.JobAttemptID
-}
-
-func (call SystemCall) valid() bool { return call.JobID.IsValid() && call.AttemptID.IsValid() }
 
 type EffectFailures interface {
 	Report(context.Context, string, error)
@@ -193,14 +167,14 @@ type GetManagedAttemptQuery struct {
 	AttemptID model.ExamAttemptID
 }
 
-func (service *Service) GetManaged(ctx context.Context, call Call, query GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error) {
+func (service *Service) GetManaged(ctx context.Context, invocation invocation.Invocation, query GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error) {
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() {
 		return nil, apperror.Invalid("exam.attempt.invalid", "attempt")
 	}
 	// Authorization precedes every Attempt read so a caller without Sitting
 	// view authority cannot distinguish existing, mismatched, or missing
 	// Attempts; the authorizer records that decision.
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, call, query.SittingID); err != nil {
+	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return nil, err
 	}
 	sitting, err := service.deps.Sittings.Resolve(ctx, query.SittingID)
@@ -224,9 +198,9 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 	if snapshot.Attempt.SittingID != query.SittingID {
 		return nil, apperror.New("exam.attempt.not_found")
 	}
-	if snapshot.Attempt.CandidateUserID == call.Principal().UserID {
+	if snapshot.Attempt.CandidateUserID == invocation.Principal().UserID {
 		resource := model.Resource{Type: model.ResourceExamSitting, ID: snapshot.Attempt.SittingID.String()}
-		auditID, auditErr := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingView, resource,
+		auditID, auditErr := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingView, resource,
 			model.RoleScopeAcademicUnit, sitting.AcademicUnitID.String(), "view_managed_attempt", map[string]any{
 				"exam_id": snapshot.Attempt.ExamID.String(), "exam_sitting_id": snapshot.Attempt.SittingID.String(),
 				"exam_attempt_id": snapshot.Attempt.ID.String(),
@@ -268,8 +242,8 @@ type CandidateActivityPage struct {
 	HasMore    bool
 }
 
-func (service *Service) ListCandidateActivity(ctx context.Context, call Call, query CandidateActivityQuery) (CandidateActivityPage, error) {
-	principal := call.Principal()
+func (service *Service) ListCandidateActivity(ctx context.Context, invocation invocation.Invocation, query CandidateActivityQuery) (CandidateActivityPage, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeScheduledStart.IsZero() != query.BeforeSittingID.IsZero()) {
 		return CandidateActivityPage{}, apperror.Invalid("exam.attempt.invalid", "candidate_activity")
@@ -312,19 +286,19 @@ type SittingCandidateStatusesPage struct {
 	HasMore bool
 }
 
-func (service *Service) ListSittingCandidateStatuses(ctx context.Context, call Call,
+func (service *Service) ListSittingCandidateStatuses(ctx context.Context, invocation invocation.Invocation,
 	query SittingCandidateStatusesQuery,
 ) (SittingCandidateStatusesPage, error) {
-	principal := call.Principal()
+	principal := invocation.Principal()
 	if principal.Validate() != nil || !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		!query.AfterCandidateUserID.IsZero() && !query.AfterCandidateUserID.IsValid() {
 		return SittingCandidateStatusesPage{}, apperror.Invalid("exam.attempt.invalid", "candidate_statuses")
 	}
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, call, query.SittingID); err != nil {
+	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return SittingCandidateStatusesPage{}, err
 	}
 	reallowAuthorized := false
-	if _, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, query.SittingID); err == nil {
+	if _, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, query.SittingID); err == nil {
 		reallowAuthorized = true
 	} else {
 		var fault *apperror.Error
@@ -358,16 +332,16 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, call C
 	return page, nil
 }
 
-func (service *Service) ListManaged(ctx context.Context, call Call, query ListManagedAttemptsQuery) (ManagedAttemptPage, error) {
+func (service *Service) ListManaged(ctx context.Context, invocation invocation.Invocation, query ListManagedAttemptsQuery) (ManagedAttemptPage, error) {
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeCreatedAt.IsZero() != query.BeforeAttemptID.IsZero()) {
 		return ManagedAttemptPage{}, apperror.Invalid("exam.attempt.invalid", "attempt_list")
 	}
-	if err := service.deps.Managers.AuthorizeSittingView(ctx, call, query.SittingID); err != nil {
+	if err := service.deps.Managers.AuthorizeSittingView(ctx, invocation, query.SittingID); err != nil {
 		return ManagedAttemptPage{}, err
 	}
 	rows, err := service.deps.Persistence.List(ctx, store.ExamAttemptManagerListOptions{
-		ExamID: query.ExamID, SittingID: query.SittingID, ExcludeCandidateUserID: call.Principal().UserID,
+		ExamID: query.ExamID, SittingID: query.SittingID, ExcludeCandidateUserID: invocation.Principal().UserID,
 		States:          append([]model.ExamAttemptState(nil), query.States...),
 		BeforeCreatedAt: model.TimeUTC(query.BeforeCreatedAt), BeforeAttemptID: query.BeforeAttemptID, Limit: query.Limit + 1,
 	})
@@ -521,8 +495,8 @@ type ReallowResult struct {
 	Replayed        bool
 }
 
-func (service *Service) Reallow(ctx context.Context, call Call, command ReallowCommand) (ReallowResult, error) {
-	principal := call.Principal()
+func (service *Service) Reallow(ctx context.Context, invocation invocation.Invocation, command ReallowCommand) (ReallowResult, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil {
 		return ReallowResult{}, apperror.New("authentication.token_invalid")
 	}
@@ -530,13 +504,13 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 		!command.SuspensionID.IsValid() || command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
 		return ReallowResult{}, apperror.Invalid("exam.attempt.invalid", "reallow")
 	}
-	idempotency, err := prepareReallowIdempotency(call, command)
+	idempotency, err := prepareReallowIdempotency(invocation, command)
 	if err != nil {
 		return ReallowResult{}, err
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
-	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
+	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, invocation, command.SittingID)
 	if err != nil {
 		return ReallowResult{}, err
 	}
@@ -551,7 +525,7 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 	if override {
 		action = model.ActionExamSittingManageOverride
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, action,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, action,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(),
 		store.ExamAttemptReallowOperation, map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 			"exam_attempt_id": command.AttemptID.String(), "suspension_id": command.SuspensionID.String(),
@@ -737,13 +711,13 @@ func projectExpiry(stored *store.ExamAttemptParticipationExpiryResult, due store
 // RenewParticipation authenticates a continuity renewal independently of the
 // WebSocket transport ping. Store owns the database clock, exclusive expiry
 // boundary, duplicate outcome, and permanent generation fence.
-func (service *Service) RenewParticipation(ctx context.Context, call Call, command RenewParticipationCommand) (ParticipationRenewal, error) {
-	release, admissionErr := service.enterControl(ctx, call, true)
+func (service *Service) RenewParticipation(ctx context.Context, invocation invocation.Invocation, command RenewParticipationCommand) (ParticipationRenewal, error) {
+	release, admissionErr := service.enterControl(ctx, invocation, true)
 	if admissionErr != nil {
 		return ParticipationRenewal{}, admissionErr
 	}
 	defer release()
-	principal := call.Principal()
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ParticipationRenewal{}, apperror.New("authentication.token_invalid")
 	}
@@ -806,11 +780,11 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 	return result, nil
 }
 
-func (service *Service) Connect(ctx context.Context, call Call, command ConnectCommand) (ConnectionResult, error) {
+func (service *Service) Connect(ctx context.Context, invocation invocation.Invocation, command ConnectCommand) (ConnectionResult, error) {
 	if command.Security.Validate() != nil {
 		return ConnectionResult{}, apperror.Invalid("exam.attempt.invalid", "security")
 	}
-	principal := call.Principal()
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ConnectionResult{}, apperror.New("authentication.token_invalid")
 	}
@@ -830,7 +804,7 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 	if err = validateConnectConfiguration(command, build.Build); err != nil {
 		return ConnectionResult{}, err
 	}
-	idempotency, err := prepareConnectIdempotency(call, command)
+	idempotency, err := prepareConnectIdempotency(invocation, command)
 	if err != nil {
 		return ConnectionResult{}, err
 	}
@@ -850,7 +824,7 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 	credentialHash := model.HashToken(command.ContinuityCredential)
 	participationID, connectionID := service.deps.NewParticipation(), service.deps.NewConnection()
 
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, sitting.ClassID.String(),
 		"exam_attempt_connect", map[string]any{"exam_sitting_id": command.SittingID.String()})
 	if err != nil {
@@ -921,19 +895,19 @@ type ConnectionClosedResult struct {
 	Changed         bool
 }
 
-func (service *Service) CloseConnection(ctx context.Context, call Call, command CloseConnectionCommand) (ConnectionClosedResult, error) {
-	if call.Principal().Validate() != nil || !command.AttemptID.IsValid() || !command.SittingID.IsValid() ||
+func (service *Service) CloseConnection(ctx context.Context, invocation invocation.Invocation, command CloseConnectionCommand) (ConnectionClosedResult, error) {
+	if invocation.Principal().Validate() != nil || !command.AttemptID.IsValid() || !command.SittingID.IsValid() ||
 		!command.ClassID.IsValid() || !command.ConnectionID.IsValid() || !command.Reason.IsValid() {
 		return ConnectionClosedResult{}, apperror.Invalid("exam.attempt.invalid", "connection")
 	}
-	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, command.ClassID.String(),
 		"exam_attempt_connection_close", map[string]any{"exam_attempt_id": command.AttemptID.String(), "attempt_connection_id": command.ConnectionID.String()})
 	if err != nil {
 		return ConnectionClosedResult{}, err
 	}
 	stored, err := service.deps.Persistence.CloseConnection(ctx, &store.ExamAttemptConnectionClose{
-		ConnectionID: command.ConnectionID, CandidateUserID: call.Principal().UserID, SessionID: call.Principal().SessionID,
+		ConnectionID: command.ConnectionID, CandidateUserID: invocation.Principal().UserID, SessionID: invocation.Principal().SessionID,
 		Reason: command.Reason, AuditEventID: auditID,
 		AuditAt: model.MillisFromTime(model.TimeUTC(service.deps.Now())),
 	})
@@ -983,8 +957,8 @@ type Resource struct {
 	SHA256              string
 }
 
-func (service *Service) GetPresentation(ctx context.Context, call Call, access CandidateAccess) (Presentation, error) {
-	selector, err := candidateSelector(call, access)
+func (service *Service) GetPresentation(ctx context.Context, invocation invocation.Invocation, access CandidateAccess) (Presentation, error) {
+	selector, err := candidateSelector(invocation, access)
 	if err != nil {
 		return Presentation{}, err
 	}
@@ -1026,8 +1000,8 @@ type WorkspacePage struct {
 	RefreshRequired bool
 }
 
-func (service *Service) ListWorkspace(ctx context.Context, call Call, query WorkspaceQuery) (WorkspacePage, error) {
-	selector, err := candidateSelector(call, query.Access)
+func (service *Service) ListWorkspace(ctx context.Context, invocation invocation.Invocation, query WorkspaceQuery) (WorkspacePage, error) {
+	selector, err := candidateSelector(invocation, query.Access)
 	if err != nil {
 		return WorkspacePage{}, err
 	}
@@ -1058,8 +1032,8 @@ type OpenedContent struct {
 	ContentVersion model.WorkspaceContentVersion
 }
 
-func (service *Service) OpenResource(ctx context.Context, call Call, access CandidateAccess, resourceID model.ExamResourceID) (*OpenedContent, error) {
-	selector, err := candidateSelector(call, access)
+func (service *Service) OpenResource(ctx context.Context, invocation invocation.Invocation, access CandidateAccess, resourceID model.ExamResourceID) (*OpenedContent, error) {
+	selector, err := candidateSelector(invocation, access)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,8 +1054,8 @@ func (service *Service) OpenResource(ctx context.Context, call Call, access Cand
 	return &OpenedContent{Body: body, MediaType: string(resolved.Resource.MediaType), SizeBytes: resolved.Resource.SizeBytes, SHA256: resolved.Resource.SHA256}, nil
 }
 
-func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access CandidateAccess, entryID model.AttemptWorkspaceEntryID) (*OpenedContent, error) {
-	selector, err := candidateSelector(call, access)
+func (service *Service) OpenWorkspaceFile(ctx context.Context, invocation invocation.Invocation, access CandidateAccess, entryID model.AttemptWorkspaceEntryID) (*OpenedContent, error) {
+	selector, err := candidateSelector(invocation, access)
 	if err != nil {
 		return nil, err
 	}
@@ -1117,8 +1091,8 @@ func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access
 		SHA256: resolved.Entry.SHA256, ContentVersion: resolved.ContentVersion}, nil
 }
 
-func candidateSelector(call Call, access CandidateAccess) (store.CandidateAttemptAccess, error) {
-	principal := call.Principal()
+func candidateSelector(invocation invocation.Invocation, access CandidateAccess) (store.CandidateAttemptAccess, error) {
+	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return store.CandidateAttemptAccess{}, apperror.New("authentication.token_invalid")
 	}
