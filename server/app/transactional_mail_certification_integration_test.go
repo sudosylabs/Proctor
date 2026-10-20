@@ -118,7 +118,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{
-		ID: securityUser.ID.String(), Enabled: false, IdempotencyKey: "mail-cert-disable",
+		ID: securityUser.ID, Enabled: false, IdempotencyKey: "mail-cert-disable",
 	}); appErr != nil {
 		t.Fatal(appErr)
 	}

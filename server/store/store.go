@@ -1098,10 +1098,10 @@ type ClassStore interface {
 // UserListOptions is a bounded persistence query. IncludeDisabled is effective
 // only with an explicit InstitutionWide visibility scope.
 type UserListOptions struct {
-	ID                           string
+	ID                           model.UserID
 	Query                        string
 	AfterUsername                string
-	AfterId                      string
+	AfterID                      model.UserID
 	Limit                        int
 	IncludeDisabled              bool
 	MissingDefaultProfilePicture bool
@@ -1150,7 +1150,7 @@ type UserProfileUpdate struct {
 // transaction. AuditEventID identifies an already-persisted attempt that must
 // be completed successfully before any state change may commit.
 type UserDisabledStateChange struct {
-	ID               string
+	ID               model.UserID
 	ExpectedRevision int64
 	Disabled         bool
 	Capabilities     AccessDeploymentCapabilities
@@ -1221,15 +1221,15 @@ type UserStore interface {
 	// intent. All future import-oriented creation must use this operation.
 	Create(context.Context, *UserCreation) (*UserCreationResult, error)
 	RegisterLocal(context.Context, *PublicLocalUserRegistration) (*PublicLocalUserRegistrationResult, error)
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
 	List(context.Context, UserListOptions) ([]*model.User, error)
 	GetCurrentContext(context.Context, model.UserID, int) (*CurrentUserContext, error)
-	MatchVisibility(context.Context, string, UserVisibilityScope) (UserVisibilityMatch, error)
+	MatchVisibility(context.Context, model.UserID, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
 	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
-	UpdateLastLogin(context.Context, string, int64) error
+	UpdateLastLogin(context.Context, model.UserID, int64) error
 }
 
 type CurrentUserProductArea string
@@ -1344,9 +1344,9 @@ type AuthenticationMethodMutationResult struct {
 // and link without email-based account merging.
 type ExternalIdentityStore interface {
 	Save(context.Context, *model.ExternalIdentity) (*model.ExternalIdentity, error)
-	Get(context.Context, string) (*model.ExternalIdentity, error)
+	Get(context.Context, model.ExternalIdentityID) (*model.ExternalIdentity, error)
 	GetByProviderSubject(context.Context, string, string) (*model.ExternalIdentity, error)
-	ListByUser(context.Context, string) ([]*model.ExternalIdentity, error)
+	ListByUser(context.Context, model.UserID) ([]*model.ExternalIdentity, error)
 	ResolveOrProvision(context.Context, *ExternalIdentityResolutionRequest) (*ExternalIdentityResolution, error)
 	LinkWithAudit(context.Context, *ExternalIdentityLink) (*AuthenticationMethodMutationResult, error)
 	UnlinkWithAudit(context.Context, *ExternalIdentityUnlink) (*AuthenticationMethodMutationResult, error)
@@ -2000,21 +2000,21 @@ const (
 // only safe bounded metadata and is inserted as one terminal event only when
 // the preparation succeeds, explicitly fails, or is reconciled after expiry.
 type PersonalAccessTokenMutationPreparation struct {
-	UserID   string
-	TokenID  string
+	UserID   model.UserID
+	TokenID  model.PersonalAccessTokenID
 	Kind     PersonalAccessTokenMutationKind
 	Audit    *model.AuditEvent
 	Lifetime time.Duration
 }
 
 type PreparedPersonalAccessTokenMutation struct {
-	ID        string
+	ID        model.PersonalAccessTokenPreparationID
 	ActionAt  time.Time
 	ExpiresAt time.Time
 }
 
 type PersonalAccessTokenMutationFailure struct {
-	PreparationID string
+	PreparationID model.PersonalAccessTokenPreparationID
 	ErrorCode     string
 }
 
@@ -2035,27 +2035,27 @@ type PersonalAccessTokenCreationMutation struct {
 	MaximumActive   int
 	MinimumLifetime time.Duration
 	MaximumLifetime time.Duration
-	PreparationID   string
+	PreparationID   model.PersonalAccessTokenPreparationID
 	Notice          PersonalAccessTokenSecurityNotice
 }
 
 // PersonalAccessTokenStateMutation couples one fresh enable/disable state
 // change, terminal audit, and matching security notice in one transaction.
 type PersonalAccessTokenStateMutation struct {
-	ID            string
-	UserID        string
+	ID            model.PersonalAccessTokenID
+	UserID        model.UserID
 	Disabled      bool
 	MaximumActive int
-	PreparationID string
+	PreparationID model.PersonalAccessTokenPreparationID
 	Notice        PersonalAccessTokenSecurityNotice
 }
 
 // PersonalAccessTokenRevocation couples one fresh revocation, terminal audit,
 // and matching security notice in one transaction.
 type PersonalAccessTokenRevocation struct {
-	ID            string
-	UserID        string
-	PreparationID string
+	ID            model.PersonalAccessTokenID
+	UserID        model.UserID
+	PreparationID model.PersonalAccessTokenPreparationID
 	Notice        PersonalAccessTokenSecurityNotice
 }
 
@@ -2067,8 +2067,8 @@ type PersonalAccessTokenStore interface {
 	FailMutation(context.Context, *PersonalAccessTokenMutationFailure) error
 	MaintainMutationPreparations(context.Context, int) (*PersonalAccessTokenPreparationMaintenanceResult, error)
 	Create(context.Context, *PersonalAccessTokenCreationMutation) (*PersonalAccessTokenMutationResult, error)
-	Get(context.Context, string) (*model.PersonalAccessToken, error)
-	ListByUser(context.Context, string) ([]*model.PersonalAccessToken, error)
+	Get(context.Context, model.PersonalAccessTokenID) (*model.PersonalAccessToken, error)
+	ListByUser(context.Context, model.UserID) ([]*model.PersonalAccessToken, error)
 	Resolve(context.Context, string, time.Time, time.Duration) (*PersonalAccessTokenResolution, error)
 	ChangeState(context.Context, *PersonalAccessTokenStateMutation) (*PersonalAccessTokenMutationResult, error)
 	RevokeWithAudit(context.Context, *PersonalAccessTokenRevocation) (*PersonalAccessTokenMutationResult, error)
@@ -2096,11 +2096,11 @@ type MFASecurityNotice struct {
 type MFAActivationMutation struct {
 	Principal               model.Principal
 	RecentAuthenticationTTL time.Duration
-	CredentialID            string
-	UserID                  string
+	CredentialID            model.MFACredentialID
+	UserID                  model.UserID
 	TimeStep                int64
 	RecoveryCodes           []*model.MFARecoveryCode
-	SessionID               string
+	SessionID               model.SessionID
 	At                      time.Time
 	AuditEventID            string
 	AuditAt                 int64
@@ -2110,7 +2110,7 @@ type MFAActivationMutation struct {
 type MFARecoveryCodesRegeneration struct {
 	Principal               model.Principal
 	RecentAuthenticationTTL time.Duration
-	UserID                  string
+	UserID                  model.UserID
 	RecoveryCodes           []*model.MFARecoveryCode
 	At                      int64
 	AuditEventID            string
@@ -2121,7 +2121,7 @@ type MFARecoveryCodesRegeneration struct {
 type MFADisablement struct {
 	Principal               model.Principal
 	RecentAuthenticationTTL time.Duration
-	UserID                  string
+	UserID                  model.UserID
 	At                      int64
 	AuditEventID            string
 	AuditAt                 int64
@@ -2138,12 +2138,12 @@ type MFAStore interface {
 	ChallengeWithAudit(context.Context, *MFAChallenge) (*SessionReauthenticationResult, error)
 	ResetWithAudit(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
 	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
-	GetByUser(context.Context, string) (*model.MFACredential, error)
+	GetByUser(context.Context, model.UserID) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
-	ConsumeSecondFactor(context.Context, string, int64, string, int64) error
-	UpgradeSession(context.Context, string, string, time.Time) ([]string, error)
+	ConsumeSecondFactor(context.Context, model.UserID, int64, string, int64) error
+	UpgradeSession(context.Context, model.SessionID, model.UserID, time.Time) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
-	CountRecoveryCodes(context.Context, string) (int, error)
+	CountRecoveryCodes(context.Context, model.UserID) (int, error)
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
 }
 
@@ -2270,7 +2270,7 @@ type ClassMemberStore interface {
 // PasswordCredentialStore persists one encoded password hash per local user.
 type PasswordCredentialStore interface {
 	Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
-	GetByUser(context.Context, string) (*model.PasswordCredential, error)
+	GetByUser(context.Context, model.UserID) (*model.PasswordCredential, error)
 	Rehash(context.Context, *PasswordCredentialRehash) error
 	EnrollWithAudit(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
 	RemoveWithAudit(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
@@ -2323,8 +2323,8 @@ type PasswordCredentialRemoval struct {
 // no-op audit if the caller's Session is already absent or revoked. Other single
 // revocations return not found for an inactive or non-owned Session.
 type SessionRevocation struct {
-	SessionID    string
-	UserID       string
+	SessionID    model.SessionID
+	UserID       model.UserID
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
@@ -2357,7 +2357,7 @@ type SessionExpiryEnforcementResult struct {
 // other reasons retain the administrative notice contract. An empty set completes
 // a successful audit with zero revoked sessions and no notice or transient effect.
 type UserSessionsRevocation struct {
-	UserID       string
+	UserID       model.UserID
 	Occurrence   *model.MailOccurrence
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
@@ -2384,16 +2384,16 @@ type SessionStore interface {
 	ReauthenticateExternalWithAudit(context.Context, *SessionExternalReauthentication) (*SessionReauthenticationResult, error)
 	ReauthenticatePasswordWithAudit(context.Context, *SessionPasswordReauthentication) (*SessionReauthenticationResult, error)
 	Save(context.Context, *SessionCreation) (*model.Session, []*model.SessionCredential, error)
-	Get(context.Context, string) (*model.Session, error)
-	ListByUser(context.Context, string) ([]*model.Session, error)
-	ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error)
-	UpdateActivity(context.Context, string, time.Time, time.Time) error
-	EnforceExpiry(context.Context, string, string, time.Time) (*SessionExpiryEnforcementResult, error)
-	Revoke(context.Context, string, string, int64, model.SessionRevocationReason) ([]string, error)
+	Get(context.Context, model.SessionID) (*model.Session, error)
+	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
+	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
+	UpdateActivity(context.Context, model.SessionID, time.Time, time.Time) error
+	EnforceExpiry(context.Context, model.SessionID, model.UserID, time.Time) (*SessionExpiryEnforcementResult, error)
+	Revoke(context.Context, model.SessionID, model.UserID, int64, model.SessionRevocationReason) ([]string, error)
 	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(
 		context.Context,
-		string,
+		model.UserID,
 		int64,
 		model.SessionRevocationReason,
 	) ([]*model.Session, []string, error)
@@ -2441,8 +2441,8 @@ type DesktopRegistrationRevocationResult struct {
 // DesktopRegistrationStore owns safe self-listing and the atomic irreversible
 // key, Session, and token-family revocation transition.
 type DesktopRegistrationStore interface {
-	Get(context.Context, string) (*model.DesktopRegistration, error)
-	ListByUser(context.Context, string) ([]*model.DesktopRegistration, error)
+	Get(context.Context, model.DesktopRegistrationID) (*model.DesktopRegistration, error)
+	ListByUser(context.Context, model.UserID) ([]*model.DesktopRegistration, error)
 	RevokeWithAudit(context.Context, *DesktopRegistrationRevocation) (*DesktopRegistrationRevocationResult, error)
 }
 
@@ -2484,7 +2484,7 @@ type RoleUpdate struct {
 // RoleArchive is the durable input for archiving a custom role under an
 // already-persisted audit attempt.
 type RoleArchive struct {
-	ID           string
+	ID           model.RoleID
 	ArchiveAt    int64
 	AuditEventID string
 	AuditAt      int64
@@ -2494,14 +2494,14 @@ type RoleArchive struct {
 type RoleStore interface {
 	Save(context.Context, *model.Role) (*model.Role, error)
 	SaveWithAudit(context.Context, *RoleCreation) (*model.Role, error)
-	Get(context.Context, string) (*model.Role, error)
-	GetIncludingArchived(context.Context, string) (*model.Role, error)
+	Get(context.Context, model.RoleID) (*model.Role, error)
+	GetIncludingArchived(context.Context, model.RoleID) (*model.Role, error)
 	GetByName(context.Context, string) (*model.Role, error)
-	GetByIds(context.Context, []string) ([]*model.Role, error)
+	GetByIDs(context.Context, []model.RoleID) ([]*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
 	Update(context.Context, *model.Role) (*model.Role, error)
 	UpdateWithAudit(context.Context, *RoleUpdate) (*model.Role, error)
-	Archive(context.Context, string, int64) (*model.Role, error)
+	Archive(context.Context, model.RoleID, int64) (*model.Role, error)
 	ArchiveWithAudit(context.Context, *RoleArchive) (*model.Role, error)
 }
 
@@ -2523,7 +2523,7 @@ type RoleBindingCreation struct {
 // RoleBindingEnd is the durable input for ending a binding under an
 // already-persisted audit attempt.
 type RoleBindingEnd struct {
-	ID                        string
+	ID                        model.RoleBindingID
 	EndAt                     int64
 	ExpectedRecipientRevision int64
 	Notice                    *PreparedMail
@@ -2541,23 +2541,23 @@ type RoleBindingEnd struct {
 type RoleBindingStore interface {
 	Save(context.Context, *model.RoleBinding) (*model.RoleBinding, error)
 	SaveWithAudit(context.Context, *RoleBindingCreation) (*model.RoleBinding, error)
-	Get(context.Context, string) (*model.RoleBinding, error)
-	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
-	ListVisibleByUser(context.Context, string, UserVisibilityScope) ([]*model.RoleBinding, error)
+	Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error)
+	ListByUser(context.Context, model.UserID) ([]*model.RoleBinding, error)
+	ListVisibleByUser(context.Context, model.UserID, UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived bindings are excluded; no active bindings is an empty list.
-	ListActiveByUser(context.Context, string, time.Time) ([]*model.RoleBinding, error)
-	End(context.Context, string, int64) (*model.RoleBinding, error)
+	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.RoleBinding, error)
+	End(context.Context, model.RoleBindingID, int64) (*model.RoleBinding, error)
 	EndWithAudit(context.Context, *RoleBindingEnd) (*model.RoleBinding, error)
 }
 
 type AuditListOptions struct {
-	ActorId    string
+	ActorID    model.UserID
 	Action     string
 	Resource   *model.Resource
 	BeforeTime int64
-	BeforeId   string
+	BeforeID   model.AuditEventID
 	Limit      int
 	Visibility AuditVisibilityScope
 }
@@ -2631,7 +2631,7 @@ type AdministratorRecovery struct {
 }
 
 type AdministratorRecoveryResult struct {
-	RecordID          string
+	RecordID          model.AdministratorRecoveryRecordID
 	LocalLoginEnabled bool
 	PasswordRotated   bool
 }

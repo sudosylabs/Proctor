@@ -34,17 +34,17 @@ type roleBindingStoreFake struct {
 	visibility   store.UserVisibilityScope
 }
 
-func (s *roleBindingStoreFake) Get(context.Context, string) (*model.RoleBinding, error) {
+func (s *roleBindingStoreFake) Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error) {
 	*s.events = append(*s.events, "get-binding")
 	return s.binding, s.getErr
 }
 
-func (s *roleBindingStoreFake) ListByUser(context.Context, string) ([]*model.RoleBinding, error) {
+func (s *roleBindingStoreFake) ListByUser(context.Context, model.UserID) ([]*model.RoleBinding, error) {
 	*s.events = append(*s.events, "list-by-user")
 	return s.list, s.listErr
 }
 
-func (s *roleBindingStoreFake) ListVisibleByUser(_ context.Context, _ string, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+func (s *roleBindingStoreFake) ListVisibleByUser(_ context.Context, _ model.UserID, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
 	*s.events = append(*s.events, "list-visible-by-user")
 	s.visibility = visibility
 	return s.list, s.listErr
@@ -73,12 +73,12 @@ type roleBindingRoleStoreFake struct {
 	err    error
 }
 
-func (s *roleBindingRoleStoreFake) Get(context.Context, string) (*model.Role, error) {
+func (s *roleBindingRoleStoreFake) Get(context.Context, model.RoleID) (*model.Role, error) {
 	*s.events = append(*s.events, "get-role")
 	return s.role, s.err
 }
 
-func (s *roleBindingRoleStoreFake) GetIncludingArchived(context.Context, string) (*model.Role, error) {
+func (s *roleBindingRoleStoreFake) GetIncludingArchived(context.Context, model.RoleID) (*model.Role, error) {
 	*s.events = append(*s.events, "get-role-including-archived")
 	return s.role, s.err
 }
@@ -201,7 +201,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID.String()})
+	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID})
 	if !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
 	}

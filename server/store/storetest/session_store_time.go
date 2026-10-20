@@ -27,7 +27,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 				user, session, _ := saveSessionTimeFixture(t, ss, expiry, deadline)
 				for _, test := range sessionDecisionCases(deadline) {
 					t.Run(test.name, func(t *testing.T) {
-						active, err := ss.Session().ListActiveByUser(context.Background(), user.ID.String(), test.at)
+						active, err := ss.Session().ListActiveByUser(context.Background(), user.ID, test.at)
 						requireNoError(t, err)
 						if test.expired && len(active) != 0 || !test.expired && (len(active) != 1 || active[0].ID != session.ID) {
 							t.Fatalf("active Sessions at %v = %#v", test.at, active)
@@ -38,7 +38,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 			for _, test := range sessionDecisionCases(deadline) {
 				t.Run("EnforceExpiry/"+test.name, func(t *testing.T) {
 					user, session, raw := saveSessionTimeFixture(t, ss, expiry, deadline)
-					result, err := ss.Session().EnforceExpiry(context.Background(), session.ID.String(), user.ID.String(), test.at)
+					result, err := ss.Session().EnforceExpiry(context.Background(), session.ID, user.ID, test.at)
 					requireNoError(t, err)
 					if result == nil || result.Session == nil || result.Expired != test.expired {
 						t.Fatalf("EnforceExpiry(%v) = %#v", test.at, result)
@@ -64,7 +64,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 				t.Run("UpdateActivity/"+test.name, func(t *testing.T) {
 					_, session, _ := saveSessionTimeFixture(t, ss, expiry, deadline)
 					idle := test.at.Add(time.Hour + 500*time.Microsecond)
-					err := ss.Session().UpdateActivity(context.Background(), session.ID.String(), test.at, idle)
+					err := ss.Session().UpdateActivity(context.Background(), session.ID, test.at, idle)
 					if test.expired {
 						if !store.IsNotFound(err) {
 							t.Fatalf("UpdateActivity(expired) = %v", err)
@@ -72,7 +72,7 @@ func testSessionNativeTimeBoundaries(t *testing.T, ss store.Store) {
 					} else {
 						requireNoError(t, err)
 					}
-					saved, err := ss.Session().Get(context.Background(), session.ID.String())
+					saved, err := ss.Session().Get(context.Background(), session.ID)
 					requireNoError(t, err)
 					if test.expired {
 						if !saved.LastActivityAt.Equal(session.LastActivityAt) || !saved.IdleExpiresAt.Equal(session.IdleExpiresAt) {

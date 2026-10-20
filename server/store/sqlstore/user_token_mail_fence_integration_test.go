@@ -125,7 +125,7 @@ func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
 				t.Fatal(err)
 			}
 			after := databaseNow()
-			persistedUser, err := persistence.User().Get(ctx, user.ID.String())
+			persistedUser, err := persistence.User().Get(ctx, user.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -278,7 +278,7 @@ func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
 	if !credential.ArchivedAt.Valid || credential.Revision != password.Revision+1 || credential.PasswordHash != completion.PasswordHash {
 		t.Fatal("removal did not archive the password produced by the preceding reset")
 	}
-	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID.String()); !store.IsNotFound(err) {
+	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID); !store.IsNotFound(err) {
 		t.Fatalf("password remained active after removal: %v", err)
 	}
 	terminal, err := persistence.Audit().Get(ctx, audit.ID.String())
@@ -331,7 +331,7 @@ func TestPasswordResetSerializesWithResetTokenReissue(t *testing.T) {
 	if reissued.err != nil || reissued.token == nil || reissued.token.ID != next.ID {
 		t.Fatalf("token reissue after reset = %#v, %v", reissued.token, reissued.err)
 	}
-	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
 	if err != nil || current.Revision != password.Revision+1 || current.PasswordHash != completion.PasswordHash {
 		t.Fatalf("token reissue changed reset password: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 		authenticationPolicyTestAudit("authentication.email_verification.complete", "", institution.ID.String())); !store.IsNotFound(err) {
 		t.Fatalf("expired verification with behind-node time error = %v, want not found", err)
 	}
-	current, err := persistence.User().Get(ctx, user.ID.String())
+	current, err := persistence.User().Get(ctx, user.ID)
 	if err != nil || current.EmailVerified {
 		t.Fatalf("expired verification changed User = %#v, %v", current, err)
 	}
@@ -410,11 +410,11 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, completion); !store.IsNotFound(err) {
 		t.Fatalf("expired reset with behind-node time error = %v, want not found", err)
 	}
-	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
 	if err != nil || unchangedCredential.ID != credential.ID || unchangedCredential.PasswordHash != credential.PasswordHash {
 		t.Fatalf("expired reset changed credential = %#v, %v", unchangedCredential, err)
 	}
-	unchangedSession, err := persistence.Session().Get(ctx, session.ID.String())
+	unchangedSession, err := persistence.Session().Get(ctx, session.ID)
 	if err != nil || unchangedSession.RevokedAt.Valid {
 		t.Fatalf("expired reset revoked Session = %#v, %v", unchangedSession, err)
 	}
@@ -854,7 +854,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
+		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
 		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
 	})
 

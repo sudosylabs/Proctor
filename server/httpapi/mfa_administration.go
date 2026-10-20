@@ -31,7 +31,7 @@ func mfaAdministrationResource(application MFAAdministration) resource {
 	return newResource("mfa-administration", strongRecentSessionRoute(http.MethodPost, apiPath(literal("users"), canonicalID("user_id"), literal("mfa"), literal("reset")), operatorMutationErrorCodes("request.invalid", "resource.not_found", "authentication.mfa.reset_invalid", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal"), module.reset))
 }
 func (module mfaAdministrationResourceModule) reset(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}

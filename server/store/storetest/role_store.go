@@ -33,7 +33,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if !saved.ID.IsValid() || !input.ID.IsZero() {
 			t.Fatalf("Save() = %#v, input = %#v", saved, input)
 		}
-		byID, err := ss.Role().Get(ctx, saved.ID.String())
+		byID, err := ss.Role().Get(ctx, saved.ID)
 		requireNoError(t, err)
 		byName, err := ss.Role().GetByName(ctx, saved.Name)
 		requireNoError(t, err)
@@ -48,10 +48,10 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 		list, err := ss.Role().List(ctx)
 		requireNoError(t, err)
-		batch, err := ss.Role().GetByIds(ctx, []string{saved.ID.String(), model.NewId()})
+		batch, err := ss.Role().GetByIDs(ctx, []model.RoleID{saved.ID, model.NewRoleID()})
 		requireNoError(t, err)
 		if len(list) != 1 || len(batch) != 1 {
-			t.Fatalf("List/GetByIds = %d/%d", len(list), len(batch))
+			t.Fatalf("List/GetByIDs = %d/%d", len(list), len(batch))
 		}
 		firstUpdate := saved.Clone()
 		firstUpdate.DisplayName = "Concurrent First"
@@ -87,14 +87,14 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if succeeded != 1 || conflicted != 1 {
 			t.Fatalf("concurrent Update() results = success %d conflict %d", succeeded, conflicted)
 		}
-		saved, err = ss.Role().Get(ctx, saved.ID.String())
+		saved, err = ss.Role().Get(ctx, saved.ID)
 		requireNoError(t, err)
-		archived, err := ss.Role().Archive(ctx, saved.ID.String(), model.GetMillis())
+		archived, err := ss.Role().Archive(ctx, saved.ID, model.GetMillis())
 		requireNoError(t, err)
 		if !archived.IsArchived() {
 			t.Fatalf("Archive() = %#v", archived)
 		}
-		if _, err := ss.Role().Get(ctx, saved.ID.String()); !store.IsNotFound(err) {
+		if _, err := ss.Role().Get(ctx, saved.ID); !store.IsNotFound(err) {
 			t.Fatalf("Get(archived) error = %v", err)
 		}
 	})
@@ -112,7 +112,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		if !errors.As(err, &conflict) || conflict.Constraint != "roles_name_key" {
 			t.Fatalf("duplicate role error = %v", err)
 		}
-		if _, err := ss.Role().Archive(ctx, first.ID.String(), model.GetMillis()); !store.IsConflict(err) {
+		if _, err := ss.Role().Archive(ctx, first.ID, model.GetMillis()); !store.IsConflict(err) {
 			t.Fatalf("Archive(built-in) error = %v", err)
 		}
 		first.DisplayName = "Modified Built-in"
@@ -156,7 +156,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}); err == nil {
 			t.Fatal("UpdateWithAudit() succeeded without its audit attempt")
 		}
-		unchanged, err := ss.Role().Get(ctx, created.ID.String())
+		unchanged, err := ss.Role().Get(ctx, created.ID)
 		requireNoError(t, err)
 		if unchanged.DisplayName != "Audited Teacher" {
 			t.Fatalf("role update survived audit rollback: %#v", unchanged)
@@ -187,7 +187,7 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}); !store.IsConflict(err) {
 			t.Fatalf("bound role permission UpdateWithAudit() error = %v, want conflict", err)
 		}
-		if _, err := ss.RoleBinding().End(ctx, binding.ID.String(), at+4); err != nil {
+		if _, err = ss.RoleBinding().End(ctx, binding.ID, at+4); err != nil {
 			t.Fatalf("end historical binding: %v", err)
 		}
 		historicalAttempt := saveRoleAuditAttempt(t, ctx, ss)
@@ -200,24 +200,24 @@ func TestRoleStore(t *testing.T, ss store.Store) {
 		}
 
 		if _, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
-			ID: created.ID.String(), ArchiveAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at + 2, AuditEventID: model.NewId(), AuditAt: at + 2,
 		}); err == nil {
 			t.Fatal("ArchiveWithAudit() succeeded without its audit attempt")
 		}
-		stillPresent, err := ss.Role().Get(ctx, created.ID.String())
+		stillPresent, err := ss.Role().Get(ctx, created.ID)
 		requireNoError(t, err)
 		if stillPresent.IsArchived() {
 			t.Fatalf("role archive survived audit rollback: %#v", stillPresent)
 		}
 		archiveAttempt := saveRoleAuditAttempt(t, ctx, ss)
 		archived, err := ss.Role().ArchiveWithAudit(ctx, &store.RoleArchive{
-			ID: created.ID.String(), ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID.String(), AuditAt: at + 2,
+			ID: created.ID, ArchiveAt: at + 2, AuditEventID: archiveAttempt.ID.String(), AuditAt: at + 2,
 		})
 		requireNoError(t, err)
 		if archived.ArchivedAt.Millis() != at+2 {
 			t.Fatalf("ArchiveWithAudit() = %#v", archived)
 		}
-		if _, err := ss.Role().Get(ctx, created.ID.String()); !store.IsNotFound(err) {
+		if _, err := ss.Role().Get(ctx, created.ID); !store.IsNotFound(err) {
 			t.Fatalf("Get(archived) error = %v", err)
 		}
 	})

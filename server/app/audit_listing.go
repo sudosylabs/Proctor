@@ -67,8 +67,8 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 		return nil, apperror.New("audit.query.invalid")
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
-		ActorId: strings.TrimSpace(query.ActorID), Action: strings.TrimSpace(query.Action),
-		Resource: query.Resource, BeforeTime: query.BeforeTime, BeforeId: query.BeforeID, Limit: query.Limit,
+		ActorID: model.UserID(strings.TrimSpace(query.ActorID)), Action: strings.TrimSpace(query.Action),
+		Resource: query.Resource, BeforeTime: query.BeforeTime, BeforeID: model.AuditEventID(query.BeforeID), Limit: query.Limit,
 		Visibility: visibility,
 	})
 	if err != nil {

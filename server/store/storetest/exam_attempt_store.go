@@ -62,8 +62,9 @@ func prepareExamAttemptConnect(t *testing.T, ctx context.Context, ss store.Store
 	t.Helper()
 	if input == nil {
 		t.Fatal("Exam Attempt connect input is required")
+		return
 	}
-	session, err := ss.Session().Get(ctx, input.SessionID.String())
+	session, err := ss.Session().Get(ctx, input.SessionID)
 	requireNoError(t, err)
 	settings, err := ss.UserSettings().Get(ctx, input.CandidateUserID)
 	requireNoError(t, err)
@@ -584,7 +585,7 @@ func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "session-fence-connect", "session-fence-connect"))
 	requireNoError(t, err)
-	if _, err = ss.Session().Revoke(ctx, fixture.session.ID.String(), fixture.candidate.ID.String(),
+	if _, err = ss.Session().Revoke(ctx, fixture.session.ID, fixture.candidate.ID,
 		model.GetMillis(), model.SessionRevocationUserLogout); err != nil {
 		t.Fatal(err)
 	}
@@ -640,8 +641,8 @@ func TestSessionExpiryAttemptFence(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	expired, err := ss.Session().EnforceExpiry(
 		ctx,
-		fixture.session.ID.String(),
-		fixture.candidate.ID.String(),
+		fixture.session.ID,
+		fixture.candidate.ID,
 		fixture.session.IdleExpiresAt.Add(time.Second),
 	)
 	requireNoError(t, err)

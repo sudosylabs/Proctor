@@ -57,7 +57,7 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 		// Serialize first, then derive the bounded preparation lifecycle from
 		// PostgreSQL time. A contender must not persist an already-stale attempt
 		// after waiting behind another transition for this user.
-		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID); err != nil {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
 		at, err := personalAccessTokenDatabaseNow(ctx, tx)
@@ -72,21 +72,21 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 		if err := validatePersonalAccessTokenPreparationAudit(input, candidate); err != nil {
 			return nil, err
 		}
-		if err := requireMFARecoveryPATSource(ctx, tx, input.UserID, candidate.SessionID.String(), at); err != nil {
+		if err := requireMFARecoveryPATSource(ctx, tx, input.UserID.String(), candidate.SessionID.String(), at); err != nil {
 			return nil, err
 		}
 		if input.Kind == store.PersonalAccessTokenMutationCreate {
 			var active bool
 			if err := tx.Get(ctx, &active, `SELECT archived_at IS NULL AND disabled_at IS NULL FROM users WHERE id=? FOR SHARE`, input.UserID); err != nil {
-				return nil, translateError("user", input.UserID, err)
+				return nil, translateError("user", input.UserID.String(), err)
 			}
 			if !active {
-				return nil, store.NewErrNotFound("user", input.UserID)
+				return nil, store.NewErrNotFound("user", input.UserID.String())
 			}
 		} else {
 			var exists bool
 			if err := tx.Get(ctx, &exists, `SELECT TRUE FROM personal_access_tokens WHERE id=? AND user_id=? AND archived_at IS NULL FOR SHARE`, input.TokenID, input.UserID); err != nil {
-				return nil, translateError("personal_access_token", input.TokenID, err)
+				return nil, translateError("personal_access_token", input.TokenID.String(), err)
 			}
 		}
 		id := model.NewId()
@@ -98,23 +98,23 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 				scope_type, scope_id, request_id, node_id, client_type,
 				authentication_method, ip_address, user_agent, parameters, prior_state
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, at, expiresAt, input.UserID, nullablePersonalAccessTokenPreparationID(input.TokenID), input.Kind,
+			id, at, expiresAt, input.UserID, nullablePersonalAccessTokenPreparationID(input.TokenID.String()), input.Kind,
 			nullableAuditString(candidate.ActorID.String()), nullableAuditString(candidate.SessionID.String()), candidate.Action,
 			candidate.Resource.Type, candidate.Resource.ID, candidate.ScopeType, candidate.ScopeID,
 			candidate.RequestID, candidate.NodeID, candidate.ClientType, candidate.AuthMethod,
 			candidate.IPAddress, candidate.UserAgent, nullableJSON(candidate.Parameters), nullableJSON(candidate.PriorState)); err != nil {
 			return nil, fmt.Errorf("insert personal access token mutation preparation: %w", translateError("personal_access_token_mutation_preparation", id, err))
 		}
-		return &store.PreparedPersonalAccessTokenMutation{ID: id, ActionAt: at, ExpiresAt: expiresAt}, nil
+		return &store.PreparedPersonalAccessTokenMutation{ID: model.PersonalAccessTokenPreparationID(id), ActionAt: at, ExpiresAt: expiresAt}, nil
 	})
 }
 
 func (s SQLPersonalAccessTokenStore) FailMutation(ctx context.Context, input *store.PersonalAccessTokenMutationFailure) error {
-	if input == nil || !model.IsValidId(input.PreparationID) || strings.TrimSpace(input.ErrorCode) == "" || len(input.ErrorCode) > 128 {
+	if input == nil || !input.PreparationID.IsValid() || strings.TrimSpace(input.ErrorCode) == "" || len(input.ErrorCode) > 128 {
 		return store.NewErrInvalidInput("personal_access_token", "mutation_failure", nil)
 	}
 	_, err := runSQLTransaction(ctx, s.GetMaster().Begin, "fail personal access token mutation preparation", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
-		row, _, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		row, _, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID.String())
 		if err != nil {
 			return struct{}{}, err
 		}
@@ -231,7 +231,7 @@ func (row personalAccessTokenPreparationRow) auditEvent(status model.AuditStatus
 }
 
 func validatePersonalAccessTokenPreparationInput(input *store.PersonalAccessTokenMutationPreparation) error {
-	if input == nil || !model.IsValidId(input.UserID) || input.Audit == nil || input.Lifetime < personalAccessTokenPreparationMinimumLifetime ||
+	if input == nil || !input.UserID.IsValid() || input.Audit == nil || input.Lifetime < personalAccessTokenPreparationMinimumLifetime ||
 		input.Lifetime > personalAccessTokenPreparationMaximumLifetime || input.Lifetime%time.Millisecond != 0 {
 		return store.NewErrInvalidInput("personal_access_token", "mutation_preparation", nil)
 	}
@@ -241,7 +241,7 @@ func validatePersonalAccessTokenPreparationInput(input *store.PersonalAccessToke
 			return store.NewErrInvalidInput("personal_access_token", "mutation_target", nil)
 		}
 	case store.PersonalAccessTokenMutationEnable, store.PersonalAccessTokenMutationDisable, store.PersonalAccessTokenMutationRevoke:
-		if !model.IsValidId(input.TokenID) {
+		if !input.TokenID.IsValid() {
 			return store.NewErrInvalidInput("personal_access_token", "mutation_target", nil)
 		}
 	default:
@@ -257,7 +257,7 @@ func validatePersonalAccessTokenPreparationAudit(input *store.PersonalAccessToke
 		store.PersonalAccessTokenMutationDisable: "personal_access_token.disable",
 		store.PersonalAccessTokenMutationRevoke:  "personal_access_token.revoke",
 	}[input.Kind]
-	if event.ActorID.String() != input.UserID || !event.SessionID.IsValid() || event.Status != model.AuditStatusAttempt || event.Action != expectedAction ||
+	if event.ActorID != input.UserID || !event.SessionID.IsValid() || event.Status != model.AuditStatusAttempt || event.Action != expectedAction ||
 		event.Resource.Type != model.ResourceInstitution || event.ScopeType != model.RoleScopeInstitution || event.Resource.ID != event.ScopeID ||
 		event.ErrorCode != "" || len(event.Result) != 0 {
 		return store.NewErrInvalidInput("personal_access_token", "audit", nil)

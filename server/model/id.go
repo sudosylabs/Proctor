@@ -155,6 +155,10 @@ type PasswordCredentialID string
 // PersonalAccessTokenID identifies a personal access token.
 type PersonalAccessTokenID string
 
+// PersonalAccessTokenPreparationID identifies one prepared personal access
+// token mutation awaiting its terminal outcome.
+type PersonalAccessTokenPreparationID string
+
 // UserTokenID identifies a purpose-specific user token.
 type UserTokenID string
 
@@ -193,6 +197,10 @@ type FileRenditionID string
 
 // UploadLeaseID identifies a bounded reservation for publishing a file revision.
 type UploadLeaseID string
+
+// AdministratorRecoveryRecordID identifies one durable administrator recovery
+// record.
+type AdministratorRecoveryRecordID string
 
 // idLike is implemented by every entity-specific ID for shared validation.
 type idLike interface {

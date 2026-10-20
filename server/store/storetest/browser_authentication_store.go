@@ -281,7 +281,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if _, rollbackErr := ss.BrowserAuthentication().Exchange(ctx, &rollbackExchange); rollbackErr == nil {
 		t.Fatal("Exchange() succeeded without its durable audit attempt")
 	}
-	rollbackSessions, listErr := ss.Session().ListByUser(ctx, user.ID.String())
+	rollbackSessions, listErr := ss.Session().ListByUser(ctx, user.ID)
 	requireNoError(t, listErr)
 	if len(rollbackSessions) != 0 {
 		t.Fatalf("Exchange() audit rollback retained sessions: %#v", rollbackSessions)
@@ -348,7 +348,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			t.Fatalf("Exchange() = %#v", result)
 		}
 	}
-	sessions, err := ss.Session().ListByUser(ctx, user.ID.String())
+	sessions, err := ss.Session().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(sessions) != 1 {
 		t.Fatalf("sessions after exchange = %d", len(sessions))
@@ -370,7 +370,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	requireNoError(t, err)
 	disableAudit := saveUserProfileAuditAttempt(t, ctx, ss, disabledUser.ID.String())
 	disabled, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: disabledUser.ID.String(), ExpectedRevision: disabledUser.Revision, Disabled: true,
+		ID: disabledUser.ID, ExpectedRevision: disabledUser.Revision, Disabled: true,
 		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(),
 		AuditAt: model.GetMillis(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
@@ -397,7 +397,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if !store.IsNotFound(err) {
 		t.Fatalf("Exchange(disabled user) error = %v, want not found", err)
 	}
-	disabledSessions, listErr := ss.Session().ListByUser(ctx, disabledUser.ID.String())
+	disabledSessions, listErr := ss.Session().ListByUser(ctx, disabledUser.ID)
 	requireNoError(t, listErr)
 	if len(disabledSessions) != 0 {
 		t.Fatalf("disabled user sessions = %#v", disabledSessions)

@@ -80,15 +80,12 @@ func (s SQLExternalIdentityStore) Save(
 	return &candidate, nil
 }
 
-func (s SQLExternalIdentityStore) Get(
-	ctx context.Context,
-	id string,
-) (*model.ExternalIdentity, error) {
+func (s SQLExternalIdentityStore) Get(ctx context.Context, id model.ExternalIdentityID) (*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.Where(sq.Eq{
 		"external_identities.id":          id,
 		"external_identities.archived_at": nil,
 	})
-	return s.get(ctx, query, id)
+	return s.get(ctx, query, id.String())
 }
 
 func (s SQLExternalIdentityStore) GetByProviderSubject(
@@ -105,10 +102,7 @@ func (s SQLExternalIdentityStore) GetByProviderSubject(
 	return s.get(ctx, query, provider)
 }
 
-func (s SQLExternalIdentityStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.ExternalIdentity, error) {
+func (s SQLExternalIdentityStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.
 		Where(sq.Eq{
 			"external_identities.user_id":     userID,

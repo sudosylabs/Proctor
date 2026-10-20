@@ -317,7 +317,7 @@ func testOnboardingImportAcademicAdministration(t *testing.T, ss store.Store) {
 	secondRow.UserID = secondTarget.ID
 	secondImportID := createExecutingOnboardingImport(t, ctx, ss, actor, principal, model.OnboardingImportAcademicAdministration,
 		model.RoleScopeInstitution, institution.ID.String(), "", at.Add(time.Second), secondRow)
-	_, err = ss.RoleBinding().End(ctx, authorityBinding.ID.String(), model.MillisFromTime(at.Add(2*time.Second)))
+	_, err = ss.RoleBinding().End(ctx, authorityBinding.ID, model.MillisFromTime(at.Add(2*time.Second)))
 	requireNoError(t, err)
 	secondCandidate := &model.Affiliation{UserID: secondTarget.ID, Kind: model.AffiliationStaff, StartsAt: at}
 	secondCandidate.PrepareCreate(model.NewAffiliationID(), at)
@@ -791,7 +791,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	candidate.TargetEmail = "duplicate-authority-" + model.NewId() + "@example.edu"
 	requireNoError(t, candidate.Validate())
 	endedAt := model.GetMillis() - 1_000
-	if _, err := ss.RoleBinding().End(ctx, binding.ID.String(), endedAt); err != nil {
+	if _, err := ss.RoleBinding().End(ctx, binding.ID, endedAt); err != nil {
 		t.Fatalf("end inviter authority: %v", err)
 	}
 	attempt := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
@@ -1763,7 +1763,7 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	if !replayed.Replayed || replayed.User.ID != existing.ID {
 		t.Fatalf("browser Invitation acceptance replay = %#v", replayed)
 	}
-	if _, err = ss.PasswordCredential().GetByUser(ctx, existing.ID.String()); err != nil {
+	if _, err = ss.PasswordCredential().GetByUser(ctx, existing.ID); err != nil {
 		t.Fatalf("existing User password credential: %v", err)
 	}
 	if _, err = ss.Job().Get(ctx, acceptance.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
@@ -1959,7 +1959,7 @@ func testInvitationAcceptStudentClassRejectsConflictingMembershipAtomically(t *t
 	if _, getErr = ss.Mail().GetDelivery(ctx, acceptance.Delivery.ID); !store.IsNotFound(getErr) {
 		t.Fatalf("acceptance delivery survived conflict rollback: %v", getErr)
 	}
-	if _, getErr = ss.PasswordCredential().GetByUser(ctx, existing.ID.String()); !store.IsNotFound(getErr) {
+	if _, getErr = ss.PasswordCredential().GetByUser(ctx, existing.ID); !store.IsNotFound(getErr) {
 		t.Fatalf("password credential survived conflict rollback: %v", getErr)
 	}
 }
@@ -2112,7 +2112,7 @@ func testInvitationAcceptStudentClassAtomicAndReplaySafe(t *testing.T, ss store.
 	if _, err = ss.UserSettings().Get(ctx, accepted.User.ID); err != nil {
 		t.Fatalf("accepted User settings: %v", err)
 	}
-	if _, err = ss.PasswordCredential().GetByUser(ctx, accepted.User.ID.String()); err != nil {
+	if _, err = ss.PasswordCredential().GetByUser(ctx, accepted.User.ID); err != nil {
 		t.Fatalf("accepted User password credential: %v", err)
 	}
 	if _, err = ss.Job().Get(ctx, acceptance.DefaultProfilePictureJob.ID); err != nil {

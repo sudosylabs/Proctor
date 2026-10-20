@@ -27,7 +27,7 @@ func (v *dpopRecoveryVerifier) RecoveryState(_ context.Context, id model.UserID)
 
 type dpopRegistrationLookup struct{ registration *model.DesktopRegistration }
 
-func (s dpopRegistrationLookup) Get(context.Context, string) (*model.DesktopRegistration, error) {
+func (s dpopRegistrationLookup) Get(context.Context, model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
 	return s.registration, nil
 }
 

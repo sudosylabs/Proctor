@@ -108,7 +108,7 @@ func (s *authenticationService) resolveDesktopCredential(
 	if err != nil {
 		return nil, err
 	}
-	user, err := s.users.Get(ctx, session.UserID.String())
+	user, err := s.users.Get(ctx, session.UserID)
 	if err != nil || !user.IsActive() {
 		if store.IsNotFound(err) || err == nil {
 			return nil, invalidTokenAppError()
@@ -130,7 +130,7 @@ func (s *authenticationService) verifyDesktopProof(
 	if resolved == nil || resolved.Session == nil || s.registrations == nil || s.dpop == nil {
 		return nil, invalidTokenAppError()
 	}
-	registration, err := s.registrations.Get(ctx, resolved.Session.DesktopRegistrationID.String())
+	registration, err := s.registrations.Get(ctx, resolved.Session.DesktopRegistrationID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, invalidTokenAppError()

@@ -32,7 +32,7 @@ func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx 
 		!request.ReviewID.IsValid() || request.ReleasedAt.IsZero() {
 		return nil, errors.New("result release mail dependencies or request are invalid")
 	}
-	recipient, err := adapter.users.Get(ctx, request.CandidateUserID.String())
+	recipient, err := adapter.users.Get(ctx, request.CandidateUserID)
 	if err != nil {
 		return nil, err
 	}

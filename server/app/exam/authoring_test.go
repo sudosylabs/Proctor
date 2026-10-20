@@ -586,9 +586,9 @@ type usersFake struct {
 	err   error
 }
 
-func (f *usersFake) Get(_ context.Context, id string) (*model.User, error) {
+func (f *usersFake) Get(_ context.Context, id model.UserID) (*model.User, error) {
 	*f.order = append(*f.order, "user.get")
-	if user, ok := f.users[id]; ok {
+	if user, ok := f.users[id.String()]; ok {
 		return user, f.err
 	}
 	return f.user, f.err

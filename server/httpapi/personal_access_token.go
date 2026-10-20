@@ -122,7 +122,7 @@ func (module personalAccessTokenResourceModule) enable(request operationRequest)
 }
 
 func (module personalAccessTokenResourceModule) setDisabled(request operationRequest, disabled bool) (operationResult, error) {
-	tokenID, err := request.params.RequirePersonalAccessTokenId()
+	tokenID, err := request.params.RequirePersonalAccessTokenID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -171,7 +171,7 @@ func (module personalAccessTokenResourceModule) list(request operationRequest) (
 }
 
 func (module personalAccessTokenResourceModule) revoke(request operationRequest) (operationResult, error) {
-	tokenID, err := request.params.RequirePersonalAccessTokenId()
+	tokenID, err := request.params.RequirePersonalAccessTokenID()
 	if err != nil {
 		return operationResult{}, err
 	}

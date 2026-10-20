@@ -62,7 +62,7 @@ type RenderedProfilePicture struct {
 }
 
 type UploadProfilePictureCommand struct {
-	UserID           string
+	UserID           model.UserID
 	ExpectedRevision int64
 	ExpectedSHA256   string
 	Body             io.Reader
@@ -70,11 +70,11 @@ type UploadProfilePictureCommand struct {
 }
 
 type GetProfilePictureQuery struct {
-	UserID string
+	UserID model.UserID
 	Size   int
 }
 type RemoveProfilePictureCommand struct {
-	UserID         string
+	UserID         model.UserID
 	ExpectedSHA256 string
 }
 type ProfilePictureContent struct {
@@ -85,7 +85,7 @@ type ProfilePictureContent struct {
 }
 
 type profilePictureUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 type profilePictureFileStore interface {
 	CreateUpload(context.Context, *store.FileUploadCreation) (*store.FileUpload, error)
@@ -186,11 +186,11 @@ func (s *profilePictureService) Upload(ctx context.Context, invocation Invocatio
 }
 
 func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
-	userID := strings.TrimSpace(command.UserID)
-	if !model.IsValidId(userID) || command.ExpectedRevision < 0 || command.Body == nil || command.Size == 0 || command.Size < -1 || command.Size > maximumProfilePictureBytes {
+	userID := command.UserID
+	if !userID.IsValid() || command.ExpectedRevision < 0 || command.Body == nil || command.Size == 0 || command.Size < -1 || command.Size > maximumProfilePictureBytes {
 		return nil, apperror.New("request.invalid").WithField("field", "profile_picture")
 	}
-	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -377,12 +377,12 @@ func (s *profilePictureService) Remove(ctx context.Context, invocation Invocatio
 }
 
 func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
-	userID := strings.TrimSpace(command.UserID)
+	userID := command.UserID
 	expectedSHA256 := strings.TrimSpace(command.ExpectedSHA256)
-	if !model.IsValidId(userID) || expectedSHA256 == "" {
+	if !userID.IsValid() || expectedSHA256 == "" {
 		return nil, apperror.New("request.invalid").WithField("field", "if_match")
 	}
-	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -444,11 +444,11 @@ func (s *profilePictureService) Get(ctx context.Context, invocation Invocation, 
 }
 
 func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
-	id := strings.TrimSpace(query.UserID)
-	if !model.IsValidId(id) || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
+	id := query.UserID
+	if !id.IsValid() || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
 		return nil, apperror.New("request.invalid")
 	}
-	if err := s.authorization.AuthorizeRead(ctx, invocation, id); err != nil {
+	if err := s.authorization.AuthorizeRead(ctx, invocation, id.String()); err != nil {
 		return nil, err
 	}
 	user, err := s.users.Get(ctx, id)
@@ -490,7 +490,7 @@ func (s *profilePictureService) EnsureDefaultProfilePicture(ctx context.Context,
 }
 
 func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.UserID) (model.FileEntryID, error) {
-	user, err := s.users.Get(ctx, userID.String())
+	user, err := s.users.Get(ctx, userID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return "", errDefaultProfilePictureUserNotFound
@@ -531,7 +531,7 @@ func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.
 	published, err := s.files.PublishDefaultProfilePicture(commitCtx, &store.DefaultProfilePicturePublication{UserID: user.ID, ExpectedUserRevision: user.Revision, EntryID: entry.ID, RevisionID: revision.ID, LeaseID: lease.ID, Renditions: renditions, AttachedAt: model.TimeUTC(s.now())})
 	if err != nil {
 		if store.IsConflict(err) {
-			current, getErr := s.users.Get(ctx, userID.String())
+			current, getErr := s.users.Get(ctx, userID)
 			if getErr == nil && !current.DefaultProfilePictureFileID.IsZero() {
 				return current.DefaultProfilePictureFileID, nil
 			}

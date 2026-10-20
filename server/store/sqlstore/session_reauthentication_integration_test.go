@@ -25,7 +25,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			defer cancel()
 			f := mfaRecoveryFixture(t, ctx)
 			s := f.persistence
-			session, err := s.Session().Get(ctx, f.principal.SessionID.String())
+			session, err := s.Session().Get(ctx, f.principal.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -46,7 +46,7 @@ func TestPasswordReauthenticationCommitsOnlyCurrentProofAndAudit(t *testing.T) {
 			}
 			before := model.NowUTC()
 			result, err := s.Session().ReauthenticatePasswordWithAudit(ctx, input)
-			current, getErr := s.Session().Get(ctx, session.ID.String())
+			current, getErr := s.Session().Get(ctx, session.ID)
 			if getErr != nil {
 				t.Fatal(getErr)
 			}
@@ -118,7 +118,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 				t.Fatal(err)
 			}
 			result, err := s.Session().ReauthenticateExternalWithAudit(ctx, input)
-			current, getErr := s.Session().Get(ctx, session.ID.String())
+			current, getErr := s.Session().Get(ctx, session.ID)
 			if getErr != nil {
 				t.Fatal(getErr)
 			}
@@ -160,7 +160,7 @@ func TestPasswordReauthenticationRechecksCredentialAfterWaitingForFence(t *testi
 	if err := <-done; err == nil {
 		t.Fatal("proof collected before revocation survived the fence")
 	}
-	current, err := s.Session().Get(ctx, f.targetSession.ID.String())
+	current, err := s.Session().Get(ctx, f.targetSession.ID)
 	if err != nil || current.ReauthenticatedAt.Valid {
 		t.Fatal("revoked proof refreshed authentication")
 	}

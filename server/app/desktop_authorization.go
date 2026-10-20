@@ -38,7 +38,7 @@ type desktopAuthorizationAccessPolicy interface {
 }
 
 type desktopAuthorizationUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type DesktopAuthorizationPolicy struct {
@@ -285,7 +285,7 @@ func (s *desktopAuthorizationService) Context(ctx context.Context, binding strin
 	}
 	result := &DesktopAuthorizationBrowserContext{State: current.State, DeviceName: current.DeviceName, ExpiresAt: current.ExpiresAt.UnixMilli()}
 	if current.State == model.BrowserAuthenticationStateAuthenticated {
-		user, getErr := s.users.Get(ctx, current.UserID.String())
+		user, getErr := s.users.Get(ctx, current.UserID)
 		if getErr != nil || user == nil || !user.IsActive() {
 			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(getErr)
 		}
@@ -603,8 +603,8 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		// Sessions. The active Desktop Registration remains reusable by a fresh
 		// authorization after nonce storage recovers.
 		revokeCtx := context.WithoutCancel(ctx)
-		hashes, revokeErr := s.authentication.sessions.Revoke(revokeCtx, result.Session.ID.String(),
-			result.Session.UserID.String(), model.MillisFromTime(s.now()), model.SessionRevocationDesktopAuthorizationFailed)
+		hashes, revokeErr := s.authentication.sessions.Revoke(revokeCtx, result.Session.ID,
+			result.Session.UserID, model.MillisFromTime(s.now()), model.SessionRevocationDesktopAuthorizationFailed)
 		if revokeErr != nil {
 			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(errors.Join(nonceErr, revokeErr))
 		}

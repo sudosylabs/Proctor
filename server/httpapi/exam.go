@@ -686,13 +686,9 @@ func (m examResourceModule) removeManager(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	rawUserID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	userID, err := model.ParseUserID(rawUserID)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	var body removeExamManagerRequest
 	if err = request.decodeJSON(&body); err != nil {

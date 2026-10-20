@@ -117,6 +117,6 @@ func (s SQLInstallationStore) ResetAdministratorMFA(ctx context.Context, input *
 			VALUES(?,?,?,?,false,false,true,?)`, id, at, input.InstitutionID.String(), input.UserID.String(), reset.Recovery.Generation); err != nil {
 			return nil, fmt.Errorf("save administrator MFA recovery evidence: %w", err)
 		}
-		return &store.AdministratorMFAResetResult{RecordID: id, Recovery: reset.Recovery}, nil
+		return &store.AdministratorMFAResetResult{RecordID: model.AdministratorRecoveryRecordID(id), Recovery: reset.Recovery}, nil
 	})
 }

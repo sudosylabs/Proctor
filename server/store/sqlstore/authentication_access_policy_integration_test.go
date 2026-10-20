@@ -108,7 +108,7 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 	if _, err = persistence.UserToken().ConsumePasswordReset(ctx, completion); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled reset completion error = %v", err)
 	}
-	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	unchangedCredential, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		t.Fatalf("disabled reset consumed token=%#v err=%v", retainedToken, err)
 	}
 	for _, sessionID := range []model.SessionID{savedLocal.ID, savedExternal.ID} {
-		retained, getErr := persistence.Session().Get(ctx, sessionID.String())
+		retained, getErr := persistence.Session().Get(ctx, sessionID)
 		if getErr != nil || retained.RevokedAt.Valid {
 			t.Fatalf("policy fence changed existing session %s: %#v %v", sessionID, retained, getErr)
 		}

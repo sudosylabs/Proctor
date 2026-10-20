@@ -26,9 +26,9 @@ type reconciliationUserListerFake struct {
 func (f *reconciliationUserListerFake) List(_ context.Context, options store.UserListOptions) ([]*model.User, error) {
 	f.calls = append(f.calls, options)
 	start := 0
-	if options.AfterId != "" {
+	if options.AfterID != "" {
 		for index, user := range f.users {
-			if user.ID.String() == options.AfterId {
+			if user.ID == options.AfterID {
 				start = index + 1
 				break
 			}

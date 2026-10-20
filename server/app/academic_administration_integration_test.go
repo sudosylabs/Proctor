@@ -338,7 +338,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("teacher student visibility = %d: %s", visible.Code, visible.Body.String())
 	}
 	visibilityEvents, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
-		ActorId: teacher.ID.String(),
+		ActorID: teacher.ID,
 		Action:  string(model.ActionUserView),
 		Resource: &model.Resource{
 			Type: model.ResourceUser,
@@ -613,7 +613,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 			break
 		}
 		last := events[len(events)-1]
-		options.BeforeTime, options.BeforeId = last.CreatedAt.UnixMilli(), last.ID.String()
+		options.BeforeTime, options.BeforeID = last.CreatedAt.UnixMilli(), last.ID
 	}
 	for _, action := range []model.Action{
 		model.ActionAcademicUnitManage,

@@ -28,7 +28,7 @@ func TestMethodIdentifierPreservesIDInitialism(t *testing.T) {
 	if got := methodIdentifier("GetAcademicUnitID"); got != "GetAcademicUnitID" {
 		t.Fatalf("methodIdentifier(Id) = %q", got)
 	}
-	if got := methodIdentifier("GetByIds"); got != "GetByIDs" {
+	if got := methodIdentifier("GetByIDs"); got != "GetByIDs" {
 		t.Fatalf("methodIdentifier(Ids) = %q", got)
 	}
 }

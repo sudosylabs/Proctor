@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -20,7 +19,7 @@ import (
 type ListRolesQuery struct{}
 
 type GetRoleQuery struct {
-	ID string
+	ID model.RoleID
 }
 
 type CreateRoleCommand struct {
@@ -31,18 +30,18 @@ type CreateRoleCommand struct {
 }
 
 type UpdateRoleCommand struct {
-	ID          string
+	ID          model.RoleID
 	DisplayName *string
 	Description *string
 	Permissions *[]string
 }
 
 type ArchiveRoleCommand struct {
-	ID string
+	ID model.RoleID
 }
 
 type roleStore interface {
-	Get(context.Context, string) (*model.Role, error)
+	Get(context.Context, model.RoleID) (*model.Role, error)
 	List(context.Context) ([]*model.Role, error)
 	SaveWithAudit(context.Context, *store.RoleCreation) (*model.Role, error)
 	UpdateWithAudit(context.Context, *store.RoleUpdate) (*model.Role, error)
@@ -100,8 +99,8 @@ func (a *App) GetRole(ctx context.Context, invocation Invocation, query GetRoleQ
 }
 
 func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
@@ -161,8 +160,8 @@ func (a *App) UpdateRole(ctx context.Context, invocation Invocation, command Upd
 }
 
 func (s *roleService) Update(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
@@ -241,8 +240,8 @@ func (a *App) ArchiveRole(ctx context.Context, invocation Invocation, command Ar
 }
 
 func (s *roleService) Archive(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	resource, err := s.authorization.AuthorizeManage(ctx, invocation)

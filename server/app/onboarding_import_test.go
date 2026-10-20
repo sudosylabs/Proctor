@@ -60,7 +60,7 @@ type onboardingImportRoleStoreFake struct {
 	value *model.Role
 }
 
-func (f onboardingImportRoleStoreFake) Get(context.Context, string) (*model.Role, error) {
+func (f onboardingImportRoleStoreFake) Get(context.Context, model.RoleID) (*model.Role, error) {
 	return f.value, nil
 }
 func (f onboardingImportRoleStoreFake) GetByName(context.Context, string) (*model.Role, error) {
@@ -82,9 +82,9 @@ type onboardingImportUserStoreFake struct {
 	value *model.User
 }
 
-func (f onboardingImportUserStoreFake) Get(_ context.Context, id string) (*model.User, error) {
-	if f.value == nil || f.value.ID.String() != id {
-		return nil, store.NewErrNotFound("user", id)
+func (f onboardingImportUserStoreFake) Get(_ context.Context, id model.UserID) (*model.User, error) {
+	if f.value == nil || f.value.ID != id {
+		return nil, store.NewErrNotFound("user", id.String())
 	}
 	return f.value, nil
 }

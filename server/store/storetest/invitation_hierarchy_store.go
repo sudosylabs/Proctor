@@ -93,7 +93,7 @@ func replaceInvitationClassAuthorityWithUnit(
 	issuedAt time.Time,
 ) {
 	t.Helper()
-	_, err := ss.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis())
+	_, err := ss.RoleBinding().End(ctx, binding.ID, model.GetMillis())
 	requireNoError(t, err)
 	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{
 		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,

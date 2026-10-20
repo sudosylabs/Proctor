@@ -47,7 +47,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	if liveLease == nil || liveLease.NodeID != "serving-node-a" || !liveLease.ExpiresAt.After(liveLease.UpdatedAt) {
 		t.Fatalf("serving node lease = %#v", liveLease)
 	}
-	beforeLiveNodeRejection, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	beforeLiveNodeRejection, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if _, err = ss.Installation().RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
 		InstitutionID: installed.Institution.ID, UserID: installed.Administrator.ID,
@@ -55,7 +55,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	}); !store.IsConflict(err) {
 		t.Fatalf("RecoverAdministratorAccess(live serving node) error = %v, want conflict", err)
 	}
-	afterLiveNodeRejection, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	afterLiveNodeRejection, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if afterLiveNodeRejection.PasswordHash != beforeLiveNodeRejection.PasswordHash {
 		t.Fatal("live-node rejection changed the administrator credential")
@@ -90,13 +90,13 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	mfaAudit, mfaNotice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, mfaAt)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
-		CredentialID: pendingMFA.ID.String(), UserID: installed.Administrator.ID.String(), TimeStep: time.Now().Unix() / 30,
+		CredentialID: pendingMFA.ID, UserID: installed.Administrator.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     preservedSession.ID.String(), At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
+		SessionID:     preservedSession.ID, At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
 		Notice: mfaNotice,
 	})
 	requireNoError(t, err)
-	before, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	before, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 
 	input := &store.AdministratorRecovery{
@@ -109,17 +109,17 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	if recovered == nil || !recovered.PasswordRotated || recovered.LocalLoginEnabled {
 		t.Fatalf("RecoverAdministratorAccess() = %#v", recovered)
 	}
-	after, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	after, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if after.PasswordHash != input.RotatePasswordHash || after.PasswordHash == before.PasswordHash ||
 		after.Revision != before.Revision+1 ||
 		!after.PasswordChangedAt.After(before.PasswordChangedAt) {
 		t.Fatalf("password credential before=%#v after=%#v", before, after)
 	}
-	if sessions, listErr := ss.Session().ListByUser(ctx, installed.Administrator.ID.String()); listErr != nil || len(sessions) != 1 || sessions[0].ID != preservedSession.ID || sessions[0].RevokedAt.Valid {
+	if sessions, listErr := ss.Session().ListByUser(ctx, installed.Administrator.ID); listErr != nil || len(sessions) != 1 || sessions[0].ID != preservedSession.ID || sessions[0].RevokedAt.Valid {
 		t.Fatalf("recovery sessions=%#v error=%v", sessions, listErr)
 	}
-	activeMFA, err := ss.MFA().GetByUser(ctx, installed.Administrator.ID.String())
+	activeMFA, err := ss.MFA().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if !activeMFA.IsActive() {
 		t.Fatalf("recovery changed MFA credential: %#v", activeMFA)
@@ -204,7 +204,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		Retention: time.Hour, Wait: time.Second,
 	})
 	requireNoError(t, err)
-	beforeRejectedRotation, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	beforeRejectedRotation, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if _, err := ss.Installation().RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
 		InstitutionID: installed.Institution.ID, UserID: installed.Administrator.ID,
@@ -212,7 +212,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	}); !store.IsConflict(err) {
 		t.Fatalf("rotate-only with disabled local login error=%v, want conflict", err)
 	}
-	afterRejectedRotation, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
+	afterRejectedRotation, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID)
 	requireNoError(t, err)
 	if afterRejectedRotation.PasswordHash != beforeRejectedRotation.PasswordHash {
 		t.Fatal("rejected rotate-only recovery changed the credential")

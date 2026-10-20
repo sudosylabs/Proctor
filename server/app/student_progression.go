@@ -253,7 +253,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 		} else {
 			row.Operation = string(AcademicAdministrationClassEnroll)
 		}
-		user, userErr := s.users.Get(ctx, member.UserID.String())
+		user, userErr := s.users.Get(ctx, member.UserID)
 		if userErr != nil {
 			return userErr
 		}

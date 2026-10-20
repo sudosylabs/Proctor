@@ -63,7 +63,7 @@ func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command Ad
 	if err != nil {
 		return nil, apperror.New("administrator_recovery.unavailable").Wrap(err)
 	}
-	if result == nil || !model.IsValidId(result.RecordID) || result.Recovery == nil || result.Recovery.Validate() != nil ||
+	if result == nil || !result.RecordID.IsValid() || result.Recovery == nil || result.Recovery.Validate() != nil ||
 		result.Recovery.UserID != userID || !result.Recovery.ReenrollmentRequired {
 		return nil, apperror.New("administrator_recovery.unavailable").Wrap(errors.New("persistence returned no valid MFA recovery evidence"))
 	}

@@ -180,7 +180,7 @@ type authenticationDesktopDependencies struct {
 }
 
 type authenticationDesktopRegistrationStore interface {
-	Get(context.Context, string) (*model.DesktopRegistration, error)
+	Get(context.Context, model.DesktopRegistrationID) (*model.DesktopRegistration, error)
 }
 
 type resolvedAuthentication struct {
@@ -196,7 +196,7 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return invalidTokenAppError()
 	}
-	session, err := s.sessions.Get(ctx, principal.SessionID.String())
+	session, err := s.sessions.Get(ctx, principal.SessionID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
@@ -223,7 +223,7 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 			session.DPoPKeyThumbprint != principal.DPoPKeyThumbprint || s.registrations == nil {
 			return invalidTokenAppError()
 		}
-		registration, registrationErr := s.registrations.Get(ctx, principal.DesktopRegistrationID.String())
+		registration, registrationErr := s.registrations.Get(ctx, principal.DesktopRegistrationID)
 		if registrationErr != nil || !registration.IsActive() || registration.UserID != principal.UserID ||
 			registration.KeyThumbprint != principal.DPoPKeyThumbprint {
 			if registrationErr == nil || store.IsNotFound(registrationErr) {
@@ -232,7 +232,7 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 			return authenticationUnavailable(registrationErr)
 		}
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
@@ -430,7 +430,7 @@ func (s *authenticationService) login(
 // not be made durable, so no credential outlives a missing security record.
 func (s *authenticationService) revokeUnauditedSession(ctx context.Context, session *model.Session) {
 	revokeCtx := context.WithoutCancel(ctx)
-	hashes, err := s.sessions.Revoke(revokeCtx, session.ID.String(), session.UserID.String(),
+	hashes, err := s.sessions.Revoke(revokeCtx, session.ID, session.UserID,
 		model.MillisFromTime(s.now()), model.SessionRevocationAuthenticationAuditFailed)
 	if err != nil {
 		s.warn(ctx, "failed to revoke unaudited local session", err)
@@ -507,7 +507,7 @@ func (s *authenticationService) proveLocalSubject(
 		}
 		return nil, invalidCredentialsAppError()
 	}
-	credential, err := s.passwords.GetByUser(ctx, user.ID.String())
+	credential, err := s.passwords.GetByUser(ctx, user.ID)
 	if err != nil {
 		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
 			return nil, passwordWorkError(dummyErr, "authentication.internal")
@@ -788,7 +788,7 @@ func (s *authenticationService) authenticateAccess(
 		}
 		return nil, authenticationUnavailable(err)
 	}
-	user, err := s.users.Get(ctx, session.UserID.String())
+	user, err := s.users.Get(ctx, session.UserID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, invalidTokenAppError()
@@ -860,7 +860,7 @@ func (s *authenticationService) updateActivity(
 	idleExpiresAt := sessionDeadline(now, settings.IdleTTL, resolved.Session.ExpiresAt)
 	if err := s.sessions.UpdateActivity(
 		ctx,
-		resolved.Session.ID.String(),
+		resolved.Session.ID,
 		now,
 		idleExpiresAt,
 	); err != nil {
@@ -958,14 +958,14 @@ func (s *authenticationService) refresh(
 	if rotation.ReplayDetected || rotation.Expired {
 		return nil, nil, invalidTokenAppError()
 	}
-	user, err := s.users.Get(ctx, rotation.Session.UserID.String())
+	user, err := s.users.Get(ctx, rotation.Session.UserID)
 	if err != nil || !user.IsActive() {
 		if err == nil {
 			var revokedAccessHashes []string
 			revokedAccessHashes, err = s.sessions.Revoke(
 				ctx,
-				rotation.Session.ID.String(),
-				rotation.Session.UserID.String(),
+				rotation.Session.ID,
+				rotation.Session.UserID,
 				now.UnixMilli(),
 				model.SessionRevocationInactiveUser,
 			)
@@ -1015,7 +1015,7 @@ func (s *authenticationService) logout(ctx context.Context, invocation Invocatio
 			Operation: "logout", Value: map[string]any{"session_id": principal.SessionID.String()},
 		},
 		&store.SessionRevocation{
-			SessionID: principal.SessionID.String(), UserID: principal.UserID.String(),
+			SessionID: principal.SessionID, UserID: principal.UserID,
 			Reason: model.SessionRevocationUserLogout,
 		},
 		authenticationUnavailable,
@@ -1053,8 +1053,8 @@ func (s *authenticationService) enforceSessionExpiry(
 	}
 	result, err := s.sessions.EnforceExpiry(
 		ctx,
-		session.ID.String(),
-		session.UserID.String(),
+		session.ID,
+		session.UserID,
 		now,
 	)
 	if err != nil {

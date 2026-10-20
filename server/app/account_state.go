@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -19,7 +18,7 @@ import (
 )
 
 type SetUserEnabledCommand struct {
-	ID                        string
+	ID                        model.UserID
 	Enabled                   bool
 	IdempotencyKey            string
 	batchReplayed             *bool
@@ -31,7 +30,7 @@ type SetUserEnabledCommand struct {
 }
 
 type accountStateStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 	SetDisabledWithAudit(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error)
 }
 
@@ -64,14 +63,14 @@ func (a *App) SetUserEnabled(ctx context.Context, invocation Invocation, command
 }
 
 func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
-	userID := strings.TrimSpace(command.ID)
-	if !model.IsValidId(userID) {
+	userID := command.ID
+	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeAccountStateManage(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeAccountStateManage(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
-	if invocation.Principal().UserID.String() == userID && !command.Enabled {
+	if invocation.Principal().UserID == userID && !command.Enabled {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	current, err := s.users.Get(ctx, userID)
@@ -82,7 +81,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	idempotency, err := newCommandIdempotency(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
 		UserID  string `json:"user_id"`
 		Enabled bool   `json:"enabled"`
-	}{userID, command.Enabled})
+	}{userID.String(), command.Enabled})
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +111,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionUserManage,
-			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID.String()},
 			Operation:  "set_disabled",
 			Value:      map[string]any{"user_id": userID, "disabled": disabled},
 			Prior:      current.Auditable(),
@@ -138,7 +137,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 		return nil, err
 	}
 	if disabled && result != nil && len(result.RevokedSessions) > 0 {
-		s.effects.SessionsRevoked(ctx, userID, result.RevokedSessions, result.RevokedTokenHashes)
+		s.effects.SessionsRevoked(ctx, userID.String(), result.RevokedSessions, result.RevokedTokenHashes)
 	}
 	return result.User, nil
 }

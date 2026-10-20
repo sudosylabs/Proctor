@@ -234,7 +234,7 @@ func testUserEmailChangeAtomic(t *testing.T, ss store.Store) {
 	if !store.IsConflict(err) {
 		t.Fatalf("duplicate email change error = %v, want conflict", err)
 	}
-	unchanged, getErr := ss.User().Get(ctx, second.ID.String())
+	unchanged, getErr := ss.User().Get(ctx, second.ID)
 	requireNoError(t, getErr)
 	if unchanged.Email != second.Email || unchanged.Revision != second.Revision {
 		t.Fatalf("rolled-back User = %#v", unchanged)
@@ -286,7 +286,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		audit := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 		at := model.GetMillis() + 1
 		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
+			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true,
 			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID: audit.ID.String(), AuditAt: at,
 		}))
@@ -663,12 +663,12 @@ func testPasswordResetMailFailureRollsBackMutation(t *testing.T, ss store.Store)
 	if _, err = ss.UserToken().ConsumePasswordReset(ctx, completion); err == nil {
 		t.Fatal("password reset accepted a colliding notice occurrence")
 	}
-	unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+	unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if unchanged.ID != credential.ID || unchanged.PasswordHash != credential.PasswordHash {
 		t.Fatalf("failed completion changed password credential = %#v", unchanged)
 	}
-	retainedSession, err := ss.Session().Get(ctx, session.ID.String())
+	retainedSession, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if retainedSession.RevokedAt.Valid {
 		t.Fatalf("failed completion revoked session = %#v", retainedSession)

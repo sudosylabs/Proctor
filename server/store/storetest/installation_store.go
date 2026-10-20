@@ -137,7 +137,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		replayed.DesktopCompatibilityPolicy.InstitutionID != winner.DesktopCompatibilityPolicy.InstitutionID {
 		t.Fatalf("Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	}
-	if err := ss.User().UpdateLastLogin(ctx, winner.Administrator.ID.String(), winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli()); err != nil {
+	if err = ss.User().UpdateLastLogin(ctx, winner.Administrator.ID, winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	replayed, err = ss.Installation().Bootstrap(ctx, winnerInput)
@@ -185,12 +185,12 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if desktopPolicy.InstitutionID != winner.Institution.ID || desktopPolicy.Revision != 1 {
 		t.Fatalf("desktop compatibility policy = %#v", desktopPolicy)
 	}
-	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID.String())
+	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID)
 	requireNoError(t, err)
 	if credential.PasswordHash == "" {
 		t.Fatal("bootstrap password hash was not persisted")
 	}
-	sessions, err := ss.Session().ListByUser(ctx, winner.Administrator.ID.String())
+	sessions, err := ss.Session().ListByUser(ctx, winner.Administrator.ID)
 	requireNoError(t, err)
 	if len(sessions) != 0 {
 		t.Fatalf("bootstrap created Sessions: %#v", sessions)
@@ -224,7 +224,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	})
 	requireNoError(t, err)
 	customRoleBefore := customRole.Clone()
-	bindingBefore, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID.String())
+	bindingBefore, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID)
 	requireNoError(t, err)
 
 	type reconciliationOutcome struct {
@@ -274,7 +274,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	if !slices.Contains(protected.Permissions, "future.unknown") {
 		t.Fatalf("reconciliation removed an unknown downgrade permission: %#v", protected.Permissions)
 	}
-	customRole, err = ss.Role().Get(ctx, customRole.ID.String())
+	customRole, err = ss.Role().Get(ctx, customRole.ID)
 	requireNoError(t, err)
 	if customRole.ID != customRoleBefore.ID || customRole.Name != customRoleBefore.Name ||
 		customRole.DisplayName != customRoleBefore.DisplayName ||
@@ -282,7 +282,7 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		!slices.Equal(customRole.Permissions, customRoleBefore.Permissions) {
 		t.Fatalf("reconciliation changed a custom Role: before=%#v after=%#v", customRoleBefore, customRole)
 	}
-	bindingAfter, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID.String())
+	bindingAfter, err := ss.RoleBinding().Get(ctx, winner.RoleBinding.ID)
 	requireNoError(t, err)
 	if *bindingAfter != *bindingBefore {
 		t.Fatalf("reconciliation changed a Role Binding: before=%#v after=%#v", bindingBefore, bindingAfter)

@@ -26,11 +26,11 @@ func TestRoutingKernelCentralizesAPIVersionRegexAndParams(t *testing.T) {
 			apiPath(literal("roles"), canonicalID("role_id")),
 			nil,
 			func(request operationRequest) (operationResult, error) {
-				roleID, err := request.params.RequireRoleId()
+				roleID, err := request.params.RequireRoleID()
 				if err != nil {
 					return operationResult{}, err
 				}
-				gotRoleID = roleID
+				gotRoleID = roleID.String()
 				return noContentResult(), nil
 			},
 		),

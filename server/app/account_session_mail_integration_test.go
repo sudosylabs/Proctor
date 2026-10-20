@@ -59,18 +59,18 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	adminInvocation := application.NewInvocation(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
 
 	initialTargetLogin := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-initial")
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID.String(), Enabled: false}); appErr != nil {
+	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID, Enabled: false}); appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID.String(), Enabled: true}); appErr != nil {
+	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, application.SetUserEnabledCommand{ID: target.ID, Enabled: true}); appErr != nil {
 		t.Fatal(appErr)
 	}
 	first := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-first")
 	second := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-second")
-	if err := helper.App.RevokeUserSession(ctx, adminInvocation, application.RevokeUserSessionCommand{UserID: target.ID.String(), SessionID: first.Session.ID.String()}); err != nil {
+	if err := helper.App.RevokeUserSession(ctx, adminInvocation, application.RevokeUserSessionCommand{UserID: target.ID, SessionID: first.Session.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := helper.App.RevokeUserSessions(ctx, adminInvocation, application.RevokeUserSessionsCommand{UserID: target.ID.String()}); err != nil {
+	if err := helper.App.RevokeUserSessions(ctx, adminInvocation, application.RevokeUserSessionsCommand{UserID: target.ID}); err != nil {
 		t.Fatal(err)
 	}
 	self := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self")
@@ -105,7 +105,7 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 		}
 	}
 	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: target.ID.String(), Action: string(model.ActionSessionManage),
+		ActorID: target.ID, Action: string(model.ActionSessionManage),
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true}, Limit: 20,
 	})
 	if err != nil {

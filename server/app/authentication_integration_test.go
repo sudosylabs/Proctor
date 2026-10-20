@@ -143,7 +143,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	}
 	assertExpired := func(sessionID model.SessionID) {
 		t.Helper()
-		session, err := persistence.Session().Get(ctx, sessionID.String())
+		session, err := persistence.Session().Get(ctx, sessionID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -667,7 +667,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		)
 	}
 	fourth := decodeAuthenticationResponse(t, loginBeforeDisable)
-	currentUser, err := persistence.User().Get(context.Background(), user.ID.String())
+	currentUser, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,7 +680,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: user.ID.String(), ExpectedRevision: currentUser.Revision, Disabled: true,
+		ID: user.ID, ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: auditAttempt.ID.String(), AuditAt: disabledAt,
 	})); err != nil {

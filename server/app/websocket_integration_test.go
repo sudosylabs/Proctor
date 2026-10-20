@@ -424,7 +424,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if _, err := nodeA.App.UpdateRole(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-patch"}),
-		app.UpdateRoleCommand{ID: role.ID.String(), DisplayName: &updatedDisplayName},
+		app.UpdateRoleCommand{ID: role.ID, DisplayName: &updatedDisplayName},
 	); err != nil {
 		t.Fatal(err)
 	}

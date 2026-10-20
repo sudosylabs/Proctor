@@ -94,7 +94,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	oldCode := model.HashToken(model.NewCredentialToken())
 	activationAt := model.NowUTC().Truncate(time.Millisecond)
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, activationAt.UnixMilli())
-	_, err = s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: mfaSQLPrincipal(f.targetSession, f.targetCredential), RecentAuthenticationTTL: time.Hour, CredentialID: pending.ID.String(), UserID: f.target.ID.String(), TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: oldCode}}, SessionID: f.targetSession.ID.String(), At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
+	_, err = s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: mfaSQLPrincipal(f.targetSession, f.targetCredential), RecentAuthenticationTTL: time.Hour, CredentialID: pending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: oldCode}}, SessionID: f.targetSession.ID, At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 		t.Fatal(err)
 	}
 	desktop, _, _, _ := issueDesktopAuthorizationForSQLTest(t, ctx, s, institution.ID, f.target.ID)
-	patPreparation, err := s.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{UserID: f.target.ID.String(), Kind: store.PersonalAccessTokenMutationCreate, Lifetime: time.Minute, Audit: personalAccessTokenPreparationAudit(f.target.ID, f.targetSession.ID, institution.ID)})
+	patPreparation, err := s.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{UserID: f.target.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: time.Minute, Audit: personalAccessTokenPreparationAudit(f.target.ID, f.targetSession.ID, institution.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	if _, err = s.PersonalAccessToken().Resolve(ctx, patHash, model.NowUTC(), time.Minute); !store.IsNotFound(err) {
 		t.Fatalf("retired PAT resolved: %v", err)
 	}
-	if err = s.MFA().ConsumeSecondFactor(ctx, f.target.ID.String(), 0, oldCode, model.GetMillis()); !store.IsNotFound(err) {
+	if err = s.MFA().ConsumeSecondFactor(ctx, f.target.ID, 0, oldCode, model.GetMillis()); !store.IsNotFound(err) {
 		t.Fatalf("old recovery code survived: %v", err)
 	}
 	var pendingTokens int
@@ -169,7 +169,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	if err = s.GetMaster().Get(ctx, &preparations, `SELECT count(*) FROM personal_access_token_mutation_preparations WHERE id=?`, patPreparation.ID); err != nil || preparations != 0 {
 		t.Fatalf("unfinished PAT survived: %d %v", preparations, err)
 	}
-	patAudits, err := s.Audit().List(ctx, store.AuditListOptions{ActorId: f.target.ID.String(), Action: "personal_access_token.create", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	patAudits, err := s.Audit().List(ctx, store.AuditListOptions{ActorID: f.target.ID, Action: "personal_access_token.create", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
 	if err != nil || len(patAudits) != 1 || patAudits[0].Status != model.AuditStatusFail || patAudits[0].ErrorCode != "authentication.mfa.reenrollment_required" {
 		t.Fatalf("unfinished PAT proof lacks its terminal audit: %#v %v", patAudits, err)
 	}
@@ -199,7 +199,7 @@ func TestMFAAssistedResetAtomicRetirementAndRestrictedReenrollment(t *testing.T)
 	}
 	activationAt = model.NowUTC().Truncate(time.Millisecond)
 	audit, notice = mfaSQLSecurityNoticeFixture(t, ctx, s, f.target, model.MailTemplateIdentityMFAEnabled, activationAt.UnixMilli())
-	activated, err := s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, CredentialID: newPending.ID.String(), UserID: f.target.ID.String(), TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}}, SessionID: freshSession.ID.String(), At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
+	activated, err := s.MFA().Activate(ctx, &store.MFAActivationMutation{Principal: principal, RecentAuthenticationTTL: time.Hour, CredentialID: newPending.ID, UserID: f.target.ID, TimeStep: time.Now().Unix() / 30, RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}}, SessionID: freshSession.ID, At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt.UnixMilli(), Notice: notice})
 	if err != nil {
 		t.Fatal(err)
 	}

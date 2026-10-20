@@ -267,11 +267,11 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 	return nil
 }
 
-func (s SQLUserStore) Get(ctx context.Context, id string) (*model.User, error) {
+func (s SQLUserStore) Get(ctx context.Context, id model.UserID) (*model.User, error) {
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
 		"users.id":          id,
 		"users.archived_at": nil,
-	}), id)
+	}), id.String())
 }
 
 func (s SQLUserStore) GetByUsername(ctx context.Context, username string) (*model.User, error) {
@@ -295,9 +295,9 @@ func (s SQLUserStore) List(
 	options store.UserListOptions,
 ) ([]*model.User, error) {
 	if options.Limit < 1 || options.Limit > 200 ||
-		(options.ID != "" && !model.IsValidId(options.ID)) ||
-		(options.AfterUsername == "") != (options.AfterId == "") ||
-		(options.AfterId != "" && !model.IsValidId(options.AfterId)) ||
+		(options.ID != "" && !options.ID.IsValid()) ||
+		(options.AfterUsername == "") != (options.AfterID == "") ||
+		(options.AfterID != "" && !options.AfterID.IsValid()) ||
 		len(options.Visibility.ClassIDs)+len(options.Visibility.AcademicUnitRootIDs)+
 			len(options.Visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
 		!validVisibilityIDs(options.Visibility.ClassIDs) ||
@@ -385,7 +385,7 @@ func (s SQLUserStore) List(
 			"(users.username > ? OR (users.username = ? AND users.id > ?))",
 			options.AfterUsername,
 			options.AfterUsername,
-			options.AfterId,
+			options.AfterID,
 		)
 	}
 	query = query.OrderBy("users.username", "users.id").Limit(uint64(options.Limit))
@@ -597,12 +597,8 @@ func validVisibilityIDs[T interface{ IsValid() bool }](ids []T) bool {
 	return true
 }
 
-func (s SQLUserStore) MatchVisibility(
-	ctx context.Context,
-	userID string,
-	visibility store.UserVisibilityScope,
-) (store.UserVisibilityMatch, error) {
-	if !model.IsValidId(userID) || visibility.InstitutionWide || visibility.ActiveAt.IsZero() ||
+func (s SQLUserStore) MatchVisibility(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+	if !userID.IsValid() || visibility.InstitutionWide || visibility.ActiveAt.IsZero() ||
 		len(visibility.ClassIDs)+len(visibility.AcademicUnitRootIDs)+len(visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
 		!validVisibilityIDs(visibility.ClassIDs) ||
 		!validVisibilityIDs(visibility.AcademicUnitRootIDs) ||
@@ -844,7 +840,7 @@ func (s SQLUserStore) SetDisabledWithAudit(
 	ctx context.Context,
 	input *store.UserDisabledStateChange,
 ) (*store.UserDisabledStateResult, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 ||
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 ||
 		input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
@@ -886,15 +882,15 @@ func (s SQLUserStore) SetDisabledWithAudit(
 			// installation-wide path fence, serialize this User's Sessions before
 			// taking the User row. Reversing these two locks can deadlock with a
 			// concurrent Desktop code exchange that already owns the Session fence.
-			if err := lockUserSessions(ctx, tx, input.ID); err != nil {
+			if err := lockUserSessions(ctx, tx, input.ID.String()); err != nil {
 				return nil, err
 			}
 		}
 		var lockedUserID string
 		if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
-			return nil, translateError("user", input.ID, err)
+			return nil, translateError("user", input.ID.String(), err)
 		}
-		currentUser, err := getUserByID(ctx, tx, input.ID)
+		currentUser, err := getUserByID(ctx, tx, input.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -919,14 +915,14 @@ func (s SQLUserStore) SetDisabledWithAudit(
 				return nil, err
 			}
 			at := model.TimeFromMillis(input.ChangedAt)
-			administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID, at)
+			administrator, err := isActiveSystemAdministrator(ctx, tx, input.ID.String(), at)
 			if err != nil {
 				return nil, err
 			}
 			if administrator {
 				remaining, pathErr := hasUsableSystemAdministratorAuthenticationPath(
 					ctx, tx, policy.Settings(), input.Capabilities, at,
-					systemAdministratorAuthenticationPathScope{ExcludedUserID: input.ID},
+					systemAdministratorAuthenticationPathScope{ExcludedUserID: input.ID.String()},
 				)
 				if pathErr != nil {
 					return nil, pathErr
@@ -947,7 +943,7 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		row, err := setUserDisabled(
 			ctx,
 			tx,
-			input.ID,
+			input.ID.String(),
 			input.ExpectedRevision,
 			disabledAt,
 			input.ChangedAt,
@@ -970,7 +966,7 @@ func (s SQLUserStore) SetDisabledWithAudit(
 			sessionRows, hashes, err := revokeAllUserSessions(
 				ctx,
 				tx,
-				input.ID,
+				input.ID.String(),
 				input.ChangedAt,
 				revocationReason,
 			)
@@ -1114,7 +1110,7 @@ func setUserDisabled(
 	return &row, nil
 }
 
-func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) error {
+func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id model.UserID, at int64) error {
 	loginAt := model.TimeFromMillis(at)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE users
@@ -1130,7 +1126,7 @@ func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id string, at int64) 
 	if err != nil {
 		return fmt.Errorf("update user last login: %w", err)
 	}
-	return requireAffected(result, "user", id)
+	return requireAffected(result, "user", id.String())
 }
 
 func newUserRow(user *model.User) userRow {

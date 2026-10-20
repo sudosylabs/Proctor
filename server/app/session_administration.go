@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -19,17 +18,17 @@ import (
 )
 
 type ListUserSessionsQuery struct {
-	UserID         string
+	UserID         model.UserID
 	IncludeRevoked bool
 }
 
 type RevokeUserSessionCommand struct {
-	UserID    string
-	SessionID string
+	UserID    model.UserID
+	SessionID model.SessionID
 }
 
 type RevokeUserSessionsCommand struct {
-	UserID                    string
+	UserID                    model.UserID
 	IdempotencyKey            string
 	batchReplayed             *bool
 	batchAuthorization        *store.CommandAuthorization
@@ -40,9 +39,9 @@ type RevokeUserSessionsCommand struct {
 }
 
 type sessionAdministrationStore interface {
-	Get(context.Context, string) (*model.Session, error)
-	ListByUser(context.Context, string) ([]*model.Session, error)
-	ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error)
+	Get(context.Context, model.SessionID) (*model.Session, error)
+	ListByUser(context.Context, model.UserID) ([]*model.Session, error)
+	ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error)
 	RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
 	RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
@@ -53,7 +52,7 @@ type sessionAdministrationAuthorizer interface {
 }
 
 type sessionAdministrationUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type sessionAdministrationService struct {
@@ -93,11 +92,11 @@ func (s *sessionAdministrationService) List(
 	invocation Invocation,
 	query ListUserSessionsQuery,
 ) ([]*model.Session, error) {
-	userID := strings.TrimSpace(query.UserID)
-	if !model.IsValidId(userID) {
+	userID := query.UserID
+	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeView(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeView(ctx, invocation, userID.String()); err != nil {
 		return nil, err
 	}
 	var (
@@ -131,21 +130,21 @@ func (s *sessionAdministrationService) RevokeOne(
 	invocation Invocation,
 	command RevokeUserSessionCommand,
 ) error {
-	userID := strings.TrimSpace(command.UserID)
-	sessionID := strings.TrimSpace(command.SessionID)
-	if !model.IsValidId(userID) {
+	userID := command.UserID
+	sessionID := command.SessionID
+	if !userID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if !model.IsValidId(sessionID) {
+	if !sessionID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "session_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeManage(ctx, invocation, userID.String()); err != nil {
 		return err
 	}
 	session, err := s.sessions.Get(ctx, sessionID)
-	if err != nil || session.UserID.String() != userID {
+	if err != nil || session.UserID != userID {
 		if err == nil {
-			err = store.NewErrNotFound("session", sessionID)
+			err = store.NewErrNotFound("session", sessionID.String())
 		}
 		return sessionAdministrationStoreErrors.Translate(err)
 	}
@@ -165,7 +164,7 @@ func (s *sessionAdministrationService) RevokeOne(
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionSessionManage,
-			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID.String()},
 			Operation:  "revoke_session",
 			Value:      map[string]any{"user_id": userID, "session_id": sessionID},
 			Prior:      session.Auditable(),
@@ -192,11 +191,11 @@ func (s *sessionAdministrationService) RevokeAll(
 	invocation Invocation,
 	command RevokeUserSessionsCommand,
 ) error {
-	userID := strings.TrimSpace(command.UserID)
-	if !model.IsValidId(userID) {
+	userID := command.UserID
+	if !userID.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
+	if err := s.authorization.AuthorizeManage(ctx, invocation, userID.String()); err != nil {
 		return err
 	}
 	user, err := s.users.Get(ctx, userID)
@@ -206,7 +205,7 @@ func (s *sessionAdministrationService) RevokeAll(
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	idempotency, err := newCommandIdempotency(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
 		UserID string `json:"user_id"`
-	}{userID})
+	}{userID.String()})
 	if err != nil {
 		return err
 	}
@@ -229,7 +228,7 @@ func (s *sessionAdministrationService) RevokeAll(
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionSessionManage,
-			Resource:   model.Resource{Type: model.ResourceUser, ID: userID},
+			Resource:   model.Resource{Type: model.ResourceUser, ID: userID.String()},
 			Operation:  "revoke_sessions",
 			Value:      map[string]any{"user_id": userID},
 		},

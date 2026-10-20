@@ -157,7 +157,7 @@ func getPendingAdministratorRecovery(ctx context.Context, executor sqlxExecutor)
 }
 
 func administratorRecoveryResult(row administratorRecoveryRow) *store.AdministratorRecoveryResult {
-	return &store.AdministratorRecoveryResult{RecordID: row.ID, LocalLoginEnabled: row.LocalLoginEnabled, PasswordRotated: row.PasswordRotated}
+	return &store.AdministratorRecoveryResult{RecordID: model.AdministratorRecoveryRecordID(row.ID), LocalLoginEnabled: row.LocalLoginEnabled, PasswordRotated: row.PasswordRotated}
 }
 
 func administratorRecoveryNullableInt64(value sql.NullInt64) any {

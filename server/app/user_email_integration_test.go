@@ -131,7 +131,7 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 		email    string
 		verified bool
 	}{{first.ID, "first-new@example.edu", true}, {second.ID, "second-new@example.edu", true}} {
-		user, err := persistence.User().Get(ctx, expected.id.String())
+		user, err := persistence.User().Get(ctx, expected.id)
 		if err != nil || user.Email != expected.email || user.EmailVerified != expected.verified {
 			t.Fatalf("persisted email transition user = %#v, %v", user, err)
 		}

@@ -66,7 +66,7 @@ func TestPersonalAccessTokenSecurityNoticeIntegration(t *testing.T) {
 	if created.Token.ID == "" || created.Credential == "" {
 		t.Fatalf("created PAT = %#v", created)
 	}
-	persisted, err := persistence.PersonalAccessToken().Get(context.Background(), created.Token.ID)
+	persisted, err := persistence.PersonalAccessToken().Get(context.Background(), model.PersonalAccessTokenID(created.Token.ID))
 	if err != nil {
 		t.Fatal(err)
 	}

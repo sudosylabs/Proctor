@@ -564,7 +564,7 @@ type accountTokenUserStoreFake struct {
 	byEmailErr error
 }
 
-func (s *accountTokenUserStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *accountTokenUserStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	return s.byID, s.byIDErr
 }
 
@@ -578,7 +578,7 @@ type accountTokenPasswordStoreFake struct {
 	err        error
 }
 
-func (s *accountTokenPasswordStoreFake) GetByUser(context.Context, string) (*model.PasswordCredential, error) {
+func (s *accountTokenPasswordStoreFake) GetByUser(context.Context, model.UserID) (*model.PasswordCredential, error) {
 	return s.credential, s.err
 }
 

@@ -262,7 +262,7 @@ type selfSessionStoreFake struct {
 	allRevocation *store.UserSessionsRevocation
 }
 
-func (s *selfSessionStoreFake) Get(context.Context, string) (*model.Session, error) {
+func (s *selfSessionStoreFake) Get(context.Context, model.SessionID) (*model.Session, error) {
 	*s.events = append(*s.events, "get")
 	if s.session == nil {
 		return nil, store.NewErrNotFound("session", "")
@@ -270,7 +270,7 @@ func (s *selfSessionStoreFake) Get(context.Context, string) (*model.Session, err
 	return s.session, nil
 }
 
-func (s *selfSessionStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.Session, error) {
+func (s *selfSessionStoreFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.Session, error) {
 	s.listedAt = at
 	return []*model.Session{s.session}, nil
 }
@@ -279,15 +279,15 @@ func (s *selfSessionStoreFake) RevokeWithAudit(_ context.Context, input *store.S
 	*s.events = append(*s.events, "revoke")
 	s.revokeCalls++
 	s.revocation = input
-	s.revokedUserID, s.revokedAt = input.UserID, input.RevokedAt
+	s.revokedUserID, s.revokedAt = input.UserID.String(), input.RevokedAt
 	if s.revokeErr != nil {
 		return nil, s.revokeErr
 	}
-	if s.session == nil || s.session.RevokedAt.Valid || s.session.UserID.String() != input.UserID {
+	if s.session == nil || s.session.RevokedAt.Valid || s.session.UserID != input.UserID {
 		if input.Reason == model.SessionRevocationUserLogout {
 			return &store.SessionRevocationResult{}, nil
 		}
-		return nil, store.NewErrNotFound("session", input.SessionID)
+		return nil, store.NewErrNotFound("session", input.SessionID.String())
 	}
 	s.session.RevokedAt = model.OptionalTimeFromMillis(input.RevokedAt)
 	return &store.SessionRevocationResult{Session: s.session, TokenHashes: append([]string(nil), s.hashes...)}, nil

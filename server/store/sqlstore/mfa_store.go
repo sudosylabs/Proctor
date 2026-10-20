@@ -102,11 +102,8 @@ func (s SQLMFAStore) SavePending(
 	})
 }
 
-func (s SQLMFAStore) GetByUser(
-	ctx context.Context,
-	userID string,
-) (*model.MFACredential, error) {
-	if !model.IsValidId(userID) {
+func (s SQLMFAStore) GetByUser(ctx context.Context, userID model.UserID) (*model.MFACredential, error) {
+	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "user_id", userID)
 	}
 	var row mfaCredentialRow
@@ -114,7 +111,7 @@ func (s SQLMFAStore) GetByUser(
 		 WHERE user_id = ? AND archived_at IS NULL`,
 		userID,
 	); err != nil {
-		return nil, translateError("mfa_credential", userID, err)
+		return nil, translateError("mfa_credential", userID.String(), err)
 	}
 	credential, err := row.model()
 	if err != nil {
@@ -131,13 +128,13 @@ func (s SQLMFAStore) Activate(
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
 	at := model.TimeUTC(input.At)
-	if !model.IsValidId(input.CredentialID) || !model.IsValidId(input.UserID) ||
-		!model.IsValidId(input.SessionID) || input.TimeStep <= 0 || !at.After(time.Unix(0, 0)) ||
+	if !input.CredentialID.IsValid() || !input.UserID.IsValid() ||
+		!input.SessionID.IsValid() || input.TimeStep <= 0 || !at.After(time.Unix(0, 0)) ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
-	prepared, err := prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+	prepared, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
 	if err != nil {
 		return nil, err
 	}
@@ -158,14 +155,14 @@ func (s SQLMFAStore) Activate(
 				return nil, err
 			}
 		}
-		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
+		if err = lockMFASessionUser(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
 		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, true, input.RecentAuthenticationTTL, false)
 		if err != nil {
 			return nil, err
 		}
-		if current.ID.String() != input.SessionID || current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+		if current.ID != input.SessionID || current.UserID != input.UserID || input.RecentAuthenticationTTL <= 0 {
 			return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
 		}
 		at = databaseNow
@@ -173,7 +170,7 @@ func (s SQLMFAStore) Activate(
 		if input.TimeStep < currentStep-1 || input.TimeStep > currentStep+1 {
 			return nil, store.NewErrConflict("mfa_credential", "verification_expired", nil)
 		}
-		prepared, err = prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+		prepared, err = prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
 		if err != nil {
 			return nil, err
 		}
@@ -190,7 +187,7 @@ func (s SQLMFAStore) Activate(
 		           activated_at, last_used_time_step`,
 			at, at, input.TimeStep, input.CredentialID, input.UserID, at, model.TimeUTC(input.At),
 		); err != nil {
-			return nil, translateError("mfa_credential", input.CredentialID, err)
+			return nil, translateError("mfa_credential", input.CredentialID.String(), err)
 		}
 		credential, err := row.model()
 		if err != nil {
@@ -219,11 +216,11 @@ func (s SQLMFAStore) Activate(
 				return nil, err
 			}
 		}
-		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID, input.UserID, at)
+		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID.String(), input.UserID.String(), at)
 		if err != nil {
 			return nil, err
 		}
-		hashes, err := selectActiveAccessTokenHashes(ctx, tx, input.SessionID)
+		hashes, err := selectActiveAccessTokenHashes(ctx, tx, input.SessionID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -249,21 +246,15 @@ func (s SQLMFAStore) Activate(
 	}, nil
 }
 
-func (s SQLMFAStore) ConsumeSecondFactor(
-	ctx context.Context,
-	userID string,
-	timeStep int64,
-	recoveryCodeHash string,
-	now int64,
-) error {
-	if !model.IsValidId(userID) || now <= 0 ||
+func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, now int64) error {
+	if !userID.IsValid() || now <= 0 ||
 		((timeStep <= 0) == (recoveryCodeHash == "")) ||
 		(recoveryCodeHash != "" && !model.IsValidTokenHash(recoveryCodeHash)) {
 		return store.NewErrInvalidInput("mfa_credential", "consume", nil)
 	}
 	_, err := runSQLTransaction(ctx, s.GetMaster().Begin, "MFA consumption", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
 		at := model.TimeFromMillis(now)
-		if err := lockMFAUser(ctx, tx, userID); err != nil {
+		if err := lockMFAUser(ctx, tx, userID.String()); err != nil {
 			return struct{}{}, err
 		}
 		if timeStep > 0 {
@@ -278,7 +269,7 @@ func (s SQLMFAStore) ConsumeSecondFactor(
 			if err != nil {
 				return struct{}{}, fmt.Errorf("consume MFA time step: %w", err)
 			}
-			if err := requireAffected(result, "mfa_credential", userID); err != nil {
+			if err := requireAffected(result, "mfa_credential", userID.String()); err != nil {
 				return struct{}{}, err
 			}
 		} else {
@@ -287,7 +278,7 @@ func (s SQLMFAStore) ConsumeSecondFactor(
 			SELECT id FROM mfa_credentials
 			 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'
 			 FOR UPDATE`, userID); err != nil {
-				return struct{}{}, translateError("mfa_credential", userID, err)
+				return struct{}{}, translateError("mfa_credential", userID.String(), err)
 			}
 			result, err := tx.Exec(ctx, `
 			UPDATE mfa_recovery_codes
@@ -307,24 +298,19 @@ func (s SQLMFAStore) ConsumeSecondFactor(
 	return err
 }
 
-func (s SQLMFAStore) UpgradeSession(
-	ctx context.Context,
-	sessionID string,
-	userID string,
-	now time.Time,
-) ([]string, error) {
+func (s SQLMFAStore) UpgradeSession(ctx context.Context, sessionID model.SessionID, userID model.UserID, now time.Time) ([]string, error) {
 	now = model.TimeUTC(now)
-	if !model.IsValidId(sessionID) || !model.IsValidId(userID) || !now.After(time.Unix(0, 0)) {
+	if !sessionID.IsValid() || !userID.IsValid() || !now.After(time.Unix(0, 0)) {
 		return nil, store.NewErrInvalidInput("session", "upgrade_mfa", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "session MFA upgrade", func(ctx context.Context, tx *sqlxTxWrapper) ([]string, error) {
-		if err := lockUserSessions(ctx, tx, userID); err != nil {
+		if err := lockUserSessions(ctx, tx, userID.String()); err != nil {
 			return nil, err
 		}
-		if _, err := upgradeSessionAuthentication(ctx, tx, sessionID, userID, now); err != nil {
+		if _, err := upgradeSessionAuthentication(ctx, tx, sessionID.String(), userID.String(), now); err != nil {
 			return nil, err
 		}
-		return selectActiveAccessTokenHashes(ctx, tx, sessionID)
+		return selectActiveAccessTokenHashes(ctx, tx, sessionID.String())
 	})
 }
 
@@ -332,13 +318,13 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 	ctx context.Context,
 	input *store.MFARecoveryCodesRegeneration,
 ) error {
-	if input == nil || !model.IsValidId(input.UserID) || input.At <= 0 ||
+	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return store.NewErrInvalidInput("mfa_recovery_code", "replace", nil)
 	}
 	at := model.TimeFromMillis(input.At)
-	prepared, err := prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+	prepared, err := prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
 	if err != nil {
 		return err
 	}
@@ -359,18 +345,18 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 				return struct{}{}, err
 			}
 		}
-		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
+		if err = lockMFASessionUser(ctx, tx, input.UserID.String()); err != nil {
 			return struct{}{}, err
 		}
 		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, false, input.RecentAuthenticationTTL, true)
 		if err != nil {
 			return struct{}{}, err
 		}
-		if current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+		if current.UserID != input.UserID || input.RecentAuthenticationTTL <= 0 {
 			return struct{}{}, store.NewErrInvalidInput("mfa_credential", "principal", nil)
 		}
 		at = databaseNow
-		prepared, err = prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+		prepared, err = prepareMFARecoveryCodes(input.UserID.String(), input.RecoveryCodes, at)
 		if err != nil {
 			return struct{}{}, err
 		}
@@ -379,7 +365,7 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 		SELECT id FROM mfa_credentials
 		 WHERE user_id = ? AND archived_at IS NULL AND state = 'active'
 			 FOR UPDATE`, input.UserID); err != nil {
-			return struct{}{}, translateError("mfa_credential", input.UserID, err)
+			return struct{}{}, translateError("mfa_credential", input.UserID.String(), err)
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE mfa_recovery_codes
@@ -407,11 +393,8 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 	return err
 }
 
-func (s SQLMFAStore) CountRecoveryCodes(
-	ctx context.Context,
-	userID string,
-) (int, error) {
-	if !model.IsValidId(userID) {
+func (s SQLMFAStore) CountRecoveryCodes(ctx context.Context, userID model.UserID) (int, error) {
+	if !userID.IsValid() {
 		return 0, store.NewErrInvalidInput("mfa_recovery_code", "user_id", userID)
 	}
 	var count int
@@ -429,7 +412,7 @@ func (s SQLMFAStore) Disable(
 	ctx context.Context,
 	input *store.MFADisablement,
 ) (*store.MFADisableResult, error) {
-	if input == nil || !model.IsValidId(input.UserID) || input.At <= 0 ||
+	if input == nil || !input.UserID.IsValid() || input.At <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("mfa_credential", "disable", nil)
 	}
@@ -451,14 +434,14 @@ func (s SQLMFAStore) Disable(
 				return nil, err
 			}
 		}
-		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
+		if err := lockMFASessionUser(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
 		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, false, input.RecentAuthenticationTTL, true)
 		if err != nil {
 			return nil, err
 		}
-		if current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+		if current.UserID != input.UserID || input.RecentAuthenticationTTL <= 0 {
 			return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
 		}
 		at = databaseNow
@@ -470,7 +453,7 @@ func (s SQLMFAStore) Disable(
 		if err != nil {
 			return nil, fmt.Errorf("disable MFA credential: %w", err)
 		}
-		if err := requireAffected(result, "mfa_credential", input.UserID); err != nil {
+		if err = requireAffected(result, "mfa_credential", input.UserID.String()); err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `

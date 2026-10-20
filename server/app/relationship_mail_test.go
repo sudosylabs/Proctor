@@ -16,8 +16,8 @@ import (
 
 type relationshipUserStoreTestFake struct{}
 
-func (relationshipUserStoreTestFake) Get(_ context.Context, id string) (*model.User, error) {
-	parsed, err := model.ParseUserID(id)
+func (relationshipUserStoreTestFake) Get(_ context.Context, id model.UserID) (*model.User, error) {
+	parsed, err := model.ParseUserID(id.String())
 	if err != nil {
 		return nil, err
 	}

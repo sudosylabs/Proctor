@@ -59,7 +59,7 @@ func sessionCreationForSQLTest(t *testing.T, ctx context.Context, persistence st
 
 func passwordProofForSQLTest(t *testing.T, ctx context.Context, persistence store.Store, userID model.UserID) store.PasswordCredentialProof {
 	t.Helper()
-	credential, err := persistence.PasswordCredential().GetByUser(ctx, userID.String())
+	credential, err := persistence.PasswordCredential().GetByUser(ctx, userID)
 	if store.IsNotFound(err) {
 		credential, err = persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{
 			UserID: userID, PasswordHash: "encoded-session-fixture-password",

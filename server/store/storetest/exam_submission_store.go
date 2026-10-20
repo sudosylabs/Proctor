@@ -867,7 +867,7 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 	}
 	adapters := [2]store.ExamSubmissionStore{primary, peer}
 	inputs := [2]*store.ExamSubmissionAutomaticSeal{}
-	candidate, err := ss.User().Get(ctx, target.CandidateUserID.String())
+	candidate, err := ss.User().Get(ctx, target.CandidateUserID)
 	requireNoError(t, err)
 	for index := range inputs {
 		audit := saveExamSittingSystemAudit(t, ctx, ss, target.SittingID, target.AcademicUnitID)

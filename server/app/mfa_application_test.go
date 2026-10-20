@@ -391,7 +391,7 @@ func (s *mfaApplicationStoreFake) appendEvent(event string) {
 	}
 }
 
-func (s *mfaApplicationStoreFake) GetByUser(context.Context, string) (*model.MFACredential, error) {
+func (s *mfaApplicationStoreFake) GetByUser(context.Context, model.UserID) (*model.MFACredential, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.credentialGets++
@@ -410,7 +410,7 @@ func (s *mfaApplicationStoreFake) SavePending(_ context.Context, candidate *mode
 	return &saved, nil
 }
 
-func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, string, int64, string, int64) error {
+func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, model.UserID, int64, string, int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.appendEvent("consume")
@@ -421,7 +421,7 @@ func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, string, i
 	return nil
 }
 
-func (s *mfaApplicationStoreFake) UpgradeSession(_ context.Context, _, _ string, at time.Time) ([]string, error) {
+func (s *mfaApplicationStoreFake) UpgradeSession(_ context.Context, _ model.SessionID, _ model.UserID, at time.Time) ([]string, error) {
 	s.upgradeCalls++
 	s.upgradedAt = at
 	s.appendEvent("upgrade")
@@ -447,7 +447,7 @@ func (s *mfaApplicationStoreFake) Disable(_ context.Context, input *store.MFADis
 
 type mfaApplicationUserStoreFake struct{ store.UserStore }
 
-func (mfaApplicationUserStoreFake) Get(_ context.Context, id string) (*model.User, error) {
+func (mfaApplicationUserStoreFake) Get(_ context.Context, id model.UserID) (*model.User, error) {
 	return &model.User{ID: model.UserID(id), Email: "user@example.edu"}, nil
 }
 
@@ -482,7 +482,7 @@ type mfaApplicationSessionStoreFake struct {
 	persistence *mfaApplicationStoreFake
 }
 
-func (s mfaApplicationSessionStoreFake) Get(context.Context, string) (*model.Session, error) {
+func (s mfaApplicationSessionStoreFake) Get(context.Context, model.SessionID) (*model.Session, error) {
 	s.persistence.appendEvent("session_get")
 	return s.persistence.session, nil
 }
@@ -554,10 +554,10 @@ func (s *mfaApplicationStoreFake) SavePendingWithAudit(ctx context.Context, inpu
 	return saved, err
 }
 func (s *mfaApplicationStoreFake) ChallengeWithAudit(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
-	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID.String(), input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt.UnixMilli()); err != nil {
+	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID, input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt.UnixMilli()); err != nil {
 		return nil, err
 	}
-	hashes, err := s.UpgradeSession(ctx, input.Principal.SessionID.String(), input.Principal.UserID.String(), input.VerifiedAt)
+	hashes, err := s.UpgradeSession(ctx, input.Principal.SessionID, input.Principal.UserID, input.VerifiedAt)
 	if err != nil {
 		return nil, err
 	}

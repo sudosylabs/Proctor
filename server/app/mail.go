@@ -61,7 +61,7 @@ type mailStore interface {
 }
 
 type mailUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type mailAuthorizer interface {
@@ -207,7 +207,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	if !s.sender.Enabled() || s.sealer == nil {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}

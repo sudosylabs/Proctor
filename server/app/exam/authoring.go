@@ -105,7 +105,7 @@ type CommandOutcomes interface {
 }
 
 type users interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type ManagerMailRelationship string

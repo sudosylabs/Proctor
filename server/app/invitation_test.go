@@ -231,7 +231,7 @@ func (f invitationAcademicUnitStoreFake) Get(context.Context, model.AcademicUnit
 
 type invitationRoleStoreFake struct{ role *model.Role }
 
-func (f invitationRoleStoreFake) Get(context.Context, string) (*model.Role, error) {
+func (f invitationRoleStoreFake) Get(context.Context, model.RoleID) (*model.Role, error) {
 	return f.role, nil
 }
 

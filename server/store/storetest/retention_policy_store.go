@@ -172,7 +172,7 @@ func testRetentionPolicyCurrentCredentialAndAssurance(t *testing.T, ctx context.
 			stale := principal
 			stale.SessionID, stale.CredentialID = saved.ID, model.PrincipalCredentialID(credentials[0].ID)
 			if state == "revoked Session" {
-				_, revokeErr := stores.Session().Revoke(ctx, saved.ID.String(), principal.UserID.String(), model.GetMillis(), model.SessionRevocationUserLogout)
+				_, revokeErr := stores.Session().Revoke(ctx, saved.ID, principal.UserID, model.GetMillis(), model.SessionRevocationUserLogout)
 				requireNoError(t, revokeErr)
 			}
 			for _, operation := range []string{"change", "no-op", "replay"} {
@@ -318,7 +318,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 					ScopeType: model.RoleScopeInstitution, ScopeID: bootstrap.Institution.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
 				requireNoError(t, saveErr)
 				if test.ended {
-					_, endErr := stores.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis())
+					_, endErr := stores.RoleBinding().End(ctx, binding.ID, model.GetMillis())
 					requireNoError(t, endErr)
 				}
 			}
@@ -326,7 +326,7 @@ func testRetentionPolicyActiveAdministratorGuard(t *testing.T, ctx context.Conte
 			if test.disabled {
 				audit := saveUserProfileAuditAttempt(t, ctx, stores, actor.ID.String())
 				_, disableErr := stores.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-					ID: actor.ID.String(), ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+					ID: actor.ID, ExpectedRevision: actor.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(audit.CreatedAt),
 				}))
 				requireNoError(t, disableErr)

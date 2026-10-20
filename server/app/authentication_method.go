@@ -79,7 +79,7 @@ func (s *authenticationMethodService) list(ctx context.Context, invocation Invoc
 	if invocation.Principal().Validate() != nil {
 		return AuthenticationMethodView{}, invalidTokenAppError()
 	}
-	userID := invocation.Principal().UserID.String()
+	userID := invocation.Principal().UserID
 	view := AuthenticationMethodView{Providers: []AuthenticationProviderMethodView{}}
 	if _, err := s.passwords.GetByUser(ctx, userID); err == nil {
 		view.Password = true

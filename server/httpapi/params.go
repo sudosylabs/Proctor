@@ -30,8 +30,8 @@ type Params struct {
 	NativeStreamID          string
 	NativeBatchSequence     string
 	ProviderId              string
-	RoleId                  string
-	RoleBindingId           string
+	RoleID                  string
+	RoleBindingID           string
 	JobID                   string
 	MailDeliveryID          string
 	ExamID                  string
@@ -57,7 +57,7 @@ type Params struct {
 	AffiliationID           string
 	AcademicUnitMemberID    string
 	ClassMemberID           string
-	PersonalAccessTokenId   string
+	PersonalAccessTokenID   string
 	SessionID               string
 	DesktopRegistrationID   string
 	ExternalIdentityID      string
@@ -80,8 +80,8 @@ func ParamsFromRequest(request *http.Request) Params {
 		NativeStreamID:          variables["stream_id"],
 		NativeBatchSequence:     variables["batch_sequence"],
 		ProviderId:              strings.ToLower(strings.TrimSpace(variables["provider_id"])),
-		RoleId:                  strings.TrimSpace(variables["role_id"]),
-		RoleBindingId:           strings.TrimSpace(variables["role_binding_id"]),
+		RoleID:                  strings.TrimSpace(variables["role_id"]),
+		RoleBindingID:           strings.TrimSpace(variables["role_binding_id"]),
 		JobID:                   strings.TrimSpace(variables["job_id"]),
 		MailDeliveryID:          strings.TrimSpace(variables["mail_delivery_id"]),
 		ExamID:                  strings.TrimSpace(variables["exam_id"]),
@@ -107,7 +107,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		AffiliationID:           strings.TrimSpace(variables["affiliation_id"]),
 		AcademicUnitMemberID:    strings.TrimSpace(variables["academic_unit_member_id"]),
 		ClassMemberID:           strings.TrimSpace(variables["class_member_id"]),
-		PersonalAccessTokenId:   strings.TrimSpace(variables["personal_access_token_id"]),
+		PersonalAccessTokenID:   strings.TrimSpace(variables["personal_access_token_id"]),
 		SessionID:               strings.TrimSpace(variables["session_id"]),
 		DesktopRegistrationID:   strings.TrimSpace(variables["desktop_registration_id"]),
 		ExternalIdentityID:      strings.TrimSpace(variables["external_identity_id"]),
@@ -123,8 +123,8 @@ func ParamsFromRequest(request *http.Request) Params {
 	}
 }
 
-func (p Params) RequireExternalIdentityID() (string, error) {
-	return requirePathID("external_identity_id", p.ExternalIdentityID)
+func (p Params) RequireExternalIdentityID() (model.ExternalIdentityID, error) {
+	return pathID[model.ExternalIdentityID](p.ExternalIdentityID)
 }
 
 func (p Params) RequireInvitationID() (string, error) {
@@ -146,12 +146,12 @@ func (p Params) RequireProviderId() (string, error) {
 	return p.ProviderId, nil
 }
 
-func (p Params) RequireUserId() (string, error) {
-	return requirePathID("user_id", p.UserID)
+func (p Params) RequireUserID() (model.UserID, error) {
+	return pathID[model.UserID](p.UserID)
 }
 
-func (p Params) RequireInstitutionId() (string, error) {
-	return requirePathID("institution_id", p.InstitutionID)
+func (p Params) RequireInstitutionID() (model.InstitutionID, error) {
+	return pathID[model.InstitutionID](p.InstitutionID)
 }
 
 func (p Params) RequireAcademicUnitID() (model.AcademicUnitID, error) {
@@ -186,24 +186,16 @@ func (p Params) RequireClassMemberID() (model.ClassMemberID, error) {
 	return pathID[model.ClassMemberID](p.ClassMemberID)
 }
 
-func (p Params) RequirePersonalAccessTokenId() (string, error) {
-	return requirePathID("personal_access_token_id", p.PersonalAccessTokenId)
+func (p Params) RequirePersonalAccessTokenID() (model.PersonalAccessTokenID, error) {
+	return pathID[model.PersonalAccessTokenID](p.PersonalAccessTokenID)
 }
 
-func (p Params) RequireSessionId() (string, error) {
-	return requirePathID("session_id", p.SessionID)
+func (p Params) RequireSessionID() (model.SessionID, error) {
+	return pathID[model.SessionID](p.SessionID)
 }
 
-func (p Params) RequireDesktopRegistrationId() (model.DesktopRegistrationID, error) {
-	value, err := requirePathID("desktop_registration_id", p.DesktopRegistrationID)
-	if err != nil {
-		return "", err
-	}
-	id := model.DesktopRegistrationID(value)
-	if !id.IsValid() {
-		return "", invalidRequestError(nil)
-	}
-	return id, nil
+func (p Params) RequireDesktopRegistrationID() (model.DesktopRegistrationID, error) {
+	return pathID[model.DesktopRegistrationID](p.DesktopRegistrationID)
 }
 
 func RequestParams(ctx context.Context) (Params, bool) {
@@ -219,12 +211,12 @@ func withRequestParams(next http.Handler) http.Handler {
 	})
 }
 
-func (p Params) RequireRoleId() (string, error) {
-	return requirePathID("role_id", p.RoleId)
+func (p Params) RequireRoleID() (model.RoleID, error) {
+	return pathID[model.RoleID](p.RoleID)
 }
 
-func (p Params) RequireRoleBindingId() (string, error) {
-	return requirePathID("role_binding_id", p.RoleBindingId)
+func (p Params) RequireRoleBindingID() (model.RoleBindingID, error) {
+	return pathID[model.RoleBindingID](p.RoleBindingID)
 }
 
 func (p Params) RequireJobId() (string, error) {

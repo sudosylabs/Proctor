@@ -112,7 +112,7 @@ func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invoca
 	status := &MFAStatus{ServiceEnabled: s.mechanics.settings.Enabled, MFARecoveryRequired: principal.MFARecoveryRequired,
 		AuthenticationMethod: principal.AuthenticationMethod, AuthenticationProviderID: principal.AuthenticationProviderID,
 		AuthenticationStrength: principal.AuthenticationStrength, RecentlyAuthenticated: principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL)}
-	credential, err := s.credentials.GetByUser(ctx, principal.UserID.String())
+	credential, err := s.credentials.GetByUser(ctx, principal.UserID)
 	if store.IsNotFound(err) {
 		return status, nil
 	}
@@ -123,7 +123,7 @@ func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invoca
 	status.Pending = credential.IsPendingAt(model.TimeUTC(s.now()))
 	status.PendingExpiresAt = credential.PendingExpiresAt
 	if status.Enabled {
-		status.RecoveryCodesRemaining, err = s.credentials.CountRecoveryCodes(ctx, principal.UserID.String())
+		status.RecoveryCodesRemaining, err = s.credentials.CountRecoveryCodes(ctx, principal.UserID)
 		if err != nil {
 			return nil, mfaStoreErrors.Translate(err)
 		}
@@ -143,7 +143,7 @@ func (s *mfaApplicationService) Setup(
 	if err := s.requireEnabled(); err != nil {
 		return nil, err
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		return nil, mfaStoreErrors.Translate(err)
 	}
@@ -204,7 +204,7 @@ func (s *mfaApplicationService) Activate(
 	if err := s.limitFactorAttempt(ctx, invocation); err != nil {
 		return nil, err
 	}
-	credential, err := s.credentials.GetByUser(ctx, principal.UserID.String())
+	credential, err := s.credentials.GetByUser(ctx, principal.UserID)
 	if err != nil {
 		return nil, mfaStoreErrors.Translate(err)
 	}
@@ -246,8 +246,8 @@ func (s *mfaApplicationService) Activate(
 	}
 	activated, err := s.credentials.Activate(ctx, &store.MFAActivationMutation{
 		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
-		CredentialID: credential.ID.String(), UserID: principal.UserID.String(), TimeStep: timeStep,
-		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID.String(), At: now,
+		CredentialID: credential.ID, UserID: principal.UserID, TimeStep: timeStep,
+		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID, At: now,
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
@@ -348,7 +348,7 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 	}
 	if err := s.credentials.ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
 		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
-		UserID: principal.UserID.String(), RecoveryCodes: codes, At: now.UnixMilli(),
+		UserID: principal.UserID, RecoveryCodes: codes, At: now.UnixMilli(),
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	}); err != nil {
 		return nil, s.failMutation(
@@ -386,7 +386,7 @@ func (s *mfaApplicationService) Disable(
 	}
 	result, err := s.credentials.Disable(ctx, &store.MFADisablement{
 		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
-		UserID: principal.UserID.String(), At: now.UnixMilli(), AuditEventID: auditID,
+		UserID: principal.UserID, At: now.UnixMilli(), AuditEventID: auditID,
 		AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
@@ -404,7 +404,7 @@ func (s *mfaApplicationService) prepareSecurityNotice(
 	kind appmail.MFANoticeKind,
 	at time.Time,
 ) (*preparedDirectMail, error) {
-	user, err := s.users.Get(ctx, userID.String())
+	user, err := s.users.Get(ctx, userID)
 	if err != nil {
 		return nil, mfaStoreErrors.Translate(err)
 	}
@@ -432,7 +432,7 @@ func (s *mfaApplicationService) VerifyLogin(
 	code string,
 	at time.Time,
 ) (model.AuthenticationStrength, int64, error) {
-	credential, err := s.credentials.GetByUser(ctx, userID)
+	credential, err := s.credentials.GetByUser(ctx, model.UserID(userID))
 	if store.IsNotFound(err) {
 		return model.AuthenticationSingleFactor, 0, nil
 	}

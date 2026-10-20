@@ -503,7 +503,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 	if principal.CredentialType == model.CredentialSessionAccess {
 		return s.authentication.ValidatePrincipal(ctx, principal)
 	}
-	token, err := s.tokens.Get(ctx, principal.CredentialID.String())
+	token, err := s.tokens.Get(ctx, model.PersonalAccessTokenID(principal.CredentialID))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
@@ -513,7 +513,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 	if token.UserID != principal.UserID || !token.IsActiveAt(s.now()) || !slices.Equal(token.Scopes, principal.CredentialScopes) || token.AcademicUnitID != principal.AcademicUnitID {
 		return invalidTokenAppError()
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
@@ -549,7 +549,7 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 		if err != nil || unit.IsArchived() {
 			return invitationStoreErrors.Translate(err)
 		}
-		role, err := s.roles.Get(ctx, roleID)
+		role, err := s.roles.Get(ctx, model.RoleID(roleID))
 		if err != nil || role.IsArchived() {
 			return invitationStoreErrors.Translate(err)
 		}
@@ -882,7 +882,7 @@ func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Contex
 		if err != nil {
 			return invitationStoreErrors.Translate(err)
 		}
-		role, err := s.roles.Get(ctx, current.RoleID.String())
+		role, err := s.roles.Get(ctx, current.RoleID)
 		if err != nil {
 			return invitationStoreErrors.Translate(err)
 		}
@@ -912,7 +912,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 	}
 	loadUser := func(id string) error {
-		user, userErr := s.users.Get(ctx, id)
+		user, userErr := s.users.Get(ctx, model.UserID(id))
 		if userErr != nil {
 			return userStoreErrors.Translate(userErr)
 		}
@@ -996,7 +996,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		if err = loadUser(item.UserID); err != nil {
 			return err
 		}
-		role, roleErr := s.roles.Get(ctx, item.RoleID)
+		role, roleErr := s.roles.Get(ctx, model.RoleID(item.RoleID))
 		if roleErr != nil {
 			return roleBindingStoreErrors.Translate(roleErr)
 		}
@@ -1009,7 +1009,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		return s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, current.ScopeType, current.ScopeID)
 	case AcademicAdministrationRoleBindingEnd:
-		value, getErr := s.roleBindings.Get(ctx, item.RelationshipID)
+		value, getErr := s.roleBindings.Get(ctx, model.RoleBindingID(item.RelationshipID))
 		if getErr != nil {
 			return roleBindingStoreErrors.Translate(getErr)
 		}
@@ -1427,7 +1427,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 			}
 		}
 		if operation == AcademicAdministrationRoleBindingCreate {
-			role, roleErr := s.roles.Get(ctx, row.RoleID.String())
+			role, roleErr := s.roles.Get(ctx, row.RoleID)
 			if roleErr != nil {
 				return roleBindingStoreErrors.Translate(roleErr)
 			}
@@ -1454,7 +1454,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 		if value.Revision != row.TargetRevision || value.IsArchived() {
 			return apperror.New("invitation.conflict")
 		}
-		role, err := s.roles.Get(ctx, row.RoleID.String())
+		role, err := s.roles.Get(ctx, row.RoleID)
 		if err != nil {
 			return invitationStoreErrors.Translate(err)
 		}
@@ -1469,7 +1469,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 		if value.Revision != row.TargetRevision || value.IsArchived() {
 			return apperror.New("invitation.conflict")
 		}
-		role, err := s.roles.Get(ctx, row.RoleID.String())
+		role, err := s.roles.Get(ctx, row.RoleID)
 		if err != nil {
 			return invitationStoreErrors.Translate(err)
 		}

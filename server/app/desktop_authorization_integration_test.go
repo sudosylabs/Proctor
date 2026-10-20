@@ -179,7 +179,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		t.Fatalf("desktop exchange = %#v", exchanged)
 	}
 	for _, action := range []string{"authentication.desktop_authorization", "authentication.desktop_session_issue"} {
-		events, listErr := primaryStore.Audit().List(ctx, store.AuditListOptions{Action: action, ActorId: user.ID.String(),
+		events, listErr := primaryStore.Audit().List(ctx, store.AuditListOptions{Action: action, ActorID: user.ID,
 			Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
 		if listErr != nil || len(events) != 1 || events[0].Status != model.AuditStatusSuccess {
 			t.Fatalf("%s audits for approving account = %#v, %v", action, events, listErr)

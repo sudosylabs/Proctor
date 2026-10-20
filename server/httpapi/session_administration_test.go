@@ -45,7 +45,7 @@ func TestAdminSessionListUsesApplicationQueryAndOmitsCredentials(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if sessions.listQuery.UserID != userID || !sessions.listQuery.IncludeRevoked {
+	if sessions.listQuery.UserID != model.UserID(userID) || !sessions.listQuery.IncludeRevoked {
 		t.Fatalf("query = %#v", sessions.listQuery)
 	}
 	var body []map[string]any
@@ -82,7 +82,7 @@ func TestAdminSessionRevokeUsesApplicationCommand(t *testing.T) {
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if sessions.revokeCommand.UserID != userID || sessions.revokeCommand.SessionID != sessionID {
+	if sessions.revokeCommand.UserID != model.UserID(userID) || sessions.revokeCommand.SessionID != model.SessionID(sessionID) {
 		t.Fatalf("command = %#v", sessions.revokeCommand)
 	}
 }

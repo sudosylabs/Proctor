@@ -136,7 +136,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	second.Principal = saveRecordsPrincipal(t, ctx, ss, f.manager.ID, false)
 	_, err = peer.Get(ctx, &second)
 	requireNoError(t, err)
-	_, err = ss.Session().Revoke(ctx, second.Principal.SessionID.String(), f.manager.ID.String(), model.GetMillis(), model.SessionRevocationUserSession)
+	_, err = ss.Session().Revoke(ctx, second.Principal.SessionID, f.manager.ID, model.GetMillis(), model.SessionRevocationUserSession)
 	requireNoError(t, err)
 	if _, err := peer.Get(ctx, &second); !store.IsConflict(err) {
 		t.Fatalf("revoked Session retained export access: %v", err)
@@ -362,7 +362,7 @@ func TestExamExportStore(t *testing.T, ss store.Store, probe ExamExportSQLProbe)
 	// End the already-active fixture binding in its past interval. A host clock
 	// slightly ahead of PostgreSQL must not schedule this revocation in the
 	// database future and make the immediate peer authorization check race it.
-	_, err = ss.RoleBinding().End(ctx, binding.ID.String(), model.MillisFromTime(binding.StartsAt.Add(time.Second)))
+	_, err = ss.RoleBinding().End(ctx, binding.ID, model.MillisFromTime(binding.StartsAt.Add(time.Second)))
 	requireNoError(t, err)
 	if _, err = peer.Get(ctx, &access); !store.IsConflict(err) {
 		t.Fatalf("revoked role read retained archive: %v", err)

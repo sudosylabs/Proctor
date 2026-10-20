@@ -61,6 +61,7 @@ var entityIDs = []idSpec{
 	{typeName: "ExternalIdentityID", fieldName: "external_identity_id", constructorSubject: "external-identity"},
 	{typeName: "PasswordCredentialID", fieldName: "password_credential_id", constructorSubject: "password-credential"},
 	{typeName: "PersonalAccessTokenID", fieldName: "personal_access_token_id", constructorSubject: "personal-access-token"},
+	{typeName: "PersonalAccessTokenPreparationID", fieldName: "personal_access_token_preparation_id", constructorSubject: "personal-access-token-preparation"},
 	{typeName: "UserTokenID", fieldName: "user_token_id", constructorSubject: "user-token"},
 	{typeName: "InvitationID", fieldName: "invitation_id", constructorSubject: "invitation"},
 	{typeName: "MFACredentialID", fieldName: "mfa_credential_id", constructorSubject: "MFA credential"},
@@ -74,4 +75,5 @@ var entityIDs = []idSpec{
 	{typeName: "FileRevisionID", fieldName: "file_revision_id", constructorSubject: "file-revision"},
 	{typeName: "FileRenditionID", fieldName: "file_rendition_id", constructorSubject: "file-rendition"},
 	{typeName: "UploadLeaseID", fieldName: "upload_lease_id", constructorSubject: "upload-lease"},
+	{typeName: "AdministratorRecoveryRecordID", fieldName: "administrator_recovery_record_id", constructorSubject: "administrator-recovery-record"},
 }

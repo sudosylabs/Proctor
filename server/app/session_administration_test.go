@@ -37,17 +37,17 @@ type sessionAdministrationStoreFake struct {
 	listedAt        time.Time
 }
 
-func (s *sessionAdministrationStoreFake) Get(context.Context, string) (*model.Session, error) {
+func (s *sessionAdministrationStoreFake) Get(context.Context, model.SessionID) (*model.Session, error) {
 	*s.events = append(*s.events, "get-session")
 	return s.session, s.getErr
 }
 
-func (s *sessionAdministrationStoreFake) ListByUser(context.Context, string) ([]*model.Session, error) {
+func (s *sessionAdministrationStoreFake) ListByUser(context.Context, model.UserID) ([]*model.Session, error) {
 	*s.events = append(*s.events, "list-all")
 	return s.list, s.listErr
 }
 
-func (s *sessionAdministrationStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.Session, error) {
+func (s *sessionAdministrationStoreFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.Session, error) {
 	s.listedAt = at
 	*s.events = append(*s.events, "list-active")
 	return s.list, s.listErr
@@ -96,7 +96,7 @@ type sessionAdministrationUserStoreFake struct {
 	err    error
 }
 
-func (s *sessionAdministrationUserStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *sessionAdministrationUserStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	*s.events = append(*s.events, "get-user")
 	return s.user, s.err
 }
@@ -122,7 +122,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return at },
 	)
-	got, err := service.List(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: userID})
+	got, err := service.List(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +166,11 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	if err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.ID.String(),
+		UserID: model.UserID(userID), SessionID: session.ID,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.revokeInput.SessionID != session.ID.String() || persistence.revokeInput.AuditEventID == "" {
+	if persistence.revokeInput.SessionID != session.ID || persistence.revokeInput.AuditEventID == "" {
 		t.Fatalf("input = %#v", persistence.revokeInput)
 	}
 	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentitySessionsRevokedByAdmin ||
@@ -205,7 +205,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 		time.Now,
 	)
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.ID.String(),
+		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	if !apperror.Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
@@ -236,10 +236,10 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.RevokeAll(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: userID}); err != nil {
+	if err := service.RevokeAll(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}); err != nil {
 		t.Fatal(err)
 	}
-	if persistence.revokeAllInput.UserID != userID || persistence.revokeAllInput.AuditEventID == "" || persistence.revokeAllInput.Occurrence == nil {
+	if persistence.revokeAllInput.UserID != model.UserID(userID) || persistence.revokeAllInput.AuditEventID == "" || persistence.revokeAllInput.Occurrence == nil {
 		t.Fatalf("input = %#v", persistence.revokeAllInput)
 	}
 	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-revoke-all", "publish-revocation"}
@@ -259,7 +259,7 @@ func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: userID, IdempotencyKey: "row"}); err != nil {
+	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(mailer.requests) != 1 || persistence.revokeAllInput == nil || persistence.revokeAllInput.Occurrence == nil {
@@ -279,7 +279,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: userID, IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
+	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
 		t.Fatal(err)
 	}
 	if len(mailer.requests) != 0 || slices.Contains(events, "list-active") {
@@ -302,7 +302,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 		time.Now,
 	)
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
-		UserID: userID, SessionID: session.ID.String(),
+		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	if !apperror.Is(err, "session.not_found") {
 		t.Fatalf("error = %v", err)
@@ -347,7 +347,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				&securityNoticeMailerFake{events: &events}, effects, func() time.Time { return now })
 			invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 			err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{
-				UserID: userID, IdempotencyKey: "repeat-command", batchReplayed: &unchanged,
+				UserID: model.UserID(userID), IdempotencyKey: "repeat-command", batchReplayed: &unchanged,
 			})
 			wantCode := ""
 			switch outcome {

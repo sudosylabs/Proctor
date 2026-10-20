@@ -42,10 +42,10 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			effects := &mfaApplicationEffectsFake{}
 			service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, effects, now)
 			service.credentials = persistence
-			command := ResetUserMFACommand{UserID: model.NewUserID().String(), IdentityVerified: true, Reason: "Authenticator lost", VerificationReference: "helpdesk-124"}
+			command := ResetUserMFACommand{UserID: model.NewUserID(), IdentityVerified: true, Reason: "Authenticator lost", VerificationReference: "helpdesk-124"}
 			switch name {
 			case "self":
-				command.UserID = principal.UserID.String()
+				command.UserID = principal.UserID
 			case "unverified":
 				command.IdentityVerified = false
 			case "empty reason":
@@ -81,7 +81,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if persistence.input == nil || persistence.input.Principal.UserID != principal.UserID || persistence.input.UserID.String() != command.UserID || !persistence.input.IdentityVerified || persistence.input.Notice.Occurrence.TemplateKey != model.MailTemplateIdentityMFAReset || effects.userID != command.UserID {
+			if persistence.input == nil || persistence.input.Principal.UserID != principal.UserID || persistence.input.UserID != command.UserID || !persistence.input.IdentityVerified || persistence.input.Notice.Occurrence.TemplateKey != model.MailTemplateIdentityMFAReset || effects.userID != command.UserID.String() {
 				t.Fatal("assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
 			}
 		})

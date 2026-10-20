@@ -613,7 +613,7 @@ func (s *classStore) GetAcademicUnitID(ctx context.Context, id model.ClassID) (m
 	return retryCall1(ctx, s.layer, func() (model.AcademicUnitID, error) { return s.ClassStore.GetAcademicUnitID(ctx, id) })
 }
 
-func (s *userStore) Get(ctx context.Context, id string) (*model.User, error) {
+func (s *userStore) Get(ctx context.Context, id model.UserID) (*model.User, error) {
 	return retryCall1(ctx, s.layer, func() (*model.User, error) { return s.UserStore.Get(ctx, id) })
 }
 func (s *userStore) GetByUsername(ctx context.Context, username string) (*model.User, error) {
@@ -625,13 +625,13 @@ func (s *userStore) GetByEmail(ctx context.Context, email string) (*model.User, 
 func (s *userStore) List(ctx context.Context, options store.UserListOptions) ([]*model.User, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.User, error) { return s.UserStore.List(ctx, options) })
 }
-func (s *userStore) MatchVisibility(ctx context.Context, userID string, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+func (s *userStore) MatchVisibility(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	return retryCall1(ctx, s.layer, func() (store.UserVisibilityMatch, error) {
 		return s.UserStore.MatchVisibility(ctx, userID, visibility)
 	})
 }
 
-func (s *externalIdentityStore) Get(ctx context.Context, id string) (*model.ExternalIdentity, error) {
+func (s *externalIdentityStore) Get(ctx context.Context, id model.ExternalIdentityID) (*model.ExternalIdentity, error) {
 	return retryCall1(ctx, s.layer, func() (*model.ExternalIdentity, error) { return s.ExternalIdentityStore.Get(ctx, id) })
 }
 func (s *externalIdentityStore) GetByProviderSubject(ctx context.Context, providerID, subject string) (*model.ExternalIdentity, error) {
@@ -639,7 +639,7 @@ func (s *externalIdentityStore) GetByProviderSubject(ctx context.Context, provid
 		return s.ExternalIdentityStore.GetByProviderSubject(ctx, providerID, subject)
 	})
 }
-func (s *externalIdentityStore) ListByUser(ctx context.Context, userID string) ([]*model.ExternalIdentity, error) {
+func (s *externalIdentityStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ExternalIdentity, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.ExternalIdentity, error) {
 		return s.ExternalIdentityStore.ListByUser(ctx, userID)
 	})
@@ -657,21 +657,21 @@ func (s *userTokenStore) GetByHash(ctx context.Context, hash string, purpose mod
 	})
 }
 
-func (s *personalAccessTokenStore) Get(ctx context.Context, id string) (*model.PersonalAccessToken, error) {
+func (s *personalAccessTokenStore) Get(ctx context.Context, id model.PersonalAccessTokenID) (*model.PersonalAccessToken, error) {
 	return retryCall1(ctx, s.layer, func() (*model.PersonalAccessToken, error) {
 		return s.PersonalAccessTokenStore.Get(ctx, id)
 	})
 }
-func (s *personalAccessTokenStore) ListByUser(ctx context.Context, userID string) ([]*model.PersonalAccessToken, error) {
+func (s *personalAccessTokenStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.PersonalAccessToken, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.PersonalAccessToken, error) {
 		return s.PersonalAccessTokenStore.ListByUser(ctx, userID)
 	})
 }
 
-func (s *mfaStore) GetByUser(ctx context.Context, userID string) (*model.MFACredential, error) {
+func (s *mfaStore) GetByUser(ctx context.Context, userID model.UserID) (*model.MFACredential, error) {
 	return retryCall1(ctx, s.layer, func() (*model.MFACredential, error) { return s.MFAStore.GetByUser(ctx, userID) })
 }
-func (s *mfaStore) CountRecoveryCodes(ctx context.Context, userID string) (int, error) {
+func (s *mfaStore) CountRecoveryCodes(ctx context.Context, userID model.UserID) (int, error) {
 	return retryCall1(ctx, s.layer, func() (int, error) { return s.MFAStore.CountRecoveryCodes(ctx, userID) })
 }
 
@@ -723,19 +723,19 @@ func (s *classMemberStore) ListActiveByUser(ctx context.Context, userID model.Us
 	})
 }
 
-func (s *passwordCredentialStore) GetByUser(ctx context.Context, userID string) (*model.PasswordCredential, error) {
+func (s *passwordCredentialStore) GetByUser(ctx context.Context, userID model.UserID) (*model.PasswordCredential, error) {
 	return retryCall1(ctx, s.layer, func() (*model.PasswordCredential, error) {
 		return s.PasswordCredentialStore.GetByUser(ctx, userID)
 	})
 }
 
-func (s *sessionStore) Get(ctx context.Context, id string) (*model.Session, error) {
+func (s *sessionStore) Get(ctx context.Context, id model.SessionID) (*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Session, error) { return s.SessionStore.Get(ctx, id) })
 }
-func (s *sessionStore) ListByUser(ctx context.Context, userID string) ([]*model.Session, error) {
+func (s *sessionStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) { return s.SessionStore.ListByUser(ctx, userID) })
 }
-func (s *sessionStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.Session, error) {
+func (s *sessionStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) {
 		return s.SessionStore.ListActiveByUser(ctx, userID, at)
 	})
@@ -747,28 +747,28 @@ func (s *sessionCredentialStore) GetSessionByTokenHash(ctx context.Context, hash
 	})
 }
 
-func (s *roleStore) Get(ctx context.Context, id string) (*model.Role, error) {
+func (s *roleStore) Get(ctx context.Context, id model.RoleID) (*model.Role, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Role, error) { return s.RoleStore.Get(ctx, id) })
 }
 func (s *roleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
 	return retryCall1(ctx, s.layer, func() (*model.Role, error) { return s.RoleStore.GetByName(ctx, name) })
 }
-func (s *roleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role, error) {
-	return retryCall1(ctx, s.layer, func() ([]*model.Role, error) { return s.RoleStore.GetByIds(ctx, ids) })
+func (s *roleStore) GetByIDs(ctx context.Context, ids []model.RoleID) ([]*model.Role, error) {
+	return retryCall1(ctx, s.layer, func() ([]*model.Role, error) { return s.RoleStore.GetByIDs(ctx, ids) })
 }
 func (s *roleStore) List(ctx context.Context) ([]*model.Role, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Role, error) { return s.RoleStore.List(ctx) })
 }
 
-func (s *roleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
+func (s *roleBindingStore) Get(ctx context.Context, id model.RoleBindingID) (*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() (*model.RoleBinding, error) { return s.RoleBindingStore.Get(ctx, id) })
 }
-func (s *roleBindingStore) ListByUser(ctx context.Context, userID string) ([]*model.RoleBinding, error) {
+func (s *roleBindingStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
 		return s.RoleBindingStore.ListByUser(ctx, userID)
 	})
 }
-func (s *roleBindingStore) ListVisibleByUser(ctx context.Context, userID string, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+func (s *roleBindingStore) ListVisibleByUser(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
 		return s.RoleBindingStore.ListVisibleByUser(ctx, userID, visibility)
 	})
@@ -778,7 +778,7 @@ func (s *roleBindingStore) ListByScope(ctx context.Context, scopeType model.Role
 		return s.RoleBindingStore.ListByScope(ctx, scopeType, scopeID)
 	})
 }
-func (s *roleBindingStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.RoleBinding, error) {
+func (s *roleBindingStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
 		return s.RoleBindingStore.ListActiveByUser(ctx, userID, at)
 	})

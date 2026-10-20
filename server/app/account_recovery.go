@@ -130,7 +130,7 @@ func (s *accountTokenService) RequestEmailVerification(
 	); err != nil {
 		return err
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		return accountRecoveryStoreFailure(err)
 	}
@@ -224,7 +224,7 @@ func (s *accountTokenService) RequestPasswordReset(
 	if !user.IsActive() {
 		return nil
 	}
-	if _, err := s.passwords.GetByUser(ctx, user.ID.String()); err != nil {
+	if _, err = s.passwords.GetByUser(ctx, user.ID); err != nil {
 		if !store.IsNotFound(err) {
 			s.logHiddenRecoveryFailure(ctx, "password credential lookup failed", err)
 		}
@@ -362,7 +362,7 @@ func (s *accountTokenService) CompletePasswordReset(
 		}
 		return nil, accountRecoveryStoreFailure(err)
 	}
-	user, err := s.users.Get(ctx, token.UserID.String())
+	user, err := s.users.Get(ctx, token.UserID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return nil, invalidAccountCredential()

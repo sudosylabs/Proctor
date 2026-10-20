@@ -178,7 +178,7 @@ func (s *mfaMechanics) consumeSecondFactor(
 	if err != nil {
 		return err
 	}
-	if err := mfaPersistence.ConsumeSecondFactor(ctx, userID, proof.step, proof.recoveryHash, now.UnixMilli()); err != nil {
+	if err := mfaPersistence.ConsumeSecondFactor(ctx, model.UserID(userID), proof.step, proof.recoveryHash, now.UnixMilli()); err != nil {
 		if store.IsNotFound(err) {
 			return mfaInvalidCodeError()
 		}
@@ -196,7 +196,7 @@ type mfaFactorProof struct {
 // Verification does not consume a factor. The owning aggregate commits replay
 // protection together with the Session transition and its required audit.
 func (s *mfaMechanics) verifySecondFactor(ctx context.Context, persistence store.MFAStore, userID, code string, now time.Time) (mfaFactorProof, error) {
-	credential, err := persistence.GetByUser(ctx, userID)
+	credential, err := persistence.GetByUser(ctx, model.UserID(userID))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return mfaFactorProof{}, mfaInvalidCodeError()

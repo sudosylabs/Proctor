@@ -145,6 +145,11 @@ func NewPasswordCredentialID() PasswordCredentialID { return PasswordCredentialI
 // NewPersonalAccessTokenID returns a freshly generated personal-access-token identifier.
 func NewPersonalAccessTokenID() PersonalAccessTokenID { return PersonalAccessTokenID(NewId()) }
 
+// NewPersonalAccessTokenPreparationID returns a freshly generated personal-access-token-preparation identifier.
+func NewPersonalAccessTokenPreparationID() PersonalAccessTokenPreparationID {
+	return PersonalAccessTokenPreparationID(NewId())
+}
+
 // NewUserTokenID returns a freshly generated user-token identifier.
 func NewUserTokenID() UserTokenID { return UserTokenID(NewId()) }
 
@@ -185,6 +190,11 @@ func NewFileRenditionID() FileRenditionID { return FileRenditionID(NewId()) }
 
 // NewUploadLeaseID returns a freshly generated upload-lease identifier.
 func NewUploadLeaseID() UploadLeaseID { return UploadLeaseID(NewId()) }
+
+// NewAdministratorRecoveryRecordID returns a freshly generated administrator-recovery-record identifier.
+func NewAdministratorRecoveryRecordID() AdministratorRecoveryRecordID {
+	return AdministratorRecoveryRecordID(NewId())
+}
 
 // ParseInstitutionID validates and converts the shared identifier representation.
 func ParseInstitutionID(value string) (InstitutionID, error) {
@@ -406,6 +416,11 @@ func ParsePersonalAccessTokenID(value string) (PersonalAccessTokenID, error) {
 	return parseID[PersonalAccessTokenID](value, "personal_access_token_id")
 }
 
+// ParsePersonalAccessTokenPreparationID validates and converts the shared identifier representation.
+func ParsePersonalAccessTokenPreparationID(value string) (PersonalAccessTokenPreparationID, error) {
+	return parseID[PersonalAccessTokenPreparationID](value, "personal_access_token_preparation_id")
+}
+
 // ParseUserTokenID validates and converts the shared identifier representation.
 func ParseUserTokenID(value string) (UserTokenID, error) {
 	return parseID[UserTokenID](value, "user_token_id")
@@ -469,6 +484,11 @@ func ParseFileRenditionID(value string) (FileRenditionID, error) {
 // ParseUploadLeaseID validates and converts the shared identifier representation.
 func ParseUploadLeaseID(value string) (UploadLeaseID, error) {
 	return parseID[UploadLeaseID](value, "upload_lease_id")
+}
+
+// ParseAdministratorRecoveryRecordID validates and converts the shared identifier representation.
+func ParseAdministratorRecoveryRecordID(value string) (AdministratorRecoveryRecordID, error) {
+	return parseID[AdministratorRecoveryRecordID](value, "administrator_recovery_record_id")
 }
 
 // IsZero reports whether the institution is the empty zero value.
@@ -603,6 +623,9 @@ func (id PasswordCredentialID) IsZero() bool { return id == "" }
 // IsZero reports whether the personal-access-token is the empty zero value.
 func (id PersonalAccessTokenID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the personal-access-token-preparation is the empty zero value.
+func (id PersonalAccessTokenPreparationID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the user-token is the empty zero value.
 func (id UserTokenID) IsZero() bool { return id == "" }
 
@@ -641,6 +664,9 @@ func (id FileRenditionID) IsZero() bool { return id == "" }
 
 // IsZero reports whether the upload-lease is the empty zero value.
 func (id UploadLeaseID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the administrator-recovery-record is the empty zero value.
+func (id AdministratorRecoveryRecordID) IsZero() bool { return id == "" }
 
 // IsValid reports whether the institution is a canonical non-zero ID.
 func (id InstitutionID) IsValid() bool { return IsValidId(string(id)) }
@@ -774,6 +800,9 @@ func (id PasswordCredentialID) IsValid() bool { return IsValidId(string(id)) }
 // IsValid reports whether the personal-access-token is a canonical non-zero ID.
 func (id PersonalAccessTokenID) IsValid() bool { return IsValidId(string(id)) }
 
+// IsValid reports whether the personal-access-token-preparation is a canonical non-zero ID.
+func (id PersonalAccessTokenPreparationID) IsValid() bool { return IsValidId(string(id)) }
+
 // IsValid reports whether the user-token is a canonical non-zero ID.
 func (id UserTokenID) IsValid() bool { return IsValidId(string(id)) }
 
@@ -812,6 +841,9 @@ func (id FileRenditionID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the upload-lease is a canonical non-zero ID.
 func (id UploadLeaseID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the administrator-recovery-record is a canonical non-zero ID.
+func (id AdministratorRecoveryRecordID) IsValid() bool { return IsValidId(string(id)) }
 
 // String returns the institution wire/database representation.
 func (id InstitutionID) String() string { return string(id) }
@@ -945,6 +977,9 @@ func (id PasswordCredentialID) String() string { return string(id) }
 // String returns the personal-access-token wire/database representation.
 func (id PersonalAccessTokenID) String() string { return string(id) }
 
+// String returns the personal-access-token-preparation wire/database representation.
+func (id PersonalAccessTokenPreparationID) String() string { return string(id) }
+
 // String returns the user-token wire/database representation.
 func (id UserTokenID) String() string { return string(id) }
 
@@ -983,6 +1018,9 @@ func (id FileRenditionID) String() string { return string(id) }
 
 // String returns the upload-lease wire/database representation.
 func (id UploadLeaseID) String() string { return string(id) }
+
+// String returns the administrator-recovery-record wire/database representation.
+func (id AdministratorRecoveryRecordID) String() string { return string(id) }
 
 // MarshalText encodes the institution as its canonical string.
 func (id InstitutionID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -1116,6 +1154,9 @@ func (id PasswordCredentialID) MarshalText() ([]byte, error) { return marshalID(
 // MarshalText encodes the personal-access-token as its canonical string.
 func (id PersonalAccessTokenID) MarshalText() ([]byte, error) { return marshalID(id) }
 
+// MarshalText encodes the personal-access-token-preparation as its canonical string.
+func (id PersonalAccessTokenPreparationID) MarshalText() ([]byte, error) { return marshalID(id) }
+
 // MarshalText encodes the user-token as its canonical string.
 func (id UserTokenID) MarshalText() ([]byte, error) { return marshalID(id) }
 
@@ -1154,6 +1195,9 @@ func (id FileRenditionID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the upload-lease as its canonical string.
 func (id UploadLeaseID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the administrator-recovery-record as its canonical string.
+func (id AdministratorRecoveryRecordID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // UnmarshalText decodes and validates the institution when non-empty.
 func (id *InstitutionID) UnmarshalText(data []byte) error {
@@ -1375,6 +1419,11 @@ func (id *PersonalAccessTokenID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParsePersonalAccessTokenID)
 }
 
+// UnmarshalText decodes and validates the personal-access-token-preparation when non-empty.
+func (id *PersonalAccessTokenPreparationID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParsePersonalAccessTokenPreparationID)
+}
+
 // UnmarshalText decodes and validates the user-token when non-empty.
 func (id *UserTokenID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseUserTokenID)
@@ -1438,6 +1487,11 @@ func (id *FileRenditionID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the upload-lease when non-empty.
 func (id *UploadLeaseID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseUploadLeaseID)
+}
+
+// UnmarshalText decodes and validates the administrator-recovery-record when non-empty.
+func (id *AdministratorRecoveryRecordID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseAdministratorRecoveryRecordID)
 }
 
 // MarshalJSON encodes the institution as a JSON string.
@@ -1572,6 +1626,9 @@ func (id PasswordCredentialID) MarshalJSON() ([]byte, error) { return marshalIDJ
 // MarshalJSON encodes the personal-access-token as a JSON string.
 func (id PersonalAccessTokenID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the personal-access-token-preparation as a JSON string.
+func (id PersonalAccessTokenPreparationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the user-token as a JSON string.
 func (id UserTokenID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1610,6 +1667,9 @@ func (id FileRenditionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(i
 
 // MarshalJSON encodes the upload-lease as a JSON string.
 func (id UploadLeaseID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the administrator-recovery-record as a JSON string.
+func (id AdministratorRecoveryRecordID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
 // UnmarshalJSON decodes a JSON string into the institution.
 func (id *InstitutionID) UnmarshalJSON(data []byte) error {
@@ -1831,6 +1891,11 @@ func (id *PersonalAccessTokenID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParsePersonalAccessTokenID)
 }
 
+// UnmarshalJSON decodes a JSON string into the personal-access-token-preparation.
+func (id *PersonalAccessTokenPreparationID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParsePersonalAccessTokenPreparationID)
+}
+
 // UnmarshalJSON decodes a JSON string into the user-token.
 func (id *UserTokenID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseUserTokenID)
@@ -1894,4 +1959,9 @@ func (id *FileRenditionID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the upload-lease.
 func (id *UploadLeaseID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseUploadLeaseID)
+}
+
+// UnmarshalJSON decodes a JSON string into the administrator-recovery-record.
+func (id *AdministratorRecoveryRecordID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseAdministratorRecoveryRecordID)
 }

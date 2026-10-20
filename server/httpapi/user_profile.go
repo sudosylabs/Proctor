@@ -290,7 +290,7 @@ func (module userProfileResourceModule) context(request operationRequest) (opera
 }
 
 func (module userProfileResourceModule) changeEmail(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -306,7 +306,7 @@ func (module userProfileResourceModule) changeEmail(request operationRequest) (o
 }
 
 func (module userProfileResourceModule) verifyEmail(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -348,7 +348,7 @@ func userProfilePrincipalMutationCodes(extra ...string) []string {
 }
 
 func (module userProfileResourceModule) uploadPicture(request operationRequest) (protocolResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -364,7 +364,7 @@ func (module userProfileResourceModule) uploadPicture(request operationRequest) 
 }
 
 func (module userProfileResourceModule) removePicture(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -398,7 +398,7 @@ func profilePictureIfMatch(header string, required bool) (string, error) {
 }
 
 func (module userProfileResourceModule) downloadPicture(request operationRequest) (protocolResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return protocolResult{}, err
 	}
@@ -450,7 +450,7 @@ func (module userProfileResourceModule) search(request operationRequest) (operat
 }
 
 func (module userProfileResourceModule) current(request operationRequest) (operationResult, error) {
-	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID.String()})
+	user, err := module.profiles.GetUserProfile(request.context, request.invocation(), application.GetUserProfileQuery{ID: request.principal.UserID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -458,7 +458,7 @@ func (module userProfileResourceModule) current(request operationRequest) (opera
 }
 
 func (module userProfileResourceModule) get(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -470,7 +470,7 @@ func (module userProfileResourceModule) get(request operationRequest) (operation
 }
 
 func (module userProfileResourceModule) update(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}

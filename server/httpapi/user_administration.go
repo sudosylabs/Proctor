@@ -63,7 +63,7 @@ func (module userAdministrationResourceModule) enable(request operationRequest) 
 }
 
 func (module userAdministrationResourceModule) setEnabled(request operationRequest, enabled bool) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -79,7 +79,7 @@ func (module userAdministrationResourceModule) setEnabled(request operationReque
 }
 
 func (module userAdministrationResourceModule) revokeAllSessions(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -95,7 +95,7 @@ func (module userAdministrationResourceModule) revokeAllSessions(request operati
 }
 
 func (module userAdministrationResourceModule) listSessions(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -122,11 +122,11 @@ func (module userAdministrationResourceModule) listSessions(request operationReq
 }
 
 func (module userAdministrationResourceModule) revokeSession(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	sessionID, err := request.params.RequireSessionId()
+	sessionID, err := request.params.RequireSessionID()
 	if err != nil {
 		return operationResult{}, err
 	}

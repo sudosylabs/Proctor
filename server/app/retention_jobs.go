@@ -35,7 +35,7 @@ func (d retentionNoticeDispatcher) DispatchRetentionNotice(ctx context.Context, 
 		input.FailureCode = "mail.preparation_unavailable"
 		return d.records.CompleteNotice(ctx, input)
 	}
-	user, err := d.users.Get(ctx, notice.RecipientUserID.String())
+	user, err := d.users.Get(ctx, notice.RecipientUserID)
 	if err != nil || user == nil {
 		input.FailureCode = "mail.recipient_unavailable"
 		return d.records.CompleteNotice(ctx, input)

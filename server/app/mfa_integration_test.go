@@ -122,7 +122,7 @@ func TestMFAIntegration(t *testing.T) {
 		setupResponse.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("MFA setup = %#v", setup)
 	}
-	persisted, err := persistence.MFA().GetByUser(context.Background(), user.ID.String())
+	persisted, err := persistence.MFA().GetByUser(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

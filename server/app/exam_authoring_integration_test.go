@@ -176,7 +176,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatalf("Manager list = %#v, %v", managers, appErr)
 	}
 	managerBindingEndedAt := model.GetMillis() - 500
-	if _, err := persistence.RoleBinding().End(ctx, managerBinding.ID.String(), managerBindingEndedAt); err != nil {
+	if _, err = persistence.RoleBinding().End(ctx, managerBinding.ID, managerBindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
@@ -201,7 +201,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
 		t.Fatal(err)
 	}
-	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, application.SetUserEnabledCommand{ID: managerUser.ID.String(), Enabled: false})
+	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, application.SetUserEnabledCommand{ID: managerUser.ID, Enabled: false})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -217,7 +217,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: disabledManager.ID.String(), ExpectedRevision: disabledManager.Revision, Disabled: false,
+		ID: disabledManager.ID, ExpectedRevision: disabledManager.Revision, Disabled: false,
 		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID.String(), AuditAt: reenabledAt,
 	})); err != nil {
 		t.Fatal(err)
@@ -260,7 +260,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindingEndedAt := model.GetMillis() - 50
-	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), bindingEndedAt); err != nil {
+	if _, err = persistence.RoleBinding().End(ctx, binding.ID, bindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
@@ -316,7 +316,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatalf("override catalog = %#v, %v", overridePage, appErr)
 	}
 	viewOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: outsider.ID.String(), Action: string(model.ActionExamViewOverride),
+		ActorID: outsider.ID, Action: string(model.ActionExamViewOverride),
 		Resource: &model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
@@ -333,7 +333,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatalf("archived Exam = %#v", archived)
 	}
 	manageOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: outsider.ID.String(), Action: string(model.ActionExamManageOverride),
+		ActorID: outsider.ID, Action: string(model.ActionExamManageOverride),
 		Resource: &model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})

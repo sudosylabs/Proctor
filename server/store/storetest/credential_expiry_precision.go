@@ -66,8 +66,8 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 		for _, at := range []time.Time{{}, time.Unix(-1, 0), time.Unix(0, 0), time.Unix(0, 1)} {
 			userID, sessionID := model.NewUserID(), model.NewSessionID()
 			_, err := ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-				CredentialID: model.NewMFACredentialID().String(), UserID: userID.String(),
-				SessionID: sessionID.String(), At: at, TimeStep: 1,
+				CredentialID: model.NewMFACredentialID(), UserID: userID,
+				SessionID: sessionID, At: at, TimeStep: 1,
 				RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 				AuditEventID:  model.NewAuditEventID().String(), AuditAt: model.GetMillis(),
 			})
@@ -75,7 +75,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 			if !errors.As(err, &invalid) || invalid.Entity != "mfa_credential" || invalid.Field != "activate" {
 				t.Fatalf("Activate(%s) = %v, want invalid decision instant", at, err)
 			}
-			_, err = ss.MFA().UpgradeSession(ctx, sessionID.String(), userID.String(), at)
+			_, err = ss.MFA().UpgradeSession(ctx, sessionID, userID, at)
 			if !errors.As(err, &invalid) || invalid.Entity != "session" || invalid.Field != "upgrade_mfa" {
 				t.Fatalf("UpgradeSession(%s) = %v, want invalid decision instant", at, err)
 			}
@@ -104,7 +104,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				requireNoError(t, err)
 				at := deadline.Add(point.offset).In(time.FixedZone("test", 2*60*60))
 				if operation == "Session upgrade" {
-					_, err = ss.MFA().UpgradeSession(ctx, session.ID.String(), user.ID.String(), at)
+					_, err = ss.MFA().UpgradeSession(ctx, session.ID, user.ID, at)
 				} else {
 					pending, saveErr := ss.MFA().SavePending(ctx, &model.MFACredential{
 						UserID: user.ID, State: model.MFAStatePending,
@@ -115,12 +115,12 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 					audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at.UnixMilli())
 					_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 						Principal: mfaSessionPrincipal(session, savedCredentials[0]), RecentAuthenticationTTL: time.Hour,
-						CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
+						CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 						RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-						SessionID:     session.ID.String(), At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
+						SessionID:     session.ID, At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
 					})
 					if !point.valid {
-						current, getErr := ss.MFA().GetByUser(ctx, user.ID.String())
+						current, getErr := ss.MFA().GetByUser(ctx, user.ID)
 						requireNoError(t, getErr)
 						if current.State != model.MFAStatePending {
 							t.Fatal("expired activation changed the pending credential")
@@ -134,7 +134,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				} else {
 					requireNoError(t, err)
 				}
-				current, getErr := ss.Session().Get(ctx, session.ID.String())
+				current, getErr := ss.Session().Get(ctx, session.ID)
 				requireNoError(t, getErr)
 				if point.valid {
 					if current.AuthenticationStrength != model.AuthenticationMultiFactor || (operation == "Session upgrade" && !current.MFACompletedAt.Time.Equal(model.TimeUTC(at))) || (operation == "activation" && (current.MFACompletedAt.Time.Before(session.CreatedAt) || current.MFACompletedAt.Time.After(model.NowUTC()))) {

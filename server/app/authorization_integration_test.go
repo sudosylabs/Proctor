@@ -277,7 +277,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	if permErr != nil || allowed {
 		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
 	}
-	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
+	if _, err := persistence.RoleBinding().End(ctx, binding.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	allowed, permErr = helper.App.Can(
@@ -365,7 +365,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
 	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("unbound cross-user read error = %v", err)
 	}
@@ -386,7 +386,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	}
 
 	visible, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
 	)
 	if err != nil || visible.ID != target.ID {
 		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
@@ -399,17 +399,17 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
 	}
 
-	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis()); err != nil {
+	if _, err = persistence.RoleBinding().End(ctx, binding.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := helper.App.GetUserProfile(
-		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
+		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID},
 	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("ended binding cross-user read error = %v", err)
 	}
 
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: viewer.ID.String(),
+		ActorID: viewer.ID,
 		Action:  string(model.ActionUserView),
 		Resource: &model.Resource{
 			Type: model.ResourceUser,
@@ -579,7 +579,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.Role().Archive(ctx, archivedTargetRole.ID.String(), model.GetMillis()); err != nil {
+	if _, err = persistence.Role().Archive(ctx, archivedTargetRole.ID, model.GetMillis()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
@@ -751,7 +751,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatalf("descendant user read status = %d: %s", unitRead.Code, unitRead.Body.String())
 	}
 	readDecisions, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: viewer.ID.String(), Action: string(model.ActionUserView),
+		ActorID: viewer.ID, Action: string(model.ActionUserView),
 		Resource: &model.Resource{Type: model.ResourceUser, ID: unitUser.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
@@ -773,7 +773,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		t.Fatal(err)
 	}
 	if _, err = persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: unitUser.ID.String(), ExpectedRevision: unitUser.Revision, Disabled: true,
+		ID: unitUser.ID, ExpectedRevision: unitUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
 	})); err != nil {
@@ -984,7 +984,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	}
 	assertInstitutionAcademicAudits("personal access token", tokenBody.Credential)
 	decisions, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: institutionAcademicViewer.ID.String(), Action: string(model.ActionAcademicAuditView), Limit: 10,
+		ActorID: institutionAcademicViewer.ID, Action: string(model.ActionAcademicAuditView), Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {

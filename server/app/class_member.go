@@ -70,7 +70,7 @@ type classMemberClassStore interface {
 }
 
 type classMemberUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type classMemberAuthorizer interface {
@@ -372,7 +372,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	recipient := &model.User{ID: userID, Revision: 1}
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, userID.String())
+		recipient, err = s.users.Get(ctx, userID)
 		if err != nil {
 			return nil, classMemberStoreErrors.Translate(err)
 		}
@@ -531,7 +531,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	recipient, err := s.users.Get(ctx, current.UserID.String())
+	recipient, err := s.users.Get(ctx, current.UserID)
 	if err != nil {
 		return nil, classMemberStoreErrors.Translate(err)
 	}

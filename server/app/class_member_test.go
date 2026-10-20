@@ -79,7 +79,7 @@ type classMemberUserStoreFake struct {
 	value  *model.User
 }
 
-func (s *classMemberUserStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *classMemberUserStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	*s.events = append(*s.events, "get-user")
 	return s.value, nil
 }

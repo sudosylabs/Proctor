@@ -43,12 +43,12 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 	audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, at.UnixMilli())
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
-		CredentialID: pending.ID.String(), UserID: userID.String(), TimeStep: time.Now().Unix() / 30,
+		CredentialID: pending.ID, UserID: userID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     session.ID.String(), At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
+		SessionID:     session.ID, At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
 	})
 	requireNoError(t, err)
-	passwordBefore, err := ss.PasswordCredential().GetByUser(ctx, userID.String())
+	passwordBefore, err := ss.PasswordCredential().GetByUser(ctx, userID)
 	requireNoError(t, err)
 	policyBefore, err := ss.AccessPolicy().Get(ctx, 0)
 	requireNoError(t, err)
@@ -56,7 +56,7 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 	requireNoError(t, err)
 	assertUnchanged := func(t *testing.T) {
 		t.Helper()
-		current, getErr := ss.MFA().GetByUser(ctx, userID.String())
+		current, getErr := ss.MFA().GetByUser(ctx, userID)
 		requireNoError(t, getErr)
 		if current.ID != pending.ID || !current.IsActive() {
 			t.Fatalf("rejected reset changed MFA=%#v", current)
@@ -66,12 +66,12 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 		if state.Generation != 0 || state.ReenrollmentRequired {
 			t.Fatalf("rejected reset changed generation=%#v", state)
 		}
-		currentSession, getErr := ss.Session().Get(ctx, session.ID.String())
+		currentSession, getErr := ss.Session().Get(ctx, session.ID)
 		requireNoError(t, getErr)
 		if currentSession.RevokedAt.Valid {
 			t.Fatal("rejected reset revoked Session")
 		}
-		currentToken, getErr := ss.PersonalAccessToken().Get(ctx, token.ID.String())
+		currentToken, getErr := ss.PersonalAccessToken().Get(ctx, token.ID)
 		requireNoError(t, getErr)
 		if currentToken.RevokedAt.Valid {
 			t.Fatal("rejected reset revoked PAT")
@@ -129,28 +129,28 @@ func TestAdministratorMFAResetStore(t *testing.T, ss store.Store, probes ...Admi
 
 	result, err := ss.Installation().ResetAdministratorMFA(ctx, input)
 	requireNoError(t, err)
-	if result == nil || !model.IsValidId(result.RecordID) || result.Recovery == nil || !result.Recovery.ReenrollmentRequired || result.Recovery.Generation != 1 {
+	if result == nil || !result.RecordID.IsValid() || result.Recovery == nil || !result.Recovery.ReenrollmentRequired || result.Recovery.Generation != 1 {
 		t.Fatalf("reset result=%#v", result)
 	}
-	if _, err = ss.MFA().GetByUser(ctx, userID.String()); !store.IsNotFound(err) {
+	if _, err = ss.MFA().GetByUser(ctx, userID); !store.IsNotFound(err) {
 		t.Fatalf("reset retained MFA error=%v", err)
 	}
-	count, err := ss.MFA().CountRecoveryCodes(ctx, userID.String())
+	count, err := ss.MFA().CountRecoveryCodes(ctx, userID)
 	requireNoError(t, err)
 	if count != 0 {
 		t.Fatalf("reset retained %d recovery codes", count)
 	}
-	currentSession, err := ss.Session().Get(ctx, session.ID.String())
+	currentSession, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if !currentSession.RevokedAt.Valid || currentSession.RevocationReason != model.SessionRevocationMFAReset {
 		t.Fatalf("reset Session=%#v", currentSession)
 	}
-	currentToken, err := ss.PersonalAccessToken().Get(ctx, token.ID.String())
+	currentToken, err := ss.PersonalAccessToken().Get(ctx, token.ID)
 	requireNoError(t, err)
 	if !currentToken.RevokedAt.Valid {
 		t.Fatal("reset retained PAT")
 	}
-	passwordAfter, err := ss.PasswordCredential().GetByUser(ctx, userID.String())
+	passwordAfter, err := ss.PasswordCredential().GetByUser(ctx, userID)
 	requireNoError(t, err)
 	policyAfter, err := ss.AccessPolicy().Get(ctx, 0)
 	requireNoError(t, err)
@@ -277,7 +277,7 @@ func TestAdministratorMFAResetExternalStore(t *testing.T, ss store.Store) {
 	if currentPolicy.Policy.LocalLoginEnabled || currentPolicy.Policy.Revision != snapshot.Policy.Revision+1 || currentIdentity.ID != identity.ID || currentIdentity.UserID != identity.UserID {
 		t.Fatal("external-only reset changed primary identity or policy")
 	}
-	if _, err = ss.PasswordCredential().GetByUser(ctx, input.UserID.String()); !store.IsNotFound(err) {
+	if _, err = ss.PasswordCredential().GetByUser(ctx, input.UserID); !store.IsNotFound(err) {
 		t.Fatalf("external-only reset recreated a password credential: %v", err)
 	}
 }

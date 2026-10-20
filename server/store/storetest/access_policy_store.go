@@ -85,7 +85,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	// has a password, but local login is now disabled by policy.
 	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, bootstrap.Administrator.ID.String())
 	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: bootstrap.Administrator.ID.String(), ExpectedRevision: bootstrap.Administrator.Revision,
+		ID: bootstrap.Administrator.ID, ExpectedRevision: bootstrap.Administrator.Revision,
 		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAttempt.ID.String(), AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
 	}))
@@ -93,7 +93,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	if !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "users_last_system_admin" {
 		t.Fatalf("disable only usable administrator path error = %v", err)
 	}
-	if _, err = ss.RoleBinding().End(ctx, bootstrap.RoleBinding.ID.String(), model.GetMillis()); !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "role_bindings_last_system_admin" {
+	if _, err = ss.RoleBinding().End(ctx, bootstrap.RoleBinding.ID, model.GetMillis()); !errors.As(err, &lastPathConflict) || lastPathConflict.Constraint != "role_bindings_last_system_admin" {
 		t.Fatalf("end only usable administrator path binding error = %v", err)
 	}
 	// Durable policy retains campus while deployment capability snapshots may
@@ -102,7 +102,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	// only by LocalLoginEnabled.
 	removedProviderAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
 	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: localOnlyResult.User.ID.String(), ExpectedRevision: localOnlyResult.User.Revision,
+		ID: localOnlyResult.User.ID, ExpectedRevision: localOnlyResult.User.Revision,
 		Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: removedProviderAttempt.ID.String(), AuditAt: model.MillisFromTime(removedProviderAttempt.CreatedAt),
 	}))
@@ -111,7 +111,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	}
 	availableProviderAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
 	disabledLocalOnly, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: localOnlyResult.User.ID.String(), ExpectedRevision: localOnlyResult.User.Revision,
+		ID: localOnlyResult.User.ID, ExpectedRevision: localOnlyResult.User.Revision,
 		Disabled: true, Capabilities: capabilities, ChangedAt: model.GetMillis(),
 		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: availableProviderAttempt.ID.String(),
 		AuditAt: model.MillisFromTime(availableProviderAttempt.CreatedAt),
@@ -119,7 +119,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	requireNoError(t, err)
 	reenableLocalOnlyAttempt := saveUserProfileAuditAttempt(t, ctx, ss, localOnlyResult.User.ID.String())
 	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: localOnlyResult.User.ID.String(), ExpectedRevision: disabledLocalOnly.User.Revision,
+		ID: localOnlyResult.User.ID, ExpectedRevision: disabledLocalOnly.User.Revision,
 		Disabled: false, ChangedAt: model.GetMillis(), AuditEventID: reenableLocalOnlyAttempt.ID.String(),
 		AuditAt: model.MillisFromTime(reenableLocalOnlyAttempt.CreatedAt),
 	}))
@@ -143,7 +143,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	_, err = ss.Audit().Complete(ctx, conflictReplacement.AuditEventID, model.AuditStatusFail, "idempotency.conflict", nil, conflictReplacement.AuditAt)
 	requireNoError(t, err)
 	for _, id := range []model.SessionID{passwordSession.ID} {
-		preserved, getErr := ss.Session().Get(ctx, id.String())
+		preserved, getErr := ss.Session().Get(ctx, id)
 		requireNoError(t, getErr)
 		if preserved.RevokedAt.Valid {
 			t.Fatalf("revoke_existing_sessions=false revoked %s", id)
@@ -202,9 +202,9 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	if !revocationReplay.Replayed || len(revocationReplay.SessionRevocations) != 0 {
 		t.Fatalf("revocation replay = %#v", revocationReplay)
 	}
-	revokedPassword, err := ss.Session().Get(ctx, passwordSession.ID.String())
+	revokedPassword, err := ss.Session().Get(ctx, passwordSession.ID)
 	requireNoError(t, err)
-	revokedCampus, err := ss.Session().Get(ctx, campusSession.ID.String())
+	revokedCampus, err := ss.Session().Get(ctx, campusSession.ID)
 	requireNoError(t, err)
 	if revokedPassword.RevokedAt.Valid || !revokedCampus.RevokedAt.Valid {
 		t.Fatalf("password=%#v campus=%#v", revokedPassword, revokedCampus)
@@ -323,7 +323,7 @@ func testConcurrentAccessPolicyAndAdministratorDisable(t *testing.T, ctx context
 	}()
 	go func() {
 		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: bootstrap.Administrator.ID.String(), ExpectedRevision: bootstrap.Administrator.Revision,
+			ID: bootstrap.Administrator.ID, ExpectedRevision: bootstrap.Administrator.Revision,
 			Disabled: true, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID: disableAttempt.ID.String(), AuditAt: model.MillisFromTime(disableAttempt.CreatedAt),
 		}))

@@ -71,7 +71,7 @@ func (m desktopRegistrationResourceModule) list(request operationRequest) (opera
 }
 
 func (m desktopRegistrationResourceModule) revoke(request operationRequest) (operationResult, error) {
-	registrationID, err := request.params.RequireDesktopRegistrationId()
+	registrationID, err := request.params.RequireDesktopRegistrationID()
 	if err != nil {
 		return operationResult{}, err
 	}

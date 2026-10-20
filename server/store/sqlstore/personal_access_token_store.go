@@ -59,7 +59,7 @@ func (s SQLPersonalAccessTokenStore) Create(
 	input *store.PersonalAccessTokenCreationMutation,
 ) (*store.PersonalAccessTokenMutationResult, error) {
 	if input == nil || input.Token == nil || input.MaximumActive < 1 || input.MinimumLifetime <= 0 ||
-		input.MaximumLifetime < input.MinimumLifetime || !model.IsValidId(input.PreparationID) {
+		input.MaximumLifetime < input.MinimumLifetime || !input.PreparationID.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "create", nil)
 	}
 	candidate := clonePersonalAccessToken(input.Token)
@@ -70,7 +70,7 @@ func (s SQLPersonalAccessTokenStore) Create(
 		if err := lockPersonalAccessTokensForUser(ctx, tx, candidate.UserID.String()); err != nil {
 			return nil, err
 		}
-		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -112,11 +112,8 @@ func (s SQLPersonalAccessTokenStore) Create(
 	})
 }
 
-func (s SQLPersonalAccessTokenStore) Get(
-	ctx context.Context,
-	id string,
-) (*model.PersonalAccessToken, error) {
-	if !model.IsValidId(id) {
+func (s SQLPersonalAccessTokenStore) Get(ctx context.Context, id model.PersonalAccessTokenID) (*model.PersonalAccessToken, error) {
+	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "id", id)
 	}
 	var row personalAccessTokenRow
@@ -128,16 +125,13 @@ func (s SQLPersonalAccessTokenStore) Get(
 		 WHERE id = ? AND archived_at IS NULL`,
 		id,
 	); err != nil {
-		return nil, translateError("personal_access_token", id, err)
+		return nil, translateError("personal_access_token", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLPersonalAccessTokenStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.PersonalAccessToken, error) {
-	if !model.IsValidId(userID) {
+func (s SQLPersonalAccessTokenStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.PersonalAccessToken, error) {
+	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "user_id", userID)
 	}
 	var rows []personalAccessTokenRow
@@ -244,8 +238,8 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 	ctx context.Context,
 	input *store.PersonalAccessTokenStateMutation,
 ) (*store.PersonalAccessTokenMutationResult, error) {
-	if input == nil || !model.IsValidId(input.ID) || !model.IsValidId(input.UserID) ||
-		input.MaximumActive < 1 || !model.IsValidId(input.PreparationID) {
+	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() ||
+		input.MaximumActive < 1 || !input.PreparationID.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "change_state", nil)
 	}
 	key := model.MailTemplateIdentityPersonalAccessTokenEnabled
@@ -253,10 +247,10 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 		key = model.MailTemplateIdentityPersonalAccessTokenDisabled
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token state change with audit", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PersonalAccessTokenMutationResult, error) {
-		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID); err != nil {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
-		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +258,7 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 		if input.Disabled {
 			kind = store.PersonalAccessTokenMutationDisable
 		}
-		if err := requirePersonalAccessTokenPreparation(preparation, kind, input.UserID, input.ID, databaseAt); err != nil {
+		if err = requirePersonalAccessTokenPreparation(preparation, kind, input.UserID.String(), input.ID.String(), databaseAt); err != nil {
 			return nil, err
 		}
 		if err := requireMFARecoveryPATSource(ctx, tx, preparation.UserID, preparation.SessionID.String, databaseAt); err != nil {
@@ -280,7 +274,7 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 		 WHERE id = ? AND user_id = ?
 		   AND archived_at IS NULL AND revoked_at IS NULL AND expires_at > ?
 		 FOR UPDATE`, input.ID, input.UserID, databaseAt); err != nil {
-			return nil, translateError("personal_access_token", input.ID, err)
+			return nil, translateError("personal_access_token", input.ID.String(), err)
 		}
 		if input.Disabled == current.DisabledAt.Valid {
 			currentModel, modelErr := current.model()
@@ -297,7 +291,7 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 			return nil, err
 		}
 		if !input.Disabled {
-			if err := enforcePersonalAccessTokenMaximum(ctx, tx, input.UserID, input.ID, databaseAt, input.MaximumActive); err != nil {
+			if err = enforcePersonalAccessTokenMaximum(ctx, tx, input.UserID.String(), input.ID.String(), databaseAt, input.MaximumActive); err != nil {
 				return nil, err
 			}
 		}
@@ -312,7 +306,7 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 		 RETURNING id, created_at, updated_at, archived_at, user_id, description,
 		           token_hash, scopes, academic_unit_id, expires_at, last_used_at,
 		           disabled_at, revoked_at`, actionAt, disabledAt, input.ID, input.UserID); err != nil {
-			return nil, translateError("personal_access_token", input.ID, err)
+			return nil, translateError("personal_access_token", input.ID.String(), err)
 		}
 		updated, err := current.model()
 		if err != nil {
@@ -336,18 +330,18 @@ func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
 	ctx context.Context,
 	input *store.PersonalAccessTokenRevocation,
 ) (*store.PersonalAccessTokenMutationResult, error) {
-	if input == nil || !model.IsValidId(input.ID) || !model.IsValidId(input.UserID) || !model.IsValidId(input.PreparationID) {
+	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || !input.PreparationID.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "revoke", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token revoke with audit", func(ctx context.Context, tx *sqlxTxWrapper) (*store.PersonalAccessTokenMutationResult, error) {
-		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID); err != nil {
+		if err := lockPersonalAccessTokensForUser(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
-		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID)
+		preparation, databaseAt, err := lockPersonalAccessTokenPreparation(ctx, tx, input.PreparationID.String())
 		if err != nil {
 			return nil, err
 		}
-		if err := requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationRevoke, input.UserID, input.ID, databaseAt); err != nil {
+		if err = requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationRevoke, input.UserID.String(), input.ID.String(), databaseAt); err != nil {
 			return nil, err
 		}
 		if err := requireMFARecoveryPATSource(ctx, tx, preparation.UserID, preparation.SessionID.String, databaseAt); err != nil {
@@ -358,7 +352,7 @@ func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
 		if err := tx.Get(ctx, &row, `SELECT id, created_at, updated_at, archived_at, user_id, description,
 		       token_hash, scopes, academic_unit_id, expires_at, last_used_at, disabled_at, revoked_at
 		  FROM personal_access_tokens WHERE id=? AND user_id=? AND archived_at IS NULL FOR UPDATE`, input.ID, input.UserID); err != nil {
-			return nil, translateError("personal_access_token", input.ID, err)
+			return nil, translateError("personal_access_token", input.ID.String(), err)
 		}
 		if row.RevokedAt.Valid {
 			current, modelErr := row.model()
@@ -374,7 +368,7 @@ func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
 		   SET updated_at = GREATEST(updated_at, created_at, ?), revoked_at = GREATEST(created_at, ?)
 		 WHERE id=? AND user_id=? RETURNING id,created_at,updated_at,archived_at,user_id,description,
 		 token_hash,scopes,academic_unit_id,expires_at,last_used_at,disabled_at,revoked_at`, actionAt, actionAt, input.ID, input.UserID); err != nil {
-			return nil, translateError("personal_access_token", input.ID, err)
+			return nil, translateError("personal_access_token", input.ID.String(), err)
 		}
 		revoked, err := row.model()
 		if err != nil {

@@ -56,7 +56,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 	if err := json.Unmarshal(bootstrap.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	before, err := primaryStore.PasswordCredential().GetByUser(context.Background(), created.Administrator.ID)
+	before, err := primaryStore.PasswordCredential().GetByUser(context.Background(), model.UserID(created.Administrator.ID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 		cancelServing()
 		t.Fatal("offline recovery succeeded while another node was serving")
 	}
-	after, err := secondaryStore.PasswordCredential().GetByUser(context.Background(), created.Administrator.ID)
+	after, err := secondaryStore.PasswordCredential().GetByUser(context.Background(), model.UserID(created.Administrator.ID))
 	if err != nil || after.PasswordHash != before.PasswordHash {
 		cancelServing()
 		t.Fatalf("credential after live-node rejection = %#v, %v", after, err)

@@ -90,7 +90,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
 			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeFromMillis(at+1))
 		ended, err := ss.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{
-			ID: saved.ID.String(), EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
+			ID: saved.ID, EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
 			AuditEventID: endAttempt.ID.String(), AuditAt: at + 1,
 		})
 		requireNoError(t, err)
@@ -127,7 +127,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			requireNoError(t, saveErr)
 			bindings = append(bindings, saved)
 		}
-		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID.String(), store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{root.ID}})
+		visible, err := ss.RoleBinding().ListVisibleByUser(ctx, user.ID, store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{root.ID}})
 		requireNoError(t, err)
 		seen := map[model.RoleBindingID]bool{}
 		for _, binding := range visible {
@@ -154,15 +154,15 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if !binding.ID.IsValid() {
 		t.Fatalf("Save() = %#v", binding)
 	}
-	got, err := ss.RoleBinding().Get(ctx, binding.ID.String())
+	got, err := ss.RoleBinding().Get(ctx, binding.ID)
 	requireNoError(t, err)
-	byUser, err := ss.RoleBinding().ListByUser(ctx, user.ID.String())
+	byUser, err := ss.RoleBinding().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	byScope, err := ss.RoleBinding().ListByScope(
 		ctx, model.RoleScopeInstitution, institution.ID.String(),
 	)
 	requireNoError(t, err)
-	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+1))
+	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+1))
 	requireNoError(t, err)
 	if got.ID != binding.ID || len(byUser) != 1 || len(byScope) != 1 || len(active) != 1 {
 		t.Fatalf("binding queries = %#v/%d/%d/%d", got, len(byUser), len(byScope), len(active))
@@ -174,12 +174,12 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if !store.IsConflict(err) {
 		t.Fatalf("overlapping Save() error = %v", err)
 	}
-	ended, err := ss.RoleBinding().End(ctx, binding.ID.String(), start+2)
+	ended, err := ss.RoleBinding().End(ctx, binding.ID, start+2)
 	requireNoError(t, err)
 	if ended.EndsAt.Millis() != start+2 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+3))
+	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(start+3))
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("active ended bindings = %#v", active)
@@ -204,7 +204,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
-	if _, err := ss.RoleBinding().End(ctx, firstAdmin.ID.String(), start+10); !store.IsConflict(err) {
+	if _, err = ss.RoleBinding().End(ctx, firstAdmin.ID, start+10); !store.IsConflict(err) {
 		t.Fatalf("End(last system administrator) error = %v", err)
 	}
 	secondUser := saveUserWithPassword(t, ctx, ss)
@@ -213,7 +213,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(start),
 	})
 	requireNoError(t, err)
-	if _, err := ss.RoleBinding().End(ctx, firstAdmin.ID.String(), start+10); err != nil {
+	if _, err = ss.RoleBinding().End(ctx, firstAdmin.ID, start+10); err != nil {
 		t.Fatalf("End(system administrator with successor) error = %v", err)
 	}
 	thirdUser := saveUserWithPassword(t, ctx, ss)
@@ -231,7 +231,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer workers.Done()
 			<-startRace
-			_, endErr := ss.RoleBinding().End(ctx, id, start+20)
+			_, endErr := ss.RoleBinding().End(ctx, model.RoleBindingID(id), start+20)
 			endErrors <- endErr
 		}()
 	}
@@ -283,7 +283,7 @@ func testRoleBindingActiveIntervalPrecision(t *testing.T, ss store.Store) {
 		{"after end in same millisecond", end.Add(time.Microsecond), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), test.at)
+			active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID, test.at)
 			requireNoError(t, err)
 			if test.active {
 				if len(active) != 1 || active[0].ID != binding.ID {

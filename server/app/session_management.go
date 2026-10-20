@@ -100,7 +100,7 @@ func (s *selfSessionService) List(
 	}
 	sessions, err := s.sessions.ListActiveByUser(
 		ctx,
-		principal.UserID.String(),
+		principal.UserID,
 		model.TimeUTC(s.now()),
 	)
 	if err != nil {
@@ -130,7 +130,7 @@ func (s *selfSessionService) RevokeOne(
 	if !model.IsValidId(sessionID) {
 		return apperror.New("session.id.invalid").WithField("field", "session_id")
 	}
-	session, err := s.sessions.Get(ctx, sessionID)
+	session, err := s.sessions.Get(ctx, model.SessionID(sessionID))
 	if err != nil {
 		if store.IsNotFound(err) {
 			return apperror.New("session.not_found")
@@ -150,7 +150,7 @@ func (s *selfSessionService) RevokeOne(
 			Value:     map[string]any{"session_id": session.ID.String()},
 		},
 		&store.SessionRevocation{
-			SessionID: session.ID.String(), UserID: principal.UserID.String(),
+			SessionID: session.ID, UserID: principal.UserID,
 			Reason: model.SessionRevocationUserSession,
 		},
 		selfSessionRevocationStoreErrors.Translate,
@@ -181,7 +181,7 @@ func (s *selfSessionService) RevokeAll(
 			Operation: "revoke_own_sessions",
 		},
 		&store.UserSessionsRevocation{
-			UserID: principal.UserID.String(), Reason: model.SessionRevocationUserAllSessions,
+			UserID: principal.UserID, Reason: model.SessionRevocationUserAllSessions,
 		},
 		authenticationUnavailable, nil,
 	)

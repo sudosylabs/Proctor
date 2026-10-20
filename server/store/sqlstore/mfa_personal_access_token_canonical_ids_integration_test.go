@@ -58,7 +58,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 	}
 	patSession := savePersonalAccessTokenMutationSession(t, ctx, persistence, user.ID)
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-		UserID: user.ID.String(), TokenID: token.ID.String(), Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: time.Minute,
+		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationRevoke, Lifetime: time.Minute,
 		Audit: &model.AuditEvent{ActorID: user.ID, SessionID: patSession.ID, Action: "personal_access_token.revoke",
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "constraint-test"},
@@ -80,7 +80,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 		{name: "personal access token id", query: "UPDATE personal_access_tokens SET id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_id_canonical_check"},
 		{name: "personal access token user id", query: "UPDATE personal_access_tokens SET user_id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_user_id_canonical_check"},
 		{name: "personal access token academic unit id", query: "UPDATE personal_access_tokens SET academic_unit_id = 'bad' WHERE id = ?", id: token.ID.String(), constraint: "personal_access_tokens_academic_unit_id_canonical_check"},
-		{name: "personal access token preparation id", query: "UPDATE personal_access_token_mutation_preparations SET id = 'bad' WHERE id = ?", id: preparation.ID, constraint: "personal_access_token_mutation_preparations_id_canonical_check"},
+		{name: "personal access token preparation id", query: "UPDATE personal_access_token_mutation_preparations SET id = 'bad' WHERE id = ?", id: preparation.ID.String(), constraint: "personal_access_token_mutation_preparations_id_canonical_check"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -129,9 +129,9 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, persistence, user, model.MailTemplateIdentityMFAEnabled, activationAt)
 	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
 		Principal: mfaSQLPrincipal(session, sessionCredentials[0]), RecentAuthenticationTTL: time.Hour,
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
+		CredentialID: pending.ID, UserID: user.ID, TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
-		SessionID:     session.ID.String(), At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
+		SessionID:     session.ID, At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
 	})
 	var persisted *persistedStateError
 	if !errors.As(err, &persisted) || persisted.Entity != "mfa_credential" || persisted.Field != "encrypted_secret" {
@@ -145,10 +145,10 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	if state != string(model.MFAStatePending) {
 		t.Fatalf("credential state = %q, want pending after rollback", state)
 	}
-	if count, err := persistence.MFA().CountRecoveryCodes(ctx, user.ID.String()); err != nil || count != 0 {
-		t.Fatalf("recovery codes after rollback = %d, %v; want 0", count, err)
+	if count, countErr := persistence.MFA().CountRecoveryCodes(ctx, user.ID); countErr != nil || count != 0 {
+		t.Fatalf("recovery codes after rollback = %d, %v; want 0", count, countErr)
 	}
-	gotSession, err := persistence.Session().Get(ctx, session.ID.String())
+	gotSession, err := persistence.Session().Get(ctx, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

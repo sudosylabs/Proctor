@@ -121,7 +121,7 @@ func TestRoleBindingResourceOwnsPathCommandAndAuthentication(t *testing.T) {
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	httpAPI = newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: principal}, roleBindingResource(bindings))
 	ended := serveOperatorRequest(httpAPI, http.MethodDelete, path, "", true)
-	if ended.Code != http.StatusOK || bindings.end.ID != bindingID.String() {
+	if ended.Code != http.StatusOK || bindings.end.ID != bindingID {
 		t.Fatalf("end status/command = %d/%#v: %s", ended.Code, bindings.end, ended.Body.String())
 	}
 }

@@ -57,7 +57,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			t.Fatalf("concurrent Session Save error = %v", saveErr)
 		}
 		if saved != nil {
-			persisted, getErr := ss.Session().Get(ctx, saved.ID.String())
+			persisted, getErr := ss.Session().Get(ctx, saved.ID)
 			requireNoError(t, getErr)
 			if !persisted.RevokedAt.Valid {
 				t.Fatalf("concurrent exact-identity Session survived unlink: %#v", persisted)
@@ -158,17 +158,17 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != providerSession.ID || len(result.RevokedTokenHashes) != 2 {
 			t.Fatalf("UnlinkWithAudit() revocations = %#v", result)
 		}
-		retained, err := ss.Session().Get(ctx, passwordSession.ID.String())
+		retained, err := ss.Session().Get(ctx, passwordSession.ID)
 		requireNoError(t, err)
 		if retained.RevokedAt.Valid {
 			t.Fatalf("password Session was revoked = %#v", retained)
 		}
-		retained, err = ss.Session().Get(ctx, otherProviderSession.ID.String())
+		retained, err = ss.Session().Get(ctx, otherProviderSession.ID)
 		requireNoError(t, err)
 		if retained.RevokedAt.Valid {
 			t.Fatalf("other identity Session was revoked = %#v", retained)
 		}
-		revoked, err := ss.Session().Get(ctx, providerSession.ID.String())
+		revoked, err := ss.Session().Get(ctx, providerSession.ID)
 		requireNoError(t, err)
 		if !revoked.RevokedAt.Valid || revoked.RevocationReason != model.SessionRevocationExternalIdentityUnlinked {
 			t.Fatalf("provider Session was not revoked = %#v", revoked)
@@ -183,7 +183,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			Subject: "Opaque-Subject/123", LastSeenAt: model.OptionalTimeFromMillis(model.GetMillis()),
 		})
 		requireNoError(t, err)
-		got, err := ss.ExternalIdentity().Get(ctx, identity.ID.String())
+		got, err := ss.ExternalIdentity().Get(ctx, identity.ID)
 		requireNoError(t, err)
 		if got.Subject != identity.Subject || got.Provider != "campus-cas" {
 			t.Fatalf("Get() = %#v", got)
@@ -197,7 +197,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		if bySubject.ID != identity.ID {
 			t.Fatalf("GetByProviderSubject() = %#v", bySubject)
 		}
-		list, err := ss.ExternalIdentity().ListByUser(ctx, user.ID.String())
+		list, err := ss.ExternalIdentity().ListByUser(ctx, user.ID)
 		requireNoError(t, err)
 		if len(list) != 1 || list[0].ID != identity.ID {
 			t.Fatalf("ListByUser() = %#v", list)
@@ -348,7 +348,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		if err == nil {
 			t.Fatal("ResolveOrProvision() accepted a default-picture Job targeting another User")
 		}
-		if _, err = ss.User().Get(ctx, creation.User.ID.String()); !store.IsNotFound(err) {
+		if _, err = ss.User().Get(ctx, creation.User.ID); !store.IsNotFound(err) {
 			t.Fatalf("provisioned User survived mismatched Job rollback: %v", err)
 		}
 		if _, err = ss.ExternalIdentity().GetByProviderSubject(ctx, "campus-cas", subject); !store.IsNotFound(err) {
@@ -530,7 +530,7 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 		if blocked != nil || !errors.Is(blockedErr, store.ErrAuthenticationMethodDisabled) {
 			t.Fatalf("globally disabled invitation admission = %#v, %v", blocked, blockedErr)
 		}
-		if _, getErr := ss.User().Get(ctx, external.User.ID.String()); !store.IsNotFound(getErr) {
+		if _, getErr := ss.User().Get(ctx, external.User.ID); !store.IsNotFound(getErr) {
 			t.Fatalf("globally disabled invitation admission persisted User: %v", getErr)
 		}
 		replaceExternalAdmissionPolicy(t, ctx, ss, existingUser.ID, institution.ID, true)
@@ -578,7 +578,7 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 			accepted.Affiliation == nil || accepted.ClassMember == nil || accepted.ClassMember.UserID != accepted.User.ID {
 			t.Fatalf("terminal external Invitation acceptance = %#v", accepted)
 		}
-		if _, credentialErr := ss.PasswordCredential().GetByUser(ctx, accepted.User.ID.String()); !store.IsNotFound(credentialErr) {
+		if _, credentialErr := ss.PasswordCredential().GetByUser(ctx, accepted.User.ID); !store.IsNotFound(credentialErr) {
 			t.Fatalf("external Invitation acceptance created a local credential: %v", credentialErr)
 		}
 		if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, acceptance.Delivery.ID); deliveryErr != nil ||
@@ -624,7 +624,7 @@ func TestExternalIdentityAdmissionMode(t *testing.T, ss store.Store, mode model.
 			existingResult.ClassMember.UserID != existingUser.ID {
 			t.Fatalf("existing canonical User external acceptance = %#v", existingResult)
 		}
-		if _, candidateErr := ss.User().Get(ctx, existingCandidateID.String()); !store.IsNotFound(candidateErr) {
+		if _, candidateErr := ss.User().Get(ctx, existingCandidateID); !store.IsNotFound(candidateErr) {
 			t.Fatalf("existing-User acceptance persisted prepared candidate: %v", candidateErr)
 		}
 		if _, noticeErr := ss.Mail().GetDelivery(ctx, existingAcceptance.Delivery.ID); !store.IsNotFound(noticeErr) {
@@ -765,7 +765,7 @@ func assertRelationshipFreeUser(t *testing.T, ctx context.Context, ss store.Stor
 	requireNoError(t, err)
 	classMemberships, err := ss.ClassMember().ListByUser(ctx, userID)
 	requireNoError(t, err)
-	bindings, err := ss.RoleBinding().ListByUser(ctx, userID.String())
+	bindings, err := ss.RoleBinding().ListByUser(ctx, userID)
 	requireNoError(t, err)
 	if len(affiliations) != 0 || len(academicMemberships) != 0 || len(classMemberships) != 0 || len(bindings) != 0 {
 		t.Fatalf("auto-provisioned User gained authority: affiliations=%#v academic_memberships=%#v class_memberships=%#v role_bindings=%#v",

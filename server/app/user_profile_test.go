@@ -30,7 +30,7 @@ type userProfileStoreFake struct {
 	listOptions         store.UserListOptions
 }
 
-func (s *userProfileStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *userProfileStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	*s.events = append(*s.events, "get-user")
 	return s.current, nil
 }
@@ -169,7 +169,7 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Updated Student"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID.String(), DisplayName: &displayName})
+	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}

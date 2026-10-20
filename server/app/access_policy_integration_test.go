@@ -281,22 +281,22 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	removedProviderStore := openAdditionalUserSettingsStore(t, dataSource)
 	removedProviderNode := testlib.Setup(t, testlib.WithConfig(baseConfig), testlib.WithStore(removedProviderStore))
 	if _, err = removedProviderNode.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
-		ID: removedProviderBinding.ID.String(),
+		ID: removedProviderBinding.ID,
 	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("removed-provider node counted unavailable external administrator: %v", err)
 	}
 	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
-		ID: removedProviderBinding.ID.String(),
+		ID: removedProviderBinding.ID,
 	}); err != nil {
 		t.Fatalf("configured-provider node rejected external administrator path: %v", err)
 	}
 	if _, err = primary.App.SetUserEnabled(context.Background(), invocation, application.SetUserEnabledCommand{
-		ID: externalAdmin.ID.String(), Enabled: false,
+		ID: externalAdmin.ID, Enabled: false,
 	}); !apperror.Is(err, "user.last_system_admin") {
 		t.Fatalf("disable only policy-usable administrator error = %v", err)
 	}
 	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
-		ID: externalBinding.ID.String(),
+		ID: externalBinding.ID,
 	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("end only policy-usable administrator binding error = %v", err)
 	}

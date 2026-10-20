@@ -58,13 +58,13 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		Status: model.AuditStatusSuccess, NodeID: "test-node",
 	})
 	requireNoError(t, err)
-	withoutVisibility, err := ss.Audit().List(ctx, store.AuditListOptions{ActorId: user.ID.String(), Limit: 10})
+	withoutVisibility, err := ss.Audit().List(ctx, store.AuditListOptions{ActorID: user.ID, Limit: 10})
 	requireNoError(t, err)
 	if len(withoutVisibility) != 0 {
 		t.Fatalf("List(zero visibility) = %#v, want empty", withoutVisibility)
 	}
 	list, err := ss.Audit().List(ctx, store.AuditListOptions{
-		ActorId: user.ID.String(), Limit: 1,
+		ActorID: user.ID, Limit: 1,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)
@@ -72,8 +72,8 @@ func TestAuditStore(t *testing.T, ss store.Store) {
 		t.Fatalf("List() = %#v", list)
 	}
 	next, err := ss.Audit().List(ctx, store.AuditListOptions{
-		ActorId: user.ID.String(), Limit: 10,
-		BeforeTime: model.MillisFromTime(list[0].CreatedAt), BeforeId: list[0].ID.String(),
+		ActorID: user.ID, Limit: 10,
+		BeforeTime: model.MillisFromTime(list[0].CreatedAt), BeforeID: list[0].ID,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	requireNoError(t, err)

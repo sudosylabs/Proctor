@@ -350,16 +350,16 @@ func testTeacherAcademicUnitInvitationAcceptance(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	_, err = ss.AcademicUnitMember().End(ctx, accepted.AcademicUnitMember.ID, accepted.AcademicUnitMember.Revision, endAt)
 	requireNoError(t, err)
-	endedPackage, err := ss.RoleBinding().Get(ctx, accepted.RoleBinding.ID.String())
+	endedPackage, err := ss.RoleBinding().Get(ctx, accepted.RoleBinding.ID)
 	requireNoError(t, err)
-	endedSecondPackage, err := ss.RoleBinding().Get(ctx, secondAccepted.RoleBinding.ID.String())
+	endedSecondPackage, err := ss.RoleBinding().Get(ctx, secondAccepted.RoleBinding.ID)
 	requireNoError(t, err)
-	retainedIndependent, err := ss.RoleBinding().Get(ctx, independent.ID.String())
+	retainedIndependent, err := ss.RoleBinding().Get(ctx, independent.ID)
 	requireNoError(t, err)
 	if endedPackage.EndsAt.Millis() != endAt || endedSecondPackage.EndsAt.Millis() != endAt || retainedIndependent.EndsAt.Valid {
 		t.Fatalf("ended packages/independent bindings = %#v / %#v / %#v", endedPackage, endedSecondPackage, retainedIndependent)
 	}
-	if _, err = ss.RoleBinding().Get(ctx, futurePackage.ID.String()); !store.IsNotFound(err) {
+	if _, err = ss.RoleBinding().Get(ctx, futurePackage.ID); !store.IsNotFound(err) {
 		t.Fatalf("future package binding remained current after membership ended: %v", err)
 	}
 }

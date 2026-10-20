@@ -210,7 +210,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := persistence.User().Get(context.Background(), identity.UserID.String())
+	user, err := persistence.User().Get(context.Background(), identity.UserID)
 	if err != nil || user.Username != "external.student" ||
 		user.Email != "external.student@example.edu" ||
 		!user.EmailVerified {
@@ -240,7 +240,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
-		user.ID.String(),
+		user.ID,
 		model.NowUTC(),
 	)
 	if err != nil || len(sessions) != 1 ||
@@ -253,7 +253,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
-			ActorId:    user.ID.String(),
+			ActorID:    user.ID,
 			Limit:      10,
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
@@ -405,7 +405,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invitationUser, err := persistence.User().Get(context.Background(), invitationIdentity.UserID.String())
+	invitationUser, err := persistence.User().Get(context.Background(), invitationIdentity.UserID)
 	if err != nil || invitationUser.Email != invitedEmail || !invitationUser.EmailVerified {
 		t.Fatalf("invitation-admitted User = %#v, %v", invitationUser, err)
 	}
@@ -416,18 +416,18 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	invitationAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitationUser.ID)
 	invitationClassMembers, _ := persistence.ClassMember().ListByUser(context.Background(), invitationUser.ID)
-	invitationBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitationUser.ID.String())
+	invitationBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitationUser.ID)
 	if len(invitationAffiliations) != 1 || invitationAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
 		len(invitationClassMembers) != 1 || invitationClassMembers[0].ID != acceptedInvitation.AcceptedClassMemberID ||
 		len(invitationBindings) != 0 {
 		t.Fatalf("invitation admission package: affiliations=%#v class_members=%#v bindings=%#v",
 			invitationAffiliations, invitationClassMembers, invitationBindings)
 	}
-	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID.String(), model.NowUTC())
+	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID, model.NowUTC())
 	if err != nil || len(invitationSessions) != 0 {
 		t.Fatalf("Invitation proof created an ordinary Session = %#v, %v", invitationSessions, err)
 	}
-	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorId: invitationUser.ID.String(),
+	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorID: invitationUser.ID,
 		Action: "invitation.accept", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
 	if err != nil || len(invitationAudits) != 1 || invitationAudits[0].AuthMethod != config.ExternalAuthenticationTypeCAS {
 		t.Fatalf("CAS Invitation acceptance audits = %#v, %v", invitationAudits, err)
@@ -494,7 +494,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || connectedIdentity.UserID != user.ID {
 		t.Fatalf("connected identity = %#v, %v", connectedIdentity, err)
 	}
-	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID.String(), model.NowUTC())
+	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID, model.NowUTC())
 	if err != nil || len(connectedSessions) != 1 {
 		t.Fatalf("provider connection created a Session: %#v, %v", connectedSessions, err)
 	}
@@ -509,7 +509,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if unlink.Code != http.StatusNoContent {
 		t.Fatalf("provider unlink = %d: %s", unlink.Code, unlink.Body.String())
 	}
-	retainedSession, err := persistence.Session().Get(context.Background(), sessions[0].ID.String())
+	retainedSession, err := persistence.Session().Get(context.Background(), sessions[0].ID)
 	if err != nil || retainedSession.RevokedAt.Valid {
 		t.Fatalf("unrelated provider Session was revoked: %#v, %v", retainedSession, err)
 	}
@@ -527,7 +527,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if response := loginProvider(providerID, "changed-profile"); response.Code != http.StatusSeeOther {
 		t.Fatalf("existing linked user login status = %d", response.Code)
 	}
-	unchangedUser, err := persistence.User().Get(context.Background(), user.ID.String())
+	unchangedUser, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil || unchangedUser.Username != "external.student" ||
 		unchangedUser.Email != "external.student@example.edu" || unchangedUser.FirstName != "External" || unchangedUser.LastName != "Student" {
 		t.Fatalf("provider claim changes overwrote established User = %#v, %v", unchangedUser, err)
@@ -597,7 +597,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if restoredResponse.Code != http.StatusSeeOther {
 		t.Fatalf("restored-provider callback status = %d: %s", restoredResponse.Code, restoredResponse.Body.String())
 	}
-	currentUser, err := persistence.User().Get(context.Background(), user.ID.String())
+	currentUser, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +619,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if _, err = persistence.User().SetDisabledWithAudit(
 		context.Background(),
 		storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID:               user.ID.String(),
+			ID:               user.ID,
 			ExpectedRevision: currentUser.Revision,
 			Disabled:         true,
 			ChangedAt:        disabledAt,

@@ -98,7 +98,7 @@ type authenticationStoreFake struct {
 
 type authenticationDesktopRegistrationLookupFake struct{}
 
-func (authenticationDesktopRegistrationLookupFake) Get(context.Context, string) (*model.DesktopRegistration, error) {
+func (authenticationDesktopRegistrationLookupFake) Get(context.Context, model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
 	return nil, store.NewErrNotFound("desktop_registration", "")
 }
 
@@ -194,13 +194,13 @@ func (s authenticationUserStore) Create(
 	return &store.UserCreationResult{User: &cloned, PasswordCredential: &pass}, nil
 }
 
-func (s authenticationUserStore) Get(_ context.Context, id string) (*model.User, error) {
+func (s authenticationUserStore) Get(_ context.Context, id model.UserID) (*model.User, error) {
 	if s.root.userGetErr != nil {
 		return nil, s.root.userGetErr
 	}
-	user, ok := s.root.users[id]
+	user, ok := s.root.users[id.String()]
 	if !ok {
-		return nil, store.NewErrNotFound("user", id)
+		return nil, store.NewErrNotFound("user", id.String())
 	}
 	cloned := *user
 	return &cloned, nil
@@ -228,7 +228,7 @@ func (s authenticationUserStore) GetByEmail(_ context.Context, email string) (*m
 func (authenticationUserStore) List(context.Context, store.UserListOptions) ([]*model.User, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationUserStore) MatchVisibility(context.Context, string, store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+func (authenticationUserStore) MatchVisibility(context.Context, model.UserID, store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	return store.UserVisibilityMatch{}, errors.New("unused")
 }
 func (authenticationUserStore) SetDisabledWithAudit(context.Context, *store.UserDisabledStateChange) (*store.UserDisabledStateResult, error) {
@@ -237,16 +237,16 @@ func (authenticationUserStore) SetDisabledWithAudit(context.Context, *store.User
 func (authenticationUserStore) UpdateProfileWithAudit(context.Context, *store.UserProfileUpdate) (*model.User, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationUserStore) UpdateLastLogin(context.Context, string, int64) error {
+func (authenticationUserStore) UpdateLastLogin(context.Context, model.UserID, int64) error {
 	return errors.New("unused")
 }
 
 type authenticationPasswordStore struct{ root *authenticationStoreFake }
 
-func (s authenticationPasswordStore) GetByUser(_ context.Context, userID string) (*model.PasswordCredential, error) {
-	credential, ok := s.root.passwords[userID]
+func (s authenticationPasswordStore) GetByUser(_ context.Context, userID model.UserID) (*model.PasswordCredential, error) {
+	credential, ok := s.root.passwords[userID.String()]
 	if !ok {
-		return nil, store.NewErrNotFound("password_credential", userID)
+		return nil, store.NewErrNotFound("password_credential", userID.String())
 	}
 	cloned := *credential
 	return &cloned, nil
@@ -331,10 +331,10 @@ func (s authenticationSessionStore) Save(
 	return &cloned, savedCredentials, nil
 }
 
-func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID string, lastActivityAt, idleExpiresAt time.Time) error {
-	session, ok := s.root.sessions[sessionID]
+func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID model.SessionID, lastActivityAt, idleExpiresAt time.Time) error {
+	session, ok := s.root.sessions[sessionID.String()]
 	if !ok {
-		return store.NewErrNotFound("session", sessionID)
+		return store.NewErrNotFound("session", sessionID.String())
 	}
 	at := model.TimeUTC(lastActivityAt)
 	session.LastActivityAt = at
@@ -343,8 +343,8 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	return nil
 }
 
-func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ string, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
-	return s.revoke(sessionID, model.TimeFromMillis(revokedAt), reason)
+func (s authenticationSessionStore) Revoke(_ context.Context, sessionID model.SessionID, _ model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
+	return s.revoke(sessionID.String(), model.TimeFromMillis(revokedAt), reason)
 }
 
 func (s authenticationSessionStore) revoke(sessionID string, at time.Time, reason model.SessionRevocationReason) ([]string, error) {
@@ -368,22 +368,17 @@ func (s authenticationSessionStore) revoke(sessionID string, at time.Time, reaso
 	return hashes, nil
 }
 
-func (s authenticationSessionStore) EnforceExpiry(
-	_ context.Context,
-	sessionID string,
-	userID string,
-	at time.Time,
-) (*store.SessionExpiryEnforcementResult, error) {
-	session, ok := s.root.sessions[sessionID]
-	if !ok || session.UserID.String() != userID || session.RevokedAt.Valid {
-		return nil, store.NewErrNotFound("session", sessionID)
+func (s authenticationSessionStore) EnforceExpiry(_ context.Context, sessionID model.SessionID, userID model.UserID, at time.Time) (*store.SessionExpiryEnforcementResult, error) {
+	session, ok := s.root.sessions[sessionID.String()]
+	if !ok || session.UserID != userID || session.RevokedAt.Valid {
+		return nil, store.NewErrNotFound("session", sessionID.String())
 	}
 	at = model.TimeUTC(at)
 	if !session.IsExpiredAt(at) {
 		cloned := *session
 		return &store.SessionExpiryEnforcementResult{Session: &cloned}, nil
 	}
-	hashes, err := s.revoke(sessionID, at, model.SessionRevocationExpired)
+	hashes, err := s.revoke(sessionID.String(), at, model.SessionRevocationExpired)
 	if err != nil {
 		return nil, err
 	}
@@ -393,36 +388,36 @@ func (s authenticationSessionStore) EnforceExpiry(
 	}, nil
 }
 
-func (s authenticationSessionStore) Get(_ context.Context, id string) (*model.Session, error) {
-	session, ok := s.root.sessions[id]
+func (s authenticationSessionStore) Get(_ context.Context, id model.SessionID) (*model.Session, error) {
+	session, ok := s.root.sessions[id.String()]
 	if !ok {
-		return nil, store.NewErrNotFound("session", id)
+		return nil, store.NewErrNotFound("session", id.String())
 	}
 	cloned := *session
 	return &cloned, nil
 }
-func (authenticationSessionStore) ListByUser(context.Context, string) ([]*model.Session, error) {
+func (authenticationSessionStore) ListByUser(context.Context, model.UserID) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationSessionStore) ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error) {
+func (authenticationSessionStore) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
 func (s authenticationSessionStore) RevokeWithAudit(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
-	session := s.root.sessions[input.SessionID]
-	if session == nil || session.UserID.String() != input.UserID || session.RevokedAt.Valid {
+	session := s.root.sessions[input.SessionID.String()]
+	if session == nil || session.UserID != input.UserID || session.RevokedAt.Valid {
 		if input.Reason == model.SessionRevocationUserLogout {
 			return &store.SessionRevocationResult{}, nil
 		}
-		return nil, store.NewErrNotFound("session", input.SessionID)
+		return nil, store.NewErrNotFound("session", input.SessionID.String())
 	}
-	hashes, err := s.revoke(input.SessionID, model.TimeFromMillis(input.RevokedAt), input.Reason)
+	hashes, err := s.revoke(input.SessionID.String(), model.TimeFromMillis(input.RevokedAt), input.Reason)
 	if err != nil {
 		return nil, err
 	}
 	cloned := *session
 	return &store.SessionRevocationResult{Session: &cloned, TokenHashes: hashes}, nil
 }
-func (authenticationSessionStore) RevokeAllForUser(context.Context, string, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
+func (authenticationSessionStore) RevokeAllForUser(context.Context, model.UserID, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
 	return nil, nil, errors.New("unused")
 }
 func (authenticationSessionStore) RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {

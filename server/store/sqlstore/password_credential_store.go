@@ -105,17 +105,14 @@ func insertPasswordCredential(
 	return nil
 }
 
-func (s SQLPasswordCredentialStore) GetByUser(
-	ctx context.Context,
-	userID string,
-) (*model.PasswordCredential, error) {
+func (s SQLPasswordCredentialStore) GetByUser(ctx context.Context, userID model.UserID) (*model.PasswordCredential, error) {
 	var row passwordCredentialRow
 	query := s.credentialsQuery.Where(sq.Eq{
 		"password_credentials.user_id":     userID,
 		"password_credentials.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("password_credential", userID, err)
+		return nil, translateError("password_credential", userID.String(), err)
 	}
 	return row.model()
 }

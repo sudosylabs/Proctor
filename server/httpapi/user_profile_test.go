@@ -266,7 +266,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if profiles.updateCommand.ID != userID || profiles.updateCommand.DisplayName == nil || *profiles.updateCommand.DisplayName != "Updated" {
+	if profiles.updateCommand.ID != model.UserID(userID) || profiles.updateCommand.DisplayName == nil || *profiles.updateCommand.DisplayName != "Updated" {
 		t.Fatalf("command = %#v", profiles.updateCommand)
 	}
 	var body map[string]any
@@ -299,7 +299,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profiles.uploadCommand.UserID != userID || profiles.uploadCommand.Size != 5 || profiles.uploadCommand.ExpectedSHA256 != strings.Repeat("a", 64) || string(uploaded) != "image" {
+	if profiles.uploadCommand.UserID != model.UserID(userID) || profiles.uploadCommand.Size != 5 || profiles.uploadCommand.ExpectedSHA256 != strings.Repeat("a", 64) || string(uploaded) != "image" {
 		t.Fatalf("upload command = %#v body = %q", profiles.uploadCommand, uploaded)
 	}
 	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/users/"+userID+"/profile-picture", nil)
@@ -307,7 +307,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	deleteRequest.Header.Set("If-Match", `"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"`)
 	deleteResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(deleteResponse, deleteRequest)
-	if deleteResponse.Code != http.StatusOK || profiles.removeCommand.UserID != userID || profiles.removeCommand.ExpectedSHA256 != strings.Repeat("b", 64) {
+	if deleteResponse.Code != http.StatusOK || profiles.removeCommand.UserID != model.UserID(userID) || profiles.removeCommand.ExpectedSHA256 != strings.Repeat("b", 64) {
 		t.Fatalf("delete response/command = %d / %#v", deleteResponse.Code, profiles.removeCommand)
 	}
 	profiles.pictureContent = &application.ProfilePictureContent{Body: io.NopCloser(strings.NewReader("webp")), MediaType: "image/webp", Size: 4, ETag: `"checksum"`}
@@ -316,7 +316,7 @@ func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {
 	pictureRequest.Header.Set("If-None-Match", `"different", W/"checksum"`)
 	pictureResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(pictureResponse, pictureRequest)
-	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != userID || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" || pictureResponse.Header().Get("Content-Length") != "4" {
+	if pictureResponse.Code != http.StatusNotModified || profiles.pictureQuery.UserID != model.UserID(userID) || profiles.pictureQuery.Size != 128 || pictureResponse.Header().Get("Cache-Control") != "private, max-age=86400" || pictureResponse.Header().Get("Content-Length") != "4" {
 		t.Fatalf("profile picture response = status %d headers %#v query %#v", pictureResponse.Code, pictureResponse.Header(), profiles.pictureQuery)
 	}
 }
@@ -535,7 +535,7 @@ func TestAccountDisableUsesApplicationCommandAndAllowlistedResponse(t *testing.T
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
 	}
-	if accounts.command.ID != userID || accounts.command.Enabled {
+	if accounts.command.ID != model.UserID(userID) || accounts.command.Enabled {
 		t.Fatalf("command = %#v", accounts.command)
 	}
 	var body map[string]any

@@ -53,7 +53,7 @@ func (c sessionRevocationCoordinator) revokeOne(
 	// The Store represents an already-absent logout with no affected Session;
 	// other single revocations retain their owning use case's not-found error.
 	if result != nil && result.Session != nil {
-		c.publish(ctx, input.UserID, []*model.Session{result.Session}, result.TokenHashes)
+		c.publish(ctx, input.UserID.String(), []*model.Session{result.Session}, result.TokenHashes)
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func (c sessionRevocationCoordinator) revokeAll(
 		return err
 	}
 	if result != nil && !input.Replayed && !input.NoOp {
-		c.publish(ctx, input.UserID, result.Sessions, result.TokenHashes)
+		c.publish(ctx, input.UserID.String(), result.Sessions, result.TokenHashes)
 	}
 	return nil
 }

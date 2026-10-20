@@ -27,7 +27,7 @@ type accountStateStoreFake struct {
 	err    error
 }
 
-func (s *accountStateStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *accountStateStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	*s.events = append(*s.events, "get-user")
 	return s.user, nil
 }
@@ -95,7 +95,7 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	}}}}
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	user := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Locale: "en", Timezone: "UTC"}
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
-	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
+	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	if !apperror.Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{}, RevokedTokenHashes: []string{}}}
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: true})
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	userID := model.NewId()
 	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
-	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: userID, Enabled: false})
+	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: model.UserID(userID), Enabled: false})
 	if !apperror.Is(err, "request.invalid") {
 		t.Fatalf("error = %v", err)
 	}
@@ -180,7 +180,7 @@ func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
-	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
+	result, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
 	if err != nil || result != user || len(mailer.requests) != 0 {
 		t.Fatalf("replay result/error/mail = %#v / %v / %#v", result, err, mailer.requests)
 	}
@@ -200,7 +200,7 @@ func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
-		SetUserEnabledCommand{ID: user.ID.String(), Enabled: false, IdempotencyKey: "row"})
+		SetUserEnabledCommand{ID: user.ID, Enabled: false, IdempotencyKey: "row"})
 	if err != nil || result != user || len(mailer.requests) != 1 || persistence.input == nil || persistence.input.Occurrence == nil {
 		t.Fatalf("idempotent no-op result=%#v error=%v mail=%#v input=%#v", result, err, mailer.requests, persistence.input)
 	}
@@ -219,7 +219,7 @@ func TestAccountStateRetainedOutcomeBypassesMailAfterLaterStateChange(t *testing
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
-		SetUserEnabledCommand{ID: current.ID.String(), Enabled: false, IdempotencyKey: "row", batchRetainedOutcome: true})
+		SetUserEnabledCommand{ID: current.ID, Enabled: false, IdempotencyKey: "row", batchRetainedOutcome: true})
 	if err != nil || result != &original && result.ID != original.ID || len(mailer.requests) != 0 {
 		t.Fatalf("retained result=%#v error=%v mail=%#v", result, err, mailer.requests)
 	}
@@ -233,7 +233,7 @@ func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events, err: errors.New("render failed")},
 		&accountStateEffectsFake{events: &events}, time.Now)
-	if _, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false}); !apperror.Is(err, "administration.unavailable") {
+	if _, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false}); !apperror.Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
 	if want := []string{"authorize-manage", "get-user", "prepare-mail"}; !reflect.DeepEqual(events, want) {

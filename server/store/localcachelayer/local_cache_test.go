@@ -139,7 +139,7 @@ type roleBindingStub struct {
 	attempts int
 }
 
-func (s *roleBindingStub) ListActiveByUser(context.Context, string, time.Time) ([]*model.RoleBinding, error) {
+func (s *roleBindingStub) ListActiveByUser(context.Context, model.UserID, time.Time) ([]*model.RoleBinding, error) {
 	s.attempts++
 	return nil, nil
 }
@@ -410,7 +410,7 @@ func TestLocalCacheBypassesAuthoritativeSecurityReads(t *testing.T) {
 	for range 2 {
 		if _, err := layer.RoleBinding().ListActiveByUser(
 			context.Background(),
-			model.NewUserID().String(),
+			model.NewUserID(),
 			model.NowUTC(),
 		); err != nil {
 			t.Fatal(err)

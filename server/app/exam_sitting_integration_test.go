@@ -308,7 +308,7 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistence.RoleBinding().End(ctx, managerBinding.ID.String(), model.GetMillis()-25); err != nil {
+	if _, err = persistence.RoleBinding().End(ctx, managerBinding.ID, model.GetMillis()-25); err != nil {
 		t.Fatal(err)
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
@@ -425,7 +425,7 @@ func assertExamSittingOverrideAudit(t *testing.T, ctx context.Context, persisten
 ) {
 	t.Helper()
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
-		ActorId: actorID.String(), Action: string(action), Resource: &resource, Limit: 20,
+		ActorID: actorID, Action: string(action), Resource: &resource, Limit: 20,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	if err != nil {

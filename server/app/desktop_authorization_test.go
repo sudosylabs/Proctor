@@ -726,10 +726,8 @@ type desktopAuthorizationSessionStoreStub struct {
 	reason        model.SessionRevocationReason
 }
 
-func (stub *desktopAuthorizationSessionStoreStub) Revoke(_ context.Context, sessionID, userID string, _ int64,
-	reason model.SessionRevocationReason,
-) ([]string, error) {
-	stub.revokedID, stub.revokedUserID, stub.reason = sessionID, userID, reason
+func (stub *desktopAuthorizationSessionStoreStub) Revoke(_ context.Context, sessionID model.SessionID, userID model.UserID, _ int64, reason model.SessionRevocationReason) ([]string, error) {
+	stub.revokedID, stub.revokedUserID, stub.reason = sessionID.String(), userID.String(), reason
 	return []string{model.HashToken("revoked-access")}, nil
 }
 

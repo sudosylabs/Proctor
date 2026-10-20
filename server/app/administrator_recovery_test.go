@@ -20,7 +20,7 @@ import (
 func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	persistence := &installationStoreFake{events: &events, recoveryResult: &store.AdministratorRecoveryResult{RecordID: model.NewId(), PasswordRotated: true}}
+	persistence := &installationStoreFake{events: &events, recoveryResult: &store.AdministratorRecoveryResult{RecordID: model.NewAdministratorRecoveryRecordID(), PasswordRotated: true}}
 	hasher := &passwordHasherFake{events: &events, hash: "encoded-private-password"}
 	service := newBootstrapService(persistence, hasher,
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),

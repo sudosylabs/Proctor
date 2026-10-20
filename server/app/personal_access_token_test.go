@@ -181,7 +181,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 		t.Fatal(err)
 	}
 
-	got, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true})
+	got, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if appErr != nil || got != token {
 		t.Fatalf("SetDisabled(replay) = %#v, %v", got, appErr)
 	}
@@ -190,7 +190,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 	}
 
 	token.RevokedAt = model.OptionalTimeFrom(now)
-	got, appErr = service.Revoke(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID.String()})
+	got, appErr = service.Revoke(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
 	if appErr != nil || got != token {
 		t.Fatalf("Revoke(replay) = %#v, %v", got, appErr)
 	}
@@ -215,7 +215,7 @@ func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T
 	_, err := service.Revoke(
 		context.Background(),
 		NewInvocation(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
-		RevokePersonalAccessTokenCommand{TokenID: token.ID.String()},
+		RevokePersonalAccessTokenCommand{TokenID: token.ID},
 	)
 	if !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("error = %v, want resource.not_found", err)
@@ -247,7 +247,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 
 	if _, err := service.SetDisabled(
 		context.Background(), invocation,
-		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true},
+		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 	}
 	if _, err := service.SetDisabled(
 		context.Background(), invocation,
-		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: false},
+		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: false},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 	tokens.current = token
 	if _, err := service.Revoke(
 		context.Background(), invocation,
-		RevokePersonalAccessTokenCommand{TokenID: token.ID.String()},
+		RevokePersonalAccessTokenCommand{TokenID: token.ID},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 		t.Fatalf("create error = %v", err)
 	}
 	_, err = service.SetDisabled(context.Background(), invocation, SetPersonalAccessTokenDisabledCommand{
-		TokenID: model.NewPersonalAccessTokenID().String(), Disabled: false,
+		TokenID: model.NewPersonalAccessTokenID(), Disabled: false,
 	})
 	if !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("enable error = %v", err)
@@ -444,7 +444,7 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true})
+	_, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -482,7 +482,7 @@ func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.
 	service := mustPersonalAccessTokenAdministrationService(t, tokens, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 		&personalAccessTokenAuditorFake{}, now)
-	got, err := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true})
+	got, err := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if err != nil || got != token {
 		t.Fatalf("SetDisabled(concurrent replay) = %#v, %v", got, err)
 	}
@@ -504,7 +504,7 @@ func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFa
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
+	if _, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
 		t.Fatalf("SetDisabled(render failure) error = %v", appErr)
 	}
 	if tokens.failCalls != 1 || tokens.stateCalls != 0 {
@@ -567,7 +567,7 @@ func (s *personalAccessTokenStoreFake) PrepareMutation(_ context.Context, input 
 	if at.IsZero() {
 		at = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	}
-	return &store.PreparedPersonalAccessTokenMutation{ID: model.NewId(), ActionAt: at, ExpiresAt: at.Add(input.Lifetime)}, nil
+	return &store.PreparedPersonalAccessTokenMutation{ID: model.NewPersonalAccessTokenPreparationID(), ActionAt: at, ExpiresAt: at.Add(input.Lifetime)}, nil
 }
 
 func (s *personalAccessTokenStoreFake) FailMutation(context.Context, *store.PersonalAccessTokenMutationFailure) error {
@@ -595,14 +595,14 @@ func (s *personalAccessTokenStoreFake) Create(_ context.Context, input *store.Pe
 	return &store.PersonalAccessTokenMutationResult{Token: s.saved, Fresh: s.resultFresh()}, nil
 }
 
-func (s *personalAccessTokenStoreFake) Get(context.Context, string) (*model.PersonalAccessToken, error) {
+func (s *personalAccessTokenStoreFake) Get(context.Context, model.PersonalAccessTokenID) (*model.PersonalAccessToken, error) {
 	if s.current == nil {
 		return nil, store.NewErrNotFound("personal_access_token", "")
 	}
 	return s.current, nil
 }
 
-func (s *personalAccessTokenStoreFake) ListByUser(context.Context, string) ([]*model.PersonalAccessToken, error) {
+func (s *personalAccessTokenStoreFake) ListByUser(context.Context, model.UserID) ([]*model.PersonalAccessToken, error) {
 	return []*model.PersonalAccessToken{s.current}, nil
 }
 
@@ -632,7 +632,7 @@ func (s *personalAccessTokenStoreFake) resultFresh() bool {
 
 type personalAccessTokenUserStoreFake struct{}
 
-func (*personalAccessTokenUserStoreFake) Get(_ context.Context, id string) (*model.User, error) {
+func (*personalAccessTokenUserStoreFake) Get(_ context.Context, id model.UserID) (*model.User, error) {
 	user := &model.User{
 		ID: model.UserID(id), Username: "operator", Email: "operator@example.test",
 		EmailVerified: true, DisplayName: "Operator", Locale: model.DefaultLocale,

@@ -881,8 +881,8 @@ func (s *externalAuthenticationService) revokeUnreportedSession(
 ) {
 	hashes, err := s.sessions.Revoke(
 		ctx,
-		session.ID.String(),
-		session.UserID.String(),
+		session.ID,
+		session.UserID,
 		s.now().UnixMilli(),
 		model.SessionRevocationAuthenticationAuditFailed,
 	)

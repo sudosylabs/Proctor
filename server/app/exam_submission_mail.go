@@ -32,7 +32,7 @@ func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx
 		!request.SubmissionID.IsValid() || request.SealedAt.IsZero() {
 		return nil, errors.New("Submission receipt dependencies or request are invalid")
 	}
-	recipient, err := adapter.users.Get(ctx, request.CandidateUserID.String())
+	recipient, err := adapter.users.Get(ctx, request.CandidateUserID)
 	if err != nil {
 		return nil, err
 	}

@@ -35,7 +35,7 @@ func TestPasswordProofResetPreservesNewPasswordAgainstStaleRehash(t *testing.T) 
 	if err = persistence.PasswordCredential().Rehash(ctx, rehash); !errors.Is(err, store.ErrPasswordCredentialChanged) {
 		t.Fatalf("stale rehash error = %v", err)
 	}
-	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestPasswordProofRehashSerializesWithReset(t *testing.T) {
 	if err := <-rehashResult; !errors.Is(err, store.ErrPasswordCredentialChanged) {
 		t.Fatalf("concurrent rehash error = %v", err)
 	}
-	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID)
 	if err != nil || current.PasswordHash != completion.PasswordHash || current.Revision != password.Revision+1 {
 		t.Fatalf("concurrent rehash replaced the reset credential: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestPasswordProofResetSerializesWithSessionCreation(t *testing.T) {
 					if two.err != nil || one.session == nil {
 						t.Fatalf("reset following creation: %v", two.err)
 					}
-					current, err := persistence.Session().Get(ctx, one.session.ID.String())
+					current, err := persistence.Session().Get(ctx, one.session.ID)
 					if err != nil || !current.RevokedAt.Valid || current.RevocationReason != model.SessionRevocationPasswordReset {
 						t.Fatalf("created Session escaped reset revocation: %v", err)
 					}

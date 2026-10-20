@@ -57,14 +57,14 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	if !allowed || command.Password == "" || len(command.Password) > s.hasher.maximumLength {
 		return nil, invalidCredentialsAppError()
 	}
-	user, err := s.users.Get(ctx, principal.UserID.String())
+	user, err := s.users.Get(ctx, principal.UserID)
 	if err != nil {
 		return nil, reauthenticationStoreErrors.Translate(err)
 	}
 	if !user.IsActive() {
 		return nil, invalidCredentialsAppError()
 	}
-	credential, err := s.passwords.GetByUser(ctx, principal.UserID.String())
+	credential, err := s.passwords.GetByUser(ctx, principal.UserID)
 	if err != nil {
 		return nil, reauthenticationStoreErrors.Translate(err)
 	}

@@ -22,6 +22,6 @@ type AdministratorMFAReset struct {
 }
 
 type AdministratorMFAResetResult struct {
-	RecordID string
+	RecordID model.AdministratorRecoveryRecordID
 	Recovery *model.UserMFARecovery
 }

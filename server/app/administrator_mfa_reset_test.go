@@ -49,7 +49,7 @@ func TestAdministratorMFAResetPassesCurrentDeploymentAndRequiresDurableEvidence(
 	t.Parallel()
 	institutionID, userID := model.NewInstitutionID(), model.NewUserID()
 	at := model.NowUTC()
-	valid := &store.AdministratorMFAResetResult{RecordID: model.NewId(), Recovery: &model.UserMFARecovery{
+	valid := &store.AdministratorMFAResetResult{RecordID: model.NewAdministratorRecoveryRecordID(), Recovery: &model.UserMFARecovery{
 		UserID: userID, Generation: 2, ResetAt: model.OptionalTimeFrom(at), UpdatedAt: at, ReenrollmentRequired: true,
 	}}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{

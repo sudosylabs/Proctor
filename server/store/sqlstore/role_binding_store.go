@@ -386,32 +386,25 @@ func validateSystemAdministratorScope(
 	return nil
 }
 
-func (s SQLRoleBindingStore) Get(ctx context.Context, id string) (*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) Get(ctx context.Context, id model.RoleBindingID) (*model.RoleBinding, error) {
 	var row roleBindingRow
 	query := s.bindingsQuery.Where(sq.Eq{
 		"role_bindings.id": id, "role_bindings.archived_at": nil,
 	})
 	if err := s.GetMaster().GetBuilder(ctx, &row, query); err != nil {
-		return nil, translateError("role_binding", id, err)
+		return nil, translateError("role_binding", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLRoleBindingStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.RoleBinding, error) {
 	return s.selectBindings(ctx, s.bindingsQuery.
 		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by user")
 }
 
-func (s SQLRoleBindingStore) ListVisibleByUser(
-	ctx context.Context,
-	userID string,
-	visibility store.UserVisibilityScope,
-) ([]*model.RoleBinding, error) {
-	if !model.IsValidId(userID) ||
+func (s SQLRoleBindingStore) ListVisibleByUser(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
+	if !userID.IsValid() ||
 		len(visibility.AcademicUnitRootIDs)+len(visibility.ClassIDs) > 256 ||
 		!validVisibilityIDs(visibility.AcademicUnitRootIDs) || !validVisibilityIDs(visibility.ClassIDs) {
 		return nil, store.NewErrInvalidInput("role_binding", "visibility", nil)
@@ -456,11 +449,7 @@ func (s SQLRoleBindingStore) ListByScope(
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by scope")
 }
 
-func (s SQLRoleBindingStore) ListActiveByUser(
-	ctx context.Context,
-	userID string,
-	at time.Time,
-) ([]*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.RoleBinding, error) {
 	at = model.TimeUTC(at)
 	return s.selectBindings(ctx, s.bindingsQuery.
 		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
@@ -490,16 +479,12 @@ func (s SQLRoleBindingStore) selectBindings(
 	return bindings, nil
 }
 
-func (s SQLRoleBindingStore) End(
-	ctx context.Context,
-	id string,
-	endAt int64,
-) (*model.RoleBinding, error) {
+func (s SQLRoleBindingStore) End(ctx context.Context, id model.RoleBindingID, endAt int64) (*model.RoleBinding, error) {
 	if endAt <= 0 {
 		return nil, store.NewErrInvalidInput("role_binding", "end_at", endAt)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "role binding end", func(ctx context.Context, tx *sqlxTxWrapper) (*model.RoleBinding, error) {
-		return endRoleBinding(ctx, tx, id, endAt, store.AccessDeploymentCapabilities{})
+		return endRoleBinding(ctx, tx, id.String(), endAt, store.AccessDeploymentCapabilities{})
 	})
 }
 
@@ -507,13 +492,13 @@ func (s SQLRoleBindingStore) EndWithAudit(
 	ctx context.Context,
 	input *store.RoleBindingEnd,
 ) (*model.RoleBinding, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.EndAt <= 0 ||
+	if input == nil || !input.ID.IsValid() || input.EndAt <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("role_binding", "end", nil)
 	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*roleBindingMutationResult, error) {
-		current, err := getRoleBindingInTransaction(ctx, tx, input.ID)
+		current, err := getRoleBindingInTransaction(ctx, tx, input.ID.String())
 		if err != nil {
 			return nil, err
 		}
@@ -547,7 +532,7 @@ func (s SQLRoleBindingStore) EndWithAudit(
 				}
 			}
 		}
-		ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt, input.Capabilities)
+		ended, err := endRoleBinding(ctx, tx, input.ID.String(), input.EndAt, input.Capabilities)
 		if err != nil {
 			return nil, err
 		}

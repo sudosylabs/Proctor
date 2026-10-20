@@ -251,8 +251,8 @@ func (s SQLAuditStore) List(
 				)`, pq.Array(options.Visibility.AllowedActions))
 		}
 	}
-	if options.ActorId != "" {
-		query = query.Where(sq.Eq{"audit_events.actor_id": options.ActorId})
+	if options.ActorID != "" {
+		query = query.Where(sq.Eq{"audit_events.actor_id": options.ActorID})
 	}
 	if options.Action != "" {
 		query = query.Where(sq.Eq{"audit_events.action": options.Action})
@@ -265,14 +265,14 @@ func (s SQLAuditStore) List(
 	}
 	if options.BeforeTime > 0 {
 		beforeTime := model.TimeFromMillis(options.BeforeTime)
-		if options.BeforeId == "" {
+		if options.BeforeID == "" {
 			query = query.Where(sq.Lt{"audit_events.created_at": beforeTime})
 		} else {
 			query = query.Where(sq.Or{
 				sq.Lt{"audit_events.created_at": beforeTime},
 				sq.And{
 					sq.Eq{"audit_events.created_at": beforeTime},
-					sq.Lt{"audit_events.id": options.BeforeId},
+					sq.Lt{"audit_events.id": options.BeforeID},
 				},
 			})
 		}

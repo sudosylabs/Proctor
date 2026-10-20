@@ -206,7 +206,7 @@ func (a *Authoring) prepareManagerNotices(ctx context.Context, ownerID, targetID
 	}
 	notices := make([]store.ExamManagerMail, 0, len(requests))
 	for _, request := range requests {
-		recipient, err := a.users.Get(ctx, request.userID.String())
+		recipient, err := a.users.Get(ctx, request.userID)
 		if err != nil || recipient == nil {
 			return nil, errors.Join(errors.New("resolve Exam Manager mail recipient"), err)
 		}
@@ -242,7 +242,7 @@ func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID m
 }
 
 func (a *Authoring) isEligibleManager(ctx context.Context, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
-	user, err := a.users.Get(ctx, userID.String())
+	user, err := a.users.Get(ctx, userID)
 	if err != nil {
 		if store.IsNotFound(err) {
 			return false, nil

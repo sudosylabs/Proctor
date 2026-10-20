@@ -104,7 +104,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 			verificationComplete.Body.String(),
 		)
 	}
-	verified, err := persistence.User().Get(context.Background(), user.ID.String())
+	verified, err := persistence.User().Get(context.Background(), user.ID)
 	if err != nil || !verified.EmailVerified {
 		t.Fatalf("verified user = %#v, %v", verified, err)
 	}

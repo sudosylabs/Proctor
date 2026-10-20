@@ -513,7 +513,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 	disabledCandidate, _ := prepareCandidate(true)
 	disableAt := model.GetMillis() + 1
 	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: disabledCandidate.ID.String(), ExpectedRevision: disabledCandidate.Revision, Disabled: true,
+		ID: disabledCandidate.ID, ExpectedRevision: disabledCandidate.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: disableAt,
 	}))
 	requireNoError(t, err)
@@ -596,7 +596,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 	requireNoError(t, err)
 	enableAt := disableAt + 1
 	enabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: disabledCandidate.ID.String(), ExpectedRevision: disabledResult.User.Revision, Disabled: false,
+		ID: disabledCandidate.ID, ExpectedRevision: disabledResult.User.Revision, Disabled: false,
 		ChangedAt: enableAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: enableAt,
 	}))
 	requireNoError(t, err)

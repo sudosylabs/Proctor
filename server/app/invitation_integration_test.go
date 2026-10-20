@@ -211,7 +211,7 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	if err != nil || accepted.State != model.InvitationAccepted || !accepted.AcceptedUserID.IsValid() {
 		t.Fatalf("accepted invitation = %#v, %v", accepted, err)
 	}
-	user, err := primaryStore.User().Get(context.Background(), accepted.AcceptedUserID.String())
+	user, err := primaryStore.User().Get(context.Background(), accepted.AcceptedUserID)
 	if err != nil || user.Email != "invited.student@example.edu" || !user.EmailVerified {
 		t.Fatalf("accepted user = %#v, %v", user, err)
 	}
@@ -297,7 +297,7 @@ func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing
 	if err != nil || accepted.State != model.InvitationAccepted || !accepted.AcceptedAcademicUnitMemberID.IsValid() || !accepted.AcceptedRoleBindingID.IsValid() {
 		t.Fatalf("accepted teacher invitation = %#v, %v", accepted, err)
 	}
-	binding, err := primaryStore.RoleBinding().Get(context.Background(), accepted.AcceptedRoleBindingID.String())
+	binding, err := primaryStore.RoleBinding().Get(context.Background(), accepted.AcceptedRoleBindingID)
 	if err != nil || binding.UserID != accepted.AcceptedUserID || binding.RoleID.String() != role.ID || binding.OriginInvitationID != accepted.ID {
 		t.Fatalf("teacher package Role Binding = %#v, %v", binding, err)
 	}
@@ -383,7 +383,7 @@ func TestScopedRoleInvitationAcceptsAsExistingUserAcrossNodesWithoutProfileOrWel
 		accepted.AcceptedAffiliationID.IsValid() || accepted.AcceptedAcademicUnitMemberID.IsValid() {
 		t.Fatalf("accepted scoped Role Invitation = %#v, %v", accepted, err)
 	}
-	current, err := primaryStore.User().Get(context.Background(), login.User.ID.String())
+	current, err := primaryStore.User().Get(context.Background(), login.User.ID)
 	if err != nil || current.Email != "canonical-admin@example.edu" || current.Username != "scoped-role-admin" {
 		t.Fatalf("canonical User changed during scoped Role acceptance = %#v, %v", current, err)
 	}

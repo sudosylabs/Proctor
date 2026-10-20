@@ -60,19 +60,16 @@ func newSQLDesktopRegistrationStore(sqlStore *SQLStore) store.DesktopRegistratio
 	return value
 }
 
-func (s SQLDesktopRegistrationStore) Get(ctx context.Context, id string) (*model.DesktopRegistration, error) {
+func (s SQLDesktopRegistrationStore) Get(ctx context.Context, id model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
 	var row desktopRegistrationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{"id": id})); err != nil {
-		return nil, translateError("desktop_registration", id, err)
+		return nil, translateError("desktop_registration", id.String(), err)
 	}
 	return row.model()
 }
 
-func (s SQLDesktopRegistrationStore) ListByUser(
-	ctx context.Context,
-	userID string,
-) ([]*model.DesktopRegistration, error) {
-	if !model.IsValidId(userID) {
+func (s SQLDesktopRegistrationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.DesktopRegistration, error) {
+	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("desktop_registration", "user_id", userID)
 	}
 	rows := []desktopRegistrationRow{}

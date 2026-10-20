@@ -62,7 +62,7 @@ type academicUnitMemberAuthorizer interface {
 }
 
 type academicUnitMemberUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type academicUnitMemberService struct {
@@ -137,7 +137,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	recipient := &model.User{ID: userID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, userID.String())
+		recipient, err = s.users.Get(ctx, userID)
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
@@ -229,7 +229,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	var notice *store.PreparedMail
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, current.UserID.String())
+		recipient, err = s.users.Get(ctx, current.UserID)
 		if err != nil {
 			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}

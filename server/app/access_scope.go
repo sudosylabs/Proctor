@@ -376,22 +376,22 @@ func (s *accessControlService) authorizedScopesAt(
 			return constraint, nil
 		}
 	}
-	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), model.TimeUTC(at))
+	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID, model.TimeUTC(at))
 	if err != nil {
 		return constraint, authorizationUnavailableError(err)
 	}
 	if len(bindings) > 256 {
 		return constraint, authorizationUnavailableError(errors.New("active binding bound exceeded"))
 	}
-	roleIDs := make([]string, 0, len(bindings))
-	seenRoles := map[string]struct{}{}
+	roleIDs := make([]model.RoleID, 0, len(bindings))
+	seenRoles := map[model.RoleID]struct{}{}
 	for _, binding := range bindings {
-		if _, exists := seenRoles[binding.RoleID.String()]; !exists {
-			seenRoles[binding.RoleID.String()] = struct{}{}
-			roleIDs = append(roleIDs, binding.RoleID.String())
+		if _, exists := seenRoles[binding.RoleID]; !exists {
+			seenRoles[binding.RoleID] = struct{}{}
+			roleIDs = append(roleIDs, binding.RoleID)
 		}
 	}
-	roles, err := s.roles.GetByIds(ctx, roleIDs)
+	roles, err := s.roles.GetByIDs(ctx, roleIDs)
 	if err != nil {
 		return constraint, authorizationUnavailableError(err)
 	}
@@ -751,7 +751,7 @@ func (r *accessScopeResolver) resolve(
 			resolved.academicUnitID[unit.ID] = struct{}{}
 		}
 	case model.ResourceUser:
-		user, err := r.users.Get(ctx, resource.ID)
+		user, err := r.users.Get(ctx, model.UserID(resource.ID))
 		if err != nil {
 			return resolved, authorizationResourceError("user", err)
 		}

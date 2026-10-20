@@ -301,7 +301,7 @@ func testAuditedClassMemberLifecycle(
 	staleQueuedNotice := classMemberPreparedMail(t, staleQueuedMember, model.MailTemplateAcademicClassEnrolled, staleQueuedMember.CreatedAt)
 	disableAt := model.GetMillis()
 	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: ineligibleUser.ID.String(), ExpectedRevision: ineligibleUser.Revision, Disabled: true,
+		ID: ineligibleUser.ID, ExpectedRevision: ineligibleUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: disableAt,
 	}))
 	requireNoError(t, err)
@@ -337,7 +337,7 @@ func testAuditedClassMemberLifecycle(
 	staleEndNotice = suppressClassMemberMail(t, staleEndNotice, model.MailDeliveryRecipientIneligibleCode)
 	enabledAt := model.GetMillis() + 1
 	enabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-		ID: ineligibleUser.ID.String(), ExpectedRevision: disabledRecipientRevision,
+		ID: ineligibleUser.ID, ExpectedRevision: disabledRecipientRevision,
 		ChangedAt: enabledAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: enabledAt,
 	}))
 	requireNoError(t, err)

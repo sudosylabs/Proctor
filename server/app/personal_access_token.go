@@ -46,12 +46,12 @@ type ListPersonalAccessTokensQuery struct{}
 
 // RevokePersonalAccessTokenCommand revokes one owned PAT.
 type RevokePersonalAccessTokenCommand struct {
-	TokenID string
+	TokenID model.PersonalAccessTokenID
 }
 
 // SetPersonalAccessTokenDisabledCommand enables or disables an owned PAT.
 type SetPersonalAccessTokenDisabledCommand struct {
-	TokenID  string
+	TokenID  model.PersonalAccessTokenID
 	Disabled bool
 }
 
@@ -67,7 +67,7 @@ type personalAccessTokenScopeAuthorizer interface {
 }
 
 type personalAccessTokenUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type personalAccessTokenAdministrationService struct {
@@ -214,7 +214,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 		return nil, appErr
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-		UserID: principal.UserID.String(), Kind: store.PersonalAccessTokenMutationCreate,
+		UserID: principal.UserID, Kind: store.PersonalAccessTokenMutationCreate,
 		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 	}
 	notice, err := s.prepareSecurityNotice(ctx, principal.UserID, candidate, model.MailTemplateIdentityPersonalAccessTokenCreated, prepared.ActionAt)
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	result, err := s.tokens.Create(ctx, &store.PersonalAccessTokenCreationMutation{
 		Token: candidate, MaximumActive: settings.MaximumPerUser,
@@ -230,7 +230,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 		PreparationID: prepared.ID, Notice: notice,
 	})
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	return &model.PersonalAccessTokenCreation{
 		Token: result.Token, Credential: rawCredential,
@@ -254,7 +254,7 @@ func (s *personalAccessTokenAdministrationService) List(
 	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	tokens, err := s.tokens.ListByUser(ctx, principal.UserID.String())
+	tokens, err := s.tokens.ListByUser(ctx, principal.UserID)
 	if err != nil {
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
@@ -278,13 +278,13 @@ func (s *personalAccessTokenAdministrationService) Revoke(
 	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	if !model.IsValidId(command.TokenID) {
+	if !command.TokenID.IsValid() {
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := s.tokens.Get(ctx, command.TokenID)
 	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
-			err = store.NewErrNotFound("personal_access_token", command.TokenID)
+			err = store.NewErrNotFound("personal_access_token", command.TokenID.String())
 		}
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
@@ -304,7 +304,7 @@ func (s *personalAccessTokenAdministrationService) Revoke(
 		return nil, appErr
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-		UserID: principal.UserID.String(), TokenID: command.TokenID, Kind: store.PersonalAccessTokenMutationRevoke,
+		UserID: principal.UserID, TokenID: command.TokenID, Kind: store.PersonalAccessTokenMutationRevoke,
 		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
@@ -312,13 +312,13 @@ func (s *personalAccessTokenAdministrationService) Revoke(
 	}
 	notice, err := s.prepareSecurityNotice(ctx, principal.UserID, current, model.MailTemplateIdentityPersonalAccessTokenRevoked, prepared.ActionAt)
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	result, err := s.tokens.RevokeWithAudit(ctx, &store.PersonalAccessTokenRevocation{
-		ID: command.TokenID, UserID: principal.UserID.String(), PreparationID: prepared.ID, Notice: notice,
+		ID: command.TokenID, UserID: principal.UserID, PreparationID: prepared.ID, Notice: notice,
 	})
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	return result.Token, nil
 }
@@ -347,13 +347,13 @@ func (s *personalAccessTokenAdministrationService) SetDisabled(
 	); err != nil {
 		return nil, err
 	}
-	if !model.IsValidId(command.TokenID) {
+	if !command.TokenID.IsValid() {
 		return nil, invalidPersonalAccessTokenRequest("personal_access_token_id")
 	}
 	current, err := s.tokens.Get(ctx, command.TokenID)
 	if err != nil || current.UserID != principal.UserID {
 		if err == nil {
-			err = store.NewErrNotFound("personal_access_token", command.TokenID)
+			err = store.NewErrNotFound("personal_access_token", command.TokenID.String())
 		}
 		return nil, personalAccessTokenFailure("personal_access_token", err)
 	}
@@ -384,7 +384,7 @@ func (s *personalAccessTokenAdministrationService) SetDisabled(
 		kind = store.PersonalAccessTokenMutationDisable
 	}
 	prepared, err := s.tokens.PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-		UserID: principal.UserID.String(), TokenID: command.TokenID, Kind: kind,
+		UserID: principal.UserID, TokenID: command.TokenID, Kind: kind,
 		Audit: auditDraft, Lifetime: personalAccessTokenMutationPreparationLifetime,
 	})
 	if err != nil {
@@ -392,14 +392,14 @@ func (s *personalAccessTokenAdministrationService) SetDisabled(
 	}
 	notice, err := s.prepareSecurityNotice(ctx, principal.UserID, current, key, prepared.ActionAt)
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	result, err := s.tokens.ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
-		ID: command.TokenID, UserID: principal.UserID.String(), Disabled: command.Disabled,
+		ID: command.TokenID, UserID: principal.UserID, Disabled: command.Disabled,
 		MaximumActive: s.policy.MaximumPerUser, PreparationID: prepared.ID, Notice: notice,
 	})
 	if err != nil {
-		return nil, s.failPreparedMutation(ctx, prepared.ID, err)
+		return nil, s.failPreparedMutation(ctx, prepared.ID.String(), err)
 	}
 	return result.Token, nil
 }
@@ -411,7 +411,7 @@ func (s *personalAccessTokenAdministrationService) prepareSecurityNotice(
 	key model.MailTemplateKey,
 	at time.Time,
 ) (store.PersonalAccessTokenSecurityNotice, error) {
-	user, err := s.users.Get(ctx, userID.String())
+	user, err := s.users.Get(ctx, userID)
 	if err != nil || user == nil || user.ID != userID {
 		return store.PersonalAccessTokenSecurityNotice{}, personalAccessTokenFailure("user", err)
 	}
@@ -492,7 +492,7 @@ func (s *personalAccessTokenAdministrationService) failPreparedMutation(
 	if failure, ok := apperror.As(mapped); ok {
 		code = failure.Code()
 	}
-	if terminalErr := s.tokens.FailMutation(ctx, &store.PersonalAccessTokenMutationFailure{PreparationID: preparationID, ErrorCode: code}); terminalErr != nil {
+	if terminalErr := s.tokens.FailMutation(ctx, &store.PersonalAccessTokenMutationFailure{PreparationID: model.PersonalAccessTokenPreparationID(preparationID), ErrorCode: code}); terminalErr != nil {
 		return apperror.New("audit.unavailable").Wrap(terminalErr)
 	}
 	return mapped

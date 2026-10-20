@@ -53,7 +53,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, err = persistence.User().Get(ctx, operator.ID.String())
+	operator, err = persistence.User().Get(ctx, operator.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

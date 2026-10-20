@@ -121,13 +121,9 @@ func (m authenticationMethodResourceModule) connect(request operationRequest) (o
 }
 
 func (m authenticationMethodResourceModule) unlink(request operationRequest) (operationResult, error) {
-	id, err := request.params.RequireExternalIdentityID()
+	parsed, err := request.params.RequireExternalIdentityID()
 	if err != nil {
 		return operationResult{}, err
-	}
-	parsed, err := model.ParseExternalIdentityID(id)
-	if err != nil {
-		return operationResult{}, invalidRequestError(err)
 	}
 	if err = m.application.UnlinkExternalIdentity(request.context, request.invocation(), parsed); err != nil {
 		return operationResult{}, err

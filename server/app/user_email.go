@@ -19,11 +19,11 @@ import (
 )
 
 type ChangeUserEmailCommand struct {
-	UserID string
+	UserID model.UserID
 	Email  string
 }
 
-type VerifyUserEmailPrivilegedCommand struct{ UserID string }
+type VerifyUserEmailPrivilegedCommand struct{ UserID model.UserID }
 
 // UserEmailState is the narrow result of an explicit email-security mutation.
 // It deliberately omits the mailbox and unrelated profile/account metadata.
@@ -46,12 +46,12 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, strings.TrimSpace(command.UserID)); err != nil {
+	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, command.UserID.String()); err != nil {
 		return nil, err
 	}
-	id := strings.TrimSpace(command.UserID)
+	id := command.UserID
 	newEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
-	if !model.IsValidId(id) || !model.IsValidEmail(newEmail) {
+	if !id.IsValid() || !model.IsValidEmail(newEmail) {
 		return nil, apperror.New("user.invalid").WithField("field", "email")
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
@@ -63,7 +63,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 	}
 	at := model.TimeUTC(a.accountTokens.now())
 	return runAuditedMutation(ctx, a.userProfiles.audit, mutationAttempt{Invocation: invocation, Action: model.ActionUserManage,
-		Resource: model.Resource{Type: model.ResourceUser, ID: id}, Operation: "change_email",
+		Resource: model.Resource{Type: model.ResourceUser, ID: id.String()}, Operation: "change_email",
 		Value: map[string]any{"email_changed": true, "email_verified": false}, Prior: current.Auditable()}, func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*UserEmailState, error) {
 			updated, err := a.accountTokens.changeUserEmail(ctx, current, newEmail, at, reference)
@@ -78,11 +78,11 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, strings.TrimSpace(command.UserID)); err != nil {
+	if err := a.userProfiles.authorization.AuthorizeManage(ctx, invocation, command.UserID.String()); err != nil {
 		return nil, err
 	}
-	id := strings.TrimSpace(command.UserID)
-	if !model.IsValidId(id) {
+	id := command.UserID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
@@ -94,7 +94,7 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 	}
 	at := model.TimeUTC(a.accountTokens.now())
 	return runAuditedMutation(ctx, a.userProfiles.audit, mutationAttempt{Invocation: invocation, Action: model.ActionUserManage,
-		Resource: model.Resource{Type: model.ResourceUser, ID: id}, Operation: "verify_email_privileged",
+		Resource: model.Resource{Type: model.ResourceUser, ID: id.String()}, Operation: "verify_email_privileged",
 		Value: map[string]any{"email_verified": true}, Prior: current.Auditable()}, func() time.Time { return at },
 		func(ctx context.Context, reference mutationAttemptReference) (*UserEmailState, error) {
 			updated, err := a.accountTokens.verifyUserEmailPrivileged(ctx, current, at, reference)

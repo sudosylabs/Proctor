@@ -38,7 +38,7 @@ func TestEmailChangeAuditOmitsOldAndNewMailboxes(t *testing.T) {
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now), ClientType: model.SessionClientWeb}
 
 	if _, err := application.ChangeUserEmail(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
-		ChangeUserEmailCommand{UserID: user.ID.String(), Email: "new-private@example.edu"}); err != nil {
+		ChangeUserEmailCommand{UserID: user.ID, Email: "new-private@example.edu"}); err != nil {
 		t.Fatal(err)
 	}
 	encoded, err := json.Marshal(map[string]any{"parameters": auditor.attempt.Value, "prior": auditor.attempt.Prior})

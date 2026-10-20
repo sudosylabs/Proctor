@@ -145,7 +145,7 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			if err = nodeB.Close(); err != nil {
 				t.Fatalf("node-b Close() = %v", err)
 			}
-			persistedUser, err := persistence.User().Get(context.Background(), user.ID.String())
+			persistedUser, err := persistence.User().Get(context.Background(), user.ID)
 			if err != nil {
 				t.Fatal(err)
 			}

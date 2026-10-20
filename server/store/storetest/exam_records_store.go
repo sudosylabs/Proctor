@@ -188,7 +188,7 @@ func TestExamRecordsStore(t *testing.T, ss store.Store, probes ...ExamRecordsSQL
 	if _, err = records.CreateHold(ctx, hold, overrideKey); err != nil {
 		t.Fatalf("nonadministrator scoped override denied: %v", err)
 	}
-	_, err = ss.RoleBinding().End(ctx, binding.ID.String(), model.GetMillis())
+	_, err = ss.RoleBinding().End(ctx, binding.ID, model.GetMillis())
 	requireNoError(t, err)
 	if _, err = records.CreateHold(ctx, hold, overrideKey); !store.IsConflict(err) {
 		t.Fatalf("same-audit replay ignored revoked role: %v", err)

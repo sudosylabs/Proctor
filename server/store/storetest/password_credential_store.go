@@ -52,12 +52,12 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != passwordSession.ID || len(result.RevokedTokenHashes) != 2 {
 			t.Fatalf("RemoveWithAudit() revocations = %#v", result)
 		}
-		revoked, err := ss.Session().Get(ctx, passwordSession.ID.String())
+		revoked, err := ss.Session().Get(ctx, passwordSession.ID)
 		requireNoError(t, err)
 		if !revoked.RevokedAt.Valid {
 			t.Fatalf("password Session was not revoked = %#v", revoked)
 		}
-		retained, err := ss.Session().Get(ctx, providerSession.ID.String())
+		retained, err := ss.Session().Get(ctx, providerSession.ID)
 		requireNoError(t, err)
 		if retained.RevokedAt.Valid {
 			t.Fatalf("provider Session was revoked = %#v", retained)
@@ -116,7 +116,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		if !errors.Is(err, store.ErrLastUsableAuthenticationMethod) {
 			t.Fatalf("RemoveWithAudit(last) error = %v", err)
 		}
-		unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+		unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 		requireNoError(t, err)
 		if unchanged.ID != result.PasswordCredential.ID {
 			t.Fatalf("credential changed = %#v", unchanged)
@@ -134,7 +134,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		request := &store.PasswordCredentialRehash{ID: saved.ID, UserID: user.ID,
 			ExpectedHash: saved.PasswordHash, ExpectedRevision: saved.Revision, PasswordHash: "encoded-rehashed-password"}
 		requireNoError(t, ss.PasswordCredential().Rehash(ctx, request))
-		got, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+		got, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 		requireNoError(t, err)
 		if got.PasswordHash != request.PasswordHash || got.ID != saved.ID || got.UserID != saved.UserID ||
 			got.Revision != saved.Revision || !got.CreatedAt.Equal(saved.CreatedAt) ||
@@ -161,7 +161,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 				if err := ss.PasswordCredential().Rehash(ctx, &candidate); !errors.Is(err, store.ErrPasswordCredentialChanged) {
 					t.Fatalf("Rehash(stale %s) = %v", test.name, err)
 				}
-				unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+				unchanged, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 				requireNoError(t, err)
 				if *unchanged != *got {
 					t.Fatal("failed rehash changed persisted credential")

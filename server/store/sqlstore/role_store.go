@@ -124,12 +124,12 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 	return row, nil
 }
 
-func (s SQLRoleStore) Get(ctx context.Context, id string) (*model.Role, error) {
-	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id)
+func (s SQLRoleStore) Get(ctx context.Context, id model.RoleID) (*model.Role, error) {
+	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id.String())
 }
 
-func (s SQLRoleStore) GetIncludingArchived(ctx context.Context, id string) (*model.Role, error) {
-	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id}), id)
+func (s SQLRoleStore) GetIncludingArchived(ctx context.Context, id model.RoleID) (*model.Role, error) {
+	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id}), id.String())
 }
 
 func (s SQLRoleStore) GetByName(ctx context.Context, name string) (*model.Role, error) {
@@ -148,7 +148,7 @@ func (s SQLRoleStore) get(ctx context.Context, query sq.SelectBuilder, key strin
 	return row.model()
 }
 
-func (s SQLRoleStore) GetByIds(ctx context.Context, ids []string) ([]*model.Role, error) {
+func (s SQLRoleStore) GetByIDs(ctx context.Context, ids []model.RoleID) ([]*model.Role, error) {
 	if len(ids) == 0 {
 		return []*model.Role{}, nil
 	}
@@ -285,7 +285,7 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role, ex
 	return requireRevisionAffected(ctx, executor, result, "role", "roles", role.ID.String())
 }
 
-func (s SQLRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (*model.Role, error) {
+func (s SQLRoleStore) Archive(ctx context.Context, id model.RoleID, archiveAt int64) (*model.Role, error) {
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archived_at", archiveAt)
 	}
@@ -296,7 +296,7 @@ func (s SQLRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (
 	if role.BuiltIn {
 		return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 	}
-	if err := archiveRole(ctx, s.GetMaster(), id, archiveAt); err != nil {
+	if err := archiveRole(ctx, s.GetMaster(), id.String(), archiveAt); err != nil {
 		return nil, err
 	}
 	at := model.TimeFromMillis(archiveAt)
@@ -306,7 +306,7 @@ func (s SQLRoleStore) Archive(ctx context.Context, id string, archiveAt int64) (
 }
 
 func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ArchiveAt <= 0 ||
+	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("role", "archive", nil)
 	}
@@ -318,7 +318,7 @@ func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArc
 		  FROM roles
 		 WHERE id = ? AND archived_at IS NULL
 		 FOR UPDATE`, input.ID); err != nil {
-			return nil, translateError("role", input.ID, err)
+			return nil, translateError("role", input.ID.String(), err)
 		}
 		role, err := row.model()
 		if err != nil {
@@ -327,7 +327,7 @@ func (s SQLRoleStore) ArchiveWithAudit(ctx context.Context, input *store.RoleArc
 		if role.BuiltIn {
 			return nil, store.NewErrConflict("role", "roles_built_in_protected", nil)
 		}
-		if err := archiveRole(ctx, tx, input.ID, input.ArchiveAt); err != nil {
+		if err := archiveRole(ctx, tx, input.ID.String(), input.ArchiveAt); err != nil {
 			return nil, err
 		}
 		at := model.TimeFromMillis(input.ArchiveAt)

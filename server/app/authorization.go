@@ -123,21 +123,20 @@ func (s *accessControlService) evaluateResolved(
 		return true, nil
 	}
 	bindings, err := s.bindings.ListActiveByUser(
-		ctx, principal.UserID.String(), model.TimeUTC(s.now()),
+		ctx, principal.UserID, model.TimeUTC(s.now()),
 	)
 	if err != nil {
 		return false, authorizationUnavailableError(err)
 	}
-	roleIDs := make([]string, 0, len(bindings))
-	seen := make(map[string]struct{}, len(bindings))
+	roleIDs := make([]model.RoleID, 0, len(bindings))
+	seen := make(map[model.RoleID]struct{}, len(bindings))
 	for _, binding := range bindings {
-		roleKey := binding.RoleID.String()
-		if _, exists := seen[roleKey]; !exists {
-			seen[roleKey] = struct{}{}
-			roleIDs = append(roleIDs, roleKey)
+		if _, exists := seen[binding.RoleID]; !exists {
+			seen[binding.RoleID] = struct{}{}
+			roleIDs = append(roleIDs, binding.RoleID)
 		}
 	}
-	roles, err := s.roles.GetByIds(ctx, roleIDs)
+	roles, err := s.roles.GetByIDs(ctx, roleIDs)
 	if err != nil {
 		return false, authorizationUnavailableError(err)
 	}
@@ -274,7 +273,7 @@ func (s *accessControlService) authorizeUserAccountState(
 	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
 		return apperror.New("authorization.request.invalid")
 	}
-	user, err := s.resolver.users.Get(ctx, userID)
+	user, err := s.resolver.users.Get(ctx, model.UserID(userID))
 	if err != nil {
 		return authorizationResourceError("user", err)
 	}
@@ -388,7 +387,7 @@ func (s *accessControlService) authorizeUserRead(
 	if visibility.ClassMemberInstitutionWide || len(visibility.AcademicUnitRootIDs) > 0 ||
 		len(visibility.ClassMemberAcademicUnitRootIDs) > 0 || len(visibility.ClassIDs) > 0 {
 		var err error
-		match, err = s.resolver.users.MatchVisibility(ctx, userID, visibility)
+		match, err = s.resolver.users.MatchVisibility(ctx, model.UserID(userID), visibility)
 		if err != nil {
 			return false, authorizationUnavailableError(err)
 		}

@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -32,11 +31,11 @@ type SearchUsersQuery struct {
 }
 
 type GetUserProfileQuery struct {
-	ID string
+	ID model.UserID
 }
 
 type UpdateUserProfileCommand struct {
-	ID          string
+	ID          model.UserID
 	Username    *string
 	DisplayName *string
 	FirstName   *string
@@ -46,7 +45,7 @@ type UpdateUserProfileCommand struct {
 }
 
 type userProfileStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 	List(context.Context, store.UserListOptions) ([]*model.User, error)
 	GetCurrentContext(context.Context, model.UserID, int) (*store.CurrentUserContext, error)
 	UpdateProfileWithAudit(context.Context, *store.UserProfileUpdate) (*model.User, error)
@@ -126,7 +125,7 @@ func (s *userProfileService) Search(ctx context.Context, invocation Invocation, 
 		query.Limit = defaultAdministrationListLimit
 	}
 	includeDisabled := query.IncludeDisabled && visibility.InstitutionWide
-	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: includeDisabled, Visibility: visibility})
+	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterID: model.UserID(query.AfterID), Limit: query.Limit, IncludeDisabled: includeDisabled, Visibility: visibility})
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -144,11 +143,11 @@ func (a *App) GetUserProfile(ctx context.Context, invocation Invocation, query G
 }
 
 func (s *userProfileService) Get(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {
-	id := strings.TrimSpace(query.ID)
-	if !model.IsValidId(id) {
+	id := query.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	fullProfile, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id)
+	fullProfile, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id.String())
 	if err != nil {
 		return nil, err
 	}
@@ -196,11 +195,11 @@ func (a *App) UpdateUserProfile(ctx context.Context, invocation Invocation, comm
 }
 
 func (s *userProfileService) Update(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
-	if err := s.authorization.AuthorizeManage(ctx, invocation, id); err != nil {
+	if err := s.authorization.AuthorizeManage(ctx, invocation, id.String()); err != nil {
 		return nil, err
 	}
 	current, err := s.users.Get(ctx, id)
@@ -216,7 +215,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	if err := candidate.Validate(); err != nil {
 		return nil, domainInvalid("user.invalid", err)
 	}
-	resource := model.Resource{Type: model.ResourceUser, ID: id}
+	resource := model.Resource{Type: model.ResourceUser, ID: id.String()}
 	return runAuditedMutation(
 		ctx,
 		s.audit,

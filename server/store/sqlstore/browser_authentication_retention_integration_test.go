@@ -153,7 +153,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
 		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
@@ -172,7 +172,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	if disabled.err != nil || disabled.result == nil || disabled.result.User == nil || !disabled.result.User.DisabledAt.Valid {
 		t.Fatalf("SetDisabledWithAudit() = %#v, %v", disabled.result, disabled.err)
 	}
-	storedSession, err := persistence.Session().Get(ctx, exchanged.result.Session.ID.String())
+	storedSession, err := persistence.Session().Get(ctx, exchanged.result.Session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	disableResult := make(chan disableOutcome, 1)
 	go func() {
 		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
 			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
@@ -316,7 +316,7 @@ func TestDesktopAuthorizationRejectsArchivedUsersWithoutConsumingProofsOrCodes(t
 		t.Fatalf("Exchange(archived User) = %#v, %v; want not found", result, exchangeErr)
 	}
 	assertDesktopAuthorizationAuditAttempt(t, ctx, persistence, exchangeAudit.ID)
-	if sessions, listErr := persistence.Session().ListByUser(ctx, user.ID.String()); listErr != nil || len(sessions) != 0 {
+	if sessions, listErr := persistence.Session().ListByUser(ctx, user.ID); listErr != nil || len(sessions) != 0 {
 		t.Fatalf("archived exchange sessions = %#v, %v", sessions, listErr)
 	}
 	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE users SET archived_at=NULL WHERE id=?`, user.ID.String()); err != nil {
@@ -427,7 +427,7 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 		t.Fatalf("Exchange(at session limit) = %#v, %v; want conflict", result, exchangeErr)
 	}
 	assertDesktopAuthorizationAuditAttempt(t, ctx, persistence, exchangeAudit.ID)
-	if sessions, listErr := persistence.Session().ListByUser(ctx, user.ID.String()); listErr != nil || len(sessions) != 1 || sessions[0].ID != existing.ID {
+	if sessions, listErr := persistence.Session().ListByUser(ctx, user.ID); listErr != nil || len(sessions) != 1 || sessions[0].ID != existing.ID {
 		t.Fatalf("sessions after limit rollback = %#v, %v", sessions, listErr)
 	}
 	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET revoked_at=clock_timestamp(),revocation_reason='user_session' WHERE id=?`, existing.ID.String()); err != nil {
@@ -499,7 +499,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 					    idle_expires_at=idle_expires_at+interval '1 hour',expires_at=expires_at+interval '1 hour'
 					WHERE id=?`, source.ID.String())
 			case "revoked session":
-				_, err = persistence.Session().Revoke(ctx, source.ID.String(), user.ID.String(), model.GetMillis(), model.SessionRevocationUserSession)
+				_, err = persistence.Session().Revoke(ctx, source.ID, user.ID, model.GetMillis(), model.SessionRevocationUserSession)
 			case "expired session":
 				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET expires_at=statement_timestamp(),idle_expires_at=statement_timestamp() WHERE id=?`, source.ID.String())
 			case "idle expired session":
@@ -531,7 +531,7 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 				t.Fatal(err)
 			}
 			if name == "future authentication" {
-				future, getErr := persistence.Session().Get(ctx, source.ID.String())
+				future, getErr := persistence.Session().Get(ctx, source.ID)
 				if getErr != nil || future.Validate() != nil {
 					t.Fatalf("future-clock source Session is not otherwise valid: %v", getErr)
 				}
@@ -727,7 +727,7 @@ func TestDesktopAuthorizationCreatesAndRevokesBoundDesktopRegistration(t *testin
 		exchanged.Session.DPoPKeyThumbprint != exchanged.Registration.KeyThumbprint {
 		t.Fatalf("Desktop exchange binding = %#v", exchanged)
 	}
-	registrations, err := persistence.DesktopRegistration().ListByUser(ctx, user.ID.String())
+	registrations, err := persistence.DesktopRegistration().ListByUser(ctx, user.ID)
 	if err != nil || len(registrations) != 1 || registrations[0].ID != exchanged.Registration.ID {
 		t.Fatalf("ListByUser() = %#v, %v", registrations, err)
 	}

@@ -64,7 +64,7 @@ func (s *desktopRegistrationService) List(
 	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	registrations, err := s.registrations.ListByUser(ctx, principal.UserID.String())
+	registrations, err := s.registrations.ListByUser(ctx, principal.UserID)
 	if err != nil {
 		return nil, apperror.New("desktop_registration.unavailable").Wrap(err)
 	}

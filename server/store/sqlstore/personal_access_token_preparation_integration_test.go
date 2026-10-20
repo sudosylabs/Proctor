@@ -31,7 +31,7 @@ func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *test
 
 	for range 2 {
 		prepared, prepareErr := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-			UserID: user.ID.String(), Kind: store.PersonalAccessTokenMutationCreate, Lifetime: 30 * time.Second,
+			UserID: user.ID, Kind: store.PersonalAccessTokenMutationCreate, Lifetime: 30 * time.Second,
 			Audit: personalAccessTokenPreparationAudit(user.ID, session.ID, institution.ID),
 		})
 		if prepareErr != nil {
@@ -54,7 +54,7 @@ func TestPersonalAccessTokenPreparationMaintenanceIsBoundedAndAppendOnly(t *test
 	if err := persistence.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM personal_access_token_mutation_preparations`); err != nil || remaining != 0 {
 		t.Fatalf("remaining preparations=%d err=%v", remaining, err)
 	}
-	events, err := persistence.Audit().List(ctx, store.AuditListOptions{ActorId: user.ID.String(), Action: "personal_access_token.create", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
+	events, err := persistence.Audit().List(ctx, store.AuditListOptions{ActorID: user.ID, Action: "personal_access_token.create", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 		t.Fatal(err)
 	}
 	preparation, err := persistence.PersonalAccessToken().PrepareMutation(ctx, &store.PersonalAccessTokenMutationPreparation{
-		UserID: user.ID.String(), TokenID: token.ID.String(), Kind: store.PersonalAccessTokenMutationDisable, Lifetime: 30 * time.Second,
+		UserID: user.ID, TokenID: token.ID, Kind: store.PersonalAccessTokenMutationDisable, Lifetime: 30 * time.Second,
 		Audit: &model.AuditEvent{ActorID: user.ID, SessionID: session.ID, Action: "personal_access_token.disable",
 			Resource: model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "pat-preparation-fence"},
@@ -125,7 +125,7 @@ func TestPersonalAccessTokenPreparationExpiryIsCheckedAfterUserFence(t *testing.
 	result := make(chan error, 1)
 	go func() {
 		_, changeErr := persistence.PersonalAccessToken().ChangeState(ctx, &store.PersonalAccessTokenStateMutation{
-			ID: token.ID.String(), UserID: user.ID.String(), Disabled: true, MaximumActive: 10,
+			ID: token.ID, UserID: user.ID, Disabled: true, MaximumActive: 10,
 			PreparationID: preparation.ID,
 		})
 		result <- changeErr

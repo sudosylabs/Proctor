@@ -287,7 +287,7 @@ type invitationAcademicUnitReader interface {
 	Get(context.Context, model.AcademicUnitID) (*model.AcademicUnit, error)
 }
 type invitationRoleReader interface {
-	Get(context.Context, string) (*model.Role, error)
+	Get(context.Context, model.RoleID) (*model.Role, error)
 }
 type invitationAuthorizer interface {
 	Authorize(context.Context, Invocation, model.Action, model.Resource) error
@@ -1215,7 +1215,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		if err != nil || unit.ID != unitID || unit.IsArchived() {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
-		role, err := s.roles.Get(ctx, roleID.String())
+		role, err := s.roles.Get(ctx, roleID)
 		if err != nil || role.ID != roleID || role.IsArchived() {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
@@ -1267,7 +1267,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 				return nil, "", err
 			}
 		}
-		role, err := s.roles.Get(ctx, roleID.String())
+		role, err := s.roles.Get(ctx, roleID)
 		if err != nil || role.ID != roleID || role.IsArchived() {
 			return nil, "", invitationStoreErrors.Translate(err)
 		}
@@ -1467,7 +1467,7 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
-	role, err := s.roles.Get(ctx, roleID.String())
+	role, err := s.roles.Get(ctx, roleID)
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
@@ -1602,7 +1602,7 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
-	role, err := s.roles.Get(ctx, roleID.String())
+	role, err := s.roles.Get(ctx, roleID)
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
@@ -1646,7 +1646,7 @@ func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation
 			return InvitationView{}, err
 		}
 	}
-	role, err := s.roles.Get(ctx, roleID.String())
+	role, err := s.roles.Get(ctx, roleID)
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}

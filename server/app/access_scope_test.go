@@ -951,14 +951,14 @@ type accessUserStoreFake struct {
 	matchCalls      int
 }
 
-func (s *accessUserStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s *accessUserStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	if s.user == nil {
 		return nil, store.NewErrNotFound("user", "")
 	}
 	return s.user, nil
 }
 
-func (s *accessUserStoreFake) MatchVisibility(_ context.Context, _ string, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
+func (s *accessUserStoreFake) MatchVisibility(_ context.Context, _ model.UserID, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	s.matchCalls++
 	s.matchVisibility = visibility
 	return s.match, nil
@@ -1003,7 +1003,7 @@ type accessRoleStoreFake struct {
 	roles []*model.Role
 }
 
-func (s *accessRoleStoreFake) GetByIds(context.Context, []string) ([]*model.Role, error) {
+func (s *accessRoleStoreFake) GetByIDs(context.Context, []model.RoleID) ([]*model.Role, error) {
 	return s.roles, nil
 }
 
@@ -1014,7 +1014,7 @@ type accessRoleBindingStoreFake struct {
 	lookup   func(time.Time) ([]*model.RoleBinding, error)
 }
 
-func (s *accessRoleBindingStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.RoleBinding, error) {
+func (s *accessRoleBindingStoreFake) ListActiveByUser(_ context.Context, _ model.UserID, at time.Time) ([]*model.RoleBinding, error) {
 	s.activeAt = append(s.activeAt, at)
 	if s.lookup != nil {
 		return s.lookup(at)

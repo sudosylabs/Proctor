@@ -154,7 +154,7 @@ func (r *jobMailMetricsFake) RecordJobMailAttempt(_ context.Context, metric appj
 
 type mailUserStoreFake struct{ user *model.User }
 
-func (s mailUserStoreFake) Get(context.Context, string) (*model.User, error) {
+func (s mailUserStoreFake) Get(context.Context, model.UserID) (*model.User, error) {
 	if s.user == nil {
 		return nil, store.NewErrNotFound("user", "missing")
 	}

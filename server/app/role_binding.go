@@ -41,7 +41,7 @@ type CreateRoleBindingCommand struct {
 }
 
 type EndRoleBindingCommand struct {
-	ID                        string
+	ID                        model.RoleBindingID
 	IdempotencyKey            string
 	BatchScopeType            model.RoleScopeType
 	BatchScopeID              string
@@ -54,21 +54,21 @@ type EndRoleBindingCommand struct {
 }
 
 type roleBindingStore interface {
-	Get(context.Context, string) (*model.RoleBinding, error)
-	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
-	ListVisibleByUser(context.Context, string, store.UserVisibilityScope) ([]*model.RoleBinding, error)
+	Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error)
+	ListByUser(context.Context, model.UserID) ([]*model.RoleBinding, error)
+	ListVisibleByUser(context.Context, model.UserID, store.UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	SaveWithAudit(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error)
 	EndWithAudit(context.Context, *store.RoleBindingEnd) (*model.RoleBinding, error)
 }
 
 type roleBindingRoleStore interface {
-	Get(context.Context, string) (*model.Role, error)
-	GetIncludingArchived(context.Context, string) (*model.Role, error)
+	Get(context.Context, model.RoleID) (*model.Role, error)
+	GetIncludingArchived(context.Context, model.RoleID) (*model.Role, error)
 }
 
 type roleBindingUserStore interface {
-	Get(context.Context, string) (*model.User, error)
+	Get(context.Context, model.UserID) (*model.User, error)
 }
 
 type roleBindingAuthorizer interface {
@@ -128,7 +128,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		if err != nil {
 			return nil, err
 		}
-		bindings, err := s.bindings.ListVisibleByUser(ctx, userID, visibility)
+		bindings, err := s.bindings.ListVisibleByUser(ctx, model.UserID(userID), visibility)
 		if err != nil {
 			return nil, roleBindingStoreErrors.Translate(err)
 		}
@@ -191,9 +191,9 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	}
 	var role *model.Role
 	if command.batchRetainedOutcome {
-		role, err = s.roles.GetIncludingArchived(ctx, candidate.RoleID.String())
+		role, err = s.roles.GetIncludingArchived(ctx, candidate.RoleID)
 	} else {
-		role, err = s.roles.Get(ctx, candidate.RoleID.String())
+		role, err = s.roles.Get(ctx, candidate.RoleID)
 	}
 	if err != nil {
 		return nil, roleBindingStoreErrors.Translate(err)
@@ -218,7 +218,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	recipient := &model.User{ID: userID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, userID.String())
+		recipient, err = s.users.Get(ctx, userID)
 		if err != nil {
 			return nil, roleBindingStoreErrors.Translate(err)
 		}
@@ -291,8 +291,8 @@ func (a *App) EndRoleBinding(ctx context.Context, invocation Invocation, command
 }
 
 func (s *roleBindingService) End(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
-	id := strings.TrimSpace(command.ID)
-	if !model.IsValidId(id) {
+	id := command.ID
+	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_binding_id")
 	}
 	if err := s.authorization.AuthorizeRoleBindingPreflight(ctx, invocation, model.ActionRoleBindingManage); err != nil {
@@ -315,7 +315,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		ID        string              `json:"id"`
 		ScopeType model.RoleScopeType `json:"scope_type,omitempty"`
 		ScopeID   string              `json:"scope_id,omitempty"`
-	}{id, command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
+	}{id.String(), command.BatchScopeType, strings.TrimSpace(command.BatchScopeID)})
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	recipient := &model.User{ID: current.UserID, Revision: 1}
 	var notice *store.PreparedMail
 	if !command.batchRetainedOutcome {
-		recipient, err = s.users.Get(ctx, current.UserID.String())
+		recipient, err = s.users.Get(ctx, current.UserID)
 		if err != nil {
 			return nil, roleBindingStoreErrors.Translate(err)
 		}

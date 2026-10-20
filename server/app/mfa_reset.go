@@ -23,7 +23,7 @@ import (
 // reference identifies the institution's verification record; it must not
 // contain documents, passwords, factor secrets or recovery codes.
 type ResetUserMFACommand struct {
-	UserID                string
+	UserID                model.UserID
 	IdentityVerified      bool
 	Reason                string
 	VerificationReference string
@@ -41,7 +41,7 @@ func (s *mfaApplicationService) ResetUser(ctx context.Context, invocation Invoca
 	if err := s.requireEnabled(); err != nil {
 		return err
 	}
-	userID, err := model.ParseUserID(command.UserID)
+	userID, err := model.ParseUserID(command.UserID.String())
 	reason, reference := strings.TrimSpace(command.Reason), strings.TrimSpace(command.VerificationReference)
 	if err != nil || userID == principal.UserID || !command.IdentityVerified || reason == "" || utf8.RuneCountInString(reason) > 512 || reference == "" || utf8.RuneCountInString(reference) > 128 {
 		return apperror.New("authentication.mfa.reset_invalid")

@@ -520,7 +520,7 @@ func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest
 }
 
 func (m invitationResourceModule) issueInstitutionRole(request operationRequest) (operationResult, error) {
-	institutionID, err := request.params.RequireInstitutionId()
+	institutionID, err := request.params.RequireInstitutionID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -529,7 +529,7 @@ func (m invitationResourceModule) issueInstitutionRole(request operationRequest)
 		return operationResult{}, err
 	}
 	created, err := m.invitations.IssueInstitutionRoleInvitation(request.context, request.invocation(), application.IssueInstitutionRoleInvitationCommand{
-		TargetEmail: body.Email, InstitutionID: institutionID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+		TargetEmail: body.Email, InstitutionID: institutionID.String(), RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
 	})
 	if err != nil {
 		return operationResult{}, err

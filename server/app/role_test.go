@@ -36,7 +36,7 @@ type roleStoreFake struct {
 	archiveErr    error
 }
 
-func (s *roleStoreFake) Get(context.Context, string) (*model.Role, error) {
+func (s *roleStoreFake) Get(context.Context, model.RoleID) (*model.Role, error) {
 	*s.events = append(*s.events, "get-role")
 	return s.role, s.getErr
 }
@@ -173,7 +173,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, delegationErr: denied},
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
-		_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), Permissions: &permissions})
+		_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
 		if !apperror.Is(err, "authorization.denied") {
 			t.Fatalf("Update() error = %v", err)
 		}
@@ -229,7 +229,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
+	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if !apperror.Is(err, "role.conflict") {
 		t.Fatalf("error = %v", err)
 	}
@@ -276,7 +276,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
+	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if !apperror.Is(err, "role.built_in.protected") {
 		t.Fatalf("error = %v", err)
 	}
@@ -297,7 +297,7 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.Archive(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID.String()}); err != nil {
+	if err := service.Archive(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}

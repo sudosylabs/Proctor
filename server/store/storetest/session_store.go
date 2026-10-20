@@ -58,7 +58,7 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 			at := model.GetMillis() + 100
 			revoke := func(auditID string) (*store.SessionRevocationResult, bool, error) {
 				if reason == model.SessionRevocationUserAllSessions {
-					input := &store.UserSessionsRevocation{UserID: user.ID.String(), RevokedAt: at, Reason: reason, AuditEventID: auditID, AuditAt: at}
+					input := &store.UserSessionsRevocation{UserID: user.ID, RevokedAt: at, Reason: reason, AuditEventID: auditID, AuditAt: at}
 					result, revokeErr := ss.Session().RevokeAllForUserWithAudit(ctx, input)
 					if revokeErr != nil {
 						return nil, false, revokeErr
@@ -70,7 +70,7 @@ func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
 					return value, input.NoOp, nil
 				}
 				result, revokeErr := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
-					SessionID: session.ID.String(), UserID: user.ID.String(), RevokedAt: at,
+					SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 					Reason: reason, AuditEventID: auditID, AuditAt: at,
 				})
 				return result, result != nil && result.Session == nil, revokeErr
@@ -151,12 +151,12 @@ func testSessionPasswordProof(t *testing.T, ss store.Store) {
 			}
 		})
 	}
-	remaining, err := ss.Session().ListByUser(ctx, user.ID.String())
+	remaining, err := ss.Session().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(remaining) != 0 {
 		t.Fatalf("failed password proof created %d Sessions", len(remaining))
 	}
-	credential, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+	credential, err := ss.PasswordCredential().GetByUser(ctx, user.ID)
 	requireNoError(t, err)
 	requireNoError(t, ss.PasswordCredential().Rehash(ctx, &store.PasswordCredentialRehash{
 		ID: credential.ID, UserID: user.ID, ExpectedRevision: credential.Revision,
@@ -174,7 +174,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	active, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	for _, invalidAt := range []time.Time{{}, time.Unix(0, 0), time.Unix(-1, 0)} {
-		_, err := ss.Session().EnforceExpiry(ctx, active.ID.String(), user.ID.String(), invalidAt)
+		_, err := ss.Session().EnforceExpiry(ctx, active.ID, user.ID, invalidAt)
 		var invalid *store.ErrInvalidInput
 		if !errors.As(err, &invalid) {
 			t.Fatalf("EnforceExpiry(%v) error = %v, want invalid input", invalidAt, err)
@@ -182,8 +182,8 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	}
 	beforeExpiry, err := ss.Session().EnforceExpiry(
 		ctx,
-		active.ID.String(),
-		user.ID.String(),
+		active.ID,
+		user.ID,
 		active.IdleExpiresAt.Add(-time.Millisecond),
 	)
 	requireNoError(t, err)
@@ -196,8 +196,8 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	at := expired.IdleExpiresAt.Add(time.Second)
 	result, err := ss.Session().EnforceExpiry(
 		ctx,
-		expired.ID.String(),
-		user.ID.String(),
+		expired.ID,
+		user.ID,
 		at,
 	)
 	requireNoError(t, err)
@@ -217,7 +217,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 			t.Fatalf("expired credential/session = %#v / %#v", credential, resolved)
 		}
 	}
-	if _, err = ss.Session().EnforceExpiry(ctx, expired.ID.String(), user.ID.String(), at.Add(time.Microsecond)); !store.IsNotFound(err) {
+	if _, err = ss.Session().EnforceExpiry(ctx, expired.ID, user.ID, at.Add(time.Microsecond)); !store.IsNotFound(err) {
 		t.Fatalf("repeated EnforceExpiry() error = %v", err)
 	}
 }
@@ -238,17 +238,17 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	if credential.SessionID != session.ID || resolved.ID != session.ID {
 		t.Fatalf("resolved credential=%#v session=%#v", credential, resolved)
 	}
-	list, err := ss.Session().ListByUser(ctx, user.ID.String())
+	list, err := ss.Session().ListByUser(ctx, user.ID)
 	requireNoError(t, err)
 	if len(list) != 1 || list[0].ID != session.ID {
 		t.Fatalf("ListByUser() = %#v", list)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), session.CreatedAt)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID, session.CreatedAt)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].ID != session.ID {
 		t.Fatalf("ListActiveByUser(active) = %#v", active)
 	}
-	active, err = ss.Session().ListActiveByUser(ctx, user.ID.String(), session.ExpiresAt)
+	active, err = ss.Session().ListActiveByUser(ctx, user.ID, session.ExpiresAt)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("ListActiveByUser(expired) = %#v", active)
@@ -273,8 +273,8 @@ func testSessionUpdateActivity(t *testing.T, ss store.Store) {
 	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := session.LastActivityAt.Add(time.Second)
 	idle := at.Add(time.Hour)
-	requireNoError(t, ss.Session().UpdateActivity(ctx, session.ID.String(), at, idle))
-	got, err := ss.Session().Get(ctx, session.ID.String())
+	requireNoError(t, ss.Session().UpdateActivity(ctx, session.ID, at, idle))
+	got, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if !got.LastActivityAt.Equal(at) || !got.IdleExpiresAt.Equal(idle) {
 		t.Fatalf("UpdateActivity() session = %#v", got)
@@ -289,16 +289,16 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	at := model.GetMillis() + 100
 	other := saveUser(t, ctx, ss)
-	_, err = ss.Session().Revoke(ctx, session.ID.String(), other.ID.String(), at, model.SessionRevocationUserLogout)
+	_, err = ss.Session().Revoke(ctx, session.ID, other.ID, at, model.SessionRevocationUserLogout)
 	if !store.IsNotFound(err) {
 		t.Fatalf("cross-user Revoke() error = %v", err)
 	}
-	unrevoked, err := ss.Session().Get(ctx, session.ID.String())
+	unrevoked, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if unrevoked.RevokedAt.Valid {
 		t.Fatalf("cross-user Revoke() changed session = %#v", unrevoked)
 	}
-	hashes, err := ss.Session().Revoke(ctx, session.ID.String(), user.ID.String(), at, model.SessionRevocationUserLogout)
+	hashes, err := ss.Session().Revoke(ctx, session.ID, user.ID, at, model.SessionRevocationUserLogout)
 	requireNoError(t, err)
 	if len(hashes) != 2 {
 		t.Fatalf("Revoke() hashes = %#v", hashes)
@@ -312,7 +312,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if credential.RevokedAt.Millis() != at || got.RevokedAt.Millis() != at || got.RevocationReason != model.SessionRevocationUserLogout {
 		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(at))
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID, model.TimeFromMillis(at))
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("revoked session remained active: %#v", active)
@@ -331,7 +331,7 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	at := model.GetMillis() + 100
 
 	missingAuditCommand := sessionRevocationWithNotice(t, &store.SessionRevocation{
-		SessionID: session.ID.String(), UserID: user.ID.String(), RevokedAt: at,
+		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: model.NewId(), AuditAt: at,
 	})
 	if _, err := ss.Session().RevokeWithAudit(ctx, missingAuditCommand); err == nil {
@@ -340,7 +340,7 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 	if _, getErr := ss.Mail().GetDelivery(ctx, missingAuditCommand.Delivery.ID); !store.IsNotFound(getErr) {
 		t.Fatalf("administrative Session notice survived audit rollback: %v", getErr)
 	}
-	unrevoked, err := ss.Session().Get(ctx, session.ID.String())
+	unrevoked, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if unrevoked.RevokedAt.Valid {
 		t.Fatalf("session survived audit rollback: %#v", unrevoked)
@@ -355,7 +355,7 @@ func testSessionRevokeWithAudit(t *testing.T, ss store.Store) {
 
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	command := sessionRevocationWithNotice(t, &store.SessionRevocation{
-		SessionID: session.ID.String(), UserID: user.ID.String(), RevokedAt: at,
+		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	result, err := ss.Session().RevokeWithAudit(ctx, command)
@@ -388,7 +388,7 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 	other := saveUser(t, ctx, ss)
 	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
 	at := model.GetMillis() + 100
-	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.ID.String(), at, model.SessionRevocationUserAllSessions)
+	revoked, hashes, err := ss.Session().RevokeAllForUser(ctx, user.ID, at, model.SessionRevocationUserAllSessions)
 	requireNoError(t, err)
 	if len(hashes) != 4 {
 		t.Fatalf("RevokeAllForUser() hashes = %#v", hashes)
@@ -397,13 +397,13 @@ func testSessionRevokeAllForUser(t *testing.T, ss store.Store) {
 		t.Fatalf("RevokeAllForUser() sessions = %#v", revoked)
 	}
 	for _, id := range []string{first.ID.String(), second.ID.String()} {
-		got, getErr := ss.Session().Get(ctx, id)
+		got, getErr := ss.Session().Get(ctx, model.SessionID(id))
 		requireNoError(t, getErr)
 		if got.RevokedAt.Millis() != at {
 			t.Fatalf("session %s not revoked: %#v", id, got)
 		}
 	}
-	gotOther, err := ss.Session().Get(ctx, otherSession.ID.String())
+	gotOther, err := ss.Session().Get(ctx, otherSession.ID)
 	requireNoError(t, err)
 	if gotOther.RevokedAt.Valid {
 		t.Fatalf("other user's session was revoked: %#v", gotOther)
@@ -418,13 +418,13 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	at := model.GetMillis() + 100
 
 	if _, err := ss.Session().RevokeAllForUserWithAudit(ctx, userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
-		UserID: user.ID.String(), RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
+		UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: model.NewId(), AuditAt: at,
 	})); err == nil {
 		t.Fatal("RevokeAllForUserWithAudit() succeeded without its audit attempt")
 	}
 	for _, id := range []string{first.ID.String(), second.ID.String()} {
-		got, getErr := ss.Session().Get(ctx, id)
+		got, getErr := ss.Session().Get(ctx, model.SessionID(id))
 		requireNoError(t, getErr)
 		if got.RevokedAt.Valid {
 			t.Fatalf("session %s survived audit rollback: %#v", id, got)
@@ -440,7 +440,7 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	command := userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
-		UserID: user.ID.String(), RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
+		UserID: user.ID, RevokedAt: at, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	result, err := ss.Session().RevokeAllForUserWithAudit(ctx, command)
@@ -458,7 +458,7 @@ func testSessionRevokeAllForUserWithAudit(t *testing.T, ss store.Store) {
 	}
 	replayAttempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	replay := userSessionsRevocationWithNotice(t, &store.UserSessionsRevocation{
-		UserID: user.ID.String(), RevokedAt: at + 1, Reason: model.SessionRevocationAdministratorAllSessions,
+		UserID: user.ID, RevokedAt: at + 1, Reason: model.SessionRevocationAdministratorAllSessions,
 		AuditEventID: replayAttempt.ID.String(), AuditAt: at + 1,
 	})
 	replayed, replayErr := ss.Session().RevokeAllForUserWithAudit(ctx, replay)
@@ -478,7 +478,7 @@ func testSessionDisabledMailRecordsTerminalAdministrativeNotice(t *testing.T, ss
 	at := model.GetMillis() + 100
 	attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
 	command := sessionRevocationWithNotice(t, &store.SessionRevocation{
-		SessionID: session.ID.String(), UserID: user.ID.String(), RevokedAt: at,
+		SessionID: session.ID, UserID: user.ID, RevokedAt: at,
 		Reason: model.SessionRevocationAdministratorSession, AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	command.Delivery, command.DeliveryJob = suppressSecurityNoticeForDisabledMail(t, command.Delivery, command.DeliveryJob)
@@ -649,7 +649,7 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 	if successes != 1 || replays != 1 {
 		t.Fatalf("concurrent rotations: successes=%d replays=%d", successes, replays)
 	}
-	got, err := ss.Session().Get(ctx, session.ID.String())
+	got, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if !got.RevokedAt.Valid || got.RevocationReason != model.SessionRevocationRefreshReplay {
 		t.Fatalf("concurrent replay did not revoke the session: %#v", got)
@@ -689,7 +689,7 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 		<-start
 		_, _, err := ss.Session().RevokeAllForUser(
 			ctx,
-			user.ID.String(),
+			user.ID,
 			revokeAt,
 			model.SessionRevocationUserAllSessions,
 		)
@@ -706,12 +706,12 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	}
 	requireNoError(t, <-revocationResult)
 
-	got, err := ss.Session().Get(ctx, session.ID.String())
+	got, err := ss.Session().Get(ctx, session.ID)
 	requireNoError(t, err)
 	if got.RevokedAt.Millis() != revokeAt || got.RevocationReason != model.SessionRevocationUserAllSessions {
 		t.Fatalf("session after concurrent revocation = %#v", got)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), rotateAt)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID, rotateAt)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("sessions remained active after revoke-all: %#v", active)
@@ -795,7 +795,7 @@ func testSessionCreation(t *testing.T, ctx context.Context, ss store.Store, sess
 
 func testPasswordProof(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID) store.PasswordCredentialProof {
 	t.Helper()
-	credential, err := ss.PasswordCredential().GetByUser(ctx, userID.String())
+	credential, err := ss.PasswordCredential().GetByUser(ctx, userID)
 	if store.IsNotFound(err) {
 		credential, err = ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
 			UserID: userID, PasswordHash: "encoded-session-fixture-password",

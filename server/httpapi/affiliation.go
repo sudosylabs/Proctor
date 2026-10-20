@@ -90,11 +90,11 @@ func academicRelationshipMutationErrorCodes(specific ...string) []string {
 }
 
 func (module affiliationResourceModule) list(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
-	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: model.UserID(userID)})
+	values, err := module.affiliations.ListAffiliations(request.context, request.invocation(), application.ListAffiliationsQuery{UserID: userID})
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -102,7 +102,7 @@ func (module affiliationResourceModule) list(request operationRequest) (operatio
 }
 
 func (module affiliationResourceModule) create(request operationRequest) (operationResult, error) {
-	userID, err := request.params.RequireUserId()
+	userID, err := request.params.RequireUserID()
 	if err != nil {
 		return operationResult{}, err
 	}
@@ -110,7 +110,7 @@ func (module affiliationResourceModule) create(request operationRequest) (operat
 	if err = request.decodeJSON(&body); err != nil {
 		return operationResult{}, err
 	}
-	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: model.UserID(userID), Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
+	saved, err := module.affiliations.CreateAffiliation(request.context, request.invocation(), application.CreateAffiliationCommand{UserID: userID, Kind: body.Kind, StartAt: body.StartAt, EndAt: body.EndAt})
 	if err != nil {
 		return operationResult{}, err
 	}
