@@ -209,7 +209,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
 	if err != nil {
-		return MailDeliveryView{}, mailAppError(err)
+		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	if user == nil || user.Validate() != nil || user.ID != principal.UserID {
 		return MailDeliveryView{}, apperror.New("mail.unavailable")
@@ -231,7 +231,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	}
 	created, err := s.mail.EnqueueTest(ctx, &store.MailTestEnqueue{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: audit})
 	if err != nil {
-		return MailDeliveryView{}, mailAppError(err)
+		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	if s.wake != nil {
 		s.wake()
@@ -256,7 +256,7 @@ func (s *mailService) Get(ctx context.Context, invocation Invocation, id model.M
 	}
 	delivery, err := s.mail.GetDelivery(ctx, id)
 	if err != nil {
-		return MailDeliveryView{}, mailAppError(err)
+		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	return mailDeliveryView(delivery), nil
 }
@@ -278,7 +278,7 @@ func (s *mailService) List(ctx context.Context, invocation Invocation, query Lis
 		if errors.As(err, &invalid) {
 			return MailDeliveryPage{}, apperror.New("mail.query.invalid").Wrap(err)
 		}
-		return MailDeliveryPage{}, mailAppError(err)
+		return MailDeliveryPage{}, mailStoreErrors.Translate(err)
 	}
 	page := MailDeliveryPage{Items: make([]MailDeliveryView, 0, len(deliveries))}
 	for _, delivery := range deliveries {
@@ -312,7 +312,7 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 	}
 	delivery, err := s.mail.GetDelivery(ctx, id)
 	if err != nil {
-		return MailDeliveryView{}, mailAppError(err)
+		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	now := model.TimeUTC(s.now())
 	if retry {
@@ -331,7 +331,7 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 	updated, err := apply(ctx, &store.MailDeliveryMutation{ID: delivery.ID, ExpectedRevision: delivery.Revision, AuditEventID: auditID, AuditAt: now.UnixMilli()})
 	if err != nil {
 		_ = s.audit.Fail(ctx, auditID, "mail.conflict")
-		return MailDeliveryView{}, mailAppError(err)
+		return MailDeliveryView{}, mailStoreErrors.Translate(err)
 	}
 	if retry && s.wake != nil {
 		s.wake()
@@ -369,13 +369,8 @@ func digestRenderedMail(subject, text, html string) string {
 	return appmail.Digest(subject, text, html)
 }
 
-func mailAppError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("mail.conflict").Wrap(err)
-	default:
-		return apperror.New("mail.unavailable").Wrap(err)
-	}
+var mailStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Conflict:    "mail.conflict",
+	Unavailable: "mail.unavailable",
 }

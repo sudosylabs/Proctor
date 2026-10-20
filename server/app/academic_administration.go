@@ -11,14 +11,6 @@
 
 package app
 
-import (
-	"errors"
-
-	"github.com/sudosylabs/proctor/server/app/apperror"
-	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
-)
-
 const defaultAdministrationListLimit = 100
 
 func normalizeAdministrationLimit(limit int) int {
@@ -26,34 +18,4 @@ func normalizeAdministrationLimit(limit int) int {
 		return defaultAdministrationListLimit
 	}
 	return limit
-}
-
-func administrationError(where, resource string, err error) error {
-	_ = where
-	var appFailure *apperror.Error
-	if errors.As(err, &appFailure) {
-		return err
-	}
-	var validation *model.ValidationError
-	if errors.As(err, &validation) {
-		return domainInvalid(apperror.Code(resource+".invalid"), err)
-	}
-	code := apperror.Code("administration.unavailable")
-	switch {
-	case store.IsNotFound(err):
-		code = "resource.not_found"
-	case store.IsConflict(err):
-		code = apperror.Code(resource + ".conflict")
-		var conflict *store.ErrConflict
-		if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
-			code = "user.last_system_admin"
-		}
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			code = apperror.Code(resource + ".invalid")
-		}
-	}
-	return apperror.New(code).WithField("resource", resource).Wrap(err)
 }

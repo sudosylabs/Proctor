@@ -267,7 +267,7 @@ func (s *desktopAuthorizationService) Bind(ctx context.Context, command BindDesk
 		StateHash: model.HashToken(command.State), BindingHash: model.HashToken(binding),
 	})
 	if err != nil {
-		return nil, desktopAuthorizationStoreError(err)
+		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	if bound == nil || bound.ExpiresAt.IsZero() {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable")
@@ -281,7 +281,7 @@ func (s *desktopAuthorizationService) Context(ctx context.Context, binding strin
 	}
 	current, err := s.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(binding))
 	if err != nil || current == nil {
-		return nil, desktopAuthorizationStoreError(err)
+		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	result := &DesktopAuthorizationBrowserContext{State: current.State, DeviceName: current.DeviceName, ExpiresAt: current.ExpiresAt.UnixMilli()}
 	if current.State == model.BrowserAuthenticationStateAuthenticated {
@@ -370,7 +370,7 @@ func (s *desktopAuthorizationService) authenticate(ctx context.Context, binding 
 	input.Capabilities = accessDeploymentCapabilities(s.capabilities.Snapshot())
 	result, err := s.transactions.AuthenticateDesktopAuthorization(ctx, &input)
 	if err != nil {
-		return nil, desktopAuthorizationStoreError(err)
+		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	if result == nil {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable")
@@ -387,7 +387,7 @@ func (s *desktopAuthorizationService) resolveExternalAuthentication(ctx context.
 	}
 	current, err := s.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(binding))
 	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateBound || !current.ID.IsValid() {
-		return desktopExternalAuthenticationTarget{}, desktopAuthorizationStoreError(err)
+		return desktopExternalAuthenticationTarget{}, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	return desktopExternalAuthenticationTarget{transactionID: current.ID, returnTo: "/authorize/desktop?state=" + url.QueryEscape(state)}, nil
 }
@@ -411,7 +411,7 @@ func (s *desktopAuthorizationService) authenticateExternal(ctx context.Context, 
 	}
 	result, err := s.transactions.AuthenticateDesktopAuthorization(ctx, input)
 	if err != nil {
-		return desktopAuthorizationStoreError(err)
+		return desktopAuthorizationStoreErrors.Translate(err)
 	}
 	if result == nil {
 		return apperror.New("authentication.desktop_authorization.unavailable")
@@ -427,7 +427,7 @@ func (s *desktopAuthorizationService) ResetAccount(ctx context.Context, binding 
 		return apperror.New("authentication.desktop_authorization.invalid")
 	}
 	if err := s.transactions.ResetDesktopAuthorizationAccount(ctx, &store.DesktopAuthorizationAccountReset{BindingHash: model.HashToken(binding)}); err != nil {
-		return desktopAuthorizationStoreError(err)
+		return desktopAuthorizationStoreErrors.Translate(err)
 	}
 	return nil
 }
@@ -442,7 +442,7 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 	}
 	current, err := s.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(command.Binding))
 	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateAuthenticated || !current.UserID.IsValid() {
-		return nil, desktopAuthorizationStoreError(err)
+		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	if caller := invocation.Principal(); caller.UserID != "" && caller.UserID != current.UserID {
 		return nil, apperror.New("authentication.desktop_authorization.rejected")
@@ -467,8 +467,8 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(),
 	})
 	if err != nil {
-		failure := desktopAuthorizationStoreError(err)
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
+		failure := desktopAuthorizationStoreErrors.Translate(err)
+		if auditErr := s.audit.Fail(ctx, audit.ID.String(), apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
@@ -495,7 +495,7 @@ func (s *desktopAuthorizationService) Cancel(ctx context.Context, command Approv
 		BindingHash: model.HashToken(command.Binding), StateHash: model.HashToken(command.State),
 	})
 	if err != nil {
-		return desktopAuthorizationStoreError(err)
+		return desktopAuthorizationStoreErrors.Translate(err)
 	}
 	return nil
 }
@@ -522,7 +522,7 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		DesktopArchitecture: command.Architecture, DesktopRealtimeProtocol: command.RealtimeProtocol,
 	})
 	if err != nil {
-		return nil, desktopAuthorizationStoreError(err)
+		return nil, desktopAuthorizationStoreErrors.Translate(err)
 	}
 	if resolved == nil || !resolved.ID.IsValid() || !resolved.UserID.IsValid() {
 		return nil, apperror.New("authentication.desktop_authorization.unavailable")
@@ -577,8 +577,8 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(),
 	})
 	if err != nil {
-		failure := desktopAuthorizationStoreError(err)
-		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
+		failure := desktopAuthorizationStoreErrors.Translate(err)
+		if auditErr := s.audit.Fail(ctx, audit.ID.String(), apperror.CodeOf(failure, "authentication.desktop_authorization.unavailable")); auditErr != nil {
 			return nil, apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return nil, failure
@@ -646,15 +646,16 @@ func desktopAuthorizationRedirectURL(callback, code, state string) (string, erro
 	return parsed.String(), nil
 }
 
-func desktopAuthorizationStoreError(err error) *apperror.Error {
-	if store.IsNotFound(err) || errors.Is(err, store.ErrAuthenticationMethodDisabled) || errors.Is(err, store.ErrPasswordCredentialChanged) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
-		return apperror.New("authentication.desktop_authorization.rejected")
-	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) && conflict.Constraint == "sessions_maximum_per_user" {
-		return apperror.New("authentication.sessions.maximum_reached")
-	}
-	return apperror.New("authentication.desktop_authorization.unavailable").Wrap(err)
+var desktopAuthorizationStoreErrors = apperror.StoreTable{
+	Rules: []apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.desktop_authorization.rejected"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrPasswordCredentialChanged, Code: "authentication.desktop_authorization.rejected"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.desktop_authorization.rejected"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.desktop_authorization.rejected"},
+		{Kind: apperror.StoreConflict, Constraint: "sessions_maximum_per_user", Code: "authentication.sessions.maximum_reached"},
+	},
+	NotFound:    "authentication.desktop_authorization.rejected",
+	Unavailable: "authentication.desktop_authorization.unavailable",
 }
 
 func minTime(left, right time.Time) time.Time {

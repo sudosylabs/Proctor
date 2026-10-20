@@ -226,7 +226,7 @@ func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocat
 				_ = s.content.RemoveOnboardingImport(ctx, id)
 			}
 			return created, createErr
-		}, onboardingImportError)
+		}, onboardingImportStoreErrors.Translate)
 	if err != nil {
 		return OnboardingImportView{}, err
 	}
@@ -252,7 +252,7 @@ func (s *onboardingImportService) get(ctx context.Context, invocation Invocation
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	value, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
-		return OnboardingImportView{}, nil, onboardingImportError(err)
+		return OnboardingImportView{}, nil, onboardingImportStoreErrors.Translate(err)
 	}
 	if err = s.authorizeImport(ctx, invocation, value, false); err != nil {
 		return OnboardingImportView{}, nil, err
@@ -264,7 +264,7 @@ func (s *onboardingImportService) get(ctx context.Context, invocation Invocation
 	for after := 0; ; {
 		page, pageErr := s.imports.ListOnboardingImportRows(ctx, id, after, store.OnboardingImportPageSize)
 		if pageErr != nil {
-			return OnboardingImportView{}, nil, onboardingImportError(pageErr)
+			return OnboardingImportView{}, nil, onboardingImportStoreErrors.Translate(pageErr)
 		}
 		for _, row := range page.Rows {
 			rows = append(rows, safeOnboardingImportRow(row))
@@ -288,7 +288,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 	}
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
-		return OnboardingImportView{}, onboardingImportError(err)
+		return OnboardingImportView{}, onboardingImportStoreErrors.Translate(err)
 	}
 	resource := onboardingImportResource(current.ScopeType, current.ScopeID)
 	if err = s.authorizeImport(ctx, invocation, current, true); err != nil {
@@ -328,12 +328,12 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 		committed, err = runStudentProgressionAuditedMutation(ctx, s.audit, invocation, auditOperation, id.String(), current.SourceClassID,
 			current.DestinationClassID, at, func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (*store.OnboardingImport, error) {
 				return persist(ctx, destinationReference, sourceReference.ID)
-			}, onboardingImportError)
+			}, onboardingImportStoreErrors.Translate)
 	} else {
 		committed, err = runAuditedMutation(ctx, s.audit, attempt, func() time.Time { return at },
 			func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
 				return persist(ctx, reference, "")
-			}, onboardingImportError)
+			}, onboardingImportStoreErrors.Translate)
 	}
 	if err != nil {
 		return OnboardingImportView{}, err
@@ -352,7 +352,7 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
-		return OnboardingImportView{}, onboardingImportError(err)
+		return OnboardingImportView{}, onboardingImportStoreErrors.Translate(err)
 	}
 	if err = s.authorizeImport(ctx, invocation, current, true); err != nil {
 		return OnboardingImportView{}, err
@@ -378,12 +378,12 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 		canceled, err = runStudentProgressionAuditedMutation(ctx, s.audit, invocation, auditOperation, id.String(), current.SourceClassID,
 			current.DestinationClassID, at, func(ctx context.Context, destinationReference, sourceReference mutationAttemptReference) (*store.OnboardingImport, error) {
 				return persist(ctx, destinationReference, sourceReference.ID)
-			}, onboardingImportError)
+			}, onboardingImportStoreErrors.Translate)
 	} else {
 		canceled, err = runAuditedMutation(ctx, s.audit, attempt, func() time.Time { return at },
 			func(ctx context.Context, reference mutationAttemptReference) (*store.OnboardingImport, error) {
 				return persist(ctx, reference, "")
-			}, onboardingImportError)
+			}, onboardingImportStoreErrors.Translate)
 	}
 	if err != nil {
 		return OnboardingImportView{}, err
@@ -405,7 +405,7 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
-		return onboardingImportError(err)
+		return onboardingImportStoreErrors.Translate(err)
 	}
 	if err = s.authorizeImport(ctx, invocation, current, false); err != nil {
 		return err
@@ -424,7 +424,7 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 	for after := 0; ; {
 		page, pageErr := s.imports.ListOnboardingImportRows(ctx, id, after, store.OnboardingImportPageSize)
 		if pageErr != nil {
-			return onboardingImportError(pageErr)
+			return onboardingImportStoreErrors.Translate(pageErr)
 		}
 		for _, row := range page.Rows {
 			if err = writer.Write([]string{strconv.Itoa(row.RowNumber), escapeSpreadsheetFormula(row.Reference), row.Operation, string(row.Status), row.InvitationID.String(), row.ResourceID, row.PublicCode}); err != nil {
@@ -531,11 +531,11 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 	case model.OnboardingImportStudentClass:
 		class, err := s.classes.Get(ctx, scopeID)
 		if err != nil || class.IsArchived() {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
 		if err != nil || period.IsArchived() {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if preview {
 			for _, action := range []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage} {
@@ -547,11 +547,11 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 	case model.OnboardingImportTeacherAcademicUnit:
 		unit, err := s.units.Get(ctx, scopeID)
 		if err != nil || unit.IsArchived() {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		role, err := s.roles.Get(ctx, roleID)
 		if err != nil || role.IsArchived() {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 			return err
@@ -571,24 +571,11 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 	return nil
 }
 
-func onboardingImportError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if _, ok := apperror.As(err); ok {
-		return err
-	}
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found")
-	}
-	if store.IsConflict(err) {
-		return apperror.New("onboarding_import.conflict").Wrap(err)
-	}
-	var invalid *store.ErrInvalidInput
-	if errors.As(err, &invalid) {
-		return apperror.New("request.invalid").Wrap(err)
-	}
-	return apperror.New("onboarding_import.unavailable").Wrap(err)
+var onboardingImportStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Conflict:    "onboarding_import.conflict",
+	Invalid:     "request.invalid",
+	Unavailable: "onboarding_import.unavailable",
 }
 
 func escapeSpreadsheetFormula(value string) string {
@@ -881,11 +868,11 @@ func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Contex
 	if current.Mode == model.OnboardingImportStudentClass {
 		class, err := s.classes.Get(ctx, current.ScopeID)
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		row.Operation, row.ScopeType, row.ScopeID, row.TargetRevision = string(InvitationBatchStudentClassCreate), model.RoleScopeClass, class.ID.String(), class.Revision
 		return validateImportStudentCandidate(current.ActorUserID, class, period, row)
@@ -893,11 +880,11 @@ func (s *onboardingImportService) resolveAndValidateImportRow(ctx context.Contex
 	if current.Mode == model.OnboardingImportTeacherAcademicUnit {
 		unit, err := s.units.Get(ctx, current.ScopeID)
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		role, err := s.roles.Get(ctx, current.RoleID.String())
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		row.Operation, row.ScopeType, row.ScopeID, row.TargetRevision, row.RoleID, row.RoleRevision = string(InvitationBatchTeacherAcademicUnitCreate), model.RoleScopeAcademicUnit, unit.ID.String(), unit.Revision, role.ID, role.UpdatedAt.UnixMicro()
 		return validateImportTeacherCandidate(current.ActorUserID, unit, role, row)
@@ -927,7 +914,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	loadUser := func(id string) error {
 		user, userErr := s.users.Get(ctx, id)
 		if userErr != nil {
-			return userProfileError(userErr)
+			return userStoreErrors.Translate(userErr)
 		}
 		if user == nil || user.IsArchived() {
 			return apperror.New("resource.not_found")
@@ -947,7 +934,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	case AcademicAdministrationAffiliationEnd:
 		value, getErr := s.affiliations.Get(ctx, item.RelationshipID)
 		if getErr != nil {
-			return affiliationError(getErr)
+			return affiliationStoreErrors.Translate(getErr)
 		}
 		row.UserID, row.AffiliationKind = value.UserID, value.Kind
 		return s.authorization.Authorize(ctx, invocation, model.ActionUserManage, model.Resource{Type: model.ResourceUser, ID: value.UserID.String()})
@@ -962,7 +949,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	case AcademicAdministrationAcademicUnitMemberEnd:
 		value, getErr := s.unitMembers.Get(ctx, item.RelationshipID)
 		if getErr != nil {
-			return academicUnitMemberError(getErr)
+			return academicUnitMemberStoreErrors.Translate(getErr)
 		}
 		if value.AcademicUnitID.String() != current.ScopeID {
 			return apperror.New("resource.not_found")
@@ -983,7 +970,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		previous, getErr := s.classMembers.Get(ctx, item.RelationshipID)
 		if getErr != nil {
-			return classMemberError(getErr)
+			return classMemberStoreErrors.Translate(getErr)
 		}
 		if previous.UserID != row.UserID {
 			return apperror.New("resource.not_found")
@@ -998,7 +985,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	case AcademicAdministrationClassEnd:
 		value, getErr := s.classMembers.Get(ctx, item.RelationshipID)
 		if getErr != nil {
-			return classMemberError(getErr)
+			return classMemberStoreErrors.Translate(getErr)
 		}
 		if value.ClassID.String() != current.ScopeID {
 			return apperror.New("resource.not_found")
@@ -1011,7 +998,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		role, roleErr := s.roles.Get(ctx, item.RoleID)
 		if roleErr != nil {
-			return roleBindingError(roleErr)
+			return roleBindingStoreErrors.Translate(roleErr)
 		}
 		row.RoleID, row.RoleRevision = role.ID, role.UpdatedAt.UnixMicro()
 		if row.StartsAt == 0 {
@@ -1024,7 +1011,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	case AcademicAdministrationRoleBindingEnd:
 		value, getErr := s.roleBindings.Get(ctx, item.RelationshipID)
 		if getErr != nil {
-			return roleBindingError(getErr)
+			return roleBindingStoreErrors.Translate(getErr)
 		}
 		if value.ScopeType != current.ScopeType || value.ScopeID != current.ScopeID {
 			return apperror.New("resource.not_found")
@@ -1055,19 +1042,19 @@ func (s *onboardingImportService) academicAdministrationImportScope(ctx context.
 	case model.RoleScopeInstitution:
 		value, getErr := s.institutions.Get(ctx, scopeID)
 		if getErr != nil {
-			return model.Resource{}, 0, invitationError(getErr)
+			return model.Resource{}, 0, invitationStoreErrors.Translate(getErr)
 		}
 		return resource, value.Revision, nil
 	case model.RoleScopeAcademicUnit:
 		value, getErr := s.units.Get(ctx, scopeID)
 		if getErr != nil {
-			return model.Resource{}, 0, invitationError(getErr)
+			return model.Resource{}, 0, invitationStoreErrors.Translate(getErr)
 		}
 		return resource, value.Revision, nil
 	case model.RoleScopeClass:
 		value, getErr := s.classes.Get(ctx, scopeID)
 		if getErr != nil {
-			return model.Resource{}, 0, invitationError(getErr)
+			return model.Resource{}, 0, invitationStoreErrors.Translate(getErr)
 		}
 		return resource, value.Revision, nil
 	default:
@@ -1082,12 +1069,12 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 	}
 	institution, err := s.institutions.Get(ctx, current.ScopeID)
 	if err != nil {
-		return invitationError(err)
+		return invitationStoreErrors.Translate(err)
 	}
 	if kind == "institution_role" {
 		role, roleErr := s.roles.GetByName(ctx, values["role"])
 		if roleErr != nil {
-			return invitationError(roleErr)
+			return invitationStoreErrors.Translate(roleErr)
 		}
 		if err = s.previewRoleAuthorization(ctx, invocation, role, model.ResourceInstitution, model.RoleScopeInstitution, institution.ID.String()); err != nil {
 			return err
@@ -1102,7 +1089,7 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 	if kind == "teacher" || kind == "academic_unit_role" {
 		role, roleErr := s.roles.GetByName(ctx, values["role"])
 		if roleErr != nil {
-			return invitationError(roleErr)
+			return invitationStoreErrors.Translate(roleErr)
 		}
 		if kind == "teacher" {
 			resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}
@@ -1132,22 +1119,22 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 	}
 	programme, err := s.programmes.GetByName(ctx, unit.ID.String(), values["programme"])
 	if err != nil {
-		return invitationError(err)
+		return invitationStoreErrors.Translate(err)
 	}
 	level, err := s.levels.GetByName(ctx, programme.ID.String(), values["programme_level"])
 	if err != nil {
-		return invitationError(err)
+		return invitationStoreErrors.Translate(err)
 	}
 	period, err := s.periods.GetByOwnerName(ctx, model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}, values["academic_period"])
 	if store.IsNotFound(err) {
 		period, err = s.periods.GetByOwnerName(ctx, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, values["academic_period"])
 	}
 	if err != nil {
-		return invitationError(err)
+		return invitationStoreErrors.Translate(err)
 	}
 	class, err := s.classes.GetByName(ctx, level.ID.String(), period.ID.String(), values["class"])
 	if err != nil {
-		return invitationError(err)
+		return invitationStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceClass, ID: class.ID.String()}
 	for _, action := range []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage} {
@@ -1165,7 +1152,7 @@ func (s *onboardingImportService) resolveExactAcademicUnit(ctx context.Context, 
 	}
 	exact, err := s.units.GetByName(ctx, institutionID, name)
 	if err != nil {
-		return nil, invitationError(err)
+		return nil, invitationStoreErrors.Translate(err)
 	}
 	if exact == nil || exact.IsArchived() {
 		return nil, apperror.New("resource.not_found")
@@ -1423,7 +1410,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 		if row.RelationshipRevision > 0 {
 			relationship, relationshipErr := s.classMembers.Get(ctx, row.RelationshipID)
 			if relationshipErr != nil {
-				return classMemberError(relationshipErr)
+				return classMemberStoreErrors.Translate(relationshipErr)
 			}
 			if relationship.Revision != row.RelationshipRevision || relationship.UserID != row.UserID {
 				return apperror.New("student_progression.conflict")
@@ -1432,7 +1419,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 		if operation == AcademicAdministrationRoleBindingCreate {
 			role, roleErr := s.roles.Get(ctx, row.RoleID.String())
 			if roleErr != nil {
-				return roleBindingError(roleErr)
+				return roleBindingStoreErrors.Translate(roleErr)
 			}
 			if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
 				return apperror.New("onboarding_import.conflict")
@@ -1444,7 +1431,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 	case InvitationBatchStudentClassCreate:
 		value, err := s.classes.Get(ctx, row.ScopeID)
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
 			return apperror.New("invitation.conflict")
@@ -1452,14 +1439,14 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 	case InvitationBatchTeacherAcademicUnitCreate, InvitationBatchAcademicUnitRoleCreate:
 		value, err := s.units.Get(ctx, row.ScopeID)
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
 			return apperror.New("invitation.conflict")
 		}
 		role, err := s.roles.Get(ctx, row.RoleID.String())
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
 			return apperror.New("invitation.conflict")
@@ -1467,14 +1454,14 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 	case InvitationBatchInstitutionRoleCreate:
 		value, err := s.institutions.Get(ctx, row.ScopeID)
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
 			return apperror.New("invitation.conflict")
 		}
 		role, err := s.roles.Get(ctx, row.RoleID.String())
 		if err != nil {
-			return invitationError(err)
+			return invitationStoreErrors.Translate(err)
 		}
 		if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
 			return apperror.New("invitation.conflict")

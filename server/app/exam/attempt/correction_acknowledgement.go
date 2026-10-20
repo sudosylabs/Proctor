@@ -52,7 +52,7 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, co
 		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID}
 	target, err := service.deps.Persistence.ResolveCorrectionAcknowledgementTarget(ctx, input)
 	if err != nil {
-		return CorrectionAcknowledgementResult{}, mapStore(err)
+		return CorrectionAcknowledgementResult{}, storeError(storeErrors, err)
 	}
 	if target == nil || target.AttemptID != selector.AttemptID || target.CandidateUserID != selector.CandidateUserID ||
 		target.CorrectionRevisionID != command.CorrectionRevisionID || target.CurrentRevisionID != command.ExpectedCurrentRevisionID ||
@@ -75,7 +75,7 @@ func (service *Service) AcknowledgeCorrection(ctx context.Context, call Call, co
 	input.AuditEvent = auditEvent
 	stored, err := service.deps.Persistence.AcknowledgeCorrection(ctx, &input, idempotency)
 	if err != nil {
-		return CorrectionAcknowledgementResult{}, mapStore(err)
+		return CorrectionAcknowledgementResult{}, storeError(storeErrors, err)
 	}
 	if stored == nil || stored.AttemptID != selector.AttemptID || stored.CorrectionRevisionID != command.CorrectionRevisionID ||
 		stored.CurrentRevisionID != command.ExpectedCurrentRevisionID || stored.AcknowledgedAt.IsZero() {

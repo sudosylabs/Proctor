@@ -380,20 +380,18 @@ func (s *desktopCompatibilityService) authorize(
 
 func desktopCompatibilityPolicyError(err error) error {
 	var revision *store.ErrDesktopCompatibilityPolicyRevisionConflict
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &revision):
+	if errors.As(err, &revision) {
 		return apperror.New("desktop_compatibility_policy.revision_conflict").WithField(
 			"current_revision",
 			strconv.FormatInt(revision.CurrentRevision, 10),
 		).Wrap(err)
-	case errors.As(err, &conflict) && conflict.Constraint == "actor_not_system_administrator":
-		return apperror.New("authorization.denied").Wrap(err)
-	case idempotencyError(err) != nil:
-		return idempotencyError(err)
-	default:
-		return apperror.New("desktop_compatibility_policy.unavailable").Wrap(err)
 	}
+	return desktopCompatibilityPolicyStoreErrors.Translate(err)
+}
+
+var desktopCompatibilityPolicyStoreErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{"actor_not_system_administrator": "authorization.denied"},
+	Unavailable: "desktop_compatibility_policy.unavailable",
 }
 
 func (catalog *desktopBuildCatalog) evaluate(

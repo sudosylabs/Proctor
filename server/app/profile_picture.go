@@ -195,7 +195,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	}
 	current, err := s.users.Get(ctx, userID)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if command.ExpectedRevision > 0 && current.Revision != command.ExpectedRevision {
 		return nil, apperror.New("user.conflict").WithField("resource", "user")
@@ -218,7 +218,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 			return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
 		}
 	} else if !store.IsNotFound(stateErr) || !current.CustomProfilePictureFileID.IsZero() || !current.DefaultProfilePictureFileID.IsZero() {
-		return nil, profilePictureError(stateErr)
+		return nil, profilePictureStoreErrors.Translate(stateErr)
 	}
 	at := model.TimeUTC(s.now())
 	entryID := current.CustomProfilePictureFileID
@@ -226,17 +226,17 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	if entryID.IsZero() {
 		entry, err = model.NewFileEntry(model.NewFileEntryID(), model.FileIndexingNone, at)
 		if err != nil {
-			return nil, profilePictureError(err)
+			return nil, profilePictureStoreErrors.Translate(err)
 		}
 		entryID = entry.ID
 	}
 	revision, err := model.NewFileRevision(model.NewFileRevisionID(), entryID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
 	if err != nil {
-		return nil, profilePictureError(err)
+		return nil, profilePictureStoreErrors.Translate(err)
 	}
 	lease, err := model.NewUploadLease(model.NewUploadLeaseID(), revision.ID, invocation.Principal().UserID, at, at.Add(time.Hour))
 	if err != nil {
-		return nil, profilePictureError(err)
+		return nil, profilePictureStoreErrors.Translate(err)
 	}
 	if entry != nil {
 		_, err = s.files.CreateUpload(ctx, &store.FileUploadCreation{Entry: entry, Revision: revision, Lease: lease})
@@ -244,7 +244,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 		_, err = s.files.CreateRevisionUpload(ctx, &store.FileRevisionUploadCreation{EntryID: entryID, Revision: revision, Lease: lease})
 	}
 	if err != nil {
-		return nil, profilePictureError(err)
+		return nil, profilePictureStoreErrors.Translate(err)
 	}
 	renditions, err := s.content.NormalizeAndStoreProfilePicture(ctx, revision.ID, command.Body, command.Size, at)
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 		}
 		err = s.files.DiscardProfilePictureUpload(ctx, &store.ProfilePictureUploadDiscard{ActorID: invocation.Principal().UserID, UserID: current.ID, ExpectedUserRevision: current.Revision, ExpectedActiveEntryID: currentState.EntryID, ExpectedCurrentRevisionID: currentState.RevisionID, UploadEntryID: entryID, RevisionID: revision.ID, LeaseID: lease.ID})
 		if err != nil {
-			return nil, profilePictureError(err)
+			return nil, profilePictureStoreErrors.Translate(err)
 		}
 		return current, nil
 	}
@@ -295,7 +295,7 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		profilePictureError,
+		profilePictureStoreErrors.Translate,
 	)
 	if err != nil {
 		// Publication may have committed even when the commit acknowledgement was
@@ -387,14 +387,14 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 	}
 	current, err := s.users.Get(ctx, userID)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if current.CustomProfilePictureFileID.IsZero() {
 		return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
 	}
 	state, err := s.files.GetProfilePictureState(ctx, current.ID)
 	if err != nil {
-		return nil, profilePictureError(err)
+		return nil, profilePictureStoreErrors.Translate(err)
 	}
 	if state.EntryID != current.CustomProfilePictureFileID || !profilePictureChecksumMatches(state, expectedSHA256) {
 		return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
@@ -427,7 +427,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 				ChangedAt: changedAt, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		profilePictureError,
+		profilePictureStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -453,7 +453,7 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocati
 	}
 	user, err := s.users.Get(ctx, id)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	rendition, err := s.files.GetProfilePictureRendition(ctx, model.UserID(id), fmt.Sprintf("profile_%d", query.Size))
 	if err != nil {
@@ -473,7 +473,7 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocati
 			}
 			return &ProfilePictureContent{Body: rendered.Body, MediaType: rendered.MediaType, Size: rendered.Size, ETag: `"` + rendered.SHA256 + `"`}, nil
 		}
-		return nil, profilePictureError(err)
+		return nil, profilePictureStoreErrors.Translate(err)
 	}
 	body, err := s.content.OpenProfilePictureRendition(ctx, rendition.RevisionID, rendition.ID)
 	if err != nil {
@@ -541,12 +541,8 @@ func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.
 	return published.User.DefaultProfilePictureFileID, nil
 }
 
-func profilePictureError(err error) error {
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found").Wrap(err)
-	}
-	if store.IsConflict(err) {
-		return apperror.New("user.conflict").Wrap(err)
-	}
-	return apperror.New("profile_picture.unavailable").Wrap(err)
+var profilePictureStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Conflict:    "user.conflict",
+	Unavailable: "profile_picture.unavailable",
 }

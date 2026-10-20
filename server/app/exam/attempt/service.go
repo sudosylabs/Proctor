@@ -205,7 +205,7 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 	}
 	sitting, err := service.deps.Sittings.Resolve(ctx, query.SittingID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != query.SittingID || !sitting.AcademicUnitID.IsValid() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent managed Attempt Sitting projection"))
@@ -215,7 +215,7 @@ func (service *Service) GetManaged(ctx context.Context, call Call, query GetMana
 	}
 	snapshot, err := service.deps.Persistence.Get(ctx, query.ExamID, query.AttemptID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil ||
 		snapshot.Attempt.ExamID != query.ExamID || !validActiveSuspension(snapshot.ActiveSuspension, snapshot.Attempt.ID) {
@@ -283,7 +283,7 @@ func (service *Service) ListCandidateActivity(ctx context.Context, call Call, qu
 	}
 	stored, err := service.deps.Persistence.ListCandidateActivity(ctx, options)
 	if err != nil {
-		return CandidateActivityPage{}, mapStore(err)
+		return CandidateActivityPage{}, storeError(storeErrors, err)
 	}
 	if stored == nil || stored.ServerTime.IsZero() || stored.Items == nil {
 		return CandidateActivityPage{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate activity projection"))
@@ -337,7 +337,7 @@ func (service *Service) ListSittingCandidateStatuses(ctx context.Context, call C
 		AfterCandidateUserID: query.AfterCandidateUserID, ReallowAuthorized: reallowAuthorized, Limit: query.Limit + 1,
 	})
 	if err != nil {
-		return SittingCandidateStatusesPage{}, mapStore(err)
+		return SittingCandidateStatusesPage{}, storeError(storeErrors, err)
 	}
 	if stored == nil || stored.ExamID != query.ExamID || stored.SittingID != query.SittingID || stored.ServerTime.IsZero() ||
 		!stored.SittingState.IsValid() || stored.SittingRevision < 1 || stored.Items == nil {
@@ -372,7 +372,7 @@ func (service *Service) ListManaged(ctx context.Context, call Call, query ListMa
 		BeforeCreatedAt: model.TimeUTC(query.BeforeCreatedAt), BeforeAttemptID: query.BeforeAttemptID, Limit: query.Limit + 1,
 	})
 	if err != nil {
-		return ManagedAttemptPage{}, mapStore(err)
+		return ManagedAttemptPage{}, storeError(storeErrors, err)
 	}
 	page := ManagedAttemptPage{Items: make([]store.ExamAttemptManagerSnapshot, 0, min(len(rows), query.Limit)), HasMore: len(rows) > query.Limit}
 	for index, row := range rows {
@@ -542,7 +542,7 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 	}
 	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
-		return ReallowResult{}, mapStore(err)
+		return ReallowResult{}, storeError(storeErrors, err)
 	}
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != command.SittingID || !snapshot.Sitting.ClassID.IsValid() {
 		return ReallowResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete Sitting ownership projection"))
@@ -644,7 +644,7 @@ func (service *Service) ScanExpiredParticipations(ctx context.Context, limit int
 	}
 	due, err := service.deps.Persistence.ListExpiredParticipations(ctx, limit)
 	if err != nil {
-		return ExpiryScanResult{}, mapStore(err)
+		return ExpiryScanResult{}, storeError(storeErrors, err)
 	}
 	result := ExpiryScanResult{Due: len(due)}
 	for _, item := range due {
@@ -680,7 +680,7 @@ func (service *Service) expireParticipation(ctx context.Context, due store.ExamA
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	})
 	if err != nil {
-		mapped := mapStore(err)
+		mapped := storeError(storeErrors, err)
 		code := apperror.CodeOf(mapped, "exam.attempt.unavailable")
 		if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 			return ParticipationExpiry{}, errors.Join(mapped, auditErr)
@@ -774,7 +774,7 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 				if store.IsNotFound(resolveErr) {
 					return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
 				}
-				return ParticipationRenewal{}, mapStore(resolveErr)
+				return ParticipationRenewal{}, storeError(storeErrors, resolveErr)
 			}
 			if due == nil || due.AttemptID != command.AttemptID || due.ParticipationID != command.ParticipationID || due.Generation != command.Generation {
 				return ParticipationRenewal{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late-renewal expiry target"))
@@ -784,7 +784,7 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 			}
 			return ParticipationRenewal{}, apperror.New("exam.attempt.connection_lost").Wrap(err)
 		}
-		return ParticipationRenewal{}, mapStore(err)
+		return ParticipationRenewal{}, storeError(storeErrors, err)
 	}
 	if stored == nil || stored.SecurityCoverage.Validate() != nil || stored.AttemptID != command.AttemptID || stored.ParticipationID != command.ParticipationID ||
 		!stored.ExamID.IsValid() || !stored.SittingID.IsValid() || stored.CandidateUserID != principal.UserID ||
@@ -836,7 +836,7 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 	}
 	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
-		return ConnectionResult{}, mapStore(err)
+		return ConnectionResult{}, storeError(storeErrors, err)
 	}
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != command.SittingID ||
 		!snapshot.Sitting.ExamID.IsValid() || !snapshot.Sitting.ClassID.IsValid() {
@@ -990,7 +990,7 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	}
 	stored, err := service.deps.Persistence.GetCandidatePresentation(ctx, selector)
 	if err != nil {
-		return Presentation{}, mapStore(err)
+		return Presentation{}, storeError(storeErrors, err)
 	}
 	if stored == nil || stored.Capacity.Validate() != nil || stored.RuntimeCapabilities.Validate() != nil || !validCandidateBrowserPolicy(stored.RuntimeCapabilities, stored.BrowserPolicy) ||
 		!validCandidateLiveCorrections(stored.RuntimeCapabilities, stored.LiveCorrections) ||
@@ -1039,7 +1039,7 @@ func (service *Service) ListWorkspace(ctx context.Context, call Call, query Work
 		Access: selector, ExpectedCursor: query.ExpectedCursor, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
 	})
 	if err != nil {
-		return WorkspacePage{}, mapStore(err)
+		return WorkspacePage{}, storeError(storeErrors, err)
 	}
 	if page == nil || !page.WorkspaceID.IsValid() || page.Cursor < 0 ||
 		(page.RefreshRequired && (len(page.Items) != 0 || page.HasMore)) {
@@ -1068,7 +1068,7 @@ func (service *Service) OpenResource(ctx context.Context, call Call, access Cand
 	}
 	resolved, err := service.deps.Persistence.ResolveCandidateResource(ctx, selector, resourceID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if resolved == nil || resolved.Resource.ResourceID != resourceID || !resolved.FileRevisionID.IsValid() || !resolved.RenditionID.IsValid() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Resource selector"))
@@ -1090,7 +1090,7 @@ func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access
 	}
 	resolved, err := service.deps.Workspace.ResolveFile(ctx, selector, entryID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if resolved == nil || resolved.Entry.EntryID != entryID || resolved.ContentVersion.IsZero() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete candidate Workspace selector"))
@@ -1222,7 +1222,7 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 	code := "exam.attempt.unavailable"
 	var fault *apperror.Error
 	if !errors.As(mapped, &fault) {
-		mapped = mapStore(err)
+		mapped = storeError(storeErrors, err)
 	}
 	if errors.As(mapped, &fault) {
 		code = fault.Code()
@@ -1233,119 +1233,122 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 	return mapped
 }
 
-func mapStore(err error) error {
-	if errors.Is(err, store.ErrInvalidState) {
-		return apperror.New("exam.attempt.unavailable").Wrap(err)
-	}
-	var browserDelivery *store.ErrConflict
-	if errors.As(err, &browserDelivery) && browserDelivery.Resource == "browser_delivery" {
-		return apperror.New(apperror.Code("exam.delivery." + browserDelivery.Constraint)).Wrap(err)
-	}
-
+// storeError presents an Attempt Store failure. Typed refusals that carry
+// safe detail are presented before the declarative table.
+func storeError(table apperror.StoreTable, err error) error {
+	var nativeRefusal *store.NativeDeliveryRefusal
+	var browserRefusal *store.BrowserDeliveryRefusal
 	var capacity *model.DeliveryMetadataCapacity
-	if errors.As(err, &capacity) {
+	switch {
+	case errors.Is(err, store.ErrInvalidState):
+		return apperror.New("exam.attempt.unavailable").Wrap(err)
+	case errors.As(err, &nativeRefusal):
+		return apperror.New(deliveryRefusalCode(nativeRefusal.Reason)).Wrap(err)
+	case errors.As(err, &browserRefusal):
+		return apperror.New(deliveryRefusalCode(browserRefusal.Reason)).Wrap(err)
+	case errors.As(err, &capacity):
 		return apperror.New("exam.delivery.metadata_capacity").WithFields(map[string]string{
 			"control_metadata_bytes":       strconv.FormatInt(capacity.ControlMetadataBytes, 10),
 			"control_metadata_limit_bytes": strconv.FormatInt(capacity.ControlMetadataLimitBytes, 10),
 			"required_reservation_bytes":   strconv.FormatInt(capacity.RequiredReservationBytes, 10),
 			"remaining_reservable_bytes":   strconv.FormatInt(capacity.RemainingReservableBytes, 10),
 		}).Wrap(err)
-	}
-	var securityConflict *store.ErrConflict
-	if errors.As(err, &securityConflict) && securityConflict.Resource == "security_preflight" {
-		return apperror.New(apperror.Code("exam.security." + securityConflict.Constraint)).Wrap(err)
-	}
-	var idempotencyConflict *store.ErrIdempotencyConflict
-	var idempotencyInProgress *store.ErrIdempotencyInProgress
-	var invalidInput *store.ErrInvalidInput
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &idempotencyConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idempotencyInProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.attempt.not_found").Wrap(err)
-	case errors.As(err, &invalidInput):
-		return apperror.Invalid("exam.attempt.invalid", "value").Wrap(err)
-	case errors.As(err, &conflict):
-		code := mapConflict(conflict.Constraint)
-		return apperror.New(code).Wrap(err)
 	default:
-		return apperror.New("exam.attempt.unavailable").Wrap(err)
+		return table.Translate(err)
 	}
 }
 
-func mapConflict(constraint string) apperror.Code {
-	switch constraint {
-	case "control_conflict":
-		return "exam.security.control_conflict"
-	case "exam_attempt_membership":
-		return "exam.attempt.not_found"
-	case "exam_sitting_state", "exam_sitting_deadline_reached":
-		return "exam.attempt.sitting_unavailable"
-	case "exam_attempt_state":
-		return "exam.attempt.state_conflict"
-	case "exam_attempt_management_authority":
-		return "exam.attempt.management_authority_conflict"
-	case "desktop_compatibility_policy_revision":
-		return "exam.attempt.desktop_incompatible"
-	case "exam_attempt_revision":
-		return "exam.attempt.revision_conflict"
-	case "exam_sitting_revision_selection":
-		return "exam.attempt.revision_conflict"
-	case "exam_correction_acknowledgement_target", "exam_correction_acknowledgement_order":
-		return "exam.attempt.correction_conflict"
-	case "exam_correction_acknowledgement_required":
-		return "exam.attempt.correction_conflict"
-	case "browser_source_fence", "browser_activity_sequence", "browser_activity_policy_semantics",
-		"browser_activity_not_applicable", "browser_activity_source", "browser_activity_source_fence",
-		"browser_activity_incomplete", "browser_activity_not_closed", "browser_activity_final_sequence",
-		"browser_activity_accounting":
-		return "exam.attempt.browser_activity_conflict"
-	case "exam_submission_causal_selector":
-		return "idempotency.conflict"
-	case "attempt_configuration_required":
-		return "exam.attempt.configuration_required"
-	case "attempt_configuration_stale":
-		return "exam.attempt.configuration_stale"
-	case "attempt_configuration_frozen":
-		return "exam.attempt.configuration_frozen"
-	case "attempt_configuration_unsupported":
-		return "exam.attempt.configuration_unsupported"
-	case "attempt_suspension_active":
-		return "exam.attempt.suspension_conflict"
-	case "attempt_participation_credential":
-		return "exam.attempt.continuity_invalid"
-	case "attempt_participation_generation":
-		return "exam.attempt.connection_closed"
-	case "attempt_participation_sequence":
-		return "exam.attempt.renewal_conflict"
-	case "focus_loss_sequence":
-		return "exam.attempt.focus_loss_conflict"
-	case "attempt_participation_expired":
-		return "exam.attempt.connection_lost"
-	case "attempt_connection_open":
-		return "exam.attempt.already_connected"
-	case "attempt_connection_closed":
-		return "exam.attempt.connection_closed"
-	case "attempt_workspace_path":
-		return "exam.attempt.workspace.path_conflict"
-	case "attempt_workspace_entry":
-		return "exam.attempt.workspace.entry_conflict"
-	case "attempt_workspace_content_version":
-		return "exam.attempt.workspace.content_conflict"
-	case "attempt_workspace_not_empty":
-		return "exam.attempt.workspace.directory_not_empty"
-	case "attempt_workspace_entry_limit":
-		return "exam.attempt.workspace.entry_limit"
-	case "attempt_workspace_size_limit":
-		return "exam.attempt.workspace.size_limit"
-	case "attempt_workspace_object_state":
-		return "exam.attempt.workspace.object_conflict"
-	case "attempt_workspace_cursor":
-		return "exam.attempt.workspace.cursor_conflict"
+// deliveryRefusalCode presents the bounded reason of a committed delivery
+// refusal.
+func deliveryRefusalCode(reason string) apperror.Code {
+	switch reason {
+	case "sequence_limit":
+		return "exam.delivery.sequence_limit"
+	case "detail_budget_exhausted":
+		return "exam.delivery.detail_budget_exhausted"
 	default:
-		return "exam.attempt.conflict"
+		return "exam.attempt.unavailable"
 	}
+}
+
+// deliveryConflictCodes presents delivery conflicts, whose constraint names
+// are meaningful only on the native_delivery and browser_delivery entities.
+var deliveryConflictCodes = map[string]apperror.Code{
+	"append_rate_limited":     "exam.delivery.append_rate_limited",
+	"batch_conflict":          "exam.delivery.batch_conflict",
+	"declaration_conflict":    "exam.delivery.declaration_conflict",
+	"detail_budget_exhausted": "exam.delivery.detail_budget_exhausted",
+	"pending_capacity":        "exam.delivery.pending_capacity",
+	"replay_window_exceeded":  "exam.delivery.replay_window_exceeded",
+	"summary_rate_limited":    "exam.delivery.summary_rate_limited",
+}
+
+var storeErrors = apperror.StoreTable{
+	Rules: slices.Concat(
+		apperror.Conflicts("browser_delivery", deliveryConflictCodes),
+		apperror.Conflicts("security_preflight", map[string]apperror.Code{
+			"attempt_not_ready":         "exam.security.attempt_not_ready",
+			"configuration_unsupported": "exam.security.configuration_unsupported",
+			"policy_changed":            "exam.security.policy_changed",
+			"posture_blocked":           "exam.security.posture_blocked",
+			"preflight_consumed":        "exam.security.preflight_consumed",
+			"preflight_expired":         "exam.security.preflight_expired",
+			"preflight_rate_limited":    "exam.security.preflight_rate_limited",
+			"preflight_report_changed":  "exam.security.preflight_report_changed",
+			"preflight_required":        "exam.security.preflight_required",
+			"preflight_superseded":      "exam.security.preflight_superseded",
+			"resume_required":           "exam.security.resume_required",
+			"session_changed":           "exam.security.session_changed",
+		}),
+	),
+	Constraints: map[string]apperror.Code{
+		"control_conflict":                         "exam.security.control_conflict",
+		"exam_attempt_membership":                  "exam.attempt.not_found",
+		"exam_sitting_state":                       "exam.attempt.sitting_unavailable",
+		"exam_sitting_deadline_reached":            "exam.attempt.sitting_unavailable",
+		"exam_attempt_state":                       "exam.attempt.state_conflict",
+		"exam_attempt_management_authority":        "exam.attempt.management_authority_conflict",
+		"desktop_compatibility_policy_revision":    "exam.attempt.desktop_incompatible",
+		"exam_attempt_revision":                    "exam.attempt.revision_conflict",
+		"exam_sitting_revision_selection":          "exam.attempt.revision_conflict",
+		"exam_correction_acknowledgement_target":   "exam.attempt.correction_conflict",
+		"exam_correction_acknowledgement_order":    "exam.attempt.correction_conflict",
+		"exam_correction_acknowledgement_required": "exam.attempt.correction_conflict",
+		"browser_source_fence":                     "exam.attempt.browser_activity_conflict",
+		"browser_activity_sequence":                "exam.attempt.browser_activity_conflict",
+		"browser_activity_policy_semantics":        "exam.attempt.browser_activity_conflict",
+		"browser_activity_not_applicable":          "exam.attempt.browser_activity_conflict",
+		"browser_activity_source":                  "exam.attempt.browser_activity_conflict",
+		"browser_activity_source_fence":            "exam.attempt.browser_activity_conflict",
+		"browser_activity_incomplete":              "exam.attempt.browser_activity_conflict",
+		"browser_activity_not_closed":              "exam.attempt.browser_activity_conflict",
+		"browser_activity_final_sequence":          "exam.attempt.browser_activity_conflict",
+		"browser_activity_accounting":              "exam.attempt.browser_activity_conflict",
+		"exam_submission_causal_selector":          "idempotency.conflict",
+		"attempt_configuration_required":           "exam.attempt.configuration_required",
+		"attempt_configuration_stale":              "exam.attempt.configuration_stale",
+		"attempt_configuration_frozen":             "exam.attempt.configuration_frozen",
+		"attempt_configuration_unsupported":        "exam.attempt.configuration_unsupported",
+		"attempt_suspension_active":                "exam.attempt.suspension_conflict",
+		"attempt_participation_credential":         "exam.attempt.continuity_invalid",
+		"attempt_participation_generation":         "exam.attempt.connection_closed",
+		"attempt_participation_sequence":           "exam.attempt.renewal_conflict",
+		"focus_loss_sequence":                      "exam.attempt.focus_loss_conflict",
+		"attempt_participation_expired":            "exam.attempt.connection_lost",
+		"attempt_connection_open":                  "exam.attempt.already_connected",
+		"attempt_connection_closed":                "exam.attempt.connection_closed",
+		"attempt_workspace_path":                   "exam.attempt.workspace.path_conflict",
+		"attempt_workspace_entry":                  "exam.attempt.workspace.entry_conflict",
+		"attempt_workspace_content_version":        "exam.attempt.workspace.content_conflict",
+		"attempt_workspace_not_empty":              "exam.attempt.workspace.directory_not_empty",
+		"attempt_workspace_entry_limit":            "exam.attempt.workspace.entry_limit",
+		"attempt_workspace_size_limit":             "exam.attempt.workspace.size_limit",
+		"attempt_workspace_object_state":           "exam.attempt.workspace.object_conflict",
+		"attempt_workspace_cursor":                 "exam.attempt.workspace.cursor_conflict",
+	},
+	NotFound:     "exam.attempt.not_found",
+	Conflict:     "exam.attempt.conflict",
+	Invalid:      "exam.attempt.invalid",
+	InvalidField: "value",
+	Unavailable:  "exam.attempt.unavailable",
 }

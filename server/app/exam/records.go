@@ -92,7 +92,7 @@ func (r *Records) authorize(ctx context.Context, call Call, scope model.Retentio
 	}
 	resolved, err := r.persistence.Resolve(ctx, scope)
 	if err != nil {
-		return nil, "", recordsStoreError(err)
+		return nil, "", examRecordsStoreErrors.Translate(err)
 	}
 	if resolved == nil || resolved.Scope != scope || !resolved.AcademicUnitID.IsValid() || !resolved.InstitutionID.IsValid() ||
 		scope.SubmissionID.IsValid() && (!resolved.CandidateUserID.IsValid() || !resolved.AttemptID.IsValid()) {
@@ -105,7 +105,7 @@ func (r *Records) authorize(ctx context.Context, call Call, scope model.Retentio
 	if override != "" {
 		access, accessErr := r.access.Access(ctx, scope.ExamID, principal.UserID)
 		if accessErr != nil {
-			return nil, "", recordsStoreError(accessErr)
+			return nil, "", examRecordsStoreErrors.Translate(accessErr)
 		}
 		if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || access.Exam.AcademicUnitID != resolved.AcademicUnitID {
 			return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("Exam records access projection is incomplete"))
@@ -131,7 +131,7 @@ func (r *Records) GetCompletion(ctx context.Context, call Call, examID model.Exa
 	}
 	value, err := r.persistence.GetCompletion(ctx, examID, sittingID)
 	if err != nil {
-		return nil, recordsStoreError(err)
+		return nil, examRecordsStoreErrors.Translate(err)
 	}
 	if value == nil || value.Completion.Validate() != nil || value.Completion.SittingID != sittingID ||
 		value.SubmissionCount < 0 || value.PendingReviews < 0 || value.PendingReviews > value.SubmissionCount {
@@ -149,7 +149,7 @@ func (r *Records) FindReviewWaiver(ctx context.Context, call Call, scope model.R
 	}
 	value, found, err := r.persistence.FindReviewWaiver(ctx, scope)
 	if err != nil {
-		return nil, recordsStoreError(err)
+		return nil, examRecordsStoreErrors.Translate(err)
 	}
 	if !found && value == nil {
 		return nil, nil
@@ -180,7 +180,7 @@ func (r *Records) begin(ctx context.Context, call Call, scope *store.ExamRecords
 }
 
 func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, err error) error {
-	mapped := recordsStoreError(err)
+	mapped := examRecordsStoreErrors.Translate(err)
 	if auditErr := r.auditor.Fail(ctx, mutation.AuditEventID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
@@ -257,7 +257,7 @@ func (r *Records) ListHolds(ctx context.Context, call Call, query store.ExamReco
 	}
 	page, err := r.persistence.ListHolds(ctx, query)
 	if err != nil {
-		return nil, recordsStoreError(err)
+		return nil, examRecordsStoreErrors.Translate(err)
 	}
 	if page == nil || len(page.Holds) > query.Limit {
 		return nil, apperror.New("exam.unavailable").Wrap(errors.New("Retention hold page is incomplete"))
@@ -340,10 +340,7 @@ func (r *Records) ReleaseHold(ctx context.Context, call Call, command ReleaseRet
 	return result.Hold, nil
 }
 
-func recordsStoreError(err error) error {
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) && conflict.Resource == "authorization" {
-		return apperror.New("exam.not_found").Wrap(err)
-	}
-	return mapStoreError(err)
-}
+// examRecordsStoreErrors conceals an authorization refusal discovered by the
+// Store as an absent Exam.
+var examRecordsStoreErrors = examStoreErrors.With(
+	apperror.StoreRule{Kind: apperror.StoreConflict, Entity: "authorization", Code: "exam.not_found"})

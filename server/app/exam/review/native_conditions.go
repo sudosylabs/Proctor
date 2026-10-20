@@ -27,7 +27,7 @@ func (service *Service) ListNativeConditions(ctx context.Context, call Call, que
 	}
 	page, err := service.deps.Persistence.ListNativeConditions(ctx, query)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if page == nil || page.Items == nil || len(page.Items) > query.Limit || page.HasMore && len(page.Items) != query.Limit {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("invalid native condition page"))

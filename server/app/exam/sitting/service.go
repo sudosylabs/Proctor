@@ -272,7 +272,7 @@ func (service *Service) Get(ctx context.Context, call Call, examID model.ExamID,
 	}
 	snapshot, err := service.persistence.Get(ctx, examID, sittingID)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, mapStoreError(err)
+		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
 	value, err := requireSnapshot(snapshot)
 	if err != nil {
@@ -296,7 +296,7 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
-		return mapStoreError(err)
+		return storeErrors.Translate(err)
 	}
 	value, err := requireSnapshot(snapshot)
 	if err != nil {
@@ -320,7 +320,7 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call C
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
-		return "", mapStoreError(err)
+		return "", storeErrors.Translate(err)
 	}
 	value, err := requireSnapshot(snapshot)
 	if err != nil {
@@ -331,7 +331,7 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call C
 	}
 	access, err := service.access.Access(ctx, value.Sitting.ExamID, call.Principal().UserID)
 	if err != nil {
-		return "", mapStoreError(err)
+		return "", storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != value.Sitting.ExamID {
 		return "", apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
@@ -410,7 +410,7 @@ func (service *Service) AuthorizeManage(ctx context.Context, call Call, sittingI
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
-		return false, mapStoreError(err)
+		return false, storeErrors.Translate(err)
 	}
 	value, err := requireSnapshot(snapshot)
 	if err != nil {
@@ -440,7 +440,7 @@ func (service *Service) List(ctx context.Context, call Call, query ListQuery) (P
 	options.Limit++
 	items, err := service.persistence.List(ctx, options)
 	if err != nil {
-		return Page{}, mapStoreError(err)
+		return Page{}, storeErrors.Translate(err)
 	}
 	for index := range items {
 		if items[index].Sitting == nil || items[index].Sitting.ExamID != query.ExamID || items[index].Sitting.Validate() != nil {
@@ -479,7 +479,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 	}
 	current, err := service.persistence.Get(ctx, command.ExamID, command.SittingID)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, mapStoreError(err)
+		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
 	snapshot, err := requireSnapshot(current)
 	if err != nil {
@@ -568,7 +568,7 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 	}
 	current, err := service.persistence.Get(ctx, command.ExamID, command.SittingID)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, mapStoreError(err)
+		return store.ExamSittingSnapshot{}, storeErrors.Translate(err)
 	}
 	snapshot, err := requireSnapshot(current)
 	if err != nil {
@@ -771,7 +771,7 @@ func (service *Service) ListNoShows(ctx context.Context, call Call, examID model
 		SittingID: sittingID, AfterCandidateUserID: after, Limit: limit + 1,
 	})
 	if err != nil {
-		return NoShowPage{}, mapStoreError(err)
+		return NoShowPage{}, storeErrors.Translate(err)
 	}
 	if len(items) > limit+1 {
 		return NoShowPage{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an oversized no-show page"))
@@ -810,7 +810,7 @@ func (service *Service) runSystemLifecycle(ctx context.Context, call SystemCall,
 	}
 	current, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
-		return store.ExamSittingLifecycleResult{}, mapStoreError(err)
+		return store.ExamSittingLifecycleResult{}, storeErrors.Translate(err)
 	}
 	snapshot, err := requireSnapshot(current)
 	if err != nil || snapshot.Sitting.ID != sittingID || !snapshot.AcademicUnitID.IsValid() {
@@ -857,7 +857,7 @@ func (service *Service) ListLifecycleDue(ctx context.Context, options store.Exam
 	options.AfterDueAt = model.TimeUTC(options.AfterDueAt)
 	items, err := service.persistence.ListLifecycleDue(ctx, options)
 	if err != nil {
-		return nil, mapStoreError(err)
+		return nil, storeErrors.Translate(err)
 	}
 	for _, item := range items {
 		if item.Value == nil || item.Value.Sitting == nil || item.Value.Sitting.Validate() != nil || item.DueAt.IsZero() || item.DueAt.Location() != time.UTC {
@@ -920,7 +920,7 @@ func (service *Service) publishLifecycle(ctx context.Context, result *store.Exam
 }
 
 func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
-	mapped := mapStoreError(err)
+	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.systemAudit.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
@@ -986,7 +986,7 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 	}
 	access, err := service.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return authorizationDecision{}, mapStoreError(err)
+		return authorizationDecision{}, storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != examID {
 		return authorizationDecision{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
@@ -1038,7 +1038,7 @@ func requireScheduledCommandResult(result *store.ExamSittingCommandResult, examI
 }
 
 func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
-	mapped := mapStoreError(err)
+	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
@@ -1046,54 +1046,24 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 	return mapped
 }
 
-func mapStoreError(err error) error {
-	var idempotencyConflict *store.ErrIdempotencyConflict
-	var idempotencyInProgress *store.ErrIdempotencyInProgress
-	var invalidInput *store.ErrInvalidInput
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &idempotencyConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idempotencyInProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.sitting.not_found").Wrap(err)
-	case errors.As(err, &conflict):
-		return mapConflict(conflict, err)
-	case errors.As(err, &invalidInput):
-		return apperror.Invalid("exam.sitting.invalid", "value").Wrap(err)
-	default:
-		return apperror.New("exam.sitting.unavailable").Wrap(err)
-	}
-}
-
-func mapConflict(conflict *store.ErrConflict, cause error) error {
-	code := apperror.Code("exam.sitting.conflict")
-	switch conflict.Constraint {
-	case "exam_sitting_revision":
-		code = "exam.sitting.revision_conflict"
-	case "exam_sitting_no_changes":
-		code = "exam.sitting.no_changes"
-	case "exam_sitting_state":
-		code = "exam.sitting.state_conflict"
-	case "exam_sitting_extension":
-		code = "exam.sitting.extension_not_later"
-	case "exam_sitting_extension_not_later":
-		code = "exam.sitting.extension_not_later"
-	case "exam_sitting_deadline_reached":
-		code = "exam.sitting.deadline_reached"
-	case "exam_sitting_class_lineage":
-		code = "exam.sitting.class_ineligible"
-	case "exam_sitting_period_containment":
-		code = "exam.sitting.schedule_outside_period"
-	case "exam_sitting_schedule_outside_period":
-		code = "exam.sitting.schedule_outside_period"
-	case "exam_sitting_not_future":
-		code = "exam.sitting.schedule_not_future"
-	case "exam_sitting_revision_lineage":
-		code = "exam.sitting.not_found"
-	case "exam_archived":
-		code = "exam.archived"
-	}
-	return apperror.New(code).Wrap(cause)
+var storeErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"exam_sitting_revision":                "exam.sitting.revision_conflict",
+		"exam_sitting_no_changes":              "exam.sitting.no_changes",
+		"exam_sitting_state":                   "exam.sitting.state_conflict",
+		"exam_sitting_extension":               "exam.sitting.extension_not_later",
+		"exam_sitting_extension_not_later":     "exam.sitting.extension_not_later",
+		"exam_sitting_deadline_reached":        "exam.sitting.deadline_reached",
+		"exam_sitting_class_lineage":           "exam.sitting.class_ineligible",
+		"exam_sitting_period_containment":      "exam.sitting.schedule_outside_period",
+		"exam_sitting_schedule_outside_period": "exam.sitting.schedule_outside_period",
+		"exam_sitting_not_future":              "exam.sitting.schedule_not_future",
+		"exam_sitting_revision_lineage":        "exam.sitting.not_found",
+		"exam_archived":                        "exam.archived",
+	},
+	NotFound:     "exam.sitting.not_found",
+	Conflict:     "exam.sitting.conflict",
+	Invalid:      "exam.sitting.invalid",
+	InvalidField: "value",
+	Unavailable:  "exam.sitting.unavailable",
 }

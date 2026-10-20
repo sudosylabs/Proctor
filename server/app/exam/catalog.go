@@ -75,7 +75,7 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 		SittingStates: states, EndsAfter: model.TimeUTC(query.EndsAfter), StartsBefore: model.TimeUTC(query.StartsBefore),
 		BeforeExamID: query.BeforeExamID, Limit: query.Limit, Visibility: visibility})
 	if err != nil {
-		return CatalogPage{}, mapStoreError(err)
+		return CatalogPage{}, examStoreErrors.Translate(err)
 	}
 	if items == nil {
 		items = []store.ExamSummary{}
@@ -98,7 +98,7 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return model.Exam{}, mapStoreError(err)
+		return model.Exam{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return model.Exam{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -122,7 +122,7 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
 		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return model.Exam{}, errors.Join(mapped, auditErr)
 		}

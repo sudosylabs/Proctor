@@ -293,6 +293,10 @@ var dependencyRules = []dependencyRule{
 		name:           "application error vocabulary",
 		sources:        []pathPattern{exact(serverModule + "/app/apperror")},
 		deniedStandard: standardInfrastructure,
+		project: only(
+			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
+		),
 	},
 	{
 		name:           "idempotency application",

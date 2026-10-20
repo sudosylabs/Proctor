@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -77,7 +76,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	}
 	current, err := s.users.Get(ctx, userID)
 	if err != nil {
-		return nil, accountStateError(err)
+		return nil, accountStateStoreErrors.Translate(err)
 	}
 	disabled := !command.Enabled
 	idempotency, err := newCommandIdempotency(invocation, "user.enabled_state.v1", command.IdempotencyKey, struct {
@@ -104,7 +103,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	if !command.batchRetainedOutcome {
 		prepared, err = s.mail.PrepareAccountStateChanged(appmail.NoticePreparation{Recipient: &recipient, At: now}, command.Enabled)
 		if err != nil {
-			return nil, accountStateError(err)
+			return nil, accountStateStoreErrors.Translate(err)
 		}
 	}
 	result, err := runAuditedMutation(
@@ -133,7 +132,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 			}
 			return value, storeErr
 		},
-		accountStateError,
+		accountStateStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -152,13 +151,6 @@ func (e accountStateRealtimeEffects) SessionsRevoked(ctx context.Context, userID
 	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
-func accountStateError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
-		return apperror.New("user.last_system_admin").WithField("resource", "user").Wrap(err)
-	}
-	return userProfileError(err)
-}
+var accountStateStoreErrors = apperror.AdministrationStoreTable("user", "user.conflict", "user.invalid", map[string]apperror.Code{
+	"users_last_system_admin": "user.last_system_admin",
+})

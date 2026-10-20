@@ -69,7 +69,7 @@ type jobOperationsAuthorization struct {
 func (a jobOperationsAuthorization) Authorize(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
-		return model.Resource{}, jobOperationsError(err)
+		return model.Resource{}, jobOperationsStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	if err = a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata()); err != nil {
@@ -150,7 +150,7 @@ func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, 
 		BeforeID: query.BeforeID, Limit: query.Limit,
 	})
 	if err != nil {
-		return JobPage{}, jobOperationsError(err)
+		return JobPage{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
@@ -161,7 +161,7 @@ func (s *jobOperationsService) Get(ctx context.Context, invocation Invocation, q
 	}
 	view, err := s.jobs.Get(ctx, query.ID)
 	if err != nil {
-		return JobView{}, jobOperationsError(err)
+		return JobView{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return view, nil
 }
@@ -174,7 +174,7 @@ func (s *jobOperationsService) Attempts(ctx context.Context, invocation Invocati
 		JobID: query.JobID, BeforeNumber: query.BeforeNumber, Limit: query.Limit,
 	})
 	if err != nil {
-		return JobAttemptPage{}, jobOperationsError(err)
+		return JobAttemptPage{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return page, nil
 }
@@ -194,7 +194,7 @@ func (s *jobOperationsService) mutate(ctx context.Context, invocation Invocation
 	}
 	target, err := prepare(ctx, id)
 	if err != nil {
-		return JobView{}, jobOperationsError(err)
+		return JobView{}, jobOperationsStoreErrors.Translate(err)
 	}
 	view := target.View()
 	auditID, err := s.audit.Begin(ctx, invocation, model.ActionJobManage, resource, operation, map[string]any{"job_id": view.ID.String(), "type": string(view.Type), "status": string(view.Status)}, nil)
@@ -204,27 +204,18 @@ func (s *jobOperationsService) mutate(ctx context.Context, invocation Invocation
 	updated, err := apply(ctx, target, jobengine.AuditReference{EventID: auditID, At: s.now().UnixMilli()})
 	if err != nil {
 		_ = s.audit.Fail(ctx, auditID, "job.conflict")
-		return JobView{}, jobOperationsError(err)
+		return JobView{}, jobOperationsStoreErrors.Translate(err)
 	}
 	return updated, nil
 }
 
-func jobOperationsError(err error) error {
-	if err == nil {
-		return apperror.New("resource.not_found")
-	}
-	switch {
-	case errors.Is(err, jobengine.ErrQueryInvalid):
-		return apperror.New("job.query.invalid").Wrap(err)
-	case errors.Is(err, jobengine.ErrCancelUnsupported):
-		return apperror.New("job.cancel.unsupported").Wrap(err)
-	case errors.Is(err, jobengine.ErrRetryUnsupported):
-		return apperror.New("job.retry.unsupported").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("job.conflict").Wrap(err)
-	default:
-		return apperror.New("job.unavailable").Wrap(err)
-	}
+var jobOperationsStoreErrors = apperror.StoreTable{
+	Rules: []apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrQueryInvalid, Code: "job.query.invalid"},
+		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrCancelUnsupported, Code: "job.cancel.unsupported"},
+		{Kind: apperror.StoreSentinel, Sentinel: jobengine.ErrRetryUnsupported, Code: "job.retry.unsupported"},
+	},
+	NotFound:    "resource.not_found",
+	Conflict:    "job.conflict",
+	Unavailable: "job.unavailable",
 }

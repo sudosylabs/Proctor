@@ -107,7 +107,7 @@ func (service *Service) ListWorkspaceJournal(ctx context.Context, call Call, que
 		Access: access, AfterCursor: query.AfterCursor, Limit: query.Limit,
 	})
 	if err != nil {
-		return WorkspaceJournalPage{}, mapStore(err)
+		return WorkspaceJournalPage{}, storeError(storeErrors, err)
 	}
 	if stored == nil || !stored.WorkspaceID.IsValid() || stored.CurrentCursor < query.AfterCursor ||
 		(stored.RefreshRequired && (len(stored.Entries) != 0 || stored.HasMore)) {
@@ -275,7 +275,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_identity")
 	}
 	if _, err = service.deps.Workspace.ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}); err != nil {
-		return WorkspaceMutationResult{}, mapStore(err)
+		return WorkspaceMutationResult{}, storeError(storeErrors, err)
 	}
 	staged, err := service.deps.Content.StageAttemptWorkspaceObject(ctx, objectID, body, size, mediaType)
 	if err != nil {
@@ -291,7 +291,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	}
 	if _, err = service.deps.Workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
 		ObjectID: objectID, ContentVersion: version, Content: *staged}); err != nil {
-		mapped := mapStore(err)
+		mapped := storeError(storeErrors, err)
 		if !isAttemptUnavailable(mapped) {
 			_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		}
@@ -361,7 +361,7 @@ func projectWorkspaceMutation(stored *store.ExamAttemptWorkspaceMutationResult, 
 func (service *Service) resolveWorkspaceMutationTarget(ctx context.Context, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, error) {
 	target, err := service.deps.Workspace.ResolveMutationTarget(ctx, access)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if !validWorkspaceTarget(target, access) {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace mutation target"))

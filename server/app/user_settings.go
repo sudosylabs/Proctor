@@ -245,17 +245,15 @@ func (r userSettingsEffectReporter) Report(ctx context.Context, operation string
 
 func userSettingsReplacementError(err error) error {
 	var revision *store.ErrUserSettingsRevisionConflict
-	var invalid *store.ErrInvalidInput
-	switch {
-	case errors.As(err, &revision):
+	if errors.As(err, &revision) {
 		return apperror.New("user_settings.revision_conflict").WithField("current_revision", revision.CurrentRevision.String()).Wrap(err)
-	case errors.As(err, &invalid):
-		return apperror.New("user_settings.invalid").Wrap(err)
-	case idempotencyError(err) != nil:
-		return idempotencyError(err)
-	default:
-		return userSettingsUnavailable(err)
 	}
+	return userSettingsStoreErrors.Translate(err)
+}
+
+var userSettingsStoreErrors = apperror.StoreTable{
+	Invalid:     "user_settings.invalid",
+	Unavailable: "user_settings.unavailable",
 }
 
 // ReadOwn returns only the document owned by the interactive Session

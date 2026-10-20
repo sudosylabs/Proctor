@@ -39,7 +39,7 @@ func (service *Service) DeliveryBudget(ctx context.Context, call Call, query Del
 	}
 	value, err := service.deps.Persistence.DeliveryBudget(ctx, store.DeliveryBudgetAccess{Access: access.Access, ParticipationID: query.ParticipationID})
 	if err != nil {
-		return nil, mapNativeDeliveryError(err)
+		return nil, deliveryStoreError(err)
 	}
 	if value == nil || value.Validate() != nil || value.ParticipationID != query.ParticipationID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -68,7 +68,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 	}
 	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -79,7 +79,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 	}
 	value, err := service.deps.Persistence.StopDeliveryDetails(ctx, &store.DeliveryDetailsStop{Access: access, Request: command.Request, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idempotency)
 	if err != nil {
-		return nil, service.failAudit(ctx, audit, mapNativeDeliveryError(err))
+		return nil, service.failAudit(ctx, audit, deliveryStoreError(err))
 	}
 	if value == nil || value.Validate(command.Request.Family) != nil {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)

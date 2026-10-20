@@ -210,18 +210,16 @@ func (s *retentionPolicyService) authorize(
 
 func retentionPolicyError(err error) error {
 	var revision *store.ErrRetentionPolicyRevisionConflict
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &revision):
+	if errors.As(err, &revision) {
 		return apperror.New("retention_policy.revision_conflict").WithField(
 			"current_revision",
 			strconv.FormatInt(revision.CurrentRevision, 10),
 		).Wrap(err)
-	case errors.As(err, &conflict) && conflict.Resource == "authorization":
-		return apperror.New("authorization.denied").Wrap(err)
-	case idempotencyError(err) != nil:
-		return idempotencyError(err)
-	default:
-		return apperror.New("retention_policy.unavailable").Wrap(err)
 	}
+	return retentionPolicyStoreErrors.Translate(err)
+}
+
+var retentionPolicyStoreErrors = apperror.StoreTable{
+	Rules:       []apperror.StoreRule{{Kind: apperror.StoreConflict, Entity: "authorization", Code: "authorization.denied"}},
+	Unavailable: "retention_policy.unavailable",
 }

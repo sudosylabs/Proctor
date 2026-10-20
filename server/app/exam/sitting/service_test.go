@@ -584,7 +584,7 @@ func TestStoreConflictsHaveStableFaults(t *testing.T) {
 		constraint, want := constraint, want
 		t.Run(constraint, func(t *testing.T) {
 			t.Parallel()
-			assertFaultCode(t, mapStoreError(store.NewErrConflict("exam_sitting", constraint, nil)), want)
+			assertFaultCode(t, storeErrors.Translate(store.NewErrConflict("exam_sitting", constraint, nil)), want)
 		})
 	}
 }

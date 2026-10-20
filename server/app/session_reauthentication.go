@@ -59,14 +59,14 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
 	if err != nil {
-		return nil, reauthenticationFailure(err)
+		return nil, reauthenticationStoreErrors.Translate(err)
 	}
 	if !user.IsActive() {
 		return nil, invalidCredentialsAppError()
 	}
 	credential, err := s.passwords.GetByUser(ctx, principal.UserID.String())
 	if err != nil {
-		return nil, reauthenticationFailure(err)
+		return nil, reauthenticationStoreErrors.Translate(err)
 	}
 	if err := s.hasher.Verify(ctx, credential.PasswordHash, command.Password); err != nil {
 		if errors.Is(err, ErrPasswordMismatch) {
@@ -92,7 +92,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 			PasswordProof: store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision},
 			AuditEventID:  auditID,
 		})
-	}, reauthenticationFailure)
+	}, reauthenticationStoreErrors.Translate)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +106,14 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	return result.Session, nil
 }
 
-func reauthenticationFailure(err error) error {
-	if store.IsNotFound(err) || store.IsConflict(err) || errors.Is(err, store.ErrPasswordCredentialChanged) || errors.Is(err, store.ErrAuthenticationMethodDisabled) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
-		return invalidCredentialsAppError()
-	}
-	return authenticationUnavailable(err)
+var reauthenticationStoreErrors = apperror.StoreTable{
+	Rules: []apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrPasswordCredentialChanged, Code: "authentication.invalid_credentials"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.invalid_credentials"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.invalid_credentials"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.invalid_credentials"},
+	},
+	NotFound:    "authentication.invalid_credentials",
+	Conflict:    "authentication.invalid_credentials",
+	Unavailable: "authentication.internal",
 }

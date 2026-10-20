@@ -167,7 +167,7 @@ func (service *Service) List(ctx context.Context, call Call, examID model.ExamID
 	}
 	items, err := service.persistence.List(ctx, examID)
 	if err != nil {
-		return nil, mapStoreError(err)
+		return nil, storeErrors.Translate(err)
 	}
 	return items, nil
 }
@@ -181,7 +181,7 @@ func (service *Service) OpenFile(ctx context.Context, call Call, examID model.Ex
 	}
 	item, err := service.persistence.GetFile(ctx, examID, entryID)
 	if err != nil {
-		return nil, mapStoreError(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if item == nil || item.Object == nil {
 		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete file metadata"))
@@ -318,7 +318,7 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 	}
 	access, err := service.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return authorization{}, mapStoreError(err)
+		return authorization{}, storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return authorization{}, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
@@ -356,7 +356,7 @@ func (service *Service) runMutation(ctx context.Context, call Call, authorizatio
 	mutation.AuditAt = model.MillisFromTime(mutation.ChangedAt)
 	result, err := run(ctx, mutation, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := storeErrors.Translate(err)
 		if failErr := service.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.starter_workspace.unavailable")); failErr != nil {
 			return Result{}, errors.Join(mapped, failErr)
 		}
@@ -390,7 +390,7 @@ func (service *Service) stageAndFinalize(ctx context.Context, call Call, authori
 	}
 	_, err = service.persistence.ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: object})
 	if err != nil {
-		return Result{}, mapStoreError(err)
+		return Result{}, storeErrors.Translate(err)
 	}
 	staged, err := service.content.StageStarterWorkspaceObject(ctx, objectID, body, size, mediaType)
 	if err != nil {
@@ -446,37 +446,27 @@ func validateMutationBase(examID model.ExamID, entryID model.StarterWorkspaceEnt
 	return nil
 }
 
-func mapStoreError(err error) error {
-	var idempotencyConflict *store.ErrIdempotencyConflict
-	var idempotencyInProgress *store.ErrIdempotencyInProgress
-	var conflict *store.ErrConflict
-	var invalidInput *store.ErrInvalidInput
-	switch {
-	case errors.As(err, &idempotencyConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idempotencyInProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.starter_workspace.not_found").Wrap(err)
-	case errors.As(err, &conflict):
-		codes := map[string]apperror.Code{
-			"exam_archived": "exam.archived", "exam_draft_revision": "exam.draft.revision_conflict",
-			"workspace_path_collision": "exam.starter_workspace.path_conflict", "workspace_parent_missing": "exam.starter_workspace.parent_not_found",
-			"workspace_directory_not_empty": "exam.starter_workspace.directory_not_empty", "workspace_entry_limit": "exam.starter_workspace.entry_limit",
-			"workspace_total_size": "exam.starter_workspace.total_size_limit", "workspace_object_expired": "exam.starter_workspace.upload_expired",
-			"workspace_object_state": "exam.starter_workspace.object_conflict", "workspace_no_changes": "exam.starter_workspace.no_changes",
-			"workspace_descendant_move": "exam.starter_workspace.invalid_move", "workspace_path_limit": "exam.starter_workspace.invalid_move",
-			"workspace_entry_kind": "exam.starter_workspace.entry_kind", "workspace_content_version": "exam.starter_workspace.content_conflict",
-		}
-		if code := codes[conflict.Constraint]; code != "" {
-			return apperror.New(code).Wrap(err)
-		}
-		return apperror.New("exam.starter_workspace.conflict").Wrap(err)
-	case errors.As(err, &invalidInput):
-		return apperror.New("exam.starter_workspace.invalid").Wrap(err)
-	default:
-		return apperror.New("exam.starter_workspace.unavailable").Wrap(err)
-	}
+var storeErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"exam_archived":                 "exam.archived",
+		"exam_draft_revision":           "exam.draft.revision_conflict",
+		"workspace_path_collision":      "exam.starter_workspace.path_conflict",
+		"workspace_parent_missing":      "exam.starter_workspace.parent_not_found",
+		"workspace_directory_not_empty": "exam.starter_workspace.directory_not_empty",
+		"workspace_entry_limit":         "exam.starter_workspace.entry_limit",
+		"workspace_total_size":          "exam.starter_workspace.total_size_limit",
+		"workspace_object_expired":      "exam.starter_workspace.upload_expired",
+		"workspace_object_state":        "exam.starter_workspace.object_conflict",
+		"workspace_no_changes":          "exam.starter_workspace.no_changes",
+		"workspace_descendant_move":     "exam.starter_workspace.invalid_move",
+		"workspace_path_limit":          "exam.starter_workspace.invalid_move",
+		"workspace_entry_kind":          "exam.starter_workspace.entry_kind",
+		"workspace_content_version":     "exam.starter_workspace.content_conflict",
+	},
+	NotFound:    "exam.starter_workspace.not_found",
+	Conflict:    "exam.starter_workspace.conflict",
+	Invalid:     "exam.starter_workspace.invalid",
+	Unavailable: "exam.starter_workspace.unavailable",
 }
 
 func isInvalidContentError(err error) bool {

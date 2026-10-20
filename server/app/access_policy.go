@@ -430,9 +430,7 @@ func accessPolicyError(err error) error {
 		return apperror.New("access_policy.revision_conflict").WithField("current_revision", strconv.FormatInt(revision.CurrentRevision, 10)).Wrap(err)
 	case errors.As(err, &blocked):
 		return blockedAccessPolicyError(blocked.Blockers, err)
-	case idempotencyError(err) != nil:
-		return idempotencyError(err)
 	default:
-		return apperror.New("access_policy.unavailable").Wrap(err)
+		return apperror.StoreTable{Unavailable: "access_policy.unavailable"}.Translate(err)
 	}
 }

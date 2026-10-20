@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -88,7 +87,7 @@ func (s *roleService) List(ctx context.Context, invocation Invocation) ([]*model
 	}
 	roles, err := s.roles.List(ctx)
 	if err != nil {
-		return nil, roleError(err)
+		return nil, roleStoreErrors.Translate(err)
 	}
 	if roles == nil {
 		roles = []*model.Role{}
@@ -110,7 +109,7 @@ func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetR
 	}
 	role, err := s.roles.Get(ctx, id)
 	if err != nil {
-		return nil, roleError(err)
+		return nil, roleStoreErrors.Translate(err)
 	}
 	return role, nil
 }
@@ -153,7 +152,7 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		roleError,
+		roleStoreErrors.Translate,
 	)
 }
 
@@ -172,7 +171,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 	}
 	current, err := s.roles.Get(ctx, id)
 	if err != nil {
-		return nil, roleError(err)
+		return nil, roleStoreErrors.Translate(err)
 	}
 	if current.BuiltIn {
 		return nil, apperror.New("role.built_in.protected").WithField("resource", "role")
@@ -214,7 +213,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 				Role: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		roleError,
+		roleStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -252,7 +251,7 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 	}
 	current, err := s.roles.Get(ctx, id)
 	if err != nil {
-		return roleError(err)
+		return roleStoreErrors.Translate(err)
 	}
 	if current.BuiltIn {
 		return apperror.New("role.built_in.protected").WithField("resource", "role")
@@ -275,7 +274,7 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		roleError,
+		roleStoreErrors.Translate,
 	)
 	if err != nil {
 		return err
@@ -308,7 +307,7 @@ func (a roleAuthorization) AuthorizeRoleBindingList(ctx context.Context, invocat
 	}
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
-		return store.UserVisibilityScope{}, roleError(err)
+		return store.UserVisibilityScope{}, roleStoreErrors.Translate(err)
 	}
 	allowed := constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 || len(constraint.ClassIDs) > 0
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
@@ -367,7 +366,7 @@ func (a roleAuthorization) CanDelegateActionsAtScope(
 func (a roleAuthorization) authorizeInstitution(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
-		return model.Resource{}, roleError(err)
+		return model.Resource{}, roleStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	if err := a.authorization.authorizeCurrentState(
@@ -390,30 +389,9 @@ func (e roleRealtimeEffects) AuthorizationChanged(ctx context.Context) {
 	e.effects.InvalidateAuthorization(ctx, "")
 }
 
-func roleError(err error) error {
-	var appFailure *apperror.Error
-	if errors.As(err, &appFailure) {
-		return err
-	}
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "role").Wrap(err)
-	case store.IsConflict(err):
-		var conflict *store.ErrConflict
-		_ = errors.As(err, &conflict)
-		if conflict != nil && conflict.Constraint == "roles_built_in_protected" {
-			return apperror.New("role.built_in.protected").WithField("resource", "role").Wrap(err)
-		}
-		return apperror.New("role.conflict").WithField("resource", "role").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("role.invalid").WithField("resource", "role").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "role").Wrap(err)
-	}
-}
+var roleStoreErrors = apperror.AdministrationStoreTable("role", "role.conflict", "role.invalid", map[string]apperror.Code{
+	"roles_built_in_protected": "role.built_in.protected",
+})
 
 func validateKnownPermissions(permissions []string) error {
 	for _, permission := range permissions {

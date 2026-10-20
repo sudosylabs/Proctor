@@ -153,7 +153,7 @@ func (s *selfSessionService) RevokeOne(
 			SessionID: session.ID.String(), UserID: principal.UserID.String(),
 			Reason: model.SessionRevocationUserSession,
 		},
-		selfSessionRevocationError,
+		selfSessionRevocationStoreErrors.Translate,
 	)
 }
 
@@ -187,9 +187,7 @@ func (s *selfSessionService) RevokeAll(
 	)
 }
 
-func selfSessionRevocationError(err error) error {
-	if store.IsNotFound(err) {
-		return apperror.New("session.not_found")
-	}
-	return authenticationUnavailable(err)
+var selfSessionRevocationStoreErrors = apperror.StoreTable{
+	NotFound:    "session.not_found",
+	Unavailable: "authentication.internal",
 }

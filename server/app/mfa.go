@@ -182,7 +182,7 @@ func (s *mfaMechanics) consumeSecondFactor(
 		if store.IsNotFound(err) {
 			return mfaInvalidCodeError()
 		}
-		return mfaStoreError(err)
+		return mfaStoreErrors.Translate(err)
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (s *mfaMechanics) verifySecondFactor(ctx context.Context, persistence store
 		if store.IsNotFound(err) {
 			return mfaFactorProof{}, mfaInvalidCodeError()
 		}
-		return mfaFactorProof{}, mfaStoreError(err)
+		return mfaFactorProof{}, mfaStoreErrors.Translate(err)
 	}
 	if credential == nil || !credential.IsActive() {
 		return mfaFactorProof{}, mfaInvalidCodeError()
@@ -410,16 +410,12 @@ func mfaInvalidCodeError() error {
 	return apperror.New("authentication.mfa.invalid_code")
 }
 
-func mfaStoreFailure(err error) error {
-	return mfaStoreError(err)
-}
-
-func mfaStoreError(err error) error {
-	code := apperror.Code("authentication.mfa.unavailable")
-	if store.IsNotFound(err) {
-		code = "authentication.mfa.not_found"
-	} else if store.IsConflict(err) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
-		code = "authentication.mfa.conflict"
-	}
-	return apperror.New(code).Wrap(err)
+var mfaStoreErrors = apperror.StoreTable{
+	Rules: []apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.mfa.conflict"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.mfa.conflict"},
+	},
+	NotFound:    "authentication.mfa.not_found",
+	Conflict:    "authentication.mfa.conflict",
+	Unavailable: "authentication.mfa.unavailable",
 }

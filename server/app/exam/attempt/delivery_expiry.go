@@ -21,7 +21,7 @@ func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (E
 	}
 	due, err := service.deps.Persistence.ListExpiredDeliveries(ctx, limit)
 	if err != nil {
-		return ExpiryScanResult{}, mapStore(err)
+		return ExpiryScanResult{}, storeError(storeErrors, err)
 	}
 	result := ExpiryScanResult{Due: len(due)}
 	if len(due) > limit {
@@ -38,9 +38,9 @@ func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (E
 		changed, err := service.deps.Persistence.ExpireDelivery(ctx, &store.DeliveryExpiry{Due: d, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())})
 		if err != nil {
 			if auditErr := service.deps.SystemAuditor.Fail(ctx, audit, "exam.attempt.unavailable"); auditErr != nil {
-				return result, errors.Join(mapStore(err), auditErr)
+				return result, errors.Join(storeError(storeErrors, err), auditErr)
 			}
-			return result, mapStore(err)
+			return result, storeError(storeErrors, err)
 		}
 		result.Completed++
 		if !changed {

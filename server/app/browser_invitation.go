@@ -134,7 +134,7 @@ func (s *browserInvitationService) Start(ctx context.Context, _ Invocation, comm
 	}
 	saved, err := s.transactions.CreateInvitation(ctx, creation)
 	if err != nil || saved == nil {
-		return nil, browserInvitationStoreError(err)
+		return nil, browserInvitationStoreErrors.Translate(err)
 	}
 	if saved.ID != creation.ID || saved.ExpiresAt.IsZero() || saved.ExpiresAt.After(invitation.ExpiresAt) ||
 		(invitation.IntendedEndsAt.Valid && saved.ExpiresAt.After(invitation.IntendedEndsAt.Time)) {
@@ -208,14 +208,14 @@ func (s *browserInvitationService) resolve(ctx context.Context, handle, proof st
 	handleHash, proofHash := model.HashToken(handle), model.HashToken(proof)
 	resolution, err := s.transactions.ResolveInvitation(ctx, handleHash, proofHash)
 	if err != nil || resolution == nil {
-		return nil, nil, browserInvitationStoreError(err)
+		return nil, nil, browserInvitationStoreErrors.Translate(err)
 	}
 	if !resolution.ID.IsValid() || !resolution.InvitationID.IsValid() || !model.IsValidTokenHash(resolution.InvitationClaimHash) {
 		return nil, nil, apperror.New("invitation.unavailable")
 	}
 	invitation, err := s.invitations.store.GetByClaimHash(ctx, resolution.InvitationClaimHash)
 	if err != nil || invitation == nil || invitation.ID != resolution.InvitationID {
-		return nil, nil, browserInvitationStoreError(err)
+		return nil, nil, browserInvitationStoreErrors.Translate(err)
 	}
 	return resolution, invitation, nil
 }
@@ -226,12 +226,8 @@ func browserInvitationProof(resolution *store.BrowserInvitationResolution, handl
 	}
 }
 
-func browserInvitationStoreError(err error) error {
-	if err == nil {
-		return apperror.New("invitation.unavailable")
-	}
-	if store.IsNotFound(err) || store.IsConflict(err) {
-		return apperror.New("invitation.invalid").Wrap(err)
-	}
-	return apperror.New("invitation.unavailable").Wrap(err)
+var browserInvitationStoreErrors = apperror.StoreTable{
+	NotFound:    "invitation.invalid",
+	Conflict:    "invitation.invalid",
+	Unavailable: "invitation.unavailable",
 }

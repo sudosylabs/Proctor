@@ -328,8 +328,8 @@ func TestRoleMappersPreserveApplicationFailureWrappers(t *testing.T) {
 	applicationFailure := apperror.New("authorization.denied")
 	wrapped := errors.Join(errors.New("persistence context"), applicationFailure)
 	for name, mapper := range map[string]func(error) error{
-		"role":         roleError,
-		"role binding": roleBindingError,
+		"role":         roleStoreErrors.Translate,
+		"role binding": roleBindingStoreErrors.Translate,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := mapper(wrapped); got != wrapped {

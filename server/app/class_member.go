@@ -192,7 +192,7 @@ func (s *classMemberService) List(ctx context.Context, invocation Invocation, qu
 	}
 	members, err := s.store.ListByClass(ctx, resource.ID, query.ActiveAt)
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	if members == nil {
 		members = []*model.ClassMember{}
@@ -231,7 +231,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		}
 		retainedPrevious, err = s.store.Get(ctx, previousID.String())
 		if err != nil {
-			return nil, classMemberError(err)
+			return nil, classMemberStoreErrors.Translate(err)
 		}
 		if retainedPrevious.UserID != userID {
 			return nil, apperror.New("resource.not_found").WithField("resource", "class_member")
@@ -288,8 +288,8 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 				return runAuditedMutation(ctx, s.audit, sourceAttempt, func() time.Time { return at },
 					func(ctx context.Context, sourceReference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 						return execute(ctx, sourceReference.ID)
-					}, classMemberError)
-			}, classMemberError)
+					}, classMemberStoreErrors.Translate)
+			}, classMemberStoreErrors.Translate)
 		if replayErr != nil {
 			return nil, replayErr
 		}
@@ -300,7 +300,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	}
 	class, err := s.classes.Get(ctx, classID)
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	candidate := &model.ClassMember{
 		ClassID:          parsedClassID,
@@ -318,7 +318,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if !command.batchRetainedOutcome {
 		active, listErr := s.store.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(candidate.StartsAt))
 		if listErr != nil {
-			return nil, classMemberError(listErr)
+			return nil, classMemberStoreErrors.Translate(listErr)
 		}
 		for _, membership := range active {
 			if membership != nil && membership.AcademicPeriodID == candidate.AcademicPeriodID {
@@ -352,7 +352,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		}
 		previousClass, err = s.classes.Get(ctx, previous.ClassID.String())
 		if err != nil {
-			return nil, classMemberError(err)
+			return nil, classMemberStoreErrors.Translate(err)
 		}
 	}
 	idempotency, err := newCommandIdempotency(invocation, "class_member.enroll.v1", command.IdempotencyKey, struct {
@@ -377,7 +377,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if !command.batchRetainedOutcome {
 		recipient, err = s.users.Get(ctx, userID.String())
 		if err != nil {
-			return nil, classMemberError(err)
+			return nil, classMemberStoreErrors.Translate(err)
 		}
 	}
 	details := appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
@@ -449,9 +449,9 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 						*command.batchReplayed = input.Replayed || input.NoOp
 					}
 					return value, storeErr
-				}, classMemberError)
+				}, classMemberStoreErrors.Translate)
 		},
-		classMemberError,
+		classMemberStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -500,7 +500,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 					*command.batchReplayed = input.Replayed || input.NoOp
 				}
 				return value, storeErr
-			}, classMemberError)
+			}, classMemberStoreErrors.Translate)
 		if mutationErr != nil {
 			return nil, mutationErr
 		}
@@ -511,7 +511,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	resource, err := s.authorizeClass(ctx, invocation, current.ClassID.String(), model.ActionClassMembersManage)
 	if err != nil {
@@ -522,7 +522,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	}
 	class, err := s.classes.Get(ctx, current.ClassID.String())
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	idempotency, err := newCommandIdempotency(invocation, "class_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
@@ -536,7 +536,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 	recipient, err := s.users.Get(ctx, current.UserID.String())
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
 	prepared := &preparedDirectMail{}
@@ -575,7 +575,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 			}
 			return value, storeErr
 		},
-		classMemberError,
+		classMemberStoreErrors.Translate,
 	)
 	if mutationErr != nil {
 		return nil, mutationErr
@@ -608,31 +608,10 @@ func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invo
 	return resource, nil
 }
 
-func classMemberError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found").WithField("resource", "class_member").Wrap(err)
-	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) {
-		switch conflict.Constraint {
-		case "class_member_student_affiliation_required":
-			return apperror.New("class_member.student_affiliation_required").Wrap(err)
-		case "class_member_end_time":
-			return apperror.New("resource.not_found").WithField("resource", "class_member").Wrap(err)
-		default:
-			return apperror.New("class.enrollment_conflict").WithField("resource", "class_member").Wrap(err)
-		}
-	}
-	var invalid *store.ErrInvalidInput
-	var reference *store.ErrReference
-	if errors.As(err, &invalid) || errors.As(err, &reference) {
-		return apperror.New("class_member.invalid").WithField("resource", "class_member").Wrap(err)
-	}
-	return apperror.New("administration.unavailable").WithField("resource", "class_member").Wrap(err)
-}
+var classMemberStoreErrors = apperror.AdministrationStoreTable("class_member", "class.enrollment_conflict", "class_member.invalid", map[string]apperror.Code{
+	"class_member_student_affiliation_required": "class_member.student_affiliation_required",
+	"class_member_end_time":                     "resource.not_found",
+})
 
 // ListClassMembersPageQuery opts into bounded membership enumeration. Each page is
 // authorized independently and explicit selectors preserve its effective filter.
@@ -673,7 +652,7 @@ func (s *classMemberService) ListPage(ctx context.Context, invocation Invocation
 
 	page, err := s.store.ListPageByClass(ctx, options)
 	if err != nil {
-		return nil, classMemberError(err)
+		return nil, classMemberStoreErrors.Translate(err)
 	}
 	result := &ClassMemberPage{Members: page.Members, ActiveAt: activeAt, HasMore: page.HasMore}
 	if result.Members == nil {

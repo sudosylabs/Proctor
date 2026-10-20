@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -131,7 +130,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		}
 		bindings, err := s.bindings.ListVisibleByUser(ctx, userID, visibility)
 		if err != nil {
-			return nil, roleBindingError(err)
+			return nil, roleBindingStoreErrors.Translate(err)
 		}
 		if bindings == nil {
 			bindings = []*model.RoleBinding{}
@@ -143,7 +142,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		}
 		bindings, err := s.bindings.ListByScope(ctx, query.ScopeType, scopeID)
 		if err != nil {
-			return nil, roleBindingError(err)
+			return nil, roleBindingStoreErrors.Translate(err)
 		}
 		if bindings == nil {
 			bindings = []*model.RoleBinding{}
@@ -197,7 +196,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		role, err = s.roles.Get(ctx, candidate.RoleID.String())
 	}
 	if err != nil {
-		return nil, roleBindingError(err)
+		return nil, roleBindingStoreErrors.Translate(err)
 	}
 	if role.Name == model.SystemAdministratorRoleName &&
 		candidate.ScopeType != model.RoleScopeInstitution {
@@ -221,7 +220,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	if !command.batchRetainedOutcome {
 		recipient, err = s.users.Get(ctx, userID.String())
 		if err != nil {
-			return nil, roleBindingError(err)
+			return nil, roleBindingStoreErrors.Translate(err)
 		}
 		key := model.MailTemplateAuthorizationScopedRoleAssigned
 		if candidate.ScopeType == model.RoleScopeInstitution {
@@ -278,7 +277,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 			}
 			return value, storeErr
 		},
-		roleBindingError,
+		roleBindingStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -301,7 +300,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	}
 	current, err := s.bindings.Get(ctx, id)
 	if err != nil {
-		return nil, roleBindingError(err)
+		return nil, roleBindingStoreErrors.Translate(err)
 	}
 	resource, err := s.authorization.AuthorizeRoleBindingScope(
 		ctx, invocation, model.ActionRoleBindingManage, current.ScopeType, current.ScopeID,
@@ -329,7 +328,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	if !command.batchRetainedOutcome {
 		recipient, err = s.users.Get(ctx, current.UserID.String())
 		if err != nil {
-			return nil, roleBindingError(err)
+			return nil, roleBindingStoreErrors.Translate(err)
 		}
 		key := model.MailTemplateAuthorizationScopedRoleEnded
 		if current.ScopeType == model.RoleScopeInstitution {
@@ -367,7 +366,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 			}
 			return value, storeErr
 		},
-		roleBindingError,
+		roleBindingStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -384,33 +383,7 @@ func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Cont
 	e.effects.InvalidateAuthorization(ctx, userID)
 }
 
-func roleBindingError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	var appFailure *apperror.Error
-	if errors.As(err, &appFailure) {
-		return err
-	}
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "role_binding").Wrap(err)
-	case store.IsConflict(err):
-		var conflict *store.ErrConflict
-		_ = errors.As(err, &conflict)
-		if conflict != nil && conflict.Constraint == "role_bindings_last_system_admin" {
-			return apperror.New("role_binding.last_system_admin").WithField("resource", "role_binding").Wrap(err)
-		}
-		if conflict != nil && conflict.Constraint == "role_bindings_system_admin_institution_scope" {
-			return apperror.New("role_binding.system_admin_requires_institution_scope").WithField("resource", "role_binding").Wrap(err)
-		}
-		return apperror.New("role_binding.conflict").WithField("resource", "role_binding").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("role_binding.invalid").WithField("resource", "role_binding").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "role_binding").Wrap(err)
-	}
-}
+var roleBindingStoreErrors = apperror.AdministrationStoreTable("role_binding", "role_binding.conflict", "role_binding.invalid", map[string]apperror.Code{
+	"role_bindings_last_system_admin":              "role_binding.last_system_admin",
+	"role_bindings_system_admin_institution_scope": "role_binding.system_admin_requires_institution_scope",
+})

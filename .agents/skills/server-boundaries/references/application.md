@@ -89,6 +89,10 @@ with the one `*apperror.Error` type from the `app/apperror` leaf. Children
 construct it directly with `apperror.New(code)` or `apperror.Invalid(code,
 field)`; they declare no local fault type or per-package error helpers, and
 the parent facade passes their errors through, adding only concealment.
+Typed Store failures are translated only through a declared
+`apperror.StoreTable` keyed by Store error kind, entity, and constraint name;
+a use case adds a small function before its table only for a typed Store
+error that carries safe detail, such as a current-revision hint.
 
 The `app/exam/manageraccess` leaf owns the shared current Exam Manager and exact
 Academic Unit membership rule used to select ordinary or explicit override

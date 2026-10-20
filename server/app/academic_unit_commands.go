@@ -235,12 +235,7 @@ func (s *academicUnitCommandService) Create(
 			}
 			return idempotentStore.CreateIdempotently(ctx, input, idempotency)
 		},
-		func(err error) error {
-			if mapped := idempotencyError(err); mapped != nil {
-				return mapped
-			}
-			return academicUnitReadError("academic_unit", err)
-		},
+		academicUnitStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -279,7 +274,7 @@ func (s *academicUnitCommandService) Update(
 	}
 	current, err := s.store.Get(ctx, command.ID)
 	if err != nil {
-		return nil, academicUnitReadError("academic_unit", err)
+		return nil, academicUnitStoreErrors.Translate(err)
 	}
 	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_unit.conflict"); err != nil {
 		return nil, err
@@ -338,7 +333,7 @@ func (s *academicUnitCommandService) Update(
 				Unit: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		func(err error) error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error { return academicUnitStoreErrors.Translate(err) },
 	)
 	if err != nil {
 		return nil, err
@@ -373,7 +368,7 @@ func (s *academicUnitCommandService) Archive(
 	}
 	current, err := s.store.Get(ctx, command.ID)
 	if err != nil {
-		return academicUnitReadError("academic_unit", err)
+		return academicUnitStoreErrors.Translate(err)
 	}
 	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_unit.conflict"); err != nil {
 		return err
@@ -397,7 +392,7 @@ func (s *academicUnitCommandService) Archive(
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		func(err error) error { return academicUnitReadError("academic_unit", err) },
+		func(err error) error { return academicUnitStoreErrors.Translate(err) },
 	)
 	if err != nil {
 		return err

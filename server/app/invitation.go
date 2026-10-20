@@ -364,7 +364,7 @@ func (a invitationAuthorizationAdapter) Visibility(ctx context.Context, invocati
 	}
 	institution, err := a.authorization.resolver.institutions.GetSingleton(ctx)
 	if err != nil {
-		return store.InvitationVisibilityScope{}, invitationError(err)
+		return store.InvitationVisibilityScope{}, invitationStoreErrors.Translate(err)
 	}
 	allowed := constraint.InstitutionWide || len(constraint.AcademicUnitRootIDs) > 0 || len(constraint.ClassIDs) > 0
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
@@ -661,7 +661,7 @@ func (s *invitationService) recordInvitationCommandDuplicate(ctx context.Context
 		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationBatchCommandResult, error) {
 			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAtMillis
 			return s.store.RecordBatchDuplicate(ctx, &input, idempotency)
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 }
 
 func (s *invitationService) recordDuplicateInvitationView(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt, input store.InvitationBatchDuplicate, canonicalKey string) (InvitationView, error) {
@@ -702,7 +702,7 @@ func (s *invitationService) recoverInvitationIssueOutcome(ctx context.Context, i
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
 			return value, replayErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, true, err
 	}
@@ -729,7 +729,7 @@ func (s *invitationService) recoverInvitationAdministrationOutcome(ctx context.C
 				return nil, apperror.New("onboarding_batch.duplicate")
 			}
 			return value, replayErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationAdministrationView{}, true, err
 	}
@@ -893,7 +893,7 @@ func (s *invitationService) List(ctx context.Context, invocation Invocation, que
 		TargetEmail: targetEmail, TargetID: strings.TrimSpace(query.TargetID), CreatedAfter: query.CreatedAfter,
 		CreatedBefore: query.CreatedBefore, BeforeCreatedAt: query.BeforeCreatedAt, BeforeID: query.BeforeID, Limit: query.Limit})
 	if err != nil {
-		return InvitationAdministrationPage{}, invitationError(err)
+		return InvitationAdministrationPage{}, invitationStoreErrors.Translate(err)
 	}
 	result := InvitationAdministrationPage{Items: []InvitationAdministrationView{}, More: page.More}
 	for _, item := range page.Items {
@@ -913,7 +913,7 @@ func (s *invitationService) GetAdministration(ctx context.Context, invocation In
 	}
 	record, err := s.store.GetForAdministration(ctx, id, visibility)
 	if err != nil {
-		return InvitationAdministrationView{}, invitationError(err)
+		return InvitationAdministrationView{}, invitationStoreErrors.Translate(err)
 	}
 	return invitationAdministrationView(record), nil
 }
@@ -929,7 +929,7 @@ func (s *invitationService) Resend(ctx context.Context, invocation Invocation, c
 	}
 	current, err := s.store.GetForAdministration(ctx, id, visibility)
 	if err != nil {
-		return InvitationAdministrationView{}, invitationError(err)
+		return InvitationAdministrationView{}, invitationStoreErrors.Translate(err)
 	}
 	if command.BatchScopeID != "" {
 		if current.Invitation == nil || current.Invitation.ScopeType != command.BatchScopeType || current.Invitation.ScopeID != command.BatchScopeID {
@@ -1004,7 +1004,7 @@ func (s *invitationService) Resend(ctx context.Context, invocation Invocation, c
 			}
 			record, storeErr := s.store.Resend(ctx, input)
 			return &store.InvitationAdministrationCommandResult{Record: record}, storeErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationAdministrationView{}, err
 	}
@@ -1024,7 +1024,7 @@ func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, c
 	}
 	current, err := s.store.GetForAdministration(ctx, id, visibility)
 	if err != nil {
-		return InvitationAdministrationView{}, invitationError(err)
+		return InvitationAdministrationView{}, invitationStoreErrors.Translate(err)
 	}
 	if command.BatchScopeID != "" {
 		if current.Invitation == nil || current.Invitation.ScopeType != command.BatchScopeType || current.Invitation.ScopeID != command.BatchScopeID {
@@ -1084,7 +1084,7 @@ func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, c
 			}
 			record, storeErr := s.store.Revoke(ctx, input)
 			return &store.InvitationAdministrationCommandResult{Record: record}, storeErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationAdministrationView{}, err
 	}
@@ -1104,7 +1104,7 @@ func (s *invitationService) Replace(ctx context.Context, invocation Invocation, 
 	}
 	current, err := s.store.GetForAdministration(ctx, id, visibility)
 	if err != nil {
-		return InvitationAdministrationView{}, invitationError(err)
+		return InvitationAdministrationView{}, invitationStoreErrors.Translate(err)
 	}
 	if !s.mail.Enabled() {
 		return InvitationAdministrationView{}, apperror.New("invitation.mail_unavailable")
@@ -1137,8 +1137,8 @@ func (s *invitationService) Replace(ctx context.Context, invocation Invocation, 
 						Delivery: prepared.Delivery, DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
 						CurrentAuditEventID: currentReference.ID, ReplacementAuditEventID: replacementReference.ID,
 						AuditAt: currentReference.MutationAtMillis})
-				}, invitationMutationError)
-		}, invitationMutationError)
+				}, invitationStoreErrors.Translate)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationAdministrationView{}, err
 	}
@@ -1172,11 +1172,11 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		}
 		class, err := s.classes.Get(ctx, classID.String())
 		if err != nil || class.ID != classID {
-			return nil, "", invitationError(err)
+			return nil, "", invitationStoreErrors.Translate(err)
 		}
 		period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
 		if err != nil || period.ID != class.AcademicPeriodID {
-			return nil, "", invitationError(err)
+			return nil, "", invitationStoreErrors.Translate(err)
 		}
 		if startsAt.IsZero() {
 			startsAt = period.StartsAt
@@ -1213,11 +1213,11 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		}
 		unit, err := s.academicUnits.Get(ctx, unitID.String())
 		if err != nil || unit.ID != unitID || unit.IsArchived() {
-			return nil, "", invitationError(err)
+			return nil, "", invitationStoreErrors.Translate(err)
 		}
 		role, err := s.roles.Get(ctx, roleID.String())
 		if err != nil || role.ID != roleID || role.IsArchived() {
-			return nil, "", invitationError(err)
+			return nil, "", invitationStoreErrors.Translate(err)
 		}
 		if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 			return nil, "", err
@@ -1269,7 +1269,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		}
 		role, err := s.roles.Get(ctx, roleID.String())
 		if err != nil || role.ID != roleID || role.IsArchived() {
-			return nil, "", invitationError(err)
+			return nil, "", invitationStoreErrors.Translate(err)
 		}
 		if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 			return nil, "", err
@@ -1334,11 +1334,11 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	}
 	class, err := s.classes.Get(ctx, classID)
 	if err != nil {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	period, err := s.periods.Get(ctx, class.AcademicPeriodID.String())
 	if err != nil {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	if class.ID != parsedClassID || period.ID != class.AcademicPeriodID {
 		return InvitationView{}, apperror.New("invitation.class_period_invalid")
@@ -1375,7 +1375,7 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 		}
 		_, noOp, noOpErr := s.store.ResolveOnboardingInvitationNoOp(ctx, candidate)
 		if noOpErr != nil {
-			return InvitationView{}, invitationMutationError(noOpErr)
+			return InvitationView{}, invitationStoreErrors.Translate(noOpErr)
 		}
 		if noOp {
 			return s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency)
@@ -1437,7 +1437,7 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 			}
 			value, storeErr := s.store.IssueStudentClass(ctx, input)
 			return &store.InvitationCommandResult{Invitation: value}, storeErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1465,11 +1465,11 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	}
 	unit, err := s.academicUnits.Get(ctx, unitID.String())
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	role, err := s.roles.Get(ctx, roleID.String())
 	if err != nil || role.ID != roleID || role.IsArchived() {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 		return InvitationView{}, err
@@ -1509,7 +1509,7 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 		}
 		_, noOp, noOpErr := s.store.ResolveOnboardingInvitationNoOp(ctx, candidate)
 		if noOpErr != nil {
-			return InvitationView{}, invitationMutationError(noOpErr)
+			return InvitationView{}, invitationStoreErrors.Translate(noOpErr)
 		}
 		if noOp {
 			return s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, idempotency)
@@ -1573,7 +1573,7 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 			}
 			value, storeErr := s.store.IssueTeacherAcademicUnit(ctx, input)
 			return &store.InvitationCommandResult{Invitation: value}, storeErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1600,11 +1600,11 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 	}
 	unit, err := s.academicUnits.Get(ctx, unitID.String())
 	if err != nil || unit.ID != unitID || unit.IsArchived() {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	role, err := s.roles.Get(ctx, roleID.String())
 	if err != nil || role.ID != roleID || role.IsArchived() {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 		return InvitationView{}, err
@@ -1648,7 +1648,7 @@ func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation
 	}
 	role, err := s.roles.Get(ctx, roleID.String())
 	if err != nil || role.ID != roleID || role.IsArchived() {
-		return InvitationView{}, invitationError(err)
+		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 		return InvitationView{}, err
@@ -1697,7 +1697,7 @@ func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invoc
 		}
 		_, noOp, noOpErr := s.store.ResolveOnboardingInvitationNoOp(ctx, candidate)
 		if noOpErr != nil {
-			return InvitationView{}, invitationMutationError(noOpErr)
+			return InvitationView{}, invitationStoreErrors.Translate(noOpErr)
 		}
 		if noOp {
 			return s.completeOnboardingInvitationNoOp(ctx, invocation, attempt, candidate, issue.idempotency)
@@ -1758,7 +1758,7 @@ func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invoc
 			}
 			value, storeErr := s.store.IssueScopedRole(ctx, input)
 			return &store.InvitationCommandResult{Invitation: value}, storeErr
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -1789,7 +1789,7 @@ func (s *invitationService) completeOnboardingInvitationNoOp(ctx context.Context
 			default:
 				return nil, store.NewErrInvalidInput("invitation", "purpose", candidate.Purpose)
 			}
-		}, invitationMutationError)
+		}, invitationStoreErrors.Translate)
 	if err != nil {
 		return InvitationView{}, err
 	}
@@ -2139,29 +2139,11 @@ func invitationView(invitation *model.Invitation) InvitationView {
 		IntendedEndsAt: invitation.IntendedEndsAt, ExpiresAt: invitation.ExpiresAt}
 }
 
-func invitationError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found").Wrap(err)
-	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) {
-		return apperror.New("invitation.conflict").Wrap(err)
-	}
-	var invalid *store.ErrInvalidInput
-	if errors.As(err, &invalid) {
-		return apperror.New("invitation.invalid").Wrap(err)
-	}
-	return apperror.New("invitation.unavailable").Wrap(err)
-}
-
-func invitationMutationError(err error) error {
-	if _, ok := apperror.As(err); ok {
-		return err
-	}
-	return invitationError(err)
+var invitationStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Conflict:    "invitation.conflict",
+	Invalid:     "invitation.invalid",
+	Unavailable: "invitation.unavailable",
 }
 
 func invalidInvitationError(err error) error { return apperror.New("invitation.invalid").Wrap(err) }

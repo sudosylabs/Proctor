@@ -77,7 +77,7 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 		if endedFocusLossCandidate(err) {
 			return service.evaluateEndedFocusLoss(ctx, call, command, selector)
 		}
-		return FocusLossEvaluation{}, mapStore(err)
+		return FocusLossEvaluation{}, storeError(storeErrors, err)
 	}
 	if !validFocusLossTarget(target, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss audit target"))
@@ -129,7 +129,7 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 ) (FocusLossEvaluation, error) {
 	target, err := service.deps.Persistence.ResolveEndedFocusLossTarget(ctx, selector)
 	if err != nil {
-		return FocusLossEvaluation{}, mapStore(err)
+		return FocusLossEvaluation{}, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SubmissionID.IsValid() || !validFocusLossTarget(&target.ExamAttemptFocusLossTarget, selector) {
 		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late Focus Loss audit target"))

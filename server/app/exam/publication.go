@@ -81,7 +81,7 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	}
 	access, err := p.access.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return store.ExamRevisionSummary{}, mapStoreError(err)
+		return store.ExamRevisionSummary{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
@@ -105,7 +105,7 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 		ExpectedDraftRevision: command.ExpectedDraftRevision, Kind: model.ExamRevisionPublicationStandard,
 		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := p.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return store.ExamRevisionSummary{}, errors.Join(mapped, auditErr)
 		}
@@ -128,7 +128,7 @@ func (p *Publication) Get(ctx context.Context, call Call, examID model.ExamID, r
 	}
 	revision, err := p.store.GetSummary(ctx, examID, revisionID)
 	if err != nil {
-		return store.ExamRevisionSummary{}, mapStoreError(err)
+		return store.ExamRevisionSummary{}, examStoreErrors.Translate(err)
 	}
 	if revision == nil {
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam Revision store returned no summary"))
@@ -145,7 +145,7 @@ func (p *Publication) List(ctx context.Context, call Call, query ListRevisionsQu
 	}
 	items, err := p.store.List(ctx, store.ExamRevisionListOptions{ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit + 1})
 	if err != nil {
-		return RevisionPage{}, mapStoreError(err)
+		return RevisionPage{}, examStoreErrors.Translate(err)
 	}
 	page := RevisionPage{Items: items, HasMore: len(items) > query.Limit}
 	if page.HasMore {
@@ -161,7 +161,7 @@ func (p *Publication) authorizeView(ctx context.Context, call Call, examID model
 	}
 	access, err := p.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return mapStoreError(err)
+		return examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))

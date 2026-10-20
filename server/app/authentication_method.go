@@ -124,7 +124,7 @@ func (s *authenticationMethodService) enrollPassword(ctx context.Context, invoca
 			return s.passwords.EnrollWithAudit(ctx, &store.PasswordCredentialEnrollment{
 				Credential:   &model.PasswordCredential{UserID: userID, PasswordHash: hash},
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, authenticationMethodMutationError)
+		}, authenticationMethodStoreErrors.Translate)
 	return appErr
 }
 
@@ -140,7 +140,7 @@ func (s *authenticationMethodService) removePassword(ctx context.Context, invoca
 			return s.passwords.RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, authenticationMethodMutationError)
+		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)
 	}
@@ -162,7 +162,7 @@ func (s *authenticationMethodService) unlink(ctx context.Context, invocation Inv
 			return s.identities.UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
 				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, authenticationMethodMutationError)
+		}, authenticationMethodStoreErrors.Translate)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)
 	}

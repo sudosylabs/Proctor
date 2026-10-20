@@ -216,25 +216,17 @@ func (s *retentionPolicyService) ListRecords(ctx context.Context, invocation Inv
 }
 
 func retentionError(err error) error {
-	var invalid *store.ErrInvalidInput
-	var conflict *store.ErrConflict
-	var missing *store.ErrNotFound
 	var policy *store.ErrRetentionPolicyRevisionConflict
-	switch {
-	case idempotencyError(err) != nil:
-		return idempotencyError(err)
-	case errors.As(err, &policy):
+	if errors.As(err, &policy) {
 		return retentionPolicyError(err)
-	case errors.As(err, &missing):
-		return apperror.New("resource.not_found").Wrap(err)
-	case errors.As(err, &invalid):
-		return apperror.New("retention.invalid").Wrap(err)
-	case errors.As(err, &conflict):
-		if conflict.Resource == "authorization" {
-			return apperror.New("authorization.denied").Wrap(err)
-		}
-		return apperror.New("retention.conflict").Wrap(err)
-	default:
-		return apperror.New("retention.unavailable").Wrap(err)
 	}
+	return retentionStoreErrors.Translate(err)
+}
+
+var retentionStoreErrors = apperror.StoreTable{
+	Rules:       []apperror.StoreRule{{Kind: apperror.StoreConflict, Entity: "authorization", Code: "authorization.denied"}},
+	NotFound:    "resource.not_found",
+	Conflict:    "retention.conflict",
+	Invalid:     "retention.invalid",
+	Unavailable: "retention.unavailable",
 }

@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -111,7 +110,7 @@ func (s *sessionAdministrationService) List(
 		sessions, err = s.sessions.ListActiveByUser(ctx, userID, model.TimeUTC(s.now()))
 	}
 	if err != nil {
-		return nil, sessionAdministrationError(err)
+		return nil, sessionAdministrationStoreErrors.Translate(err)
 	}
 	if sessions == nil {
 		sessions = []*model.Session{}
@@ -148,16 +147,16 @@ func (s *sessionAdministrationService) RevokeOne(
 		if err == nil {
 			err = store.NewErrNotFound("session", sessionID)
 		}
-		return sessionAdministrationError(err)
+		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	user, err := s.users.Get(ctx, userID)
 	if err != nil {
-		return sessionAdministrationError(err)
+		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	prepared, err := s.prepareRevocationNotice(user, now)
 	if err != nil {
-		return sessionAdministrationError(err)
+		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	revocations := sessionRevocationCoordinator{
 		sessions: s.sessions, audit: s.audit, effects: s.effects, now: func() time.Time { return now },
@@ -176,7 +175,7 @@ func (s *sessionAdministrationService) RevokeOne(
 			Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 			Reason: model.SessionRevocationAdministratorSession,
 		},
-		sessionAdministrationError,
+		sessionAdministrationStoreErrors.Translate,
 	)
 }
 
@@ -202,7 +201,7 @@ func (s *sessionAdministrationService) RevokeAll(
 	}
 	user, err := s.users.Get(ctx, userID)
 	if err != nil {
-		return sessionAdministrationError(err)
+		return sessionAdministrationStoreErrors.Translate(err)
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	idempotency, err := newCommandIdempotency(invocation, "user_sessions.revoke.v1", command.IdempotencyKey, struct {
@@ -220,7 +219,7 @@ func (s *sessionAdministrationService) RevokeAll(
 		recipient.DisabledAt = model.OptionalTime{}
 		prepared, err = s.prepareRevocationNotice(&recipient, now)
 		if err != nil {
-			return sessionAdministrationError(err)
+			return sessionAdministrationStoreErrors.Translate(err)
 		}
 	}
 	revocations := sessionRevocationCoordinator{
@@ -239,7 +238,7 @@ func (s *sessionAdministrationService) RevokeAll(
 			Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
 			Reason: model.SessionRevocationAdministratorAllSessions, Command: idempotency,
 		},
-		sessionAdministrationError, command.batchReplayed,
+		sessionAdministrationStoreErrors.Translate, command.batchReplayed,
 	)
 }
 
@@ -279,18 +278,9 @@ func (a sessionAdministrationAuthorization) AuthorizeManage(
 	)
 }
 
-func sessionAdministrationError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("session.not_found").WithField("resource", "session").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		if errors.As(err, &invalid) {
-			return apperror.New("request.invalid").WithField("resource", "session").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "session").Wrap(err)
-	}
+var sessionAdministrationStoreErrors = apperror.StoreTable{
+	NotFound:    "session.not_found",
+	Invalid:     "request.invalid",
+	Unavailable: "administration.unavailable",
+	Fields:      map[string]string{"resource": "session"},
 }

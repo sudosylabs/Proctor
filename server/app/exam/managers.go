@@ -58,7 +58,7 @@ func (a *Authoring) ListManagers(ctx context.Context, call Call, query ListManag
 		ExamID: query.ExamID, BeforeGrantedAt: query.BeforeGrantedAt, BeforeUserID: query.BeforeUserID, Limit: query.Limit,
 	})
 	if err != nil {
-		return ManagerPage{}, mapStoreError(err)
+		return ManagerPage{}, examStoreErrors.Translate(err)
 	}
 	page := ManagerPage{Items: make([]ManagerSummary, 0, len(items))}
 	for _, item := range items {
@@ -139,7 +139,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return ManagerChange{}, mapStoreError(err)
+		return ManagerChange{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Draft == nil {
 		return ManagerChange{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no mail identity"))
@@ -173,7 +173,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		ChangedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notices: notices,
 	}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return ManagerChange{}, errors.Join(mapped, auditErr)
 		}
@@ -226,7 +226,7 @@ func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID m
 	principal := call.Principal()
 	access, err := a.persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return nil, "", mapStoreError(err)
+		return nil, "", examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))

@@ -50,7 +50,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 	}
 	sitting, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
-		return SubmissionResult{}, mapStore(err)
+		return SubmissionResult{}, storeError(storeErrors, err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != command.SittingID || !sitting.Sitting.ClassID.IsValid() {
 		return SubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manager-ended Sitting projection"))
@@ -89,7 +89,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason}
 	preparation, err := service.deps.Submissions.PrepareManagerEnd(ctx, request)
 	if err != nil {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, mapStore(err))
+		return SubmissionResult{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	if preparation == nil || !validAutomaticSealTarget(preparation.Target, command.SittingID) ||
 		preparation.Target.ExamID != command.ExamID || preparation.Target.AttemptID != command.AttemptID ||
@@ -127,7 +127,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		AuditAt: model.MillisFromTime(preparation.SealAt), Notice: notice,
 		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, mapStore(err))
+		return SubmissionResult{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	result, err := projectManagerEndResult(stored, preparation.Target, command, proposed)
 	if err != nil {

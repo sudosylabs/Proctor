@@ -74,7 +74,7 @@ func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) 
 	}
 	value, err := a.userProfiles.users.GetCurrentContext(ctx, principal.UserID, 21)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if value == nil || value.UserID != principal.UserID || value.Username == "" || value.DisplayName == "" ||
 		len(value.AvailableProductAreas) < 2 || len(value.ManagementScopes) > 20 {
@@ -128,7 +128,7 @@ func (s *userProfileService) Search(ctx context.Context, invocation Invocation, 
 	includeDisabled := query.IncludeDisabled && visibility.InstitutionWide
 	users, err := s.users.List(ctx, store.UserListOptions{Query: query.Query, AfterUsername: query.AfterUsername, AfterId: query.AfterID, Limit: query.Limit, IncludeDisabled: includeDisabled, Visibility: visibility})
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if users == nil {
 		users = []*model.User{}
@@ -154,7 +154,7 @@ func (s *userProfileService) Get(ctx context.Context, invocation Invocation, que
 	}
 	user, err := s.users.Get(ctx, id)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if fullProfile {
 		return user, nil
@@ -205,7 +205,7 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 	}
 	current, err := s.users.Get(ctx, id)
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	changes := model.UserProfileChanges{Username: command.Username, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName, Locale: command.Locale, Timezone: command.Timezone}
 	candidate := *current
@@ -235,25 +235,11 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		userProfileError,
+		userStoreErrors.Translate,
 	)
 }
 
-func userProfileError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "user").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("user.conflict").WithField("resource", "user").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("user.invalid").WithField("resource", "user").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "user").Wrap(err)
-	}
-}
+var userStoreErrors = apperror.AdministrationStoreTable("user", "user.conflict", "user.invalid", nil)
 
 type userProfileAuthorization struct {
 	authorization *accessControlService

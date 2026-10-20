@@ -40,7 +40,7 @@ type BrowserDeliveryAppendCommand struct {
 func (service *Service) beginBrowserDeliveryAudit(ctx context.Context, call Call, access store.BrowserDeliveryAccess, operation string) (string, error) {
 	target, err := service.deps.Persistence.ResolveBrowserDeliveryTarget(ctx, access)
 	if err != nil {
-		return "", mapBrowserDeliveryError(err)
+		return "", deliveryStoreError(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -132,20 +132,6 @@ func (service *Service) SealBrowserDelivery(ctx context.Context, call Call, comm
 	return value, nil
 }
 
-func mapBrowserDeliveryError(err error) error {
-	if errors.Is(err, store.ErrInvalidState) {
-		return apperror.New("exam.attempt.unavailable").Wrap(err)
-	}
-	var refusal *store.BrowserDeliveryRefusal
-	if errors.As(err, &refusal) {
-		return apperror.New(apperror.Code("exam.delivery." + refusal.Reason)).Wrap(err)
-	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) && conflict.Resource == "browser_delivery" {
-		return apperror.New(apperror.Code("exam.delivery." + conflict.Constraint)).Wrap(err)
-	}
-	return mapNativeDeliveryError(err)
-}
 func (service *Service) UpdateBrowserDeliverySummary(ctx context.Context, call Call, command BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error) {
 	release, admissionErr := service.enterControl(ctx, call, false)
 	if admissionErr != nil {

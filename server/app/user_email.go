@@ -56,7 +56,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if current.Email == newEmail {
 		return userEmailState(current), nil
@@ -68,7 +68,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 		func(ctx context.Context, reference mutationAttemptReference) (*UserEmailState, error) {
 			updated, err := a.accountTokens.changeUserEmail(ctx, current, newEmail, at, reference)
 			return userEmailState(updated), err
-		}, userProfileError)
+		}, userStoreErrors.Translate)
 }
 
 func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocation, command VerifyUserEmailPrivilegedCommand) (*UserEmailState, error) {
@@ -87,7 +87,7 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	if current.EmailVerified {
 		return userEmailState(current), nil
@@ -99,7 +99,7 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 		func(ctx context.Context, reference mutationAttemptReference) (*UserEmailState, error) {
 			updated, err := a.accountTokens.verifyUserEmailPrivileged(ctx, current, at, reference)
 			return userEmailState(updated), err
-		}, userProfileError)
+		}, userStoreErrors.Translate)
 }
 
 func (s *accountTokenService) changeUserEmail(ctx context.Context, current *model.User, newEmail string, now time.Time, reference mutationAttemptReference) (*model.User, error) {
@@ -127,7 +127,7 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 		VerificationOccurrence: verification.Occurrence, VerificationDelivery: verification.Delivery, VerificationJob: verification.Job,
 		AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 	if err != nil {
-		return nil, userProfileError(err)
+		return nil, userStoreErrors.Translate(err)
 	}
 	return result.User, nil
 }

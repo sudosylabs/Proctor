@@ -80,7 +80,7 @@ func (service *Service) OpenSubmissionFile(ctx context.Context, call Call,
 	}
 	selector, err := service.deps.Submissions.ResolveFile(ctx, query.SubmissionID, query.EntryID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if !validSubmissionFileSelector(selector, query.EntryID) {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission file selector"))
@@ -131,7 +131,7 @@ func (service *Service) ListSubmissionManifest(ctx context.Context, call Call,
 		SubmissionID: query.SubmissionID, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
 	})
 	if err != nil {
-		return SubmissionManifestPage{}, mapStore(err)
+		return SubmissionManifestPage{}, storeError(storeErrors, err)
 	}
 	if !validSubmissionManifestPage(stored, query) {
 		return SubmissionManifestPage{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission manifest page"))
@@ -183,7 +183,7 @@ func (service *Service) GetSubmission(ctx context.Context, call Call, query GetS
 	}
 	submission, err := service.deps.Submissions.Get(ctx, query.SubmissionID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if submission == nil || submission.Validate() != nil || submission.ID != query.SubmissionID ||
 		submission.AttemptID != query.AttemptID {
@@ -203,7 +203,7 @@ func (service *Service) resolveManagedSubmission(ctx context.Context, call Call,
 	}
 	authorization, err := service.deps.Submissions.Resolve(ctx, query.SubmissionID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if !validSubmissionAuthorization(authorization, query.SubmissionID) {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission authorization projection"))
@@ -241,7 +241,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 		FinalFocusLossSequence: command.FinalFocusLossSequence}
 	target, err := service.deps.Submissions.ResolveSealTarget(ctx, access)
 	if err != nil {
-		return SubmissionResult{}, mapStore(err)
+		return SubmissionResult{}, storeError(storeErrors, err)
 	}
 	if !validSubmissionTarget(target, access) {
 		return SubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Submission seal target"))

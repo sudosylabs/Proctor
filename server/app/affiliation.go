@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -111,7 +110,7 @@ func (s *affiliationService) List(ctx context.Context, invocation Invocation, qu
 	}
 	affiliations, err := s.store.ListByUser(ctx, userID)
 	if err != nil {
-		return nil, affiliationError(err)
+		return nil, affiliationStoreErrors.Translate(err)
 	}
 	if affiliations == nil {
 		affiliations = []*model.Affiliation{}
@@ -181,7 +180,7 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 			changed = !input.Replayed && !input.NoOp
 			return value, storeErr
 		},
-		affiliationError,
+		affiliationStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -205,7 +204,7 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, affiliationError(err)
+		return nil, affiliationStoreErrors.Translate(err)
 	}
 	resource, err := s.authorizeUser(ctx, invocation, current.UserID.String())
 	if err != nil {
@@ -214,7 +213,7 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	if current.Kind == model.AffiliationStudent && !command.batchRetainedOutcome {
 		enrollments, err := s.enrollments.ListByUser(ctx, current.UserID.String())
 		if err != nil {
-			return nil, affiliationError(err)
+			return nil, affiliationStoreErrors.Translate(err)
 		}
 		for _, enrollment := range enrollments {
 			// Open-ended enrollment (EndsAt absent) blocks ending a student affiliation.
@@ -258,7 +257,7 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 			changed = !input.Replayed && !input.NoOp
 			return value, storeErr
 		},
-		affiliationError,
+		affiliationStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -282,28 +281,7 @@ func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invoc
 	return resource, nil
 }
 
-func affiliationError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "affiliation").Wrap(err)
-	case store.IsConflict(err):
-		var conflict *store.ErrConflict
-		if errors.As(err, &conflict) && conflict.Constraint == "affiliation_student_has_active_enrollment" {
-			return apperror.New("affiliation.student_has_active_enrollment").Wrap(err)
-		}
-		if errors.As(err, &conflict) && conflict.Constraint == "affiliation_end_time" {
-			return apperror.New("resource.not_found").WithField("resource", "affiliation").Wrap(err)
-		}
-		return apperror.New("affiliation.conflict").WithField("resource", "affiliation").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("affiliation.invalid").WithField("resource", "affiliation").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "affiliation").Wrap(err)
-	}
-}
+var affiliationStoreErrors = apperror.AdministrationStoreTable("affiliation", "affiliation.conflict", "affiliation.invalid", map[string]apperror.Code{
+	"affiliation_student_has_active_enrollment": "affiliation.student_has_active_enrollment",
+	"affiliation_end_time":                      "resource.not_found",
+})

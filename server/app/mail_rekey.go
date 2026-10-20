@@ -115,7 +115,7 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 	}, s.now, func(ctx context.Context, reference mutationAttemptReference) (*store.MailRekeyOperation, error) {
 		return s.rekey.StartRekey(ctx, &store.MailRekeyStart{PrimaryKeyID: primaryKeyID,
 			RetiringKeyID: retiringKeyID, Job: job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-	}, mailRekeyStartError)
+	}, mailRekeyStoreErrors.Translate)
 	if err != nil {
 		return MailRekeyView{}, err
 	}
@@ -128,9 +128,7 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 		RetiringKeyID: operation.RetiringKeyID, CreatedAt: operation.CreatedAt}, nil
 }
 
-func mailRekeyStartError(err error) error {
-	if store.IsConflict(err) {
-		return apperror.New("mail.rekey.conflict").Wrap(err)
-	}
-	return apperror.New("mail.unavailable").Wrap(err)
+var mailRekeyStoreErrors = apperror.StoreTable{
+	Conflict:    "mail.rekey.conflict",
+	Unavailable: "mail.unavailable",
 }

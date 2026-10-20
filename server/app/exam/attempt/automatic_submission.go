@@ -31,7 +31,7 @@ func (service *Service) ListAutomaticSealTargets(ctx context.Context, sittingID 
 		SittingID: sittingID, AfterAttemptID: after, Limit: limit,
 	})
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	previous := after
 	for _, item := range items {
@@ -61,7 +61,7 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	}
 	preparation, err := service.deps.Submissions.PrepareAutomaticSeal(ctx, target)
 	if err != nil {
-		return AutomaticSubmissionResult{}, mapStore(err)
+		return AutomaticSubmissionResult{}, storeError(storeErrors, err)
 	}
 	if preparation == nil || preparation.SealAt.IsZero() {
 		return AutomaticSubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid automatic Submission preparation"))
@@ -101,7 +101,7 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 		ExpectedRecipientRevision: expectedRecipientRevision,
 	})
 	if err != nil {
-		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, mapStore(err))
+		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	result, err := projectAutomaticSubmissionResult(stored, target, proposed)
 	if err != nil {

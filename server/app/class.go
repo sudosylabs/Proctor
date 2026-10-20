@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -93,7 +92,7 @@ func (s *classService) Get(ctx context.Context, invocation Invocation, query Get
 	}
 	class, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, classError(err)
+		return nil, classStoreErrors.Translate(err)
 	}
 	return class, nil
 }
@@ -112,7 +111,7 @@ func (s *classService) List(ctx context.Context, invocation Invocation, query Li
 	}
 	classes, err := s.store.ListByProgrammeLevel(ctx, levelID)
 	if err != nil {
-		return nil, classError(err)
+		return nil, classStoreErrors.Translate(err)
 	}
 	if classes == nil {
 		classes = []*model.Class{}
@@ -134,7 +133,7 @@ func (s *classService) Search(ctx context.Context, invocation Invocation, query 
 	}
 	classes, err := s.store.SearchByAcademicUnit(ctx, unitID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit))
 	if err != nil {
-		return nil, classError(err)
+		return nil, classStoreErrors.Translate(err)
 	}
 	if classes == nil {
 		classes = []*model.Class{}
@@ -196,7 +195,7 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 				Class: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		classError,
+		classStoreErrors.Translate,
 	)
 }
 
@@ -214,11 +213,11 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	}
 	unitID, err := s.store.GetAcademicUnitId(ctx, id)
 	if err != nil {
-		return nil, classError(err)
+		return nil, classStoreErrors.Translate(err)
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, classError(err)
+		return nil, classStoreErrors.Translate(err)
 	}
 	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "class.conflict"); err != nil {
 		return nil, err
@@ -282,7 +281,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 				AuditAt:                reference.MutationAtMillis,
 			})
 		},
-		classError,
+		classStoreErrors.Translate,
 	)
 }
 
@@ -300,11 +299,11 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	}
 	unitID, err := s.store.GetAcademicUnitId(ctx, id)
 	if err != nil {
-		return classError(err)
+		return classStoreErrors.Translate(err)
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return classError(err)
+		return classStoreErrors.Translate(err)
 	}
 	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "class.conflict"); err != nil {
 		return err
@@ -336,23 +335,9 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 				AuditAt:                reference.MutationAtMillis,
 			})
 		},
-		classError,
+		classStoreErrors.Translate,
 	)
 	return err
 }
 
-func classError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "class").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("class.conflict").WithField("resource", "class").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("class.invalid").WithField("resource", "class").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "class").Wrap(err)
-	}
-}
+var classStoreErrors = apperror.AdministrationStoreTable("class", "class.conflict", "class.invalid", nil)

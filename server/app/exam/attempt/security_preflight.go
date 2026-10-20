@@ -47,7 +47,7 @@ func (service *Service) securityPreflightAccess(ctx context.Context, call Call, 
 func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sittingID model.ExamSittingID, operation string) (string, error) {
 	snapshot, err := service.deps.Sittings.Resolve(ctx, sittingID)
 	if err != nil {
-		return "", mapStore(err)
+		return "", storeError(storeErrors, err)
 	}
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != sittingID || !snapshot.Sitting.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Sitting ownership is invalid"))
@@ -83,7 +83,7 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 	}
 	result, err := service.deps.Persistence.PrepareSecurityPreflight(ctx, &store.SecurityPreflightPrepare{Access: access, AttemptID: command.AttemptID, PreflightID: model.NewId(), Challenge: model.NewCredentialToken(), NativeRegistryDigest: command.NativeRegistryDigest, SourceManifestDigest: command.SourceManifestDigest, ConfigurationManifestFingerprint: command.ConfigurationManifestFingerprint, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idempotency)
 	if err != nil {
-		return nil, service.failAudit(ctx, audit, mapSecurityPreflightError(err))
+		return nil, service.failAudit(ctx, audit, storeError(securityPreflightStoreErrors, err))
 	}
 	if result == nil || result.Challenge.Validate() != nil || result.Resolved.Policy.Validate(result.ServerTime) != nil || result.Resolved.Policy.SittingID != command.SittingID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Store returned an invalid policy"))
@@ -107,7 +107,7 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 	}
 	sittingID, err := service.deps.Persistence.ResolveSecurityPreflightSitting(ctx, command.PreflightID, principal.UserID, principal.SessionID)
 	if err != nil {
-		return nil, mapSecurityPreflightError(err)
+		return nil, storeError(securityPreflightStoreErrors, err)
 	}
 	access.SittingID = sittingID
 	idempotency, err := prepareIdempotency(call, store.SecurityPreflightReportOperation, command.IdempotencyKey, struct {
@@ -123,29 +123,20 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 	}
 	result, err := service.deps.Persistence.ReportSecurityPreflight(ctx, &store.SecurityPreflightReport{Access: access, PreflightID: command.PreflightID, Report: command.Report, AuditEventID: audit, AuditAt: model.MillisFromTime(service.deps.Now())}, idempotency)
 	if err != nil {
-		return nil, service.failAudit(ctx, audit, mapSecurityPreflightError(err))
+		return nil, service.failAudit(ctx, audit, storeError(securityPreflightStoreErrors, err))
 	}
 	if result == nil || result.PreflightID != command.PreflightID || !model.IsValidSHA256Fingerprint(result.ReportDigest) || (result.Admission != "eligible" && result.Admission != "blocked") {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Store returned an invalid report receipt"))
 	}
 	return result, nil
 }
-func mapSecurityPreflightError(err error) error {
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) {
-		switch conflict.Constraint {
-		case "preflight_expired", "preflight_superseded", "preflight_consumed", "preflight_rate_limited", "policy_changed", "session_changed", "configuration_unsupported", "attempt_not_ready":
-			return apperror.New(apperror.Code("exam.security." + conflict.Constraint)).Wrap(err)
-		}
-	}
-	if errors.Is(err, model.ErrNativeCatalogUnavailable) {
-		return apperror.New("exam.security.catalog_unavailable").Wrap(err)
-	}
-	if errors.Is(err, model.ErrNativeCoverageUnsupported) {
-		return apperror.New("exam.security.unsupported_capability").Wrap(err)
-	}
-	return mapStore(err)
-}
+
+// securityPreflightStoreErrors adds the native catalog sentinels to the
+// Attempt table.
+var securityPreflightStoreErrors = storeErrors.With(
+	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCatalogUnavailable, Code: "exam.security.catalog_unavailable"},
+	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCoverageUnsupported, Code: "exam.security.unsupported_capability"},
+)
 
 func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
 	release, admissionErr := service.enterControl(ctx, call, false)
@@ -162,7 +153,7 @@ func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, at
 	}
 	result, err := service.deps.Persistence.RecoverSecurityPolicy(ctx, access, attemptID)
 	if err != nil {
-		return nil, mapSecurityPreflightError(err)
+		return nil, storeError(securityPreflightStoreErrors, err)
 	}
 	if result == nil || result.ServerTime.IsZero() || result.SecurityCoverage.Validate() != nil || result.CurrentSources == nil || result.CurrentCoverage == nil || result.SourceResetReceipts == nil || len(result.CurrentSources) > 11 || len(result.CurrentCoverage) > 64 || len(result.SourceResetReceipts) > 11 || result.Security.Validate() != nil || result.Security.Policy.Scope.AttemptID != attemptID || result.FrozenAttemptConfiguration.Validate() != nil {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent security policy recovery"))
@@ -196,7 +187,7 @@ func (service *Service) UpdateSecurityCoverage(ctx context.Context, call Call, c
 	}
 	result, err := service.deps.Persistence.UpdateSecurityCoverage(ctx, &store.ExamAttemptSecurityCoverageUpdate{Access: selector, ParticipationID: command.ParticipationID, Generation: command.Generation, DesktopBuild: build.Build, DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision, Coverage: command.Coverage})
 	if err != nil {
-		return model.SecurityCoverageResult{}, mapSecurityPreflightError(err)
+		return model.SecurityCoverageResult{}, storeError(securityPreflightStoreErrors, err)
 	}
 	if result.Validate() != nil {
 		return model.SecurityCoverageResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent security coverage result"))

@@ -206,7 +206,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}
 	result, err := a.persistence.Create(ctx, creation, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
@@ -230,7 +230,7 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	}
 	access, err := a.persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -244,7 +244,7 @@ func (a *Authoring) Get(ctx context.Context, call Call, examID model.ExamID) (Vi
 	}
 	snapshot, err := a.persistence.Get(ctx, examID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
@@ -262,7 +262,7 @@ func (a *Authoring) AuthorizeView(ctx context.Context, call Call, examID model.E
 	}
 	access, err := a.persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return mapStoreError(err)
+		return examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -300,7 +300,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -315,7 +315,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
@@ -348,7 +348,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
@@ -399,7 +399,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -414,7 +414,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
@@ -440,7 +440,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
@@ -486,7 +486,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -501,7 +501,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
@@ -527,7 +527,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, 
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
@@ -566,53 +566,25 @@ func project(snapshot *store.ExamAuthoringSnapshot) View {
 		ResourceCount: snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace}
 }
 
-func mapStoreError(err error) error {
-	var idempotencyConflict *store.ErrIdempotencyConflict
-	var idempotencyInProgress *store.ErrIdempotencyInProgress
-	var invalidInput *store.ErrInvalidInput
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &idempotencyConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idempotencyInProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.not_found").Wrap(err)
-	case errors.As(err, &conflict):
-		switch conflict.Constraint {
-		case "exam_archived":
-			return apperror.New("exam.archived").Wrap(err)
-		case "exam_draft_revision":
-			return apperror.New("exam.draft.revision_conflict").Wrap(err)
-		case "exam_revision":
-			return apperror.New("exam.revision_conflict").Wrap(err)
-		case "exam_draft_no_changes":
-			return apperror.New("exam.draft.no_changes").Wrap(err)
-		case "exam_revision_no_changes":
-			return apperror.New("exam.revision.no_changes").Wrap(err)
-		case "exam_revision_capacity":
-			return apperror.New("exam.revision.capacity_exceeded").Wrap(err)
-		case "exam_manager_exists":
-			return apperror.New("exam.manager.exists").Wrap(err)
-		case "exam_manager_missing":
-			return apperror.New("exam.manager.not_found").Wrap(err)
-		case "exam_manager_ineligible":
-			return apperror.New("exam.manager.ineligible").Wrap(err)
-		case "exam_manager_candidate_conflict":
-			return apperror.New("exam.manager.candidate_conflict").Wrap(err)
-		case "exam_owner_manager":
-			return apperror.New("exam.manager.owner_protected").Wrap(err)
-		case "exam_owner_no_changes":
-			return apperror.New("exam.owner.no_changes").Wrap(err)
-		default:
-			return apperror.New("exam.conflict").Wrap(err)
-		}
-	default:
-		if errors.As(err, &invalidInput) {
-			return apperror.New("exam.invalid").Wrap(err)
-		}
-		return apperror.New("exam.unavailable").Wrap(err)
-	}
+var examStoreErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"exam_archived":                   "exam.archived",
+		"exam_draft_revision":             "exam.draft.revision_conflict",
+		"exam_revision":                   "exam.revision_conflict",
+		"exam_draft_no_changes":           "exam.draft.no_changes",
+		"exam_revision_no_changes":        "exam.revision.no_changes",
+		"exam_revision_capacity":          "exam.revision.capacity_exceeded",
+		"exam_manager_exists":             "exam.manager.exists",
+		"exam_manager_missing":            "exam.manager.not_found",
+		"exam_manager_ineligible":         "exam.manager.ineligible",
+		"exam_manager_candidate_conflict": "exam.manager.candidate_conflict",
+		"exam_owner_manager":              "exam.manager.owner_protected",
+		"exam_owner_no_changes":           "exam.owner.no_changes",
+	},
+	NotFound:    "exam.not_found",
+	Conflict:    "exam.conflict",
+	Invalid:     "exam.invalid",
+	Unavailable: "exam.unavailable",
 }
 
 type ConfigureDraftNativePolicyCommand struct {
@@ -643,7 +615,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
@@ -658,7 +630,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 	}
 	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
-		return View{}, mapStoreError(err)
+		return View{}, examStoreErrors.Translate(err)
 	}
 	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned an incomplete snapshot"))
@@ -684,7 +656,7 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, call Call, c
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
-		mapped := mapStoreError(err)
+		mapped := examStoreErrors.Translate(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}

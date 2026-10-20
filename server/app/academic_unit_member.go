@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -96,7 +95,7 @@ func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocat
 	}
 	members, err := s.store.ListByAcademicUnit(ctx, resource.ID, query.ActiveAt)
 	if err != nil {
-		return nil, academicUnitMemberError(err)
+		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
 	if members == nil {
 		members = []*model.AcademicUnitMember{}
@@ -140,7 +139,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	if !command.batchRetainedOutcome {
 		recipient, err = s.users.Get(ctx, userID.String())
 		if err != nil {
-			return nil, academicUnitMemberError(err)
+			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
 		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
@@ -183,7 +182,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 			}
 			return value, storeErr
 		},
-		academicUnitMemberError,
+		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
 		s.effects.InvalidateAuthorization(ctx, userID.String())
@@ -207,7 +206,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, academicUnitMemberError(err)
+		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
 	resource, err := s.authorizeUnit(ctx, invocation, current.AcademicUnitID.String(), model.ActionAcademicUnitMembersManage)
 	if err != nil {
@@ -232,7 +231,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 	if !command.batchRetainedOutcome {
 		recipient, err = s.users.Get(ctx, current.UserID.String())
 		if err != nil {
-			return nil, academicUnitMemberError(err)
+			return nil, academicUnitMemberStoreErrors.Translate(err)
 		}
 		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
@@ -267,7 +266,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 			}
 			return value, storeErr
 		},
-		academicUnitMemberError,
+		academicUnitMemberStoreErrors.Translate,
 	)
 	if err == nil && changed {
 		s.effects.InvalidateAuthorization(ctx, current.UserID.String())
@@ -293,28 +292,9 @@ func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocatio
 	return resource, nil
 }
 
-func academicUnitMemberError(err error) error {
-	if mapped := idempotencyError(err); mapped != nil {
-		return mapped
-	}
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
-	case store.IsConflict(err):
-		var conflict *store.ErrConflict
-		if errors.As(err, &conflict) && conflict.Constraint == "academic_unit_member_end_time" {
-			return apperror.New("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
-		}
-		return apperror.New("academic_unit_member.conflict").WithField("resource", "academic_unit_member").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("academic_unit_member.invalid").WithField("resource", "academic_unit_member").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "academic_unit_member").Wrap(err)
-	}
-}
+var academicUnitMemberStoreErrors = apperror.AdministrationStoreTable("academic_unit_member", "academic_unit_member.conflict", "academic_unit_member.invalid", map[string]apperror.Code{
+	"academic_unit_member_end_time": "resource.not_found",
+})
 
 // ListAcademicUnitMembersPageQuery opts into bounded membership enumeration. Each page is
 // authorized independently and explicit selectors preserve its effective filter.
@@ -355,7 +335,7 @@ func (s *academicUnitMemberService) ListPage(ctx context.Context, invocation Inv
 
 	page, err := s.store.ListPageByAcademicUnit(ctx, options)
 	if err != nil {
-		return nil, academicUnitMemberError(err)
+		return nil, academicUnitMemberStoreErrors.Translate(err)
 	}
 	result := &AcademicUnitMemberPage{Members: page.Members, ActiveAt: activeAt, HasMore: page.HasMore}
 	if result.Members == nil {

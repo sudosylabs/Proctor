@@ -383,7 +383,7 @@ func (service *Service) Get(ctx context.Context, call Call, query GetReviewQuery
 	}
 	snapshot, err := service.deps.Persistence.Get(ctx, query.SubmissionID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if !validSnapshot(snapshot, query.SubmissionID) {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Review snapshot"))
@@ -406,7 +406,7 @@ func (service *Service) ListFlags(ctx context.Context, call Call, query ListFlag
 	}
 	page, err := service.deps.Persistence.ListFlags(ctx, store.ExamIntegrityFlagListOptions(query))
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if page == nil || len(page.Items) > query.Limit || (page.HasMore && len(page.Items) != query.Limit) {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Flag page"))
@@ -440,7 +440,7 @@ func (service *Service) ListEvidence(ctx context.Context, call Call, query ListE
 	}
 	page, err := service.deps.Persistence.ListEvidence(ctx, store.ExamIntegrityEvidenceListOptions(query))
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if page == nil || len(page.Items) > query.Limit || (page.HasMore && len(page.Items) != query.Limit) {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Evidence page"))
@@ -475,7 +475,7 @@ func (service *Service) ListDiscrepancies(ctx context.Context, call Call,
 	}
 	page, err := service.deps.Persistence.ListDiscrepancies(ctx, store.ExamIntegrityDiscrepancyListOptions(query))
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if page == nil || len(page.Items) > query.Limit || (page.HasMore && len(page.Items) != query.Limit) {
 		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Discrepancy page"))
@@ -494,7 +494,7 @@ func (service *Service) GetStudentResult(ctx context.Context, call Call, query G
 	}
 	result, err := service.deps.Persistence.GetReleasedStudentResult(ctx, query.AttemptID, principal.UserID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if result == nil || result.ReviewID.IsZero() || result.SubmissionID.IsZero() || result.AttemptID != query.AttemptID ||
 		result.CandidateUserID != principal.UserID || result.ReleasedAt.IsZero() {
@@ -530,7 +530,7 @@ func (service *Service) resolveMutationAuthorization(ctx context.Context, submis
 ) (bool, *store.ExamIntegrityReviewAuthorization, error) {
 	authorization, err := service.deps.Persistence.Resolve(ctx, submissionID)
 	if err != nil {
-		return false, nil, mapStore(err)
+		return false, nil, storeErrors.Translate(err)
 	}
 	if !validAuthorization(authorization, submissionID) {
 		return false, nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("inconsistent Review authorization"))
@@ -608,7 +608,7 @@ func (service *Service) effect(ctx context.Context, operation string, result Res
 }
 
 func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
-	mapped := mapStore(err)
+	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.integrity_review.unavailable")
 	if auditErr := service.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
@@ -616,32 +616,17 @@ func (service *Service) failAudit(ctx context.Context, auditID string, err error
 	return mapped
 }
 
-func mapStore(err error) error {
-	var idempotencyConflict *store.ErrIdempotencyConflict
-	var idempotencyInProgress *store.ErrIdempotencyInProgress
-	var invalidInput *store.ErrInvalidInput
-	var conflict *store.ErrConflict
-	switch {
-	case errors.As(err, &idempotencyConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idempotencyInProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.integrity_review.not_found").Wrap(err)
-	case errors.As(err, &invalidInput):
-		return apperror.Invalid("exam.integrity_review.invalid", "value").Wrap(err)
-	case errors.As(err, &conflict):
-		code := apperror.Code("exam.integrity_review.state_conflict")
-		switch conflict.Constraint {
-		case "integrity_review_revision", "integrity_decision_revision":
-			code = "exam.integrity_review.revision_conflict"
-		case "integrity_review_incomplete", "integrity_review_inventory_changed":
-			code = "exam.integrity_review.incomplete"
-		case "integrity_review_too_large":
-			code = "exam.integrity_review.too_large"
-		}
-		return apperror.New(code).Wrap(err)
-	default:
-		return apperror.New("exam.integrity_review.unavailable").Wrap(err)
-	}
+var storeErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"integrity_review_revision":          "exam.integrity_review.revision_conflict",
+		"integrity_decision_revision":        "exam.integrity_review.revision_conflict",
+		"integrity_review_incomplete":        "exam.integrity_review.incomplete",
+		"integrity_review_inventory_changed": "exam.integrity_review.incomplete",
+		"integrity_review_too_large":         "exam.integrity_review.too_large",
+	},
+	NotFound:     "exam.integrity_review.not_found",
+	Conflict:     "exam.integrity_review.state_conflict",
+	Invalid:      "exam.integrity_review.invalid",
+	InvalidField: "value",
+	Unavailable:  "exam.integrity_review.unavailable",
 }

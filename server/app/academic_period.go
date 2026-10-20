@@ -99,7 +99,7 @@ func (s *academicPeriodService) List(ctx context.Context, invocation Invocation,
 		ctx, visibility, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
 	)
 	if err != nil {
-		return nil, academicPeriodError(err)
+		return nil, academicPeriodStoreErrors.Translate(err)
 	}
 	if periods == nil {
 		periods = []*model.AcademicPeriod{}
@@ -176,12 +176,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 			}
 			return idempotentStore.CreateIdempotently(ctx, input, idempotency)
 		},
-		func(err error) error {
-			if mapped := idempotencyError(err); mapped != nil {
-				return mapped
-			}
-			return academicPeriodError(err)
-		},
+		academicPeriodStoreErrors.Translate,
 	)
 	if err != nil {
 		return nil, err
@@ -248,7 +243,7 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 				Period: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		academicPeriodError,
+		academicPeriodStoreErrors.Translate,
 	)
 }
 
@@ -292,7 +287,7 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		academicPeriodError,
+		academicPeriodStoreErrors.Translate,
 	)
 	return err
 }
@@ -331,23 +326,9 @@ func (s *academicPeriodService) get(ctx context.Context, id string) (*model.Acad
 	}
 	period, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, academicPeriodError(err)
+		return nil, academicPeriodStoreErrors.Translate(err)
 	}
 	return period, nil
 }
 
-func academicPeriodError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "academic_period").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("academic_period.conflict").WithField("resource", "academic_period").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("academic_period.invalid").WithField("resource", "academic_period").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "academic_period").Wrap(err)
-	}
-}
+var academicPeriodStoreErrors = apperror.AdministrationStoreTable("academic_period", "academic_period.conflict", "academic_period.invalid", nil)

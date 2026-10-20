@@ -19,7 +19,7 @@ import (
 // Every read repeats current ownership checks. Read failures preserve the original
 // refusal without disclosing a cached or client-selected owner's state.
 func (service *Service) nativeDeliveryFailure(ctx context.Context, access store.NativeDeliveryAccess, err error) error {
-	mapped := mapNativeDeliveryError(err)
+	mapped := deliveryStoreError(err)
 	var fault *apperror.Error
 	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code()) {
 		return mapped
@@ -41,7 +41,7 @@ func (service *Service) nativeDeliveryFailure(ctx context.Context, access store.
 }
 
 func (service *Service) browserDeliveryFailure(ctx context.Context, access store.BrowserDeliveryAccess, err error) error {
-	mapped := mapBrowserDeliveryError(err)
+	mapped := deliveryStoreError(err)
 	var fault *apperror.Error
 	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code()) {
 		return mapped

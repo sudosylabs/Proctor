@@ -19,7 +19,7 @@ import (
 func TestDeliveryCorruptionRemainsInternal(t *testing.T) {
 	for _, cause := range []error{model.ErrDeliveryInvalid, model.ErrNativeDeliveryInvalid, model.ErrDeliveryConflict, store.NewErrConflict("browser_delivery", "declaration_conflict", nil)} {
 		corruption := errors.Join(store.ErrInvalidState, cause)
-		for _, mapper := range []func(error) error{mapNativeDeliveryError, mapBrowserDeliveryError, mapStore} {
+		for _, mapper := range []func(error) error{deliveryStoreError, func(err error) error { return storeError(storeErrors, err) }} {
 			var fault *apperror.Error
 			mapped := mapper(corruption)
 			if !errors.As(mapped, &fault) || fault.Code() != "exam.attempt.unavailable" || !errors.Is(mapped, cause) {
@@ -28,7 +28,7 @@ func TestDeliveryCorruptionRemainsInternal(t *testing.T) {
 		}
 	}
 	var invalid *apperror.Error
-	if mapped := mapNativeDeliveryError(model.ErrDeliveryInvalid); !errors.As(mapped, &invalid) || invalid.Code() != "exam.attempt.invalid" {
+	if mapped := deliveryStoreError(model.ErrDeliveryInvalid); !errors.As(mapped, &invalid) || invalid.Code() != "exam.attempt.invalid" {
 		t.Fatalf("request validation changed: %v", mapped)
 	}
 }

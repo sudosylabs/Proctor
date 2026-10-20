@@ -65,7 +65,7 @@ func (s *externalAuthenticationService) completeReauthentication(ctx context.Con
 	}
 	result, err := s.sessions.ReauthenticateExternalWithAudit(ctx, &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: state.Provider, Subject: assertion.Subject, AuthenticatedAt: model.TimeFromMillis(assertion.AuthenticatedAt)})
 	if err != nil {
-		return nil, s.failConsumedProviderConnection(ctx, state, reauthenticationFailure(err))
+		return nil, s.failConsumedProviderConnection(ctx, state, reauthenticationStoreErrors.Translate(err))
 	}
 	if result == nil || result.Session == nil {
 		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("external reauthentication returned no Session")))

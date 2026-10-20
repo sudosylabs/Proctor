@@ -188,7 +188,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 		var base *model.ExamRevision
 		base, err = s.revisions.GetSnapshot(ctx, c.ExamID, c.BaseRevisionID)
 		if err != nil {
-			return ResourceStage{}, mapStore(err)
+			return ResourceStage{}, storeErrors.Translate(err)
 		}
 		if base == nil || base.ID != c.BaseRevisionID || base.ExamID != c.ExamID {
 			return ResourceStage{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing base revision"))
@@ -240,7 +240,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 		}
 		stage, err = s.persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.now())})
 		if err != nil {
-			return ResourceStage{}, mapStore(err)
+			return ResourceStage{}, storeErrors.Translate(err)
 		}
 		if err = validateStage(stage, c, principal.UserID); err != nil {
 			return ResourceStage{}, err
@@ -378,7 +378,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	}
 	access, err := s.access.Access(ctx, examID, p.UserID)
 	if err != nil {
-		return authorizationDecision{}, mapStore(err)
+		return authorizationDecision{}, storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.ID != examID {
 		return authorizationDecision{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing access"))
@@ -397,7 +397,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	return authorizationDecision{action == model.ActionExamSittingManageOverride, access.Exam.AcademicUnitID, action}, nil
 }
 func (s *Service) failAudit(ctx context.Context, id string, err error) error {
-	mapped := mapStore(err)
+	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.correction.unavailable")
 	if auditErr := s.auditor.Fail(ctx, id, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
@@ -432,42 +432,28 @@ func mapContent(err error) error {
 	}
 	return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 }
-func mapStore(err error) error {
-	var conflict *store.ErrConflict
-	var invalidInput *store.ErrInvalidInput
-	var idemConflict *store.ErrIdempotencyConflict
-	var idemProgress *store.ErrIdempotencyInProgress
-	switch {
-	case errors.As(err, &idemConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idemProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.sitting.correction.not_found").Wrap(err)
-	case errors.As(err, &conflict):
-		codes := map[string]apperror.Code{
-			"exam_archived":                     "exam.archived",
-			"exam_sitting_revision":             "exam.sitting.revision_conflict",
-			"exam_sitting_state":                "exam.sitting.state_conflict",
-			"exam_sitting_revision_selection":   "exam.sitting.revision_conflict",
-			"exam_sitting_deadline_reached":     "exam.sitting.deadline_reached",
-			"exam_correction_base_revision":     "exam.sitting.revision_conflict",
-			"exam_correction_no_changes":        "exam.sitting.correction.no_changes",
-			"exam_correction_limit":             "exam.sitting.correction.limit",
-			"exam_correction_resource_limit":    "exam.resource.limit",
-			"exam_correction_resource_manifest": "exam.sitting.correction.manifest_invalid",
-			"exam_correction_resource_stage":    "exam.sitting.correction.stage_invalid",
-		}
-		if code := codes[conflict.Constraint]; code != "" {
-			return apperror.New(code).Wrap(err)
-		}
-		return apperror.New("exam.sitting.correction.conflict").Wrap(err)
-	case errors.As(err, &invalidInput):
-		return apperror.Invalid("exam.sitting.correction.invalid", "value").Wrap(err)
-	default:
-		return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
-	}
+
+var storeErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"exam_archived":                     "exam.archived",
+		"exam_sitting_revision":             "exam.sitting.revision_conflict",
+		"exam_sitting_state":                "exam.sitting.state_conflict",
+		"exam_sitting_revision_selection":   "exam.sitting.revision_conflict",
+		"exam_sitting_deadline_reached":     "exam.sitting.deadline_reached",
+		"exam_correction_base_revision":     "exam.sitting.revision_conflict",
+		"exam_correction_no_changes":        "exam.sitting.correction.no_changes",
+		"exam_correction_limit":             "exam.sitting.correction.limit",
+		"exam_correction_resource_limit":    "exam.resource.limit",
+		"exam_correction_resource_manifest": "exam.sitting.correction.manifest_invalid",
+		"exam_correction_resource_stage":    "exam.sitting.correction.stage_invalid",
+	},
+	NotFound:     "exam.sitting.correction.not_found",
+	Conflict:     "exam.sitting.correction.conflict",
+	Invalid:      "exam.sitting.correction.invalid",
+	InvalidField: "value",
+	Unavailable:  "exam.sitting.correction.unavailable",
 }
+
 func validSHA256(value string) bool {
 	if len(value) != 64 || value != strings.ToLower(value) {
 		return false

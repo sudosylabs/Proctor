@@ -35,19 +35,6 @@ func newCommandIdempotency(invocation Invocation, operation, key string, semanti
 	}
 }
 
-func idempotencyError(err error) error {
-	var conflict *store.ErrIdempotencyConflict
-	var inProgress *store.ErrIdempotencyInProgress
-	switch {
-	case errors.As(err, &conflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &inProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	default:
-		return nil
-	}
-}
-
 func replayAuditData(value map[string]any, originalAuditID string) map[string]any {
 	result := make(map[string]any, len(value)+2)
 	for key, item := range value {

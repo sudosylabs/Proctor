@@ -524,14 +524,19 @@ func invalidPersonalAccessTokenRequest(field string) error {
 	return apperror.New("personal_access_token.invalid").WithField("field", field)
 }
 
+// personalAccessTokenFailure presents a failed token operation. Application
+// errors from notice preparation and delegation checks are not the caller's
+// concern, so they are presented as token unavailability like any other
+// non-Store failure.
 func personalAccessTokenFailure(resource string, err error) error {
-	code := apperror.Code("personal_access_token.unavailable")
-	var conflict *store.ErrConflict
-	switch {
-	case store.IsNotFound(err):
-		code = "resource.not_found"
-	case errors.As(err, &conflict) && conflict.Resource == "personal_access_token" && conflict.Constraint == "personal_access_tokens_maximum_per_user":
-		code = "personal_access_token.maximum_reached"
+	if _, ok := apperror.As(err); ok {
+		return apperror.New("personal_access_token.unavailable").WithField("resource", resource).Wrap(err)
 	}
-	return apperror.New(code).WithField("resource", resource).Wrap(err)
+	return apperror.StoreTable{
+		Rules: []apperror.StoreRule{{Kind: apperror.StoreConflict, Entity: "personal_access_token",
+			Constraint: "personal_access_tokens_maximum_per_user", Code: "personal_access_token.maximum_reached"}},
+		NotFound:    "resource.not_found",
+		Unavailable: "personal_access_token.unavailable",
+		Fields:      map[string]string{"resource": resource},
+	}.Translate(err)
 }

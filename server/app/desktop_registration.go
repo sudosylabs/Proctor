@@ -106,8 +106,8 @@ func (s *desktopRegistrationService) Revoke(
 		RevokedAt: at.UnixMilli(), AuditEventID: auditID, AuditAt: at.UnixMilli(),
 	})
 	if err != nil {
-		failure := desktopRegistrationError(err)
-		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
+		failure := desktopRegistrationStoreErrors.Translate(err)
+		if auditErr := s.audit.Fail(ctx, auditID, apperror.CodeOf(failure, "desktop_registration.unavailable")); auditErr != nil {
 			return apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return failure
@@ -120,9 +120,7 @@ func (s *desktopRegistrationService) Revoke(
 	return nil
 }
 
-func desktopRegistrationError(err error) *apperror.Error {
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found")
-	}
-	return apperror.New("desktop_registration.unavailable").Wrap(err)
+var desktopRegistrationStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Unavailable: "desktop_registration.unavailable",
 }

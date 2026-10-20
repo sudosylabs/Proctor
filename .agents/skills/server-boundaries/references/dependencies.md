@@ -5,7 +5,7 @@
 ~~~text
 identityprovider ← {model, config}
 internal/canonicaljson ← model ← store ← app/job
-app/apperror ← {app, app/exam, httpapi, websocket}
+{model, store} ← app/apperror ← {app, app/exam, httpapi, websocket}
 {model, store} ← app/idempotency ← {app, app/exam}
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
@@ -47,7 +47,7 @@ inside `app/` are application-owned modules, not transports.
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `store/sqlstore` | `model`, `store`, `config`, `migrations`, `internal/canonicaljson`, SQL libraries | Application services, transports, runtime composition |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, concrete Jobs, transports, concrete adapters |
-| `app/apperror` | Standard library | model, persistence, HTTP status, localization, transports, concrete adapters |
+| `app/apperror` | `store` error contracts, standard library | SQL, HTTP status, localization, transports, concrete adapters |
 | `app/idempotency` | `model`, `store`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
@@ -89,7 +89,7 @@ limited to `app/exam`, `app/exam/attempt`, `app/exam/correction`,
 fingerprints rather than moving policy into the leaf.
 
 The application error leaf `app/apperror` owns the single transport-neutral
-`Error` type and its `Code` vocabulary. It sits below the parent application
+`Error` type, its `Code` vocabulary, and the declarative `StoreTable` that is\nthe only translation of typed Store failures into application errors. It sits\nbelow the parent application
 so child modules report the same error type without importing their parent;
 transports import it only to read codes and safe fields.
 

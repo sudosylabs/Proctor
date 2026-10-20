@@ -278,23 +278,15 @@ func appErrorCode(err error) string {
 	return "authentication.internal"
 }
 
-func authenticationMethodMutationError(err error) error {
-	var conflict *store.ErrConflict
-	switch {
-	case errors.Is(err, store.ErrAuthenticationMethodDisabled):
-		return apperror.New("authentication.method.disabled")
-	case errors.Is(err, store.ErrLastUsableAuthenticationMethod):
-		return apperror.New("authentication.method.last_usable")
-	case store.IsNotFound(err):
-		return apperror.New("authentication.method.not_found")
-	case errors.As(err, &conflict):
-		if conflict.Constraint == "external_identities_provider_subject_key" {
-			return apperror.New("authentication.method.provider_conflict")
-		}
-		return apperror.New("authentication.method.conflict")
-	default:
-		return apperror.New("authentication.method.unavailable").Wrap(err)
-	}
+var authenticationMethodStoreErrors = apperror.StoreTable{
+	Rules: []apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.method.disabled"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrLastUsableAuthenticationMethod, Code: "authentication.method.last_usable"},
+	},
+	Constraints: map[string]apperror.Code{"external_identities_provider_subject_key": "authentication.method.provider_conflict"},
+	NotFound:    "authentication.method.not_found",
+	Conflict:    "authentication.method.conflict",
+	Unavailable: "authentication.method.unavailable",
 }
 
 func (a *App) BeginExternalAuthentication(
@@ -846,7 +838,7 @@ func (s *externalAuthenticationService) completeProviderConnection(
 		AuditEventID: state.AuditEventID, AuditAt: connectedAt.UnixMilli(),
 	})
 	if err != nil {
-		mapped := authenticationMethodMutationError(err)
+		mapped := authenticationMethodStoreErrors.Translate(err)
 		if failErr := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(mapped)); failErr != nil {
 			return nil, failErr
 		}

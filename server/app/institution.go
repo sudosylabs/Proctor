@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -67,7 +66,7 @@ func (s *institutionService) Get(
 ) (*model.Institution, error) {
 	institution, err := s.store.GetSingleton(ctx)
 	if err != nil {
-		return nil, institutionError(err)
+		return nil, institutionStoreErrors.Translate(err)
 	}
 	if err := s.authorization.Authorize(
 		ctx, invocation, model.ActionInstitutionManage,
@@ -93,7 +92,7 @@ func (s *institutionService) Update(
 ) (*model.Institution, error) {
 	current, err := s.store.GetSingleton(ctx)
 	if err != nil {
-		return nil, institutionError(err)
+		return nil, institutionStoreErrors.Translate(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: current.ResourceID()}
 	if err := s.authorization.Authorize(
@@ -135,22 +134,8 @@ func (s *institutionService) Update(
 				Institution: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		institutionError,
+		institutionStoreErrors.Translate,
 	)
 }
 
-func institutionError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "institution").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("institution.conflict").WithField("resource", "institution").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("institution.invalid").WithField("resource", "institution").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "institution").Wrap(err)
-	}
-}
+var institutionStoreErrors = apperror.AdministrationStoreTable("institution", "institution.conflict", "institution.invalid", nil)

@@ -53,7 +53,7 @@ func (service *Service) StartBrowserActivity(ctx context.Context, call Call, com
 	}
 	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
-		return model.BrowserSourceStatus{}, mapStore(err)
+		return model.BrowserSourceStatus{}, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -75,7 +75,7 @@ func (service *Service) StartBrowserActivity(ctx context.Context, call Call, com
 			refusal.Capabilities = &presentation.RuntimeCapabilities
 			return model.BrowserSourceStatus{}, apperror.New(browserSourceRefusalCode(refusal.Code)).Wrap(err)
 		}
-		return model.BrowserSourceStatus{}, service.failAudit(ctx, auditID, mapStore(err))
+		return model.BrowserSourceStatus{}, service.failAudit(ctx, auditID, storeError(storeErrors, err))
 	}
 	if status == nil || status.Validate() != nil || status.SourceSessionID != command.SourceSessionID {
 		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -92,7 +92,7 @@ func (service *Service) AppendBrowserActivity(ctx context.Context, call Call, co
 	events := append([]model.BrowserActivityEvent(nil), command.Events...)
 	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
-		return model.BrowserActivityAcknowledgement{}, mapStore(err)
+		return model.BrowserActivityAcknowledgement{}, storeError(storeErrors, err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -235,7 +235,7 @@ func (service *Service) BrowserSourceStatus(ctx context.Context, call Call, quer
 	}
 	value, err := service.deps.Persistence.BrowserSourceStatus(ctx, access)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if value == nil || value.Validate() != nil || value.SourceSessionID != query.SourceSessionID {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
@@ -257,7 +257,7 @@ func (service *Service) BrowserSourceList(ctx context.Context, call Call, query 
 	}
 	values, err := service.deps.Persistence.BrowserSourceList(ctx, access)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeError(storeErrors, err)
 	}
 	if values == nil || len(values) > model.BrowserSourceMaximumPerParticipation {
 		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)

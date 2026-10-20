@@ -66,7 +66,7 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 	}
 	sitting, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
-		return ManualSuspensionResult{}, mapStore(err)
+		return ManualSuspensionResult{}, storeError(storeErrors, err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != command.SittingID || !sitting.Sitting.ClassID.IsValid() {
 		return ManualSuspensionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete Sitting ownership projection"))

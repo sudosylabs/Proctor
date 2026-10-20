@@ -152,7 +152,7 @@ func (s *Service) List(ctx context.Context, call Call, examID model.ExamID) ([]s
 	}
 	items, err := s.persistence.List(ctx, examID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	return items, nil
 }
@@ -165,7 +165,7 @@ func (s *Service) Open(ctx context.Context, call Call, examID model.ExamID, reso
 	}
 	record, err := s.persistence.Get(ctx, examID, resourceID)
 	if err != nil {
-		return Opened{}, mapStore(err)
+		return Opened{}, storeErrors.Translate(err)
 	}
 	if record == nil || record.Resource == nil || record.Rendition == nil {
 		return Opened{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("incomplete resource record"))
@@ -192,7 +192,7 @@ func (s *Service) Create(ctx context.Context, call Call, command CreateCommand) 
 	}
 	items, err := s.persistence.List(ctx, command.ExamID)
 	if err != nil {
-		return store.ExamResourceRecord{}, mapStore(err)
+		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	position := min(len(items), model.ExamResourceMaximumCount-1)
 	at := model.TimeUTC(s.now())
@@ -215,7 +215,7 @@ func (s *Service) Create(ctx context.Context, call Call, command CreateCommand) 
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "metadata").Wrap(err)
 	}
 	if _, err = s.persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: resourceID, Entry: entry, Revision: revision, Lease: lease}); err != nil {
-		return store.ExamResourceRecord{}, mapStore(err)
+		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	rendition, err := s.content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
 	if err != nil {
@@ -242,7 +242,7 @@ func (s *Service) ReplaceContent(ctx context.Context, call Call, command Replace
 	}
 	current, err := s.persistence.Get(ctx, command.ExamID, command.ResourceID)
 	if err != nil {
-		return store.ExamResourceRecord{}, mapStore(err)
+		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	if current == nil || current.Resource == nil || current.Rendition == nil {
 		return store.ExamResourceRecord{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("incomplete resource record"))
@@ -259,7 +259,7 @@ func (s *Service) ReplaceContent(ctx context.Context, call Call, command Replace
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "upload_lease").Wrap(err)
 	}
 	if _, err = s.persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: command.ResourceID, EntryID: current.Resource.FileEntryID, Revision: revision, Lease: lease, Replacement: true}); err != nil {
-		return store.ExamResourceRecord{}, mapStore(err)
+		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	rendition, err := s.content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
 	if err != nil {
@@ -322,7 +322,7 @@ func (s *Service) EditMetadata(ctx context.Context, call Call, command EditMetad
 	}
 	current, err := s.persistence.Get(ctx, command.ExamID, command.ResourceID)
 	if err != nil {
-		return store.ExamResourceRecord{}, mapStore(err)
+		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	if current == nil || current.Resource == nil {
 		return store.ExamResourceRecord{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("incomplete resource record"))
@@ -412,7 +412,7 @@ func (s *Service) Reorder(ctx context.Context, call Call, c ReorderCommand) ([]s
 	}
 	current, err := s.persistence.List(ctx, c.ExamID)
 	if err != nil {
-		return nil, mapStore(err)
+		return nil, storeErrors.Translate(err)
 	}
 	if len(current) == len(c.ResourceIDs) {
 		same := true
@@ -491,7 +491,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	}
 	access, err := s.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
-		return authorizationDecision{}, mapStore(err)
+		return authorizationDecision{}, storeErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return authorizationDecision{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("missing access"))
@@ -525,7 +525,7 @@ func (s *Service) currentActiveDraft(ctx context.Context, call Call, examID mode
 }
 
 func (s *Service) failAudit(ctx context.Context, auditID string, err error) error {
-	mapped := mapStore(err)
+	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.resource.unavailable")
 	if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
@@ -551,29 +551,22 @@ func mapContent(err error) error {
 	}
 	return apperror.New("exam.resource.unavailable").Wrap(err)
 }
-func mapStore(err error) error {
-	var conflict *store.ErrConflict
-	var invalidInput *store.ErrInvalidInput
-	var idemConflict *store.ErrIdempotencyConflict
-	var idemProgress *store.ErrIdempotencyInProgress
-	switch {
-	case errors.As(err, &idemConflict):
-		return apperror.New("idempotency.conflict").Wrap(err)
-	case errors.As(err, &idemProgress):
-		return apperror.New("idempotency.in_progress").Wrap(err)
-	case store.IsNotFound(err):
-		return apperror.New("exam.resource.not_found").Wrap(err)
-	case errors.As(err, &conflict):
-		codes := map[string]apperror.Code{"exam_archived": "exam.archived", "exam_draft_revision": "exam.draft.revision_conflict", "exam_resource_limit": "exam.resource.limit", "exam_resource_no_changes": "exam.resource.no_changes", "exam_resource_order": "exam.resource.order_invalid", "exam_resource_upload": "exam.resource.upload_invalid", "exam_resource_changed": "exam.resource.revision_conflict"}
-		if code := codes[conflict.Constraint]; code != "" {
-			return apperror.New(code).Wrap(err)
-		}
-		return apperror.New("exam.resource.conflict").Wrap(err)
-	case errors.As(err, &invalidInput):
-		return apperror.Invalid("exam.resource.invalid", "value").Wrap(err)
-	default:
-		return apperror.New("exam.resource.unavailable").Wrap(err)
-	}
+
+var storeErrors = apperror.StoreTable{
+	Constraints: map[string]apperror.Code{
+		"exam_archived":            "exam.archived",
+		"exam_draft_revision":      "exam.draft.revision_conflict",
+		"exam_resource_limit":      "exam.resource.limit",
+		"exam_resource_no_changes": "exam.resource.no_changes",
+		"exam_resource_order":      "exam.resource.order_invalid",
+		"exam_resource_upload":     "exam.resource.upload_invalid",
+		"exam_resource_changed":    "exam.resource.revision_conflict",
+	},
+	NotFound:     "exam.resource.not_found",
+	Conflict:     "exam.resource.conflict",
+	Invalid:      "exam.resource.invalid",
+	InvalidField: "value",
+	Unavailable:  "exam.resource.unavailable",
 }
 
 func validSHA256(value string) bool {

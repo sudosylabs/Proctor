@@ -10,6 +10,7 @@ package attempt
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -99,7 +100,7 @@ func (service *Service) NativeDeliveryReceipt(ctx context.Context, call Call, qu
 func (service *Service) beginNativeDeliveryAudit(ctx context.Context, call Call, access store.NativeDeliveryAccess, operation string) (string, error) {
 	target, err := service.deps.Persistence.ResolveNativeDeliveryTarget(ctx, access)
 	if err != nil {
-		return "", mapNativeDeliveryError(err)
+		return "", deliveryStoreError(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
 		return "", apperror.New("exam.attempt.unavailable").Wrap(model.ErrNativeDeliveryInvalid)
@@ -225,28 +226,22 @@ func (service *Service) UpdateNativeDeliverySummary(ctx context.Context, call Ca
 	return value, nil
 }
 
-func mapNativeDeliveryError(err error) error {
-	if errors.Is(err, store.ErrInvalidState) {
-		return apperror.New("exam.attempt.unavailable").Wrap(err)
-	}
-	var refusal *store.NativeDeliveryRefusal
-	if errors.As(err, &refusal) {
-		return apperror.New(apperror.Code("exam.delivery." + refusal.Reason)).Wrap(err)
-	}
-	if errors.Is(err, model.ErrDeliveryExpired) {
-		return apperror.New("exam.delivery.upload_expired").Wrap(err)
-	}
-	if errors.Is(err, model.ErrDeliveryConflict) {
-		return apperror.New("exam.delivery.declaration_conflict").Wrap(err)
-	}
-	if errors.Is(err, model.ErrDeliveryInvalid) || errors.Is(err, model.ErrNativeDeliveryInvalid) {
+// nativeDeliveryStoreErrors adds the native delivery sentinels and conflict
+// reasons to the Attempt table.
+var nativeDeliveryStoreErrors = storeErrors.With(slices.Concat(
+	[]apperror.StoreRule{
+		{Kind: apperror.StoreSentinel, Sentinel: model.ErrDeliveryExpired, Code: "exam.delivery.upload_expired"},
+		{Kind: apperror.StoreSentinel, Sentinel: model.ErrDeliveryConflict, Code: "exam.delivery.declaration_conflict"},
+	},
+	apperror.Conflicts("native_delivery", deliveryConflictCodes),
+)...)
+
+// deliveryStoreError presents native and browser delivery failures.
+func deliveryStoreError(err error) error {
+	if !errors.Is(err, store.ErrInvalidState) && (errors.Is(err, model.ErrDeliveryInvalid) || errors.Is(err, model.ErrNativeDeliveryInvalid)) {
 		return apperror.Invalid("exam.attempt.invalid", "native_delivery").Wrap(err)
 	}
-	var conflict *store.ErrConflict
-	if errors.As(err, &conflict) && conflict.Resource == "native_delivery" {
-		return apperror.New(apperror.Code("exam.delivery." + conflict.Constraint)).Wrap(err)
-	}
-	return mapStore(err)
+	return storeError(nativeDeliveryStoreErrors, err)
 }
 
 type NativeDeliveryAppendCommand struct {

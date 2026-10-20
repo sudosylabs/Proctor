@@ -117,7 +117,7 @@ func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invoca
 		return status, nil
 	}
 	if err != nil {
-		return nil, mfaStoreFailure(err)
+		return nil, mfaStoreErrors.Translate(err)
 	}
 	status.Enabled = credential.IsActive()
 	status.Pending = credential.IsPendingAt(model.TimeUTC(s.now()))
@@ -125,7 +125,7 @@ func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invoca
 	if status.Enabled {
 		status.RecoveryCodesRemaining, err = s.credentials.CountRecoveryCodes(ctx, principal.UserID.String())
 		if err != nil {
-			return nil, mfaStoreFailure(err)
+			return nil, mfaStoreErrors.Translate(err)
 		}
 	}
 	return status, nil
@@ -145,7 +145,7 @@ func (s *mfaApplicationService) Setup(
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
 	if err != nil {
-		return nil, mfaStoreFailure(err)
+		return nil, mfaStoreErrors.Translate(err)
 	}
 	accountName := command.AccountName
 	if strings.TrimSpace(accountName) == "" {
@@ -206,7 +206,7 @@ func (s *mfaApplicationService) Activate(
 	}
 	credential, err := s.credentials.GetByUser(ctx, principal.UserID.String())
 	if err != nil {
-		return nil, mfaStoreFailure(err)
+		return nil, mfaStoreErrors.Translate(err)
 	}
 	now := model.TimeUTC(s.now())
 	if !credential.IsPendingAt(now) {
@@ -406,7 +406,7 @@ func (s *mfaApplicationService) prepareSecurityNotice(
 ) (*preparedDirectMail, error) {
 	user, err := s.users.Get(ctx, userID.String())
 	if err != nil {
-		return nil, mfaStoreFailure(err)
+		return nil, mfaStoreErrors.Translate(err)
 	}
 	prepared, err := s.mail.PrepareMFANotice(appmail.NoticePreparation{Recipient: user, At: at}, kind)
 	if err != nil {
@@ -496,7 +496,7 @@ func (s *mfaApplicationService) requireStrongRecentSession(principal model.Princ
 func (s *mfaApplicationService) auditResource(ctx context.Context) (model.Resource, error) {
 	institution, err := s.institutions.GetSingleton(ctx)
 	if err != nil {
-		return model.Resource{}, mfaStoreError(err)
+		return model.Resource{}, mfaStoreErrors.Translate(err)
 	}
 	return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 }
@@ -506,7 +506,7 @@ func (s *mfaApplicationService) failMutation(
 	auditID string,
 	err error,
 ) error {
-	mapped := mfaStoreError(err)
+	mapped := mfaStoreErrors.Translate(err)
 	code := "authentication.mfa.unavailable"
 	if failure, ok := apperror.As(mapped); ok {
 		code = failure.Code()

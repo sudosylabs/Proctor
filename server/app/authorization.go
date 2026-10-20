@@ -471,10 +471,11 @@ func roleBindingApplies(
 }
 
 func authorizationResourceError(resource string, err error) error {
-	if store.IsNotFound(err) {
-		return apperror.New("resource.not_found").WithField("resource", resource).Wrap(err)
-	}
-	return authorizationUnavailableError(err)
+	return apperror.StoreTable{
+		NotFound:    "resource.not_found",
+		Unavailable: "authorization.unavailable",
+		Fields:      map[string]string{"resource": resource},
+	}.Translate(err)
 }
 
 func authorizationUnavailableError(err error) error {

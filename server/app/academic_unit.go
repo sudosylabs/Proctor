@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -53,7 +52,7 @@ func (a academicUnitAuthorization) Installation(
 ) (model.Resource, error) {
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil {
-		return model.Resource{}, academicUnitReadError("institution", err)
+		return model.Resource{}, institutionStoreErrors.Translate(err)
 	}
 	return model.Resource{Type: model.ResourceInstitution, ID: institution.ResourceID()}, nil
 }
@@ -185,7 +184,7 @@ func (s *academicUnitQueryService) Get(
 	}
 	unit, err := s.academicUnits.Get(ctx, id)
 	if err != nil {
-		return nil, academicUnitReadError("academic_unit", err)
+		return nil, academicUnitStoreErrors.Translate(err)
 	}
 	return unit, nil
 }
@@ -236,7 +235,7 @@ func (s *academicUnitQueryService) List(
 	}
 	units, err := s.academicUnits.ListChildren(ctx, institution.ID, parentID)
 	if err != nil {
-		return nil, academicUnitReadError("academic_unit", err)
+		return nil, academicUnitStoreErrors.Translate(err)
 	}
 	return nonNilAcademicUnits(units), nil
 }
@@ -269,7 +268,7 @@ func (s *academicUnitQueryService) Search(
 		normalizeAdministrationLimit(query.Limit),
 	)
 	if err != nil {
-		return nil, academicUnitReadError("academic_unit", err)
+		return nil, academicUnitStoreErrors.Translate(err)
 	}
 	return nonNilAcademicUnits(units), nil
 }
@@ -281,26 +280,4 @@ func nonNilAcademicUnits(units []*model.AcademicUnit) []*model.AcademicUnit {
 	return units
 }
 
-func academicUnitReadError(resource string, err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").
-			WithField("resource", resource).
-			Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New(apperror.Code(resource+".conflict")).
-			WithField("resource", resource).
-			Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New(apperror.Code(resource+".invalid")).
-				WithField("resource", resource).
-				Wrap(err)
-		}
-		return apperror.New("administration.unavailable").
-			WithField("resource", resource).
-			Wrap(err)
-	}
-}
+var academicUnitStoreErrors = apperror.AdministrationStoreTable("academic_unit", "academic_unit.conflict", "academic_unit.invalid", nil)

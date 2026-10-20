@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -86,7 +85,7 @@ func (s *programmeService) Get(ctx context.Context, invocation Invocation, query
 	}
 	programme, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, programmeError(err)
+		return nil, programmeStoreErrors.Translate(err)
 	}
 	return programme, nil
 }
@@ -107,7 +106,7 @@ func (s *programmeService) List(ctx context.Context, invocation Invocation, quer
 		ctx, unitID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
 	)
 	if err != nil {
-		return nil, programmeError(err)
+		return nil, programmeStoreErrors.Translate(err)
 	}
 	if programmes == nil {
 		programmes = []*model.Programme{}
@@ -165,7 +164,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 				Programme: candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		programmeError,
+		programmeStoreErrors.Translate,
 	)
 }
 
@@ -215,7 +214,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 				Programme: &candidate, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		programmeError,
+		programmeStoreErrors.Translate,
 	)
 }
 
@@ -252,7 +251,7 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
-		programmeError,
+		programmeStoreErrors.Translate,
 	)
 	return err
 }
@@ -268,23 +267,9 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation Invoca
 	}
 	programme, err := s.store.Get(ctx, id)
 	if err != nil {
-		return nil, "", "", programmeError(err)
+		return nil, "", "", programmeStoreErrors.Translate(err)
 	}
 	return programme, scopeType, scopeID, nil
 }
 
-func programmeError(err error) error {
-	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "programme").Wrap(err)
-	case store.IsConflict(err):
-		return apperror.New("programme.conflict").WithField("resource", "programme").Wrap(err)
-	default:
-		var invalid *store.ErrInvalidInput
-		var reference *store.ErrReference
-		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return apperror.New("programme.invalid").WithField("resource", "programme").Wrap(err)
-		}
-		return apperror.New("administration.unavailable").WithField("resource", "programme").Wrap(err)
-	}
-}
+var programmeStoreErrors = apperror.AdministrationStoreTable("programme", "programme.conflict", "programme.invalid", nil)

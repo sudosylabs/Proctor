@@ -325,24 +325,21 @@ func studentProgressionRosterInstant(value *store.OnboardingImport, sourcePeriod
 }
 
 func studentProgressionError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if failure, ok := apperror.As(err); ok {
-		switch failure.Code() {
-		case "onboarding_import.conflict":
-			return apperror.New("student_progression.conflict").Wrap(err)
-		case "onboarding_import.unavailable":
-			return apperror.New("student_progression.unavailable").Wrap(err)
-		}
-		return failure
-	}
 	switch {
-	case store.IsNotFound(err):
-		return apperror.New("resource.not_found").WithField("resource", "student_progression").Wrap(err)
-	case store.IsConflict(err):
+	case err == nil:
+		return nil
+	case apperror.Is(err, "onboarding_import.conflict"):
 		return apperror.New("student_progression.conflict").Wrap(err)
-	default:
+	case apperror.Is(err, "onboarding_import.unavailable"):
 		return apperror.New("student_progression.unavailable").Wrap(err)
+	default:
+		return studentProgressionStoreErrors.Translate(err)
 	}
+}
+
+var studentProgressionStoreErrors = apperror.StoreTable{
+	NotFound:    "resource.not_found",
+	Conflict:    "student_progression.conflict",
+	Unavailable: "student_progression.unavailable",
+	Fields:      map[string]string{"resource": "student_progression"},
 }
