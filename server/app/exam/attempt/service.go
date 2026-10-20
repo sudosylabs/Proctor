@@ -116,6 +116,8 @@ type DesktopBuildResolver interface {
 	ResolveAttemptDesktopBuild(context.Context, model.Principal) (DesktopBuildResolution, error)
 }
 
+// Dependencies are the collaborators of Service; New validates them once and the
+// service retains them unchanged.
 type Dependencies struct {
 	Persistence         store.ExamAttemptStore
 	Workspace           store.ExamAttemptWorkspaceStore

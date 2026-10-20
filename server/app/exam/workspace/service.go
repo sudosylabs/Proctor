@@ -119,37 +119,38 @@ type EffectFailures interface {
 	Report(context.Context, string, error)
 }
 
-type Service struct {
-	persistence store.ExamStarterWorkspaceStore
-	access      accessStore
-	memberships manageraccess.Memberships
-	authorizer  Authorizer
-	auditor     Auditor
-	content     Content
-	effects     Effects
-	failures    EffectFailures
-	now         func() time.Time
-	newEntryID  func() model.StarterWorkspaceEntryID
-	newObjectID func() model.StarterWorkspaceObjectID
-	newVersion  func() model.WorkspaceContentVersion
+type Service struct{ deps Dependencies }
+
+// Dependencies are the collaborators of Service; New validates them once and the
+// service retains them unchanged.
+type Dependencies struct {
+	Persistence    store.ExamStarterWorkspaceStore
+	Access         accessStore
+	Memberships    manageraccess.Memberships
+	Authorizer     Authorizer
+	Auditor        Auditor
+	Content        Content
+	Effects        Effects
+	EffectFailures EffectFailures
+	Now            func() time.Time
+	NewEntryID     func() model.StarterWorkspaceEntryID
+	NewObjectID    func() model.StarterWorkspaceObjectID
+	NewVersion     func() model.WorkspaceContentVersion
 }
 
-func NewService(persistence store.ExamStarterWorkspaceStore, access accessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor,
-	content Content, effects Effects, failures EffectFailures, now func() time.Time, newEntryID func() model.StarterWorkspaceEntryID,
-	newObjectID func() model.StarterWorkspaceObjectID, newVersion func() model.WorkspaceContentVersion) (*Service, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || content == nil || effects == nil ||
-		failures == nil || now == nil || newEntryID == nil || newObjectID == nil || newVersion == nil {
+func New(deps Dependencies) (*Service, error) {
+	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Content == nil || deps.Effects == nil ||
+		deps.EffectFailures == nil || deps.Now == nil || deps.NewEntryID == nil || deps.NewObjectID == nil || deps.NewVersion == nil {
 		return nil, errors.New("Starter Workspace dependencies are required")
 	}
-	return &Service{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor,
-		content: content, effects: effects, failures: failures, now: now, newEntryID: newEntryID, newObjectID: newObjectID, newVersion: newVersion}, nil
+	return &Service{deps: deps}, nil
 }
 
 func (service *Service) List(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
 	if _, err := service.authorize(ctx, invocation, examID, false); err != nil {
 		return nil, err
 	}
-	items, err := service.persistence.List(ctx, examID)
+	items, err := service.deps.Persistence.List(ctx, examID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
@@ -163,14 +164,14 @@ func (service *Service) OpenFile(ctx context.Context, invocation invocation.Invo
 	if _, err := service.authorize(ctx, invocation, examID, false); err != nil {
 		return nil, err
 	}
-	item, err := service.persistence.GetFile(ctx, examID, entryID)
+	item, err := service.deps.Persistence.GetFile(ctx, examID, entryID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
 	if item == nil || item.Object == nil {
 		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete file metadata"))
 	}
-	body, err := service.content.OpenStarterWorkspaceObject(ctx, item.Object.ID)
+	body, err := service.deps.Content.OpenStarterWorkspaceObject(ctx, item.Object.ID)
 	if err != nil {
 		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
@@ -192,15 +193,15 @@ func (service *Service) CreateDirectory(ctx context.Context, invocation invocati
 	if err != nil {
 		return Result{}, err
 	}
-	at := model.TimeUTC(service.now())
-	entryID := service.newEntryID()
+	at := model.TimeUTC(service.deps.Now())
+	entryID := service.deps.NewEntryID()
 	if !entryID.IsValid() {
 		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "entry_id")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: at, EntryID: entryID, Path: path}
-	return service.runMutation(ctx, invocation, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, service.persistence.CreateDirectory)
+	return service.runMutation(ctx, invocation, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, service.deps.Persistence.CreateDirectory)
 }
 
 func (service *Service) CreateFile(ctx context.Context, invocation invocation.Invocation, command CreateFileCommand) (Result, error) {
@@ -221,7 +222,7 @@ func (service *Service) CreateFile(ctx context.Context, invocation invocation.In
 		return Result{}, err
 	}
 	return service.stageAndFinalize(ctx, invocation, authorization, command.ExamID, "", command.ExpectedDraftRevision, path,
-		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_create", ChangeFileCreated, service.persistence.CreateFile)
+		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_create", ChangeFileCreated, service.deps.Persistence.CreateFile)
 }
 
 func (service *Service) MoveEntry(ctx context.Context, invocation invocation.Invocation, command MoveEntryCommand) (Result, error) {
@@ -238,11 +239,11 @@ func (service *Service) MoveEntry(ctx context.Context, invocation invocation.Inv
 	if err != nil {
 		return Result{}, err
 	}
-	at := model.TimeUTC(service.now())
+	at := model.TimeUTC(service.deps.Now())
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: at, EntryID: command.EntryID, Path: path}
-	return service.runMutation(ctx, invocation, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, service.persistence.MoveEntry)
+	return service.runMutation(ctx, invocation, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, service.deps.Persistence.MoveEntry)
 }
 
 func (service *Service) ReplaceFile(ctx context.Context, invocation invocation.Invocation, command ReplaceFileCommand) (Result, error) {
@@ -262,7 +263,7 @@ func (service *Service) ReplaceFile(ctx context.Context, invocation invocation.I
 		return Result{}, err
 	}
 	return service.stageAndFinalize(ctx, invocation, authorization, command.ExamID, command.EntryID, command.ExpectedDraftRevision, "",
-		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_replace", ChangeFileReplaced, service.persistence.ReplaceFile)
+		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_replace", ChangeFileReplaced, service.deps.Persistence.ReplaceFile)
 }
 
 func (service *Service) RemoveEntry(ctx context.Context, invocation invocation.Invocation, command RemoveEntryCommand) (Result, error) {
@@ -282,11 +283,11 @@ func (service *Service) RemoveEntry(ctx context.Context, invocation invocation.I
 	if err != nil {
 		return Result{}, err
 	}
-	at := model.TimeUTC(service.now())
+	at := model.TimeUTC(service.deps.Now())
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: invocation.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: at, EntryID: command.EntryID, Recursive: command.Recursive}
-	return service.runMutation(ctx, invocation, authorization, "entry_remove", ChangeEntryRemoved, mutation, idempotency, service.persistence.RemoveEntry)
+	return service.runMutation(ctx, invocation, authorization, "entry_remove", ChangeEntryRemoved, mutation, idempotency, service.deps.Persistence.RemoveEntry)
 }
 
 type authorization struct {
@@ -300,7 +301,7 @@ func (service *Service) authorize(ctx context.Context, invocation invocation.Inv
 	if principal.Validate() != nil || !examID.IsValid() {
 		return authorization{}, apperror.Invalid("exam.starter_workspace.invalid", "exam_id")
 	}
-	access, err := service.access.Access(ctx, examID, principal.UserID)
+	access, err := service.deps.Access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return authorization{}, storeErrors.Translate(err)
 	}
@@ -313,14 +314,14 @@ func (service *Service) authorize(ctx context.Context, invocation invocation.Inv
 	}
 	var at time.Time
 	if access.ActorIsManager {
-		at = model.TimeUTC(service.now())
+		at = model.TimeUTC(service.deps.Now())
 	}
-	action, err := manageraccess.SelectAction(ctx, service.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	action, err := manageraccess.SelectAction(ctx, service.deps.Memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
 		return authorization{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: examID.String()}
-	if err := service.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err := service.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return authorization{}, err
 	}
 	return authorization{action: action, unitID: access.Exam.AcademicUnitID, override: action == overrideAction}, nil
@@ -330,7 +331,7 @@ type mutationRunner func(context.Context, *store.ExamStarterWorkspaceMutation, *
 
 func (service *Service) runMutation(ctx context.Context, invocation invocation.Invocation, authorization authorization, auditOperation string, effectOperation ChangeOperation,
 	mutation *store.ExamStarterWorkspaceMutation, idempotency *store.CommandIdempotency, run mutationRunner) (Result, error) {
-	auditID, err := service.auditor.Begin(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: mutation.ExamID.String()},
+	auditID, err := service.deps.Auditor.Begin(ctx, invocation, authorization.action, model.Resource{Type: model.ResourceExam, ID: mutation.ExamID.String()},
 		model.RoleScopeAcademicUnit, authorization.unitID.String(), auditOperation,
 		map[string]any{"exam_id": mutation.ExamID.String(), "entry_id": mutation.EntryID.String(), "expected_draft_revision": mutation.ExpectedDraftRevision}, nil)
 	if err != nil {
@@ -341,7 +342,7 @@ func (service *Service) runMutation(ctx context.Context, invocation invocation.I
 	result, err := run(ctx, mutation, idempotency)
 	if err != nil {
 		mapped := storeErrors.Translate(err)
-		if failErr := service.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.starter_workspace.unavailable")); failErr != nil {
+		if failErr := service.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.starter_workspace.unavailable")); failErr != nil {
 			return Result{}, errors.Join(mapped, failErr)
 		}
 		return Result{}, mapped
@@ -350,8 +351,8 @@ func (service *Service) runMutation(ctx context.Context, invocation invocation.I
 		return Result{}, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete mutation result"))
 	}
 	if !result.Replayed {
-		if effectErr := service.effects.Changed(ctx, mutation.ExamID, result.Entry.ID, result.DraftRevision, effectOperation, mutation.ChangedAt); effectErr != nil {
-			service.failures.Report(ctx, "exam_starter_workspace_"+string(effectOperation), effectErr)
+		if effectErr := service.deps.Effects.Changed(ctx, mutation.ExamID, result.Entry.ID, result.DraftRevision, effectOperation, mutation.ChangedAt); effectErr != nil {
+			service.deps.EffectFailures.Report(ctx, "exam_starter_workspace_"+string(effectOperation), effectErr)
 		}
 	}
 	return Result{Entry: *result.Entry, Object: result.Object, DraftRevision: result.DraftRevision, Replayed: result.Replayed}, nil
@@ -360,11 +361,11 @@ func (service *Service) runMutation(ctx context.Context, invocation invocation.I
 func (service *Service) stageAndFinalize(ctx context.Context, invocation invocation.Invocation, authorization authorization, examID model.ExamID, entryID model.StarterWorkspaceEntryID,
 	expectedRevision int64, path string, expectedContentVersion model.WorkspaceContentVersion, mediaType, expectedSHA256 string, body io.Reader, size int64, idempotency *store.CommandIdempotency,
 	auditOperation string, effectOperation ChangeOperation, run mutationRunner) (Result, error) {
-	at := model.TimeUTC(service.now())
+	at := model.TimeUTC(service.deps.Now())
 	if entryID.IsZero() {
-		entryID = service.newEntryID()
+		entryID = service.deps.NewEntryID()
 	}
-	objectID, version := service.newObjectID(), service.newVersion()
+	objectID, version := service.deps.NewObjectID(), service.deps.NewVersion()
 	if !entryID.IsValid() || !objectID.IsValid() || !version.IsValid() {
 		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "identity")
 	}
@@ -372,20 +373,20 @@ func (service *Service) stageAndFinalize(ctx context.Context, invocation invocat
 	if err != nil {
 		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "object").Wrap(err)
 	}
-	_, err = service.persistence.ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: object})
+	_, err = service.deps.Persistence.ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: object})
 	if err != nil {
 		return Result{}, storeErrors.Translate(err)
 	}
-	staged, err := service.content.StageStarterWorkspaceObject(ctx, objectID, body, size, mediaType)
+	staged, err := service.deps.Content.StageStarterWorkspaceObject(ctx, objectID, body, size, mediaType)
 	if err != nil {
-		_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = service.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
 		if isInvalidContentError(err) {
 			return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "content").Wrap(err)
 		}
 		return Result{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	if !validSHA256(expectedSHA256) || staged.SHA256 != expectedSHA256 {
-		_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = service.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
 		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "sha256")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override,
@@ -394,12 +395,12 @@ func (service *Service) stageAndFinalize(ctx context.Context, invocation invocat
 	result, err := service.runMutation(ctx, invocation, authorization, auditOperation, effectOperation, mutation, idempotency, run)
 	if err != nil {
 		if !apperror.Is(err, "exam.starter_workspace.unavailable") {
-			_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
+			_ = service.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
 		}
 		return Result{}, err
 	}
 	if result.Replayed {
-		_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
+		_ = service.deps.Persistence.MarkObjectReclaimable(ctx, objectID, at)
 	}
 	return result, nil
 }

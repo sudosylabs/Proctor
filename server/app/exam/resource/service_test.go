@@ -412,7 +412,21 @@ func newFixture(t *testing.T) *fixture {
 	f.content = &contentFake{f: f}
 	f.authorizer = &authFake{f: f}
 	at := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	service, err := New(f.persistence, f.access, f.memberships, f.authorizer, f.auditor, f.effects, f.effects, f.content, func() time.Time { return at }, model.NewExamResourceID, model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID)
+	service, err := New(Dependencies{
+		Persistence:    f.persistence,
+		Access:         f.access,
+		Memberships:    f.memberships,
+		Authorizer:     f.authorizer,
+		Auditor:        f.auditor,
+		Effects:        f.effects,
+		EffectFailures: f.effects,
+		Content:        f.content,
+		Now:            func() time.Time { return at },
+		NewResourceID:  model.NewExamResourceID,
+		NewEntryID:     model.NewFileEntryID,
+		NewRevisionID:  model.NewFileRevisionID,
+		NewLeaseID:     model.NewUploadLeaseID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

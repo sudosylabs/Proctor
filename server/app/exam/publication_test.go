@@ -26,7 +26,18 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 	f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}
 	revisions := &revisionStoreFake{}
 	effects := &publicationEffectsFake{}
-	service, err := NewPublication(revisions, f.persistence, f.memberships, f.authorizer, f.auditor, effects, f.effects, fixedPublicationTime, model.NewExamRevisionID, "https://institution.example")
+	service, err := NewPublication(PublicationDependencies{
+		Persistence:       revisions,
+		Access:            f.persistence,
+		Memberships:       f.memberships,
+		Authorizer:        f.authorizer,
+		Auditor:           f.auditor,
+		Effects:           effects,
+		EffectFailures:    f.effects,
+		Now:               fixedPublicationTime,
+		NewID:             model.NewExamRevisionID,
+		InstitutionOrigin: "https://institution.example",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +64,18 @@ func TestPublicationUsesOverrideForNonManager(t *testing.T) {
 	t.Parallel()
 	f := newAuthoringFixture(t)
 	revisions := &revisionStoreFake{}
-	service, err := NewPublication(revisions, f.persistence, f.memberships, f.authorizer, f.auditor, &publicationEffectsFake{}, f.effects, fixedPublicationTime, model.NewExamRevisionID, "https://institution.example")
+	service, err := NewPublication(PublicationDependencies{
+		Persistence:       revisions,
+		Access:            f.persistence,
+		Memberships:       f.memberships,
+		Authorizer:        f.authorizer,
+		Auditor:           f.auditor,
+		Effects:           &publicationEffectsFake{},
+		EffectFailures:    f.effects,
+		Now:               fixedPublicationTime,
+		NewID:             model.NewExamRevisionID,
+		InstitutionOrigin: "https://institution.example",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +94,18 @@ func TestPublicationMapsCapacityConflict(t *testing.T) {
 	f.persistence.actorIsManager = true
 	f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}
 	revisions := &revisionStoreFake{err: store.NewErrConflict("exam_revision", "exam_revision_capacity", nil)}
-	service, err := NewPublication(revisions, f.persistence, f.memberships, f.authorizer, f.auditor,
-		&publicationEffectsFake{}, f.effects, fixedPublicationTime, model.NewExamRevisionID, "https://institution.example")
+	service, err := NewPublication(PublicationDependencies{
+		Persistence:       revisions,
+		Access:            f.persistence,
+		Memberships:       f.memberships,
+		Authorizer:        f.authorizer,
+		Auditor:           f.auditor,
+		Effects:           &publicationEffectsFake{},
+		EffectFailures:    f.effects,
+		Now:               fixedPublicationTime,
+		NewID:             model.NewExamRevisionID,
+		InstitutionOrigin: "https://institution.example",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

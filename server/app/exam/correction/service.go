@@ -111,38 +111,36 @@ type Result struct {
 	Replayed                bool
 }
 
-type Service struct {
-	institutionOrigin string
-	persistence       store.ExamCorrectionStore
-	revisions         Revisions
-	access            AccessStore
-	memberships       manageraccess.Memberships
-	authorizer        Authorizer
-	auditor           Auditor
-	effects           Effects
-	failures          EffectFailures
-	content           Content
-	now               func() time.Time
-	newStageID        func() model.ExamCorrectionResourceStageID
-	newResourceID     func() model.ExamResourceID
-	newEntryID        func() model.FileEntryID
-	newFileRevisionID func() model.FileRevisionID
-	newLeaseID        func() model.UploadLeaseID
-	newRenditionID    func() model.FileRenditionID
-	newExamRevisionID func() model.ExamRevisionID
+type Service struct{ deps Dependencies }
+
+// Dependencies are the collaborators of Service; New validates them once and the
+// service retains them unchanged.
+type Dependencies struct {
+	Persistence       store.ExamCorrectionStore
+	Revisions         Revisions
+	Access            AccessStore
+	Memberships       manageraccess.Memberships
+	Authorizer        Authorizer
+	Auditor           Auditor
+	Effects           Effects
+	EffectFailures    EffectFailures
+	Content           Content
+	Now               func() time.Time
+	NewStageID        func() model.ExamCorrectionResourceStageID
+	NewResourceID     func() model.ExamResourceID
+	NewEntryID        func() model.FileEntryID
+	NewFileRevisionID func() model.FileRevisionID
+	NewLeaseID        func() model.UploadLeaseID
+	NewRenditionID    func() model.FileRenditionID
+	NewExamRevisionID func() model.ExamRevisionID
+	InstitutionOrigin string
 }
 
-func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content Content, now func() time.Time, newStageID func() model.ExamCorrectionResourceStageID, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newFileRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID, newRenditionID func() model.FileRenditionID, newExamRevisionID func() model.ExamRevisionID, institutionOrigin string) (*Service, error) {
-	if p == nil || revisions == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || content == nil || now == nil || newStageID == nil || newResourceID == nil || newEntryID == nil || newFileRevisionID == nil || newLeaseID == nil || newRenditionID == nil || newExamRevisionID == nil {
+func New(deps Dependencies) (*Service, error) {
+	if deps.Persistence == nil || deps.Revisions == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewStageID == nil || deps.NewResourceID == nil || deps.NewEntryID == nil || deps.NewFileRevisionID == nil || deps.NewLeaseID == nil || deps.NewRenditionID == nil || deps.NewExamRevisionID == nil {
 		return nil, errors.New("exam correction dependencies are required")
 	}
-	return &Service{institutionOrigin: institutionOrigin,
-		persistence: p, revisions: revisions, access: access, memberships: memberships,
-		authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, content: content, now: now,
-		newStageID: newStageID, newResourceID: newResourceID, newEntryID: newEntryID,
-		newFileRevisionID: newFileRevisionID, newLeaseID: newLeaseID, newRenditionID: newRenditionID,
-		newExamRevisionID: newExamRevisionID,
-	}, nil
+	return &Service{deps: deps}, nil
 }
 
 func (s *Service) StageResourceContent(ctx context.Context, invocation invocation.Invocation, c StageResourceContentCommand) (ResourceStage, error) {
@@ -157,21 +155,21 @@ func (s *Service) StageResourceContent(ctx context.Context, invocation invocatio
 	if err != nil {
 		return ResourceStage{}, err
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	principal := invocation.Principal()
 	resourceID := c.ResourceID
 	entryID := model.FileEntryID("")
 	var entry *model.FileEntry
 	if c.Target == store.ExamCorrectionResourceAddition {
-		resourceID = s.newResourceID()
-		entryID = s.newEntryID()
+		resourceID = s.deps.NewResourceID()
+		entryID = s.deps.NewEntryID()
 		entry, err = model.NewFileEntryForPurpose(entryID, model.FilePurposeExamResource, model.FileIndexingNone, at)
 		if err != nil {
 			return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "file_entry").Wrap(err)
 		}
 	} else {
 		var base *model.ExamRevision
-		base, err = s.revisions.GetSnapshot(ctx, c.ExamID, c.BaseRevisionID)
+		base, err = s.deps.Revisions.GetSnapshot(ctx, c.ExamID, c.BaseRevisionID)
 		if err != nil {
 			return ResourceStage{}, storeErrors.Translate(err)
 		}
@@ -190,7 +188,7 @@ func (s *Service) StageResourceContent(ctx context.Context, invocation invocatio
 			return ResourceStage{}, apperror.New("exam.sitting.correction.not_found")
 		}
 	}
-	revisionID, leaseID, renditionID := s.newFileRevisionID(), s.newLeaseID(), s.newRenditionID()
+	revisionID, leaseID, renditionID := s.deps.NewFileRevisionID(), s.deps.NewLeaseID(), s.deps.NewRenditionID()
 	revision, e := model.NewFileRevision(revisionID, entryID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
 	if e != nil {
 		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "file_revision").Wrap(e)
@@ -199,13 +197,13 @@ func (s *Service) StageResourceContent(ctx context.Context, invocation invocatio
 	if e != nil {
 		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "upload_lease").Wrap(e)
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_correction_resource_stage_reserve", map[string]any{
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_correction_resource_stage_reserve", map[string]any{
 		"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "base_revision_id": c.BaseRevisionID.String(), "target": string(c.Target),
 	}, nil)
 	if err != nil {
 		return ResourceStage{}, err
 	}
-	stage, err := s.persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.newStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stage, err := s.deps.Persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.deps.NewStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return ResourceStage{}, s.failAudit(ctx, auditID, err)
 	}
@@ -216,14 +214,14 @@ func (s *Service) StageResourceContent(ctx context.Context, invocation invocatio
 		return ResourceStage{}, err
 	}
 	if stage.State == store.ExamCorrectionResourceStagePending {
-		rendition, writeErr := s.content.StoreExamResourceRendition(ctx, stage.FileRevisionID, stage.RenditionID, c.MediaType, c.Body, c.Size, stage.CreatedAt)
+		rendition, writeErr := s.deps.Content.StoreExamResourceRendition(ctx, stage.FileRevisionID, stage.RenditionID, c.MediaType, c.Body, c.Size, stage.CreatedAt)
 		if writeErr != nil {
 			return ResourceStage{}, mapContent(writeErr)
 		}
 		if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(c.ExpectedSHA256)) != 1 {
 			return ResourceStage{}, apperror.New("exam.sitting.correction.content_invalid").Wrap(errors.New("content checksum mismatch"))
 		}
-		stage, err = s.persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.now())})
+		stage, err = s.deps.Persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.deps.Now())})
 		if err != nil {
 			return ResourceStage{}, storeErrors.Translate(err)
 		}
@@ -263,7 +261,7 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 	}
 	c.Resources = append([]ResourceManifestItem(nil), c.Resources...)
 	if c.BrowserPolicy.Present {
-		if err := c.BrowserPolicy.Policy.ValidateInstitutionOrigin(s.institutionOrigin); err != nil {
+		if err := c.BrowserPolicy.Policy.ValidateInstitutionOrigin(s.deps.InstitutionOrigin); err != nil {
 			return Result{}, apperror.Invalid("exam.sitting.correction.invalid", "browser_policy").Wrap(err)
 		}
 	}
@@ -275,9 +273,9 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 	if err != nil {
 		return Result{}, err
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	value := map[string]any{"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "expected_sitting_revision": c.ExpectedSittingRevision, "expected_current_revision_id": c.ExpectedCurrentRevisionID.String(), "instructions_present": c.Instructions.Present, "browser_policy_present": c.BrowserPolicy.Present, "resource_count": len(c.Resources), "acknowledgement_required": c.AcknowledgementRequired}
-	auditID, err := s.auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -295,7 +293,7 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 	for i, r := range c.Resources {
 		resources[i] = store.ExamCorrectionResourceManifestItem{ResourceID: r.ResourceID, DisplayName: strings.TrimSpace(r.DisplayName), DescriptionMarkdown: r.DescriptionMarkdown, StageID: r.StageID}
 	}
-	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.institutionOrigin, RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: invocation.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stored, err := s.deps.Persistence.Apply(ctx, &store.ExamCorrectionApplication{InstitutionOrigin: s.deps.InstitutionOrigin, RevisionID: s.deps.NewExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: invocation.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
 	}
@@ -304,8 +302,8 @@ func (s *Service) Apply(ctx context.Context, invocation invocation.Invocation, c
 		return Result{}, err
 	}
 	if !result.Replayed {
-		if effectErr := s.effects.Corrected(ctx, result); effectErr != nil {
-			s.failures.Report(ctx, "exam_sitting_content_corrected", effectErr)
+		if effectErr := s.deps.Effects.Corrected(ctx, result); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_sitting_content_corrected", effectErr)
 		}
 	}
 	return result, nil
@@ -361,7 +359,7 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 	if p.Validate() != nil {
 		return authorizationDecision{}, apperror.Invalid("exam.sitting.correction.invalid", "principal")
 	}
-	access, err := s.access.Access(ctx, examID, p.UserID)
+	access, err := s.deps.Access.Access(ctx, examID, p.UserID)
 	if err != nil {
 		return authorizationDecision{}, storeErrors.Translate(err)
 	}
@@ -370,13 +368,13 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 	}
 	var at time.Time
 	if access.ActorIsManager {
-		at = s.now()
+		at = s.deps.Now()
 	}
-	action, err := manageraccess.SelectAction(ctx, s.memberships, p.UserID, access, at, model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
+	action, err := manageraccess.SelectAction(ctx, s.deps.Memberships, p.UserID, access, at, model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
 		return authorizationDecision{}, apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 	}
-	if err = s.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}); err != nil {
+	if err = s.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}); err != nil {
 		return authorizationDecision{}, err
 	}
 	return authorizationDecision{action == model.ActionExamSittingManageOverride, access.Exam.AcademicUnitID, action}, nil
@@ -384,7 +382,7 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 func (s *Service) failAudit(ctx context.Context, id model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.sitting.correction.unavailable")
-	if auditErr := s.auditor.Fail(ctx, id, code); auditErr != nil {
+	if auditErr := s.deps.Auditor.Fail(ctx, id, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped

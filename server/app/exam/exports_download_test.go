@@ -29,9 +29,9 @@ func TestExamExportDownloadRechecksAuthorityAfterStorageOpen(t *testing.T) {
 			base.readAt = func() time.Time { return databaseNow }
 			// PostgreSQL decides expiry even when the serving node's wall clock
 			// lags behind it. No response body has reached the caller during Open.
-			service.now = func() time.Time { return databaseNow.Add(-10 * time.Second) }
+			service.deps.Now = func() time.Time { return databaseNow.Add(-10 * time.Second) }
 			if scenario == "node clock ahead" {
-				service.now = func() time.Time { return databaseNow.Add(10 * time.Second) }
+				service.deps.Now = func() time.Time { return databaseNow.Add(10 * time.Second) }
 			}
 			body := &exportClosingBody{}
 			content.body = body

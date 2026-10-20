@@ -30,14 +30,20 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		realtime: foundation.realtime,
 	}
 	effects := examRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects}
-	authoring, err := examengine.NewAuthoring(
-		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(), deps.Store.User(),
-		foundation.mail,
-		examAuthorizationAdapter{authorization: access.authorization},
-		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		deps.Store.CommandOutcome(),
-		effects, effects, time.Now, model.NewExamID, deps.PublicURL,
-	)
+	authoring, err := examengine.NewAuthoring(examengine.AuthoringDependencies{
+		Persistence:       deps.Store.ExamAuthoring(),
+		Memberships:       deps.Store.AcademicUnitMember(),
+		Users:             deps.Store.User(),
+		Mail:              foundation.mail,
+		Authorizer:        examAuthorizationAdapter{authorization: access.authorization},
+		Auditor:           examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Outcomes:          deps.Store.CommandOutcome(),
+		Effects:           effects,
+		EffectFailures:    effects,
+		Now:               time.Now,
+		NewID:             model.NewExamID,
+		InstitutionOrigin: deps.PublicURL,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
@@ -49,28 +55,37 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	revisions, err := examengine.NewPublication(
-		deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examAuthorizationAdapter{authorization: access.authorization},
-		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		effects, effects, time.Now, model.NewExamRevisionID, deps.PublicURL,
-	)
+	revisions, err := examengine.NewPublication(examengine.PublicationDependencies{
+		Persistence:       deps.Store.ExamRevision(),
+		Access:            deps.Store.ExamAuthoring(),
+		Memberships:       deps.Store.AcademicUnitMember(),
+		Authorizer:        examAuthorizationAdapter{authorization: access.authorization},
+		Auditor:           examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Effects:           effects,
+		EffectFailures:    effects,
+		Now:               time.Now,
+		NewID:             model.NewExamRevisionID,
+		InstitutionOrigin: deps.PublicURL,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
 	sittingMailPreparation := sittingScheduleMailPreparationAdapter{preparer: sittingMail,
 		revisions: deps.Store.ExamRevision(), classes: deps.Store.Class()}
-	sittings, err := examsitting.New(
-		deps.Store.ExamSitting(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examSittingAuthorizationAdapter{authorization: access.authorization},
-		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		examSittingSystemAuditAdapter{audit: foundation.audit},
-		examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
-		examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
-		appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
-		sittingMailPreparation,
-		time.Now, model.NewExamSittingID,
-	)
+	sittings, err := examsitting.New(examsitting.Dependencies{
+		Persistence:    deps.Store.ExamSitting(),
+		Access:         deps.Store.ExamAuthoring(),
+		Memberships:    deps.Store.AcademicUnitMember(),
+		Authorizer:     examSittingAuthorizationAdapter{authorization: access.authorization},
+		Auditor:        examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		SystemAuditor:  examSittingSystemAuditAdapter{audit: foundation.audit},
+		Effects:        examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
+		EffectFailures: examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
+		Jobs:           appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
+		Mail:           sittingMailPreparation,
+		Now:            time.Now,
+		NewID:          model.NewExamSittingID,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
@@ -109,54 +124,88 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	resources, err := examresource.New(
-		deps.Store.ExamResource(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examResourceAuthorizationAdapter{authorization: access.authorization},
-		examResourceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		examResourceRealtimeEffects{realtime: foundation.realtime},
-		examResourceRealtimeEffects{realtime: foundation.realtime},
-		deps.FileContent, time.Now, model.NewExamResourceID, model.NewFileEntryID,
-		model.NewFileRevisionID, model.NewUploadLeaseID,
-	)
+	resources, err := examresource.New(examresource.Dependencies{
+		Persistence:    deps.Store.ExamResource(),
+		Access:         deps.Store.ExamAuthoring(),
+		Memberships:    deps.Store.AcademicUnitMember(),
+		Authorizer:     examResourceAuthorizationAdapter{authorization: access.authorization},
+		Auditor:        examResourceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Effects:        examResourceRealtimeEffects{realtime: foundation.realtime},
+		EffectFailures: examResourceRealtimeEffects{realtime: foundation.realtime},
+		Content:        deps.FileContent,
+		Now:            time.Now,
+		NewResourceID:  model.NewExamResourceID,
+		NewEntryID:     model.NewFileEntryID,
+		NewRevisionID:  model.NewFileRevisionID,
+		NewLeaseID:     model.NewUploadLeaseID,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	corrections, err := examcorrection.New(
-		deps.Store.ExamCorrection(), deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examCorrectionAuthorizationAdapter{authorization: access.authorization},
-		examCorrectionAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
-		deps.FileContent, time.Now, model.NewExamCorrectionResourceStageID, model.NewExamResourceID,
-		model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID,
-		model.NewExamRevisionID, deps.PublicURL,
-	)
+	corrections, err := examcorrection.New(examcorrection.Dependencies{
+		Persistence:       deps.Store.ExamCorrection(),
+		Revisions:         deps.Store.ExamRevision(),
+		Access:            deps.Store.ExamAuthoring(),
+		Memberships:       deps.Store.AcademicUnitMember(),
+		Authorizer:        examCorrectionAuthorizationAdapter{authorization: access.authorization},
+		Auditor:           examCorrectionAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Effects:           examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
+		EffectFailures:    examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
+		Content:           deps.FileContent,
+		Now:               time.Now,
+		NewStageID:        model.NewExamCorrectionResourceStageID,
+		NewResourceID:     model.NewExamResourceID,
+		NewEntryID:        model.NewFileEntryID,
+		NewFileRevisionID: model.NewFileRevisionID,
+		NewLeaseID:        model.NewUploadLeaseID,
+		NewRenditionID:    model.NewFileRenditionID,
+		NewExamRevisionID: model.NewExamRevisionID,
+		InstitutionOrigin: deps.PublicURL,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	starterWorkspace, err := examworkspace.NewService(
-		deps.Store.ExamStarterWorkspace(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examStarterWorkspaceAuthorizationAdapter{authorization: access.authorization},
-		examStarterWorkspaceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		deps.FileContent,
-		examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
-		examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
-		time.Now, model.NewStarterWorkspaceEntryID, model.NewStarterWorkspaceObjectID,
-		model.NewWorkspaceContentVersion,
-	)
+	starterWorkspace, err := examworkspace.New(examworkspace.Dependencies{
+		Persistence:    deps.Store.ExamStarterWorkspace(),
+		Access:         deps.Store.ExamAuthoring(),
+		Memberships:    deps.Store.AcademicUnitMember(),
+		Authorizer:     examStarterWorkspaceAuthorizationAdapter{authorization: access.authorization},
+		Auditor:        examStarterWorkspaceAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Content:        deps.FileContent,
+		Effects:        examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
+		EffectFailures: examStarterWorkspaceRealtimeEffects{realtime: foundation.realtime},
+		Now:            time.Now,
+		NewEntryID:     model.NewStarterWorkspaceEntryID,
+		NewObjectID:    model.NewStarterWorkspaceObjectID,
+		NewVersion:     model.NewWorkspaceContentVersion,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	records, err := examengine.NewRecords(deps.Store.ExamRecords(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
-		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		deps.RecentAuthenticationTTL, time.Now, model.NewRetentionHoldID)
+	records, err := examengine.NewRecords(examengine.RecordsDependencies{
+		Persistence: deps.Store.ExamRecords(),
+		Access:      deps.Store.ExamAuthoring(),
+		Memberships: deps.Store.AcademicUnitMember(),
+		Authorizer:  examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
+		Auditor:     examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		RecentTTL:   deps.RecentAuthenticationTTL,
+		Now:         time.Now,
+		NewHoldID:   model.NewRetentionHoldID,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	exports, err := examengine.NewExports(deps.Store.ExamExport(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
-		examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
-		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}}, deps.FileContent, time.Now, model.NewExamExportID, model.NewJobID)
+	exports, err := examengine.NewExports(examengine.ExportsDependencies{
+		Persistence: deps.Store.ExamExport(),
+		Access:      deps.Store.ExamAuthoring(),
+		Memberships: deps.Store.AcademicUnitMember(),
+		Authorizer:  examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
+		Auditor:     examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Content:     deps.FileContent,
+		Now:         time.Now,
+		NewID:       model.NewExamExportID,
+		NewJobID:    model.NewJobID,
+	})
 	if err != nil {
 		return examinationConstruction{}, err
 	}

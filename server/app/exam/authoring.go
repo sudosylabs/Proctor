@@ -111,26 +111,30 @@ type ManagerMailPreparer interface {
 	PrepareManagerMail(ManagerMailPreparation) (*store.ExamManagerMail, error)
 }
 
-type Authoring struct {
-	institutionOrigin string
-	persistence       store.ExamAuthoringStore
-	memberships       manageraccess.Memberships
-	users             users
-	mail              ManagerMailPreparer
-	authorizer        Authorizer
-	auditor           Auditor
-	outcomes          CommandOutcomes
-	effects           Effects
-	failures          EffectFailures
-	now               func() time.Time
-	newID             func() model.ExamID
+type Authoring struct{ deps AuthoringDependencies }
+
+// AuthoringDependencies are the collaborators of Authoring; NewAuthoring validates them once and the
+// service retains them unchanged.
+type AuthoringDependencies struct {
+	Persistence       store.ExamAuthoringStore
+	Memberships       manageraccess.Memberships
+	Users             users
+	Mail              ManagerMailPreparer
+	Authorizer        Authorizer
+	Auditor           Auditor
+	Outcomes          CommandOutcomes
+	Effects           Effects
+	EffectFailures    EffectFailures
+	Now               func() time.Time
+	NewID             func() model.ExamID
+	InstitutionOrigin string
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships manageraccess.Memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, outcomes CommandOutcomes, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID, institutionOrigin string) (*Authoring, error) {
-	if persistence == nil || memberships == nil || users == nil || mail == nil || authorizer == nil || auditor == nil || outcomes == nil || effects == nil || failures == nil || now == nil || newID == nil {
+func NewAuthoring(deps AuthoringDependencies) (*Authoring, error) {
+	if deps.Persistence == nil || deps.Memberships == nil || deps.Users == nil || deps.Mail == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Outcomes == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Now == nil || deps.NewID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
-	return &Authoring{institutionOrigin: institutionOrigin, persistence: persistence, memberships: memberships, users: users, mail: mail, authorizer: authorizer, auditor: auditor, outcomes: outcomes, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Authoring{deps: deps}, nil
 }
 
 func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation, command CreateCommand) (View, error) {
@@ -149,8 +153,8 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 	if err != nil {
 		return View{}, err
 	}
-	at := model.TimeUTC(a.now())
-	examID := a.newID()
+	at := model.TimeUTC(a.deps.Now())
+	examID := a.deps.NewID()
 	if !examID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "exam_id")
 	}
@@ -166,7 +170,7 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 	if err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "manager").Wrap(err)
 	}
-	ordinary, err := manageraccess.HasCurrentMembership(ctx, a.memberships, principal.UserID, command.AcademicUnitID, at)
+	ordinary, err := manageraccess.HasCurrentMembership(ctx, a.deps.Memberships, principal.UserID, command.AcademicUnitID, at)
 	if err != nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(err)
 	}
@@ -175,10 +179,10 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 		action = model.ActionExamCreate
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.AcademicUnitID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, command.AcademicUnitID.String(), "create", map[string]any{
 		"exam_id": examID.String(), "academic_unit_id": command.AcademicUnitID.String(),
 		"creator_user_id": principal.UserID.String(),
 	}, nil)
@@ -186,10 +190,10 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 		return View{}, err
 	}
 	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}
-	result, err := a.persistence.Create(ctx, creation, idempotency)
+	result, err := a.deps.Persistence.Create(ctx, creation, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
@@ -198,8 +202,8 @@ func (a *Authoring) Create(ctx context.Context, invocation invocation.Invocation
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no creation result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.Created(ctx, result.Value.Exam.ID); effectErr != nil {
-			a.failures.Report(ctx, "exam_created", effectErr)
+		if effectErr := a.deps.Effects.Created(ctx, result.Value.Exam.ID); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_created", effectErr)
 		}
 	}
 	return project(result.Value), nil
@@ -210,21 +214,21 @@ func (a *Authoring) Get(ctx context.Context, invocation invocation.Invocation, e
 	if principal.Validate() != nil || !examID.IsValid() {
 		return View{}, apperror.Invalid("exam.invalid", "exam_id")
 	}
-	access, err := a.persistence.Access(ctx, examID, principal.UserID)
+	access, err := a.deps.Persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
 	}
-	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.now()), model.ActionExamView, model.ActionExamViewOverride)
+	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.deps.Now()), model.ActionExamView, model.ActionExamViewOverride)
 	if err != nil {
 		return View{}, err
 	}
-	if err = a.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.persistence.Get(ctx, examID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, examID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -242,18 +246,18 @@ func (a *Authoring) AuthorizeView(ctx context.Context, invocation invocation.Inv
 	if principal.Validate() != nil || !examID.IsValid() {
 		return apperror.Invalid("exam.invalid", "exam_id")
 	}
-	access, err := a.persistence.Access(ctx, examID, principal.UserID)
+	access, err := a.deps.Persistence.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
 	}
-	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.now()), model.ActionExamView, model.ActionExamViewOverride)
+	action, err := a.actionForAccess(ctx, principal.UserID, access, model.TimeUTC(a.deps.Now()), model.ActionExamView, model.ActionExamViewOverride)
 	if err != nil {
 		return err
 	}
-	return a.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	return a.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }
 
 func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Invocation, command EditDraftTextCommand) (View, error) {
@@ -278,9 +282,9 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 	if err != nil {
 		return View{}, err
 	}
-	at := model.TimeUTC(a.now())
+	at := model.TimeUTC(a.deps.Now())
 
-	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	access, err := a.deps.Persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -292,10 +296,10 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -316,14 +320,14 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 	if instructions != nil {
 		instructions = &candidate.InstructionsMarkdown
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "edit_draft_text", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
 	if err != nil {
 		return View{}, err
 	}
-	result, err := a.persistence.UpdateDraftText(ctx, &store.ExamDraftTextUpdate{
+	result, err := a.deps.Persistence.UpdateDraftText(ctx, &store.ExamDraftTextUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision,
 		Title:            title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
@@ -331,7 +335,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
@@ -340,8 +344,8 @@ func (a *Authoring) EditDraftText(ctx context.Context, invocation invocation.Inv
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no Draft update result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
-			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		if effectErr := a.deps.Effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_draft_updated", effectErr)
 		}
 	}
 	return project(result.Value), nil
@@ -378,8 +382,8 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 	if err != nil {
 		return View{}, err
 	}
-	at := model.TimeUTC(a.now())
-	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	at := model.TimeUTC(a.deps.Now())
+	access, err := a.deps.Persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -391,10 +395,10 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -409,21 +413,21 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_focus_loss", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
 	if err != nil {
 		return View{}, err
 	}
-	result, err := a.persistence.UpdateDraftFocusLoss(ctx, &store.ExamDraftFocusLossUpdate{
+	result, err := a.deps.Persistence.UpdateDraftFocusLoss(ctx, &store.ExamDraftFocusLossUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: command.FocusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
@@ -432,8 +436,8 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, invocation invo
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no Focus Loss update result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
-			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		if effectErr := a.deps.Effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_draft_updated", effectErr)
 		}
 	}
 	return project(result.Value), nil
@@ -450,7 +454,7 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 	if err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "browser_policy").Wrap(err)
 	}
-	if err := policy.ValidateInstitutionOrigin(a.institutionOrigin); err != nil {
+	if err = policy.ValidateInstitutionOrigin(a.deps.InstitutionOrigin); err != nil {
 		return View{}, apperror.Invalid("exam.invalid", "browser_policy").Wrap(err)
 	}
 	canonical, err := model.EncodeBrowserPolicy(policy)
@@ -465,8 +469,8 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 	if err != nil {
 		return View{}, err
 	}
-	at := model.TimeUTC(a.now())
-	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	at := model.TimeUTC(a.deps.Now())
+	access, err := a.deps.Persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -478,10 +482,10 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -496,21 +500,21 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1, "browser_policy_enabled": policy.Enabled,
 	}, nil)
 	if err != nil {
 		return View{}, err
 	}
-	result, err := a.persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{InstitutionOrigin: a.institutionOrigin,
+	result, err := a.deps.Persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{InstitutionOrigin: a.deps.InstitutionOrigin,
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, Policy: policy, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
@@ -519,8 +523,8 @@ func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, invocation 
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no Browser Policy update result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
-			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		if effectErr := a.deps.Effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_draft_updated", effectErr)
 		}
 	}
 	return project(result.Value), nil
@@ -535,7 +539,7 @@ func cloneStringPointer(value *string) *string {
 }
 
 func (a *Authoring) actionForAccess(ctx context.Context, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
-	action, err := manageraccess.SelectAction(ctx, a.memberships, userID, access, at, ordinaryAction, overrideAction)
+	action, err := manageraccess.SelectAction(ctx, a.deps.Memberships, userID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
 		return "", apperror.New("exam.unavailable").Wrap(err)
 	}
@@ -594,8 +598,8 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation i
 	if err != nil {
 		return View{}, err
 	}
-	at := model.TimeUTC(a.now())
-	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	at := model.TimeUTC(a.deps.Now())
+	access, err := a.deps.Persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -607,10 +611,10 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation i
 		return View{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return View{}, err
 	}
-	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	snapshot, err := a.deps.Persistence.Get(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return View{}, examStoreErrors.Translate(err)
 	}
@@ -625,21 +629,21 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation i
 	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
 		return View{}, apperror.New("exam.draft.no_changes")
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_native_policy", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 		"draft_revision": command.ExpectedDraftRevision + 1,
 	}, nil)
 	if err != nil {
 		return View{}, err
 	}
-	result, err := a.persistence.UpdateDraftNativePolicy(ctx, &store.ExamDraftNativePolicyUpdate{
+	result, err := a.deps.Persistence.UpdateDraftNativePolicy(ctx, &store.ExamDraftNativePolicyUpdate{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, NativePolicy: command.NativePolicy.Clone(), UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 	}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return View{}, errors.Join(mapped, auditErr)
 		}
 		return View{}, mapped
@@ -648,8 +652,8 @@ func (a *Authoring) ConfigureDraftNativePolicy(ctx context.Context, invocation i
 		return View{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no native policy update result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
-			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		if effectErr := a.deps.Effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_draft_updated", effectErr)
 		}
 	}
 	return project(result.Value), nil

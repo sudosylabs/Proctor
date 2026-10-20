@@ -67,41 +67,45 @@ type ExportDownload struct {
 	Body   io.ReadCloser
 }
 
-type Exports struct {
-	persistence store.ExamExportStore
-	access      store.ExamAuthoringStore
-	memberships manageraccess.Memberships
-	authorizer  RecordsAuthorizer
-	auditor     Auditor
-	content     ExportContent
-	now         func() time.Time
-	newID       func() model.ExamExportID
-	newJobID    func() model.JobID
+type Exports struct{ deps ExportsDependencies }
+
+// ExportsDependencies are the collaborators of Exports; NewExports validates them once and the
+// service retains them unchanged.
+type ExportsDependencies struct {
+	Persistence store.ExamExportStore
+	Access      store.ExamAuthoringStore
+	Memberships manageraccess.Memberships
+	Authorizer  RecordsAuthorizer
+	Auditor     Auditor
+	Content     ExportContent
+	Now         func() time.Time
+	NewID       func() model.ExamExportID
+	NewJobID    func() model.JobID
 }
 
-func NewExports(persistence store.ExamExportStore, access store.ExamAuthoringStore, memberships manageraccess.Memberships, authorizer RecordsAuthorizer, auditor Auditor, content ExportContent, now func() time.Time, newID func() model.ExamExportID, newJobID func() model.JobID) (*Exports, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || content == nil || now == nil || newID == nil || newJobID == nil {
+func NewExports(deps ExportsDependencies) (*Exports, error) {
+	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Content == nil || deps.Now == nil || deps.NewID == nil || deps.NewJobID == nil {
 		return nil, errors.New("Exam export dependencies are required")
 	}
-	return &Exports{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, content: content, now: now, newID: newID, newJobID: newJobID}, nil
+	return &Exports{deps: deps}, nil
 }
 
 func (s *Exports) authorize(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope) (model.Action, model.AcademicUnitID, error) {
 	if scope.Validate() != nil || !scope.SittingID.IsValid() || invocation.Principal().Validate() != nil || invocation.Principal().CredentialType != model.CredentialSessionAccess {
 		return "", "", apperror.Invalid("exam.invalid", "export_scope")
 	}
-	access, err := s.access.Access(ctx, scope.ExamID, invocation.Principal().UserID)
+	access, err := s.deps.Access.Access(ctx, scope.ExamID, invocation.Principal().UserID)
 	if err != nil {
 		return "", "", examExportStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || !access.Exam.AcademicUnitID.IsValid() {
 		return "", "", apperror.New("exam.export.unavailable").Wrap(err)
 	}
-	action, err := manageraccess.SelectAction(ctx, s.memberships, invocation.Principal().UserID, access, model.TimeUTC(s.now()), model.ActionExamRecordsExport, model.ActionExamRecordsExportOverride)
+	action, err := manageraccess.SelectAction(ctx, s.deps.Memberships, invocation.Principal().UserID, access, model.TimeUTC(s.deps.Now()), model.ActionExamRecordsExport, model.ActionExamRecordsExportOverride)
 	if err != nil {
 		return "", "", apperror.New("exam.export.unavailable").Wrap(err)
 	}
-	if err = s.authorizer.Authorize(ctx, invocation, action, scope.Resource()); err != nil {
+	if err = s.deps.Authorizer.Authorize(ctx, invocation, action, scope.Resource()); err != nil {
 		return "", "", err
 	}
 	return action, access.Exam.AcademicUnitID, nil
@@ -116,12 +120,12 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 		view, sittingView = model.ActionSubmissionView, model.ActionExamSittingView
 	}
 	if scope.SubmissionID.IsZero() {
-		if err := s.authorizer.Authorize(ctx, invocation, sittingView, scope.Resource()); err != nil {
+		if err := s.deps.Authorizer.Authorize(ctx, invocation, sittingView, scope.Resource()); err != nil {
 			return err
 		}
 	}
 	if slices.Contains(categories, model.RetentionCategoryBrowserActivity) {
-		access, err := s.access.Access(ctx, scope.ExamID, invocation.Principal().UserID)
+		access, err := s.deps.Access.Access(ctx, scope.ExamID, invocation.Principal().UserID)
 		if err != nil {
 			return examExportStoreErrors.Translate(err)
 		}
@@ -129,12 +133,12 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 			return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid browser history access projection"))
 		}
 		if !access.ActorIsManager {
-			if err := s.authorizer.Deny(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
+			if err := s.deps.Authorizer.Deny(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
 				return err
 			}
 			return apperror.New("exam.not_found")
 		}
-		if err := s.authorizer.Authorize(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}); err != nil {
+		if err := s.deps.Authorizer.Authorize(ctx, invocation, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}); err != nil {
 			return err
 		}
 	}
@@ -145,9 +149,9 @@ func (s *Exports) authorizeSources(ctx context.Context, invocation invocation.In
 		}
 		resource := model.Resource{Type: model.ResourceSubmission, ID: a.SubmissionID.String()}
 		if a.CandidateUserID == invocation.Principal().UserID {
-			return s.authorizer.Deny(ctx, invocation, view, resource, unit)
+			return s.deps.Authorizer.Deny(ctx, invocation, view, resource, unit)
 		}
-		if err := s.authorizer.Authorize(ctx, invocation, view, resource); err != nil {
+		if err := s.deps.Authorizer.Authorize(ctx, invocation, view, resource); err != nil {
 			return err
 		}
 		previous = a.SubmissionID
@@ -173,30 +177,30 @@ func (s *Exports) Create(ctx context.Context, invocation invocation.Invocation, 
 	if err != nil {
 		return nil, err
 	}
-	selected, err := s.persistence.ListCreationScope(ctx, command.Scope, idempotency)
+	selected, err := s.deps.Persistence.ListCreationScope(ctx, command.Scope, idempotency)
 	if err != nil {
 		return nil, examExportStoreErrors.Translate(err)
 	}
 	if err = s.authorizeSources(ctx, invocation, command.Scope, action, unit, command.Categories, selected); err != nil {
 		return nil, err
 	}
-	exportID, jobID := s.newID(), s.newJobID()
+	exportID, jobID := s.deps.NewID(), s.deps.NewJobID()
 	if !exportID.IsValid() || !jobID.IsValid() {
 		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export identities"))
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, action, command.Scope.Resource(), model.RoleScopeAcademicUnit, unit.String(), "create_exam_export", map[string]any{"exam_export_id": exportID.String(), "submission_count": len(selected), "category_count": len(command.Categories)}, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, command.Scope.Resource(), model.RoleScopeAcademicUnit, unit.String(), "create_exam_export", map[string]any{"exam_export_id": exportID.String(), "submission_count": len(selected), "category_count": len(command.Categories)}, nil)
 	if err != nil {
 		return nil, err
 	}
-	input := &store.ExamExportCreation{ExamExportAccess: store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: command.Scope, Principal: invocation.Principal(), Action: action, AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.now()))}, ExportID: exportID, Categories: command.Categories}, JobID: jobID}
+	input := &store.ExamExportCreation{ExamExportAccess: store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: command.Scope, Principal: invocation.Principal(), Action: action, AuditEventID: auditID, AuditAt: model.MillisFromTime(model.TimeUTC(s.deps.Now()))}, ExportID: exportID, Categories: command.Categories}, JobID: jobID}
 	for _, a := range selected {
 		input.SubmissionIDs = append(input.SubmissionIDs, a.SubmissionID)
 	}
-	result, err := s.persistence.Create(ctx, input, idempotency)
+	result, err := s.deps.Persistence.Create(ctx, input, idempotency)
 	if err != nil {
 		mapped := examExportStoreErrors.Translate(err)
 		code := apperror.CodeOf(mapped, "exam.export.unavailable")
-		if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
+		if auditErr := s.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
 			return nil, errors.Join(mapped, auditErr)
 		}
 		return nil, mapped
@@ -215,7 +219,7 @@ func (s *Exports) get(ctx context.Context, invocation invocation.Invocation, q E
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.persistence.Get(ctx, &store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: q.Scope, Principal: invocation.Principal(), Action: action}, ExportID: q.ExportID})
+	result, err := s.deps.Persistence.Get(ctx, &store.ExamExportAccess{ExamRecordsMutation: store.ExamRecordsMutation{Scope: q.Scope, Principal: invocation.Principal(), Action: action}, ExportID: q.ExportID})
 	if err != nil {
 		return nil, examExportStoreErrors.Translate(err)
 	}
@@ -244,7 +248,7 @@ func (s *Exports) Open(ctx context.Context, invocation invocation.Invocation, q 
 	if err = requireReadyExport(result); err != nil {
 		return nil, err
 	}
-	body, err := s.content.OpenExamExport(ctx, result.Artifact.ExportID, result.Artifact.AttemptID)
+	body, err := s.deps.Content.OpenExamExport(ctx, result.Artifact.ExportID, result.Artifact.AttemptID)
 	if err != nil {
 		return nil, apperror.New("exam.export.unavailable").Wrap(err)
 	}
@@ -282,7 +286,7 @@ func requireReadyExport(result *store.ExamExportDownload) error {
 }
 
 func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild) (err error) {
-	snapshot, err := s.persistence.BeginBuild(ctx, &input)
+	snapshot, err := s.deps.Persistence.BeginBuild(ctx, &input)
 	if err != nil {
 		return examExportStoreErrors.Translate(err)
 	}
@@ -301,7 +305,7 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 		}
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if finishErr := s.persistence.FinishWriter(cleanup, input.ExamExportArtifact); finishErr != nil && err == nil {
+		if finishErr := s.deps.Persistence.FinishWriter(cleanup, input.ExamExportArtifact); finishErr != nil && err == nil {
 			err = apperror.New("exam.export.unavailable").Wrap(finishErr)
 		}
 	}()
@@ -314,14 +318,14 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 	for _, f := range snapshot.Files {
 		archive.Files = append(archive.Files, ExportArchiveFile{SubmissionID: f.SubmissionID, Entry: f.Entry})
 	}
-	content, err := s.content.BuildExamExport(buildCtx, archive)
+	content, err := s.deps.Content.BuildExamExport(buildCtx, archive)
 	if err != nil {
 		return apperror.New("exam.export.unavailable").Wrap(err)
 	}
 	if content == nil || !model.ValidExamExportContent(content.SizeBytes, content.SHA256) {
 		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid verified export content"))
 	}
-	if err = s.persistence.Publish(buildCtx, &store.ExamExportPublication{ExamExportBuild: input, SizeBytes: content.SizeBytes, SHA256: content.SHA256}); err != nil {
+	if err = s.deps.Persistence.Publish(buildCtx, &store.ExamExportPublication{ExamExportBuild: input, SizeBytes: content.SizeBytes, SHA256: content.SHA256}); err != nil {
 		return examExportStoreErrors.Translate(err)
 	}
 	return nil

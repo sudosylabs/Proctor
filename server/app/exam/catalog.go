@@ -55,7 +55,7 @@ func (a *Authoring) List(ctx context.Context, invocation invocation.Invocation, 
 	default:
 		return CatalogPage{}, apperror.Invalid("exam.invalid", "archive_filter")
 	}
-	visibility, err := a.authorizer.AuthorizeList(ctx, invocation, query.AcademicUnitID)
+	visibility, err := a.deps.Authorizer.AuthorizeList(ctx, invocation, query.AcademicUnitID)
 	if err != nil {
 		return CatalogPage{}, err
 	}
@@ -72,7 +72,7 @@ func (a *Authoring) List(ctx context.Context, invocation invocation.Invocation, 
 		seenStates[state] = struct{}{}
 		states = append(states, state)
 	}
-	items, err := a.persistence.List(ctx, store.ExamListOptions{AcademicUnitID: query.AcademicUnitID,
+	items, err := a.deps.Persistence.List(ctx, store.ExamListOptions{AcademicUnitID: query.AcademicUnitID,
 		Query: strings.TrimSpace(query.Query), ArchiveFilter: query.ArchiveFilter, BeforeUpdatedAt: query.BeforeUpdatedAt,
 		SittingStates: states, EndsAfter: model.TimeUTC(query.EndsAfter), StartsBefore: model.TimeUTC(query.StartsBefore),
 		BeforeExamID: query.BeforeExamID, Limit: query.Limit, Visibility: visibility})
@@ -97,8 +97,8 @@ func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocatio
 	if err != nil {
 		return model.Exam{}, err
 	}
-	at := model.TimeUTC(a.now())
-	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	at := model.TimeUTC(a.deps.Now())
+	access, err := a.deps.Persistence.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return model.Exam{}, examStoreErrors.Translate(err)
 	}
@@ -110,22 +110,22 @@ func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocatio
 		return model.Exam{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = a.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = a.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return model.Exam{}, err
 	}
-	auditID, err := a.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
+	auditID, err := a.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "archive", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_exam_revision": command.ExpectedExamRevision,
 		"exam_revision": command.ExpectedExamRevision + 1,
 	}, nil)
 	if err != nil {
 		return model.Exam{}, err
 	}
-	result, err := a.persistence.Archive(ctx, &store.ExamArchive{ExamID: command.ExamID, ActorUserID: principal.UserID,
+	result, err := a.deps.Persistence.Archive(ctx, &store.ExamArchive{ExamID: command.ExamID, ActorUserID: principal.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
 		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := a.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return model.Exam{}, errors.Join(mapped, auditErr)
 		}
 		return model.Exam{}, mapped
@@ -134,8 +134,8 @@ func (a *Authoring) Archive(ctx context.Context, invocation invocation.Invocatio
 		return model.Exam{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no archive result"))
 	}
 	if !result.Replayed {
-		if effectErr := a.effects.Archived(ctx, result.Value.ID, result.Value.Revision, result.Value.ArchivedAt.Time); effectErr != nil {
-			a.failures.Report(ctx, "exam_archived", effectErr)
+		if effectErr := a.deps.Effects.Archived(ctx, result.Value.ID, result.Value.Revision, result.Value.ArchivedAt.Time); effectErr != nil {
+			a.deps.EffectFailures.Report(ctx, "exam_archived", effectErr)
 		}
 	}
 	return *result.Value, nil

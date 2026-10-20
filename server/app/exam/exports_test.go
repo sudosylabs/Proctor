@@ -195,7 +195,17 @@ func newExportFixture(t *testing.T) (authoringFixture, *Exports, *exportStoreFak
 	s.readAt, s.artifactID = func() time.Time { return now }, model.NewJobAttemptID()
 	s.selected = []store.ExamSubmissionAuthorization{{SubmissionID: scope.SubmissionID, ExamID: scope.ExamID, SittingID: scope.SittingID, AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(), AcademicUnitID: f.unitID}}
 	auth, content := &exportAuthorizerFake{}, &exportContentFake{}
-	service, err := NewExports(s, f.persistence, f.memberships, auth, f.auditor, content, func() time.Time { return now }, model.NewExamExportID, model.NewJobID)
+	service, err := NewExports(ExportsDependencies{
+		Persistence: s,
+		Access:      f.persistence,
+		Memberships: f.memberships,
+		Authorizer:  auth,
+		Auditor:     f.auditor,
+		Content:     content,
+		Now:         func() time.Time { return now },
+		NewID:       model.NewExamExportID,
+		NewJobID:    model.NewJobID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

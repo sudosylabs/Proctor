@@ -157,7 +157,16 @@ func newRecordsFixture(t *testing.T) (authoringFixture, *Records, *recordsStoreF
 	persistence := &recordsStoreFake{order: f.order, scope: store.ExamRecordsScope{Scope: model.RetentionHoldScope{ExamID: f.examID, SittingID: model.NewExamSittingID()},
 		InstitutionID: model.NewInstitutionID(), AcademicUnitID: f.unitID, CandidateUserID: model.NewUserID(), AttemptID: model.NewExamAttemptID()}}
 	authorizer := &recordsAuthorizerFake{authorizerFake: f.authorizer}
-	records, err := NewRecords(persistence, f.persistence, f.memberships, authorizer, f.auditor, 5*time.Minute, fixedPublicationTime, model.NewRetentionHoldID)
+	records, err := NewRecords(RecordsDependencies{
+		Persistence: persistence,
+		Access:      f.persistence,
+		Memberships: f.memberships,
+		Authorizer:  authorizer,
+		Auditor:     f.auditor,
+		RecentTTL:   5 * time.Minute,
+		Now:         fixedPublicationTime,
+		NewHoldID:   model.NewRetentionHoldID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

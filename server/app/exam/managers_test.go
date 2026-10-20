@@ -90,7 +90,7 @@ func TestAddManagerUsesNativeMembershipDecisionAndLegacyMutationTime(t *testing.
 	fixture := newAuthoringFixture(t)
 	decisionAt := time.Date(2026, 9, 5, 12, 0, 0, 123700789, time.FixedZone("offset", 3600))
 	boundary := model.TimeUTC(decisionAt)
-	fixture.service.now = func() time.Time { return decisionAt }
+	fixture.service.deps.Now = func() time.Time { return decisionAt }
 	fixture.persistence.actorIsManager = true
 	target := model.NewUserID()
 	fixture.users.user = activeTestUser(target)

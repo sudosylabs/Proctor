@@ -58,6 +58,8 @@ type ResultReleaseMailPreparer interface {
 	PrepareResultRelease(context.Context, ResultReleaseMailPreparation) (*PreparedResultReleaseMail, error)
 }
 
+// Dependencies are the collaborators of Service; New validates them once and the
+// service retains them unchanged.
 type Dependencies struct {
 	Persistence    store.ExamIntegrityReviewStore
 	Authorizer     Authorizer

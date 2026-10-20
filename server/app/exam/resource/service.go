@@ -105,27 +105,31 @@ func cloneStringPointer(value *string) *string {
 	return &cloned
 }
 
-type Service struct {
-	persistence   store.ExamResourceStore
-	access        AccessStore
-	memberships   manageraccess.Memberships
-	authorizer    Authorizer
-	auditor       Auditor
-	effects       Effects
-	failures      EffectFailures
-	content       FileContent
-	now           func() time.Time
-	newResourceID func() model.ExamResourceID
-	newEntryID    func() model.FileEntryID
-	newRevisionID func() model.FileRevisionID
-	newLeaseID    func() model.UploadLeaseID
+type Service struct{ deps Dependencies }
+
+// Dependencies are the collaborators of Service; New validates them once and the
+// service retains them unchanged.
+type Dependencies struct {
+	Persistence    store.ExamResourceStore
+	Access         AccessStore
+	Memberships    manageraccess.Memberships
+	Authorizer     Authorizer
+	Auditor        Auditor
+	Effects        Effects
+	EffectFailures EffectFailures
+	Content        FileContent
+	Now            func() time.Time
+	NewResourceID  func() model.ExamResourceID
+	NewEntryID     func() model.FileEntryID
+	NewRevisionID  func() model.FileRevisionID
+	NewLeaseID     func() model.UploadLeaseID
 }
 
-func New(persistence store.ExamResourceStore, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content FileContent, now func() time.Time, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID) (*Service, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || content == nil || now == nil || newResourceID == nil || newEntryID == nil || newRevisionID == nil || newLeaseID == nil {
+func New(deps Dependencies) (*Service, error) {
+	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewResourceID == nil || deps.NewEntryID == nil || deps.NewRevisionID == nil || deps.NewLeaseID == nil {
 		return nil, errors.New("exam resource dependencies are required")
 	}
-	return &Service{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, content: content, now: now, newResourceID: newResourceID, newEntryID: newEntryID, newRevisionID: newRevisionID, newLeaseID: newLeaseID}, nil
+	return &Service{deps: deps}, nil
 }
 
 func (s *Service) List(ctx context.Context, invocation invocation.Invocation, examID model.ExamID) ([]store.ExamResourceRecord, error) {
@@ -135,7 +139,7 @@ func (s *Service) List(ctx context.Context, invocation invocation.Invocation, ex
 	if _, err := s.authorize(ctx, invocation, examID, false); err != nil {
 		return nil, err
 	}
-	items, err := s.persistence.List(ctx, examID)
+	items, err := s.deps.Persistence.List(ctx, examID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
@@ -148,14 +152,14 @@ func (s *Service) Open(ctx context.Context, invocation invocation.Invocation, ex
 	if _, err := s.authorize(ctx, invocation, examID, false); err != nil {
 		return Opened{}, err
 	}
-	record, err := s.persistence.Get(ctx, examID, resourceID)
+	record, err := s.deps.Persistence.Get(ctx, examID, resourceID)
 	if err != nil {
 		return Opened{}, storeErrors.Translate(err)
 	}
 	if record == nil || record.Resource == nil || record.Rendition == nil {
 		return Opened{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("incomplete resource record"))
 	}
-	body, err := s.content.OpenExamResource(ctx, record.Resource.SelectedFileRevisionID, record.Rendition.ID)
+	body, err := s.deps.Content.OpenExamResource(ctx, record.Resource.SelectedFileRevisionID, record.Rendition.ID)
 	if err != nil {
 		return Opened{}, apperror.New("exam.resource.unavailable").Wrap(err)
 	}
@@ -175,14 +179,14 @@ func (s *Service) Create(ctx context.Context, invocation invocation.Invocation, 
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	items, err := s.persistence.List(ctx, command.ExamID)
+	items, err := s.deps.Persistence.List(ctx, command.ExamID)
 	if err != nil {
 		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	position := min(len(items), model.ExamResourceMaximumCount-1)
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	principal := invocation.Principal()
-	resourceID, entryID, revisionID, leaseID := s.newResourceID(), s.newEntryID(), s.newRevisionID(), s.newLeaseID()
+	resourceID, entryID, revisionID, leaseID := s.deps.NewResourceID(), s.deps.NewEntryID(), s.deps.NewRevisionID(), s.deps.NewLeaseID()
 	entry, err := model.NewFileEntryForPurpose(entryID, model.FilePurposeExamResource, model.FileIndexingNone, at)
 	if err != nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "file_entry").Wrap(err)
@@ -199,15 +203,15 @@ func (s *Service) Create(ctx context.Context, invocation invocation.Invocation, 
 	if err != nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "metadata").Wrap(err)
 	}
-	if _, err = s.persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: resourceID, Entry: entry, Revision: revision, Lease: lease}); err != nil {
+	if _, err = s.deps.Persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: resourceID, Entry: entry, Revision: revision, Lease: lease}); err != nil {
 		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
-	rendition, err := s.content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
+	rendition, err := s.deps.Content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
 	if err != nil {
 		return store.ExamResourceRecord{}, mapContent(err)
 	}
 	if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(command.ExpectedSHA256)) != 1 {
-		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
+		_ = s.deps.Content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
 		return store.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid").Wrap(errors.New("content checksum mismatch"))
 	}
 	return s.finalize(ctx, invocation, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "add")
@@ -225,16 +229,16 @@ func (s *Service) ReplaceContent(ctx context.Context, invocation invocation.Invo
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	current, err := s.persistence.Get(ctx, command.ExamID, command.ResourceID)
+	current, err := s.deps.Persistence.Get(ctx, command.ExamID, command.ResourceID)
 	if err != nil {
 		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
 	if current == nil || current.Resource == nil || current.Rendition == nil {
 		return store.ExamResourceRecord{}, apperror.New("exam.resource.unavailable").Wrap(errors.New("incomplete resource record"))
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	principal := invocation.Principal()
-	revisionID, leaseID := s.newRevisionID(), s.newLeaseID()
+	revisionID, leaseID := s.deps.NewRevisionID(), s.deps.NewLeaseID()
 	revision, err := model.NewFileRevision(revisionID, current.Resource.FileEntryID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
 	if err != nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "file_revision").Wrap(err)
@@ -243,15 +247,15 @@ func (s *Service) ReplaceContent(ctx context.Context, invocation invocation.Invo
 	if err != nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "upload_lease").Wrap(err)
 	}
-	if _, err = s.persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: command.ResourceID, EntryID: current.Resource.FileEntryID, Revision: revision, Lease: lease, Replacement: true}); err != nil {
+	if _, err = s.deps.Persistence.ReserveUpload(ctx, &store.ExamResourceUploadReservation{ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision, ResourceID: command.ResourceID, EntryID: current.Resource.FileEntryID, Revision: revision, Lease: lease, Replacement: true}); err != nil {
 		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
-	rendition, err := s.content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
+	rendition, err := s.deps.Content.StoreExamResource(ctx, revisionID, command.MediaType, command.Body, command.Size, at)
 	if err != nil {
 		return store.ExamResourceRecord{}, mapContent(err)
 	}
 	if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(command.ExpectedSHA256)) != 1 {
-		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
+		_ = s.deps.Content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
 		return store.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid").Wrap(errors.New("content checksum mismatch"))
 	}
 	updated := *current.Resource
@@ -271,13 +275,13 @@ func (s *Service) finalize(ctx context.Context, invocation invocation.Invocation
 	if authorization.override {
 		action = model.ActionExamManageOverride
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: resource.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), operation, map[string]any{"exam_id": resource.ExamID.String(), "exam_resource_id": resource.ID.String(), "file_revision_id": resource.SelectedFileRevisionID.String()}, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: resource.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), operation, map[string]any{"exam_id": resource.ExamID.String(), "exam_resource_id": resource.ID.String(), "file_revision_id": resource.SelectedFileRevisionID.String()}, nil)
 	if err != nil {
-		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
+		_ = s.deps.Content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
 		return store.ExamResourceRecord{}, err
 	}
-	at := model.TimeUTC(s.now())
-	result, err := s.persistence.FinalizeUpload(ctx, &store.ExamResourceUploadFinalization{ExamID: resource.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: expected, Resource: resource, LeaseID: leaseID, Rendition: rendition, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	at := model.TimeUTC(s.deps.Now())
+	result, err := s.deps.Persistence.FinalizeUpload(ctx, &store.ExamResourceUploadFinalization{ExamID: resource.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: expected, Resource: resource, LeaseID: leaseID, Rendition: rendition, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -305,7 +309,7 @@ func (s *Service) EditMetadata(ctx context.Context, invocation invocation.Invoca
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	current, err := s.persistence.Get(ctx, command.ExamID, command.ResourceID)
+	current, err := s.deps.Persistence.Get(ctx, command.ExamID, command.ResourceID)
 	if err != nil {
 		return store.ExamResourceRecord{}, storeErrors.Translate(err)
 	}
@@ -320,7 +324,7 @@ func (s *Service) EditMetadata(ctx context.Context, invocation invocation.Invoca
 	if command.DescriptionMarkdown != nil {
 		descriptionMarkdown = *command.DescriptionMarkdown
 	}
-	changed, validationErr := candidate.ApplyMetadata(displayName, descriptionMarkdown, model.TimeUTC(s.now()))
+	changed, validationErr := candidate.ApplyMetadata(displayName, descriptionMarkdown, model.TimeUTC(s.deps.Now()))
 	if validationErr != nil {
 		return store.ExamResourceRecord{}, apperror.Invalid("exam.resource.invalid", "metadata").Wrap(validationErr)
 	}
@@ -330,17 +334,17 @@ func (s *Service) EditMetadata(ctx context.Context, invocation invocation.Invoca
 	return s.metadataMutation(ctx, invocation, authorization, command, idempotency)
 }
 func (s *Service) metadataMutation(ctx context.Context, invocation invocation.Invocation, authorization authorizationDecision, c EditMetadataCommand, idempotency *store.CommandIdempotency) (store.ExamResourceRecord, error) {
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	action := model.ActionExamManage
 	if authorization.override {
 		action = model.ActionExamManageOverride
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "edit_resource_metadata", map[string]any{"exam_id": c.ExamID.String(), "exam_resource_id": c.ResourceID.String()}, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "edit_resource_metadata", map[string]any{"exam_id": c.ExamID.String(), "exam_resource_id": c.ResourceID.String()}, nil)
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
 	displayName, descriptionMarkdown := "", ""
-	current, err := s.persistence.Get(ctx, c.ExamID, c.ResourceID)
+	current, err := s.deps.Persistence.Get(ctx, c.ExamID, c.ResourceID)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -354,7 +358,7 @@ func (s *Service) metadataMutation(ctx context.Context, invocation invocation.In
 	if c.DescriptionMarkdown != nil {
 		descriptionMarkdown = *c.DescriptionMarkdown
 	}
-	result, err := s.persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -395,7 +399,7 @@ func (s *Service) Reorder(ctx context.Context, invocation invocation.Invocation,
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.persistence.List(ctx, c.ExamID)
+	current, err := s.deps.Persistence.List(ctx, c.ExamID)
 	if err != nil {
 		return nil, storeErrors.Translate(err)
 	}
@@ -411,16 +415,16 @@ func (s *Service) Reorder(ctx context.Context, invocation invocation.Invocation,
 			return nil, apperror.New("exam.resource.no_changes")
 		}
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	action := model.ActionExamManage
 	if authorization.override {
 		action = model.ActionExamManageOverride
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "reorder_resources", map[string]any{"exam_id": c.ExamID.String(), "resource_count": len(c.ResourceIDs)}, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "reorder_resources", map[string]any{"exam_id": c.ExamID.String(), "resource_count": len(c.ResourceIDs)}, nil)
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, auditID, err)
 	}
@@ -429,9 +433,9 @@ func (s *Service) Reorder(ctx context.Context, invocation invocation.Invocation,
 	}
 	if !result.Replayed {
 		if result.DraftRevision < 1 {
-			s.failures.Report(ctx, "exam_resource_changed", errors.New("missing committed Draft revision"))
-		} else if effectErr := s.effects.Changed(ctx, c.ExamID, "", result.DraftRevision, "reorder"); effectErr != nil {
-			s.failures.Report(ctx, "exam_resource_changed", effectErr)
+			s.deps.EffectFailures.Report(ctx, "exam_resource_changed", errors.New("missing committed Draft revision"))
+		} else if effectErr := s.deps.Effects.Changed(ctx, c.ExamID, "", result.DraftRevision, "reorder"); effectErr != nil {
+			s.deps.EffectFailures.Report(ctx, "exam_resource_changed", effectErr)
 		}
 	}
 	return result.Items, nil
@@ -449,16 +453,16 @@ func (s *Service) Remove(ctx context.Context, invocation invocation.Invocation, 
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	at := model.TimeUTC(s.now())
+	at := model.TimeUTC(s.deps.Now())
 	action := model.ActionExamManage
 	if authorization.override {
 		action = model.ActionExamManageOverride
 	}
-	auditID, err := s.auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "remove_resource", map[string]any{"exam_id": c.ExamID.String(), "exam_resource_id": c.ResourceID.String()}, nil)
+	auditID, err := s.deps.Auditor.Begin(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: c.ExamID.String()}, model.RoleScopeAcademicUnit, authorization.academicUnitID.String(), "remove_resource", map[string]any{"exam_id": c.ExamID.String(), "exam_resource_id": c.ResourceID.String()}, nil)
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	result, err := s.persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	result, err := s.deps.Persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: invocation.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -474,7 +478,7 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 	if principal.Validate() != nil {
 		return authorizationDecision{}, apperror.Invalid("exam.resource.invalid", "principal")
 	}
-	access, err := s.access.Access(ctx, examID, principal.UserID)
+	access, err := s.deps.Access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return authorizationDecision{}, storeErrors.Translate(err)
 	}
@@ -483,17 +487,17 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 	}
 	var at time.Time
 	if access.ActorIsManager {
-		at = s.now()
+		at = s.deps.Now()
 	}
 	ordinaryAction, overrideAction := model.ActionExamView, model.ActionExamViewOverride
 	if manage {
 		ordinaryAction, overrideAction = model.ActionExamManage, model.ActionExamManageOverride
 	}
-	action, err := manageraccess.SelectAction(ctx, s.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	action, err := manageraccess.SelectAction(ctx, s.deps.Memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
 		return authorizationDecision{}, apperror.New("exam.resource.unavailable").Wrap(err)
 	}
-	if err = s.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
+	if err = s.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return authorizationDecision{}, err
 	}
 	return authorizationDecision{override: action == overrideAction, academicUnitID: access.Exam.AcademicUnitID}, nil
@@ -504,7 +508,7 @@ func (s *Service) authorize(ctx context.Context, invocation invocation.Invocatio
 // no-ops against archived or stale state must reach the audited named Store
 // command so its locked guards remain authoritative.
 func (s *Service) currentActiveDraft(ctx context.Context, invocation invocation.Invocation, examID model.ExamID, expectedRevision int64) bool {
-	snapshot, err := s.access.Get(ctx, examID, invocation.Principal().UserID)
+	snapshot, err := s.deps.Access.Get(ctx, examID, invocation.Principal().UserID)
 	return err == nil && snapshot != nil && snapshot.Exam != nil && snapshot.Draft != nil &&
 		!snapshot.Exam.IsArchived() && snapshot.Draft.Revision == expectedRevision
 }
@@ -512,7 +516,7 @@ func (s *Service) currentActiveDraft(ctx context.Context, invocation invocation.
 func (s *Service) failAudit(ctx context.Context, auditID model.AuditEventID, err error) error {
 	mapped := storeErrors.Translate(err)
 	code := apperror.CodeOf(mapped, "exam.resource.unavailable")
-	if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
+	if auditErr := s.deps.Auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
@@ -521,8 +525,8 @@ func (s *Service) effect(ctx context.Context, result *store.ExamResourceCommandR
 	if result.Replayed || result.Value == nil {
 		return
 	}
-	if err := s.effects.Changed(ctx, result.Value.Resource.ExamID, result.Value.Resource.ID, result.Value.DraftRevision, operation); err != nil {
-		s.failures.Report(ctx, "exam_resource_changed", err)
+	if err := s.deps.Effects.Changed(ctx, result.Value.Resource.ExamID, result.Value.Resource.ID, result.Value.DraftRevision, operation); err != nil {
+		s.deps.EffectFailures.Report(ctx, "exam_resource_changed", err)
 	}
 }
 func mapContent(err error) error {

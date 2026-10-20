@@ -62,27 +62,27 @@ type ReleaseRetentionHoldCommand struct {
 
 // Records owns the separate post-delivery completion and preservation lifecycle.
 // Retention scheduling and deletion are separate use cases.
-type Records struct {
-	persistence store.ExamRecordsStore
-	access      store.ExamAuthoringStore
-	memberships manageraccess.Memberships
-	authorizer  RecordsAuthorizer
-	auditor     Auditor
-	recentTTL   time.Duration
-	now         func() time.Time
-	newHoldID   func() model.RetentionHoldID
+type Records struct{ deps RecordsDependencies }
+
+// RecordsDependencies are the collaborators of Records; NewRecords validates them once and the
+// service retains them unchanged.
+type RecordsDependencies struct {
+	Persistence store.ExamRecordsStore
+	Access      store.ExamAuthoringStore
+	Memberships manageraccess.Memberships
+	Authorizer  RecordsAuthorizer
+	Auditor     Auditor
+	RecentTTL   time.Duration
+	Now         func() time.Time
+	NewHoldID   func() model.RetentionHoldID
 }
 
-func NewRecords(persistence store.ExamRecordsStore, access store.ExamAuthoringStore,
-	memberships manageraccess.Memberships, authorizer RecordsAuthorizer, auditor Auditor,
-	recentTTL time.Duration, now func() time.Time, newHoldID func() model.RetentionHoldID,
-) (*Records, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil ||
-		recentTTL <= 0 || now == nil || newHoldID == nil {
+func NewRecords(deps RecordsDependencies) (*Records, error) {
+	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil ||
+		deps.RecentTTL <= 0 || deps.Now == nil || deps.NewHoldID == nil {
 		return nil, errors.New("Exam records dependencies are required")
 	}
-	return &Records{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer,
-		auditor: auditor, recentTTL: recentTTL, now: now, newHoldID: newHoldID}, nil
+	return &Records{deps: deps}, nil
 }
 
 func (r *Records) authorize(ctx context.Context, invocation invocation.Invocation, scope model.RetentionHoldScope,
@@ -92,7 +92,7 @@ func (r *Records) authorize(ctx context.Context, invocation invocation.Invocatio
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || scope.Validate() != nil {
 		return nil, "", apperror.Invalid("exam.invalid", "scope")
 	}
-	resolved, err := r.persistence.Resolve(ctx, scope)
+	resolved, err := r.deps.Persistence.Resolve(ctx, scope)
 	if err != nil {
 		return nil, "", examRecordsStoreErrors.Translate(err)
 	}
@@ -101,23 +101,23 @@ func (r *Records) authorize(ctx context.Context, invocation invocation.Invocatio
 		return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("Exam records scope projection is incomplete"))
 	}
 	if excludeSelf && principal.UserID == resolved.CandidateUserID {
-		return nil, "", r.authorizer.Deny(ctx, invocation, ordinary, scope.Resource(), resolved.AcademicUnitID)
+		return nil, "", r.deps.Authorizer.Deny(ctx, invocation, ordinary, scope.Resource(), resolved.AcademicUnitID)
 	}
 	action := ordinary
 	if override != "" {
-		access, accessErr := r.access.Access(ctx, scope.ExamID, principal.UserID)
+		access, accessErr := r.deps.Access.Access(ctx, scope.ExamID, principal.UserID)
 		if accessErr != nil {
 			return nil, "", examRecordsStoreErrors.Translate(accessErr)
 		}
 		if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || access.Exam.AcademicUnitID != resolved.AcademicUnitID {
 			return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("Exam records access projection is incomplete"))
 		}
-		action, err = manageraccess.SelectAction(ctx, r.memberships, principal.UserID, access, model.TimeUTC(r.now()), ordinary, override)
+		action, err = manageraccess.SelectAction(ctx, r.deps.Memberships, principal.UserID, access, model.TimeUTC(r.deps.Now()), ordinary, override)
 		if err != nil {
 			return nil, "", apperror.New("exam.unavailable").Wrap(err)
 		}
 	}
-	if err = r.authorizer.Authorize(ctx, invocation, action, scope.Resource()); err != nil {
+	if err = r.deps.Authorizer.Authorize(ctx, invocation, action, scope.Resource()); err != nil {
 		return nil, "", err
 	}
 	return resolved, action, nil
@@ -131,7 +131,7 @@ func (r *Records) GetCompletion(ctx context.Context, invocation invocation.Invoc
 	if _, _, err := r.authorize(ctx, invocation, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, false); err != nil {
 		return nil, err
 	}
-	value, err := r.persistence.GetCompletion(ctx, examID, sittingID)
+	value, err := r.deps.Persistence.GetCompletion(ctx, examID, sittingID)
 	if err != nil {
 		return nil, examRecordsStoreErrors.Translate(err)
 	}
@@ -149,7 +149,7 @@ func (r *Records) FindReviewWaiver(ctx context.Context, invocation invocation.In
 	if _, _, err := r.authorize(ctx, invocation, scope, model.ActionExamRecordsComplete, model.ActionExamRecordsCompleteOverride, true); err != nil {
 		return nil, err
 	}
-	value, found, err := r.persistence.FindReviewWaiver(ctx, scope)
+	value, found, err := r.deps.Persistence.FindReviewWaiver(ctx, scope)
 	if err != nil {
 		return nil, examRecordsStoreErrors.Translate(err)
 	}
@@ -172,18 +172,18 @@ func (r *Records) begin(ctx context.Context, invocation invocation.Invocation, s
 	if scope.Scope.SubmissionID.IsValid() {
 		data["submission_id"] = scope.Scope.SubmissionID.String()
 	}
-	id, err := r.auditor.Begin(ctx, invocation, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
+	id, err := r.deps.Auditor.Begin(ctx, invocation, action, scope.Scope.Resource(), model.RoleScopeAcademicUnit,
 		scope.AcademicUnitID.String(), operation, data, nil)
 	if err != nil {
 		return store.ExamRecordsMutation{}, err
 	}
 	return store.ExamRecordsMutation{Scope: scope.Scope, Principal: invocation.Principal(), Action: action,
-		AuditEventID: id, AuditAt: model.MillisFromTime(model.TimeUTC(r.now()))}, nil
+		AuditEventID: id, AuditAt: model.MillisFromTime(model.TimeUTC(r.deps.Now()))}, nil
 }
 
 func (r *Records) fail(ctx context.Context, mutation store.ExamRecordsMutation, err error) error {
 	mapped := examRecordsStoreErrors.Translate(err)
-	if auditErr := r.auditor.Fail(ctx, mutation.AuditEventID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+	if auditErr := r.deps.Auditor.Fail(ctx, mutation.AuditEventID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
@@ -208,7 +208,7 @@ func (r *Records) CompleteRecords(ctx context.Context, invocation invocation.Inv
 	if err != nil {
 		return nil, err
 	}
-	result, err := r.persistence.CompleteRecords(ctx, &store.ExamRecordsCompletion{ExamRecordsMutation: mutation,
+	result, err := r.deps.Persistence.CompleteRecords(ctx, &store.ExamRecordsCompletion{ExamRecordsMutation: mutation,
 		ExpectedRevision: command.ExpectedRevision, AcknowledgedEvidenceRevision: command.AcknowledgedEvidenceRevision}, idempotency)
 	if err != nil {
 		return nil, r.fail(ctx, mutation, err)
@@ -238,7 +238,7 @@ func (r *Records) WaiveReview(ctx context.Context, invocation invocation.Invocat
 	if err != nil {
 		return nil, err
 	}
-	result, err := r.persistence.WaiveReview(ctx, &store.ExamRecordsReviewWaiver{ExamRecordsMutation: mutation,
+	result, err := r.deps.Persistence.WaiveReview(ctx, &store.ExamRecordsReviewWaiver{ExamRecordsMutation: mutation,
 		ExpectedRevision: command.ExpectedRevision, ExpectedReviewRevision: command.ExpectedReviewRevision,
 		ExpectedDeliveryInventoryRevision: command.ExpectedDeliveryInventoryRevision, ExpectedDiscrepancyCount: command.ExpectedDiscrepancyCount, ReasonCode: command.ReasonCode, PrivateReason: command.PrivateReason}, idempotency)
 	if err != nil {
@@ -257,7 +257,7 @@ func (r *Records) ListHolds(ctx context.Context, invocation invocation.Invocatio
 	if _, _, err := r.authorize(ctx, invocation, query.Scope, model.ActionExamRecordsHold, model.ActionExamRecordsHoldOverride, false); err != nil {
 		return nil, err
 	}
-	page, err := r.persistence.ListHolds(ctx, query)
+	page, err := r.deps.Persistence.ListHolds(ctx, query)
 	if err != nil {
 		return nil, examRecordsStoreErrors.Translate(err)
 	}
@@ -286,7 +286,7 @@ func (r *Records) CreateHold(ctx context.Context, invocation invocation.Invocati
 	if err != nil {
 		return nil, err
 	}
-	holdID := r.newHoldID()
+	holdID := r.deps.NewHoldID()
 	if !holdID.IsValid() {
 		return nil, apperror.New("exam.unavailable").Wrap(errors.New("Retention hold identity is invalid"))
 	}
@@ -294,7 +294,7 @@ func (r *Records) CreateHold(ctx context.Context, invocation invocation.Invocati
 	if err != nil {
 		return nil, err
 	}
-	result, err := r.persistence.CreateHold(ctx, &store.ExamRecordsHoldCreation{ExamRecordsMutation: mutation,
+	result, err := r.deps.Persistence.CreateHold(ctx, &store.ExamRecordsHoldCreation{ExamRecordsMutation: mutation,
 		HoldID: holdID, ReasonCode: command.ReasonCode, PrivateReason: command.PrivateReason}, idempotency)
 	if err != nil {
 		return nil, r.fail(ctx, mutation, err)
@@ -322,7 +322,7 @@ func (r *Records) ReleaseHold(ctx context.Context, invocation invocation.Invocat
 	if !invocation.Principal().HasStrongAuthentication() {
 		return nil, apperror.New("authentication.strong_required")
 	}
-	if !invocation.Principal().IsRecentlyAuthenticated(model.TimeUTC(r.now()), r.recentTTL) {
+	if !invocation.Principal().IsRecentlyAuthenticated(model.TimeUTC(r.deps.Now()), r.deps.RecentTTL) {
 		return nil, apperror.New("authentication.reauthentication_required")
 	}
 	mutation, err := r.begin(ctx, invocation, scope, action, "release_hold", map[string]any{"retention_hold_id": command.HoldID.String(),
@@ -330,9 +330,9 @@ func (r *Records) ReleaseHold(ctx context.Context, invocation invocation.Invocat
 	if err != nil {
 		return nil, err
 	}
-	result, err := r.persistence.ReleaseHold(ctx, &store.ExamRecordsHoldRelease{ExamRecordsMutation: mutation,
+	result, err := r.deps.Persistence.ReleaseHold(ctx, &store.ExamRecordsHoldRelease{ExamRecordsMutation: mutation,
 		HoldID: command.HoldID, ExpectedRevision: command.ExpectedRevision, ReasonCode: command.ReasonCode,
-		PrivateReason: command.PrivateReason, RecentAuthenticationTTL: r.recentTTL}, idempotency)
+		PrivateReason: command.PrivateReason, RecentAuthenticationTTL: r.deps.RecentTTL}, idempotency)
 	if err != nil {
 		return nil, r.fail(ctx, mutation, err)
 	}

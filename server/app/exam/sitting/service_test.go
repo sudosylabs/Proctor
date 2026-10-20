@@ -754,8 +754,20 @@ func newFixture(t *testing.T) fixture {
 	authorizer, auditor, systemAudit, effects := &authorizerFake{}, &auditorFake{id: model.NewId()}, &systemAuditorFake{id: model.NewId()}, &effectsFake{}
 	jobs := &lifecycleJobFactoryFake{open: &model.Job{}, deadline: &model.Job{}, finalize: &model.Job{}}
 	mail := &scheduleMailPreparerFake{result: &store.ExamSittingMailFanout{}}
-	service, err := New(persistence, access, memberships, authorizer, auditor, systemAudit, effects, effects, jobs,
-		mail, func() time.Time { return testNow }, func() model.ExamSittingID { return sittingID })
+	service, err := New(Dependencies{
+		Persistence:    persistence,
+		Access:         access,
+		Memberships:    memberships,
+		Authorizer:     authorizer,
+		Auditor:        auditor,
+		SystemAuditor:  systemAudit,
+		Effects:        effects,
+		EffectFailures: effects,
+		Jobs:           jobs,
+		Mail:           mail,
+		Now:            func() time.Time { return testNow },
+		NewID:          func() model.ExamSittingID { return sittingID },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

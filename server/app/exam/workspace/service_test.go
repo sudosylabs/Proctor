@@ -58,7 +58,7 @@ func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	at := time.Date(2026, 8, 14, 10, 0, 0, 123456789, time.UTC)
-	fixture.service.now = func() time.Time { return at }
+	fixture.service.deps.Now = func() time.Time { return at }
 	_, err := fixture.service.CreateFile(context.Background(), fixture.invocation, CreateFileCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "empty.txt", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(nil), Size: 0, IdempotencyKey: "microsecond-file",
@@ -77,7 +77,7 @@ func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
 	failure := errors.New("membership unavailable")
-	fixture.service.memberships = fakeMemberships{err: failure}
+	fixture.service.deps.Memberships = fakeMemberships{err: failure}
 	_, err := fixture.service.CreateDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key",
 	})
@@ -294,9 +294,20 @@ func newServiceFixture(t *testing.T) *serviceFixture {
 	auditor := &fakeWorkspaceAuditor{}
 	effects := &fakeWorkspaceEffects{}
 	content := &fakeWorkspaceContent{persistence: persistence}
-	service, err := NewService(persistence, persistence, fakeMemberships{unitID: exam.AcademicUnitID}, authorizer, auditor, content, effects, fakeFailures{},
-		func() time.Time { return at },
-		model.NewStarterWorkspaceEntryID, model.NewStarterWorkspaceObjectID, model.NewWorkspaceContentVersion)
+	service, err := New(Dependencies{
+		Persistence:    persistence,
+		Access:         persistence,
+		Memberships:    fakeMemberships{unitID: exam.AcademicUnitID},
+		Authorizer:     authorizer,
+		Auditor:        auditor,
+		Content:        content,
+		Effects:        effects,
+		EffectFailures: fakeFailures{},
+		Now:            func() time.Time { return at },
+		NewEntryID:     model.NewStarterWorkspaceEntryID,
+		NewObjectID:    model.NewStarterWorkspaceObjectID,
+		NewVersion:     model.NewWorkspaceContentVersion,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

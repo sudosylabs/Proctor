@@ -85,6 +85,12 @@ Workspace aggregate and narrow audit, content, and realtime ports. None imports
 the parent application package or selects SQL, VFS, WebSocket, Jobs, or other
 infrastructure.
 
+Every Exam service is constructed the same way: `New(Dependencies)
+(*Service, error)` in a child package, or `NewX(XDependencies) (*X, error)`
+for each service of the root `app/exam` package. The constructor validates
+every collaborator once and the service keeps them in a single `deps` field;
+no Exam service takes positional collaborators.
+
 Exam command shapes belong to the child service that owns their policy. When
 the public `app.App` entry point accepts the same shape, its established command
 name may alias that owned type instead of repeating fields and rebuilding the

@@ -44,24 +44,28 @@ type PublicationEffects interface {
 
 // Publication owns the authorization, audit, persistence and after-commit
 // effect recipe for freezing Drafts into immutable Exam Revisions.
-type Publication struct {
-	institutionOrigin string
-	store             store.ExamRevisionStore
-	access            store.ExamAuthoringStore
-	memberships       manageraccess.Memberships
-	authorizer        Authorizer
-	auditor           Auditor
-	effects           PublicationEffects
-	failures          EffectFailures
-	now               func() time.Time
-	newID             func() model.ExamRevisionID
+type Publication struct{ deps PublicationDependencies }
+
+// PublicationDependencies are the collaborators of Publication; NewPublication validates them once and the
+// service retains them unchanged.
+type PublicationDependencies struct {
+	Persistence       store.ExamRevisionStore
+	Access            store.ExamAuthoringStore
+	Memberships       manageraccess.Memberships
+	Authorizer        Authorizer
+	Auditor           Auditor
+	Effects           PublicationEffects
+	EffectFailures    EffectFailures
+	Now               func() time.Time
+	NewID             func() model.ExamRevisionID
+	InstitutionOrigin string
 }
 
-func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthoringStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects PublicationEffects, failures EffectFailures, now func() time.Time, newID func() model.ExamRevisionID, institutionOrigin string) (*Publication, error) {
-	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
+func NewPublication(deps PublicationDependencies) (*Publication, error) {
+	if deps.Persistence == nil || deps.Access == nil || deps.Memberships == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil || deps.EffectFailures == nil || deps.Now == nil || deps.NewID == nil {
 		return nil, errors.New("Exam Revision publication dependencies are required")
 	}
-	return &Publication{institutionOrigin: institutionOrigin, store: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Publication{deps: deps}, nil
 }
 
 func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocation, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
@@ -76,39 +80,39 @@ func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocat
 	if err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	at := model.TimeUTC(p.now())
-	revisionID := p.newID()
+	at := model.TimeUTC(p.deps.Now())
+	revisionID := p.deps.NewID()
 	if !revisionID.IsValid() {
 		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "revision_id")
 	}
-	access, err := p.access.Access(ctx, command.ExamID, principal.UserID)
+	access, err := p.deps.Access.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return store.ExamRevisionSummary{}, examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
-	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, at, model.ActionExamPublish, model.ActionExamPublishOverride)
+	action, err := manageraccess.SelectAction(ctx, p.deps.Memberships, principal.UserID, access, at, model.ActionExamPublish, model.ActionExamPublishOverride)
 	if err != nil {
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
-	if err = p.authorizer.Authorize(ctx, invocation, action, resource); err != nil {
+	if err = p.deps.Authorizer.Authorize(ctx, invocation, action, resource); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	auditID, err := p.auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
+	auditID, err := p.deps.Auditor.Begin(ctx, invocation, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "publish", map[string]any{
 		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
 	}, nil)
 	if err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	result, err := p.store.Publish(ctx, &store.ExamRevisionPublication{InstitutionOrigin: p.institutionOrigin, RevisionID: revisionID, ExamID: command.ExamID,
+	result, err := p.deps.Persistence.Publish(ctx, &store.ExamRevisionPublication{InstitutionOrigin: p.deps.InstitutionOrigin, RevisionID: revisionID, ExamID: command.ExamID,
 		ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamPublishOverride,
 		ExpectedDraftRevision: command.ExpectedDraftRevision, Kind: model.ExamRevisionPublicationStandard,
 		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := examStoreErrors.Translate(err)
-		if auditErr := p.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
+		if auditErr := p.deps.Auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return store.ExamRevisionSummary{}, errors.Join(mapped, auditErr)
 		}
 		return store.ExamRevisionSummary{}, mapped
@@ -117,8 +121,8 @@ func (p *Publication) Publish(ctx context.Context, invocation invocation.Invocat
 		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam Revision store returned no result"))
 	}
 	if !result.Replayed {
-		if effectErr := p.effects.RevisionPublished(ctx, *result.Revision); effectErr != nil {
-			p.failures.Report(ctx, "exam_revision_published", effectErr)
+		if effectErr := p.deps.Effects.RevisionPublished(ctx, *result.Revision); effectErr != nil {
+			p.deps.EffectFailures.Report(ctx, "exam_revision_published", effectErr)
 		}
 	}
 	return *result.Revision, nil
@@ -128,7 +132,7 @@ func (p *Publication) Get(ctx context.Context, invocation invocation.Invocation,
 	if err := p.authorizeView(ctx, invocation, examID); err != nil {
 		return store.ExamRevisionSummary{}, err
 	}
-	revision, err := p.store.GetSummary(ctx, examID, revisionID)
+	revision, err := p.deps.Persistence.GetSummary(ctx, examID, revisionID)
 	if err != nil {
 		return store.ExamRevisionSummary{}, examStoreErrors.Translate(err)
 	}
@@ -145,7 +149,7 @@ func (p *Publication) List(ctx context.Context, invocation invocation.Invocation
 	if query.Limit < 1 || query.Limit > 200 {
 		return RevisionPage{}, apperror.Invalid("exam.invalid", "limit")
 	}
-	items, err := p.store.List(ctx, store.ExamRevisionListOptions{ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit + 1})
+	items, err := p.deps.Persistence.List(ctx, store.ExamRevisionListOptions{ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit + 1})
 	if err != nil {
 		return RevisionPage{}, examStoreErrors.Translate(err)
 	}
@@ -161,16 +165,16 @@ func (p *Publication) authorizeView(ctx context.Context, invocation invocation.I
 	if principal.Validate() != nil || !examID.IsValid() {
 		return apperror.Invalid("exam.invalid", "exam_id")
 	}
-	access, err := p.access.Access(ctx, examID, principal.UserID)
+	access, err := p.deps.Access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return examStoreErrors.Translate(err)
 	}
 	if access == nil || access.Exam == nil {
 		return apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
-	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, model.TimeUTC(p.now()), model.ActionExamView, model.ActionExamViewOverride)
+	action, err := manageraccess.SelectAction(ctx, p.deps.Memberships, principal.UserID, access, model.TimeUTC(p.deps.Now()), model.ActionExamView, model.ActionExamViewOverride)
 	if err != nil {
 		return apperror.New("exam.unavailable").Wrap(err)
 	}
-	return p.authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
+	return p.deps.Authorizer.Authorize(ctx, invocation, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }

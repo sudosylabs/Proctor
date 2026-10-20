@@ -517,9 +517,22 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	outcomes := &commandOutcomesFake{}
 	persistence := &authoringStoreFake{order: &order, examID: examID, unitID: unitID, actorID: userID}
 	effects := &effectsFake{order: &order}
-	service, err := NewAuthoring(persistence, memberships, users, mail, authorizer, auditor, outcomes, effects, effects, func() time.Time {
-		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
-	}, func() model.ExamID { return examID }, "https://institution.example")
+	service, err := NewAuthoring(AuthoringDependencies{
+		Persistence:    persistence,
+		Memberships:    memberships,
+		Users:          users,
+		Mail:           mail,
+		Authorizer:     authorizer,
+		Auditor:        auditor,
+		Outcomes:       outcomes,
+		Effects:        effects,
+		EffectFailures: effects,
+		Now: func() time.Time {
+			return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
+		},
+		NewID:             func() model.ExamID { return examID },
+		InstitutionOrigin: "https://institution.example",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

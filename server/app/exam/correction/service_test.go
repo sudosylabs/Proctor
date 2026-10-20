@@ -247,7 +247,26 @@ func newCorrectionFixture(t *testing.T) *correctionFixture {
 	f.effects = &correctionEffectFake{f: f}
 	f.content = &correctionContentFake{f: f}
 	f.revisions = &correctionRevisionsFake{}
-	service, err := New(f.persistence, f.revisions, f.access, f.memberships, f.authorizer, f.auditor, f.effects, f.effects, f.content, func() time.Time { return f.at }, model.NewExamCorrectionResourceStageID, model.NewExamResourceID, model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID, model.NewExamRevisionID, "https://institution.example")
+	service, err := New(Dependencies{
+		Persistence:       f.persistence,
+		Revisions:         f.revisions,
+		Access:            f.access,
+		Memberships:       f.memberships,
+		Authorizer:        f.authorizer,
+		Auditor:           f.auditor,
+		Effects:           f.effects,
+		EffectFailures:    f.effects,
+		Content:           f.content,
+		Now:               func() time.Time { return f.at },
+		NewStageID:        model.NewExamCorrectionResourceStageID,
+		NewResourceID:     model.NewExamResourceID,
+		NewEntryID:        model.NewFileEntryID,
+		NewFileRevisionID: model.NewFileRevisionID,
+		NewLeaseID:        model.NewUploadLeaseID,
+		NewRenditionID:    model.NewFileRenditionID,
+		NewExamRevisionID: model.NewExamRevisionID,
+		InstitutionOrigin: "https://institution.example",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
