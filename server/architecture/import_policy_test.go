@@ -290,6 +290,11 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "application error vocabulary",
+		sources:        []pathPattern{exact(serverModule + "/app/apperror")},
+		deniedStandard: standardInfrastructure,
+	},
+	{
 		name:           "idempotency application",
 		sources:        []pathPattern{exact(serverModule + "/app/idempotency")},
 		deniedStandard: standardInfrastructure,
@@ -318,6 +323,7 @@ var dependencyRules = []dependencyRule{
 		},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
 			exact(serverModule+"/app/exam/manageraccess"),
 			exact(serverModule+"/model"),
@@ -333,6 +339,7 @@ var dependencyRules = []dependencyRule{
 		},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
@@ -344,6 +351,7 @@ var dependencyRules = []dependencyRule{
 		sources:        []pathPattern{subtree(serverModule + "/app/exam")},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/app/exam/safemarkdown"),
@@ -390,6 +398,7 @@ var dependencyRules = []dependencyRule{
 		sources:        []pathPattern{subtree(serverModule + "/app")},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/idempotency"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
@@ -415,6 +424,7 @@ var dependencyRules = []dependencyRule{
 		deniedStandard: standardInfrastructureExceptHTTP,
 		project: only(
 			exact(serverModule+"/app"),
+			exact(serverModule+"/app/apperror"),
 			exact(serverModule+"/app/realtime"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/localization"),
@@ -585,6 +595,7 @@ func TestDependencyRulePrecedence(t *testing.T) {
 	}{
 		{packagePath: serverModule + "/app/jobs", wantRule: "concrete jobs"},
 		{packagePath: serverModule + "/app/idempotency", wantRule: "idempotency application"},
+		{packagePath: serverModule + "/app/apperror", wantRule: "application error vocabulary"},
 		{packagePath: serverModule + "/app/exam/manageraccess", wantRule: "exam manager access"},
 		{packagePath: serverModule + "/app/exam", wantRule: "exam manager access consumers"},
 		{packagePath: serverModule + "/app/exam/review", wantRule: "exam idempotency consumers"},

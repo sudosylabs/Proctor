@@ -25,7 +25,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/internal/weborigin"
 	"github.com/sudosylabs/proctor/server/localization"
@@ -243,13 +243,13 @@ func (h *Hub) Accept(
 		if h.recorder != nil {
 			h.recorder.ConnectionOpened("unavailable")
 		}
-		return app.NewError("websocket.unavailable")
+		return apperror.New("websocket.unavailable")
 	}
 	if !h.OriginAllowed(request.Header.Get("Origin"), allowMissingOrigin) {
 		if h.recorder != nil {
 			h.recorder.ConnectionOpened("origin_invalid")
 		}
-		return app.NewError("websocket.origin.invalid")
+		return apperror.New("websocket.origin.invalid")
 	}
 	// A handshake refused before the connection is hijacked leaves the
 	// response uncommitted, so the HTTP transport answers it with Problem
@@ -274,9 +274,9 @@ func (h *Hub) Accept(
 		h.logger.WarnContext(request.Context(), "WebSocket upgrade failed", err)
 		switch {
 		case refusedStatus >= http.StatusBadRequest && refusedStatus < http.StatusInternalServerError:
-			return app.NewError("request.invalid").Wrap(err)
+			return apperror.New("request.invalid").Wrap(err)
 		case refusedStatus != 0:
-			return app.NewError("websocket.unavailable").Wrap(err)
+			return apperror.New("websocket.unavailable").Wrap(err)
 		}
 		return nil
 	}

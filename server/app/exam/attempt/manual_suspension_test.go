@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -104,8 +105,8 @@ func TestSuspendByManagerConcealsSelfAndValidatesBeforeAuthorization(t *testing.
 	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
 	_, err := f.service.SuspendByManager(context.Background(), f.call, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "self", IdempotencyKey: "kick-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
 		f.persistence.manualSuspension != nil || f.effects.kicked != 0 {
 		t.Fatalf("self kick error=%v audit=%#v", err, f.audit)
 	}
@@ -130,8 +131,8 @@ func TestSuspendByManagerRejectsInconsistentStoreOutcome(t *testing.T) {
 	f.persistence.manualSuspensionResult = stored
 	_, err := f.service.SuspendByManager(context.Background(), f.call, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "kick", IdempotencyKey: "kick-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" || f.effects.kicked != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.kicked != 0 {
 		t.Fatalf("flag-linked manual outcome error = %v", err)
 	}
 }

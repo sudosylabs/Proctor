@@ -15,12 +15,12 @@ import (
 	"strings"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 func TestLoginCapacityRefusalIsRetryableAndDoesNotIssueCredentials(t *testing.T) {
 	logger, _ := newTestLogger(t)
-	failure := application.NewError("service.busy").Wrap(errors.New("private capacity detail"))
+	failure := apperror.New("service.busy").Wrap(errors.New("private capacity detail"))
 	fake := &authenticationEntryHTTPApplication{loginError: failure}
 	api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, authenticationResource(fake, browserCookies{}))
 	request := newJSONRequest(http.MethodPost, "/api/v1/auth/login",
@@ -39,7 +39,7 @@ func TestLoginCapacityRefusalIsRetryableAndDoesNotIssueCredentials(t *testing.T)
 	if applicationErrorRequiresLogging(failure) {
 		t.Fatal("capacity refusals must use bounded counters rather than per-request error logging")
 	}
-	if !applicationErrorRequiresLogging(application.NewError("authentication.internal")) {
+	if !applicationErrorRequiresLogging(apperror.New("authentication.internal")) {
 		t.Fatal("unexpected failures lost their operator diagnostics")
 	}
 }

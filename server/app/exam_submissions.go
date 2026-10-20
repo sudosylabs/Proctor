@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -52,7 +53,7 @@ func (a *App) GetExamSubmission(ctx context.Context, invocation Invocation,
 		return ExamSubmissionManagerView{}, examAttemptError(err, true)
 	}
 	if result == nil {
-		return ExamSubmissionManagerView{}, NewError("exam.attempt.unavailable")
+		return ExamSubmissionManagerView{}, apperror.New("exam.attempt.unavailable")
 	}
 	return *result, nil
 }
@@ -77,7 +78,7 @@ func (a *App) OpenExamSubmissionFile(ctx context.Context, invocation Invocation,
 		return OpenedExamAttemptContent{}, examAttemptError(err, true)
 	}
 	if result == nil {
-		return OpenedExamAttemptContent{}, NewError("exam.attempt.unavailable")
+		return OpenedExamAttemptContent{}, apperror.New("exam.attempt.unavailable")
 	}
 	return *result, nil
 }

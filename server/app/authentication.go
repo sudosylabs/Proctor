@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -345,13 +346,13 @@ func (s *authenticationService) createLocalUser(
 	}
 	user, job, err := prepareUserDefaultProfilePictureJob(command.User, s.now())
 	if err != nil {
-		return nil, NewError("authentication.user.invalid").Wrap(err)
+		return nil, apperror.New("authentication.user.invalid").Wrap(err)
 	}
 	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: hash}
 	credential.PrepareCreate(model.NewPasswordCredentialID(), user.CreatedAt)
 	settings, err := prepareInitialUserSettingsDocument(user)
 	if err != nil {
-		return nil, NewError("authentication.user.invalid").Wrap(err)
+		return nil, apperror.New("authentication.user.invalid").Wrap(err)
 	}
 	result, err := s.users.Create(ctx, &store.UserCreation{
 		User: user, Settings: settings, PasswordCredential: credential, DefaultProfilePictureJob: job,
@@ -359,7 +360,7 @@ func (s *authenticationService) createLocalUser(
 	if err != nil {
 		var conflict *store.ErrConflict
 		if errors.As(err, &conflict) {
-			return nil, NewError("authentication.user.conflict").Wrap(err)
+			return nil, apperror.New("authentication.user.conflict").Wrap(err)
 		}
 		return nil, authenticationUnavailable(err)
 	}
@@ -382,7 +383,7 @@ func (s *authenticationService) login(
 	command LoginCommand,
 ) (*LoginResult, error) {
 	if command.ClientType == model.SessionClientDesktop || !command.ClientType.IsValid() {
-		return nil, NewError("authentication.client_type.invalid").WithField("field", "client_type")
+		return nil, apperror.New("authentication.client_type.invalid").WithField("field", "client_type")
 	}
 	proof, subject, err := s.proveLocal(ctx, command)
 	if err != nil {
@@ -589,7 +590,7 @@ func (s *authenticationService) createSession(
 	mfaCompletedAt := command.MFACompletedAt
 	if user == nil || !user.IsActive() || !clientType.IsValid() ||
 		!strength.IsValid() || authenticatedAt <= 0 {
-		return nil, nil, NewError("authentication.session.invalid")
+		return nil, nil, apperror.New("authentication.session.invalid")
 	}
 	now := model.TimeUTC(s.now())
 	nowMillis := now.UnixMilli()
@@ -654,9 +655,9 @@ func (s *authenticationService) createSession(
 		if errors.As(saveErr, &conflict) {
 			switch conflict.Constraint {
 			case "sessions_maximum_per_user":
-				return nil, nil, NewError("authentication.sessions.maximum_reached")
+				return nil, nil, apperror.New("authentication.sessions.maximum_reached")
 			case "active_attempt_session_lock":
-				return nil, nil, NewError("authentication.desktop_authorization.account_session_locked")
+				return nil, nil, apperror.New("authentication.desktop_authorization.account_session_locked")
 			}
 		}
 		return nil, nil, authenticationUnavailable(saveErr)
@@ -723,7 +724,7 @@ func (s *authenticationService) checkLoginRateLimit(
 		return authenticationAttemptReceipt{}, rateLimitUnavailableAppError(err)
 	}
 	if limited {
-		return authenticationAttemptReceipt{}, NewError("authentication.rate_limited")
+		return authenticationAttemptReceipt{}, apperror.New("authentication.rate_limited")
 	}
 	return receipt, nil
 }
@@ -757,7 +758,7 @@ func (a *App) AuthenticateBearer(
 		a.recordOperational("authentication", "bearer", nil)
 		return principal, nil
 	}
-	if failure, ok := As(err); !ok || failure.Code() != "authentication.invalid_token" {
+	if failure, ok := apperror.As(err); !ok || failure.Code() != "authentication.invalid_token" {
 		a.recordOperational("authentication", "bearer", err)
 		return nil, err
 	}
@@ -1089,19 +1090,19 @@ func validRawCredential(token string) bool {
 }
 
 func invalidCredentialsAppError() error {
-	return NewError("authentication.invalid_credentials")
+	return apperror.New("authentication.invalid_credentials")
 }
 
 func invalidTokenAppError() error {
-	return NewError("authentication.invalid_token")
+	return apperror.New("authentication.invalid_token")
 }
 
 func authenticationUnavailable(err error) error {
-	return NewError("authentication.internal").Wrap(err)
+	return apperror.New("authentication.internal").Wrap(err)
 }
 
 func rateLimitUnavailableAppError(err error) error {
-	return NewError("authentication.rate_limit_unavailable").Wrap(err)
+	return apperror.New("authentication.rate_limit_unavailable").Wrap(err)
 }
 
 func (s *authenticationService) recoveryState(ctx context.Context, userID model.UserID) (*model.UserMFARecovery, error) {

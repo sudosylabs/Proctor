@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -79,7 +80,7 @@ func (a jobOperationsAuthorization) Authorize(ctx context.Context, invocation In
 
 func (a *App) jobOperationsService() (*jobOperationsService, error) {
 	if a == nil || a.jobOperations == nil {
-		return nil, NewError("job.unavailable")
+		return nil, apperror.New("job.unavailable")
 	}
 	return a.jobOperations, nil
 }
@@ -210,20 +211,20 @@ func (s *jobOperationsService) mutate(ctx context.Context, invocation Invocation
 
 func jobOperationsError(err error) error {
 	if err == nil {
-		return NewError("resource.not_found")
+		return apperror.New("resource.not_found")
 	}
 	switch {
 	case errors.Is(err, jobengine.ErrQueryInvalid):
-		return NewError("job.query.invalid").Wrap(err)
+		return apperror.New("job.query.invalid").Wrap(err)
 	case errors.Is(err, jobengine.ErrCancelUnsupported):
-		return NewError("job.cancel.unsupported").Wrap(err)
+		return apperror.New("job.cancel.unsupported").Wrap(err)
 	case errors.Is(err, jobengine.ErrRetryUnsupported):
-		return NewError("job.retry.unsupported").Wrap(err)
+		return apperror.New("job.retry.unsupported").Wrap(err)
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").Wrap(err)
+		return apperror.New("resource.not_found").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("job.conflict").Wrap(err)
+		return apperror.New("job.conflict").Wrap(err)
 	default:
-		return NewError("job.unavailable").Wrap(err)
+		return apperror.New("job.unavailable").Wrap(err)
 	}
 }

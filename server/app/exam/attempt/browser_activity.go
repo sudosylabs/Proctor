@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -48,14 +49,14 @@ func (service *Service) StartBrowserActivity(ctx context.Context, call Call, com
 	}
 	input := &store.BrowserActivitySourceStart{Access: access, ParticipationID: command.ParticipationID, Generation: command.Generation, SourceSessionID: command.SourceSessionID, PolicyRevisionID: command.PolicyRevisionID, PolicyDigest: command.PolicyDigest, Transition: command.Transition}
 	if input.Declaration().Validate() != nil {
-		return model.BrowserSourceStatus{}, invalid("browser_activity_source")
+		return model.BrowserSourceStatus{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_source")
 	}
 	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
 	if err != nil {
 		return model.BrowserSourceStatus{}, mapStore(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
-		return model.BrowserSourceStatus{}, unavailable(model.ErrDeliveryInvalid)
+		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "start_browser_source", map[string]any{"source_session_id": string(command.SourceSessionID)})
 	if err != nil {
@@ -72,12 +73,12 @@ func (service *Service) StartBrowserActivity(ctx context.Context, call Call, com
 				return model.BrowserSourceStatus{}, projectionErr
 			}
 			refusal.Capabilities = &presentation.RuntimeCapabilities
-			return model.BrowserSourceStatus{}, &Fault{Code: refusal.Code, Cause: err}
+			return model.BrowserSourceStatus{}, apperror.New(browserSourceRefusalCode(refusal.Code)).Wrap(err)
 		}
 		return model.BrowserSourceStatus{}, service.failAudit(ctx, auditID, mapStore(err))
 	}
 	if status == nil || status.Validate() != nil || status.SourceSessionID != command.SourceSessionID {
-		return model.BrowserSourceStatus{}, unavailable(model.ErrDeliveryInvalid)
+		return model.BrowserSourceStatus{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return *status, nil
 }
@@ -86,7 +87,7 @@ func (service *Service) AppendBrowserActivity(ctx context.Context, call Call, co
 	access, err := candidateSelector(call, command.CandidateAccess)
 	if err != nil || !command.ParticipationID.IsValid() || command.Generation < 1 || !command.SourceSessionID.IsValid() ||
 		len(command.Events) < 1 || len(command.Events) > model.BrowserActivityAppendMaximumEvents {
-		return model.BrowserActivityAcknowledgement{}, invalid("browser_activity_append")
+		return model.BrowserActivityAcknowledgement{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_append")
 	}
 	events := append([]model.BrowserActivityEvent(nil), command.Events...)
 	target, err := service.deps.Persistence.ResolveLiveDeliveryTarget(ctx, access)
@@ -94,7 +95,7 @@ func (service *Service) AppendBrowserActivity(ctx context.Context, call Call, co
 		return model.BrowserActivityAcknowledgement{}, mapStore(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
-		return model.BrowserActivityAcknowledgement{}, unavailable(model.ErrDeliveryInvalid)
+		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), "append_browser_activity", map[string]any{"source_session_id": string(command.SourceSessionID), "event_count": len(events)})
 	if err != nil {
@@ -111,7 +112,7 @@ func (service *Service) AppendBrowserActivity(ctx context.Context, call Call, co
 		return model.BrowserActivityAcknowledgement{}, service.failAudit(ctx, auditID, service.browserDeliveryFailure(ctx, deliveryAccess, err))
 	}
 	if !validBrowserActivityAcknowledgement(acknowledgement, command.SourceSessionID, events) {
-		return model.BrowserActivityAcknowledgement{}, unavailable(errors.New("invalid Browser Activity acknowledgement"))
+		return model.BrowserActivityAcknowledgement{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid Browser Activity acknowledgement"))
 	}
 	if acknowledgement.GapAttentionChanged {
 		if effectErr := service.deps.Effects.BrowserActivityGapChanged(ctx, acknowledgement.ExamID,
@@ -162,7 +163,7 @@ type BrowserActivityPage struct {
 func (service *Service) ListBrowserActivity(ctx context.Context, call Call, query BrowserActivityPageQuery) (BrowserActivityPage, error) {
 	if !query.ExamID.IsValid() || !query.SittingID.IsValid() || !query.AttemptID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.AfterReceivedAt.IsZero() != !query.AfterSourceID.IsValid()) || !query.AfterReceivedAt.IsZero() && query.AfterSequence < 1 {
-		return BrowserActivityPage{}, invalid("browser_activity_list")
+		return BrowserActivityPage{}, apperror.Invalid("exam.attempt.invalid", "browser_activity_list")
 	}
 	// Authorize the exact Sitting before reading the Attempt so existence is
 	// not probeable; later exits complete the audit attempt as failed.
@@ -182,10 +183,10 @@ func (service *Service) ListBrowserActivity(ctx context.Context, call Call, quer
 		return BrowserActivityPage{}, service.failAudit(ctx, auditID, err)
 	}
 	if snapshot == nil || snapshot.Attempt == nil || snapshot.Attempt.Validate() != nil || snapshot.Attempt.ExamID != query.ExamID {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, unavailable(errors.New("inconsistent Browser Activity Attempt projection")))
+		return BrowserActivityPage{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Browser Activity Attempt projection")))
 	}
 	if snapshot.Attempt.SittingID != query.SittingID || snapshot.Attempt.CandidateUserID == call.Principal().UserID {
-		return BrowserActivityPage{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+		return BrowserActivityPage{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	items, err := service.deps.Persistence.ListBrowserActivity(ctx, store.BrowserActivityListOptions{ExamID: query.ExamID,
 		SittingID: query.SittingID, AttemptID: query.AttemptID, AfterReceivedAt: model.TimeUTC(query.AfterReceivedAt),
@@ -211,10 +212,10 @@ func browserSourceSelector(call Call, query BrowserSourceQuery) (store.BrowserDe
 	if query.SourceSessionID == "" {
 		selector = query.ParticipationID.String()
 	} else if !query.SourceSessionID.IsValid() {
-		return store.BrowserDeliveryAccess{}, invalid("browser_source")
+		return store.BrowserDeliveryAccess{}, apperror.Invalid("exam.attempt.invalid", "browser_source")
 	}
 	if query.ParticipationID != "" && !query.ParticipationID.IsValid() {
-		return store.BrowserDeliveryAccess{}, invalid("participation_id")
+		return store.BrowserDeliveryAccess{}, apperror.Invalid("exam.attempt.invalid", "participation_id")
 	}
 	access, err := nativeDeliverySelector(call, NativeDeliveryQuery{Access: query.Access, StreamID: selector})
 	if err != nil {
@@ -237,7 +238,7 @@ func (service *Service) BrowserSourceStatus(ctx context.Context, call Call, quer
 		return nil, mapStore(err)
 	}
 	if value == nil || value.Validate() != nil || value.SourceSessionID != query.SourceSessionID {
-		return nil, unavailable(model.ErrDeliveryInvalid)
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }
@@ -248,7 +249,7 @@ func (service *Service) BrowserSourceList(ctx context.Context, call Call, query 
 	}
 	defer release()
 	if !query.ParticipationID.IsValid() || query.SourceSessionID != "" {
-		return nil, invalid("participation_id")
+		return nil, apperror.Invalid("exam.attempt.invalid", "participation_id")
 	}
 	access, err := browserSourceSelector(call, query)
 	if err != nil {
@@ -259,12 +260,25 @@ func (service *Service) BrowserSourceList(ctx context.Context, call Call, query 
 		return nil, mapStore(err)
 	}
 	if values == nil || len(values) > model.BrowserSourceMaximumPerParticipation {
-		return nil, unavailable(model.ErrDeliveryInvalid)
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	for _, value := range values {
 		if value.Validate() != nil || value.ParticipationID != query.ParticipationID || value.AttemptID != query.Access.AttemptID {
-			return nil, unavailable(model.ErrDeliveryInvalid)
+			return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 		}
 	}
 	return values, nil
+}
+
+// browserSourceRefusalCode presents the bounded refusal reason that the Store
+// persisted with a committed predecessor closure.
+func browserSourceRefusalCode(reason string) apperror.Code {
+	switch reason {
+	case "exam.delivery.metadata_capacity":
+		return "exam.delivery.metadata_capacity"
+	case "exam.browser.source_budget_exhausted":
+		return "exam.browser.source_budget_exhausted"
+	default:
+		return "exam.attempt.unavailable"
+	}
 }

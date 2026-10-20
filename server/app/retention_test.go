@@ -12,6 +12,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,7 +40,7 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 			invocation := fixture.invocation
 			switch gate {
 			case "authority":
-				fixture.authorization.err = NewError("authorization.denied")
+				fixture.authorization.err = apperror.New("authorization.denied")
 			case "audit":
 				fixture.audit.beginErr = errors.New("audit unavailable")
 			case "assurance":
@@ -95,7 +96,7 @@ func TestRetentionStoreConflictsStayBounded(t *testing.T) {
 		{store.NewErrNotFound("retention_preview", model.NewRetentionPreviewID().String()), "resource.not_found"},
 		{errors.New("private database error"), "retention.unavailable"},
 	} {
-		if got := retentionError(test.err); !Is(got, test.code) {
+		if got := retentionError(test.err); !apperror.Is(got, test.code) {
 			t.Fatalf("error = %v; want %s", got, test.code)
 		}
 	}

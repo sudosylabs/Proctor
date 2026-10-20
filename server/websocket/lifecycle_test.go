@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
@@ -133,7 +133,7 @@ func TestHubAcceptRequiresStart(t *testing.T) {
 		0,
 		false,
 	)
-	if !app.Is(err, "websocket.unavailable") {
+	if !apperror.Is(err, "websocket.unavailable") {
 		t.Fatalf("Accept() before Start error = %v, want websocket.unavailable", err)
 	}
 }
@@ -158,7 +158,7 @@ func TestHubAcceptReturnsRefusedHandshakeUncommitted(t *testing.T) {
 		CredentialID:   model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess,
 	}, model.RequestMetadata{}, "", 0, false)
-	if !app.Is(err, "request.invalid") {
+	if !apperror.Is(err, "request.invalid") {
 		t.Fatalf("Accept() without upgrade headers error = %v, want request.invalid", err)
 	}
 	if recorder.Body.Len() != 0 || recorder.Code != http.StatusOK || recorder.Flushed {

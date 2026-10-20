@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -66,11 +67,11 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 	t.Parallel()
 	principal := testExamPrincipal(model.NewUserID())
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: model.NewExamSittingID().String()}
-	for _, failure := range []error{&examsitting.Fault{Code: "exam.sitting.not_found"}, NewError("authorization.denied")} {
+	for _, failure := range []error{apperror.New("exam.sitting.not_found"), apperror.New("authorization.denied")} {
 		application := &App{examSittings: &examSittingUseCasesFake{err: failure}}
 		err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{},
 			model.ActionExamSittingView, resource)
-		if !Is(err, "resource.not_found") {
+		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("error = %v, want concealed resource.not_found", err)
 		}
 	}
@@ -152,15 +153,15 @@ func TestExamSittingManagerTransitionsConcealTargetsAndMapChildFaults(t *testing
 		code   string
 		field  string
 	}{
-		{name: "pause conceals missing", cause: &examsitting.Fault{Code: "exam.sitting.not_found"}, code: "resource.not_found", invoke: func(app *App) error {
+		{name: "pause conceals missing", cause: apperror.New("exam.sitting.not_found"), code: "resource.not_found", invoke: func(app *App) error {
 			_, err := app.PauseExamSitting(context.Background(), invocation, command)
 			return err
 		}},
-		{name: "resume conceals denied", cause: NewError("authorization.denied"), code: "resource.not_found", invoke: func(app *App) error {
+		{name: "resume conceals denied", cause: apperror.New("authorization.denied"), code: "resource.not_found", invoke: func(app *App) error {
 			_, err := app.ResumeExamSitting(context.Background(), invocation, command)
 			return err
 		}},
-		{name: "extend maps safe field", cause: &examsitting.Fault{Code: "exam.sitting.invalid", SafeFields: map[string]any{"field": "scheduled_end_at"}}, code: "exam.sitting.invalid", field: "scheduled_end_at", invoke: func(app *App) error {
+		{name: "extend maps safe field", cause: apperror.Invalid("exam.sitting.invalid", "scheduled_end_at"), code: "exam.sitting.invalid", field: "scheduled_end_at", invoke: func(app *App) error {
 			_, err := app.ExtendExamSitting(context.Background(), invocation, ExtendExamSittingCommand{
 				ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
 				ScheduledEndAt: time.Now().Add(time.Hour), PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
@@ -177,11 +178,11 @@ func TestExamSittingManagerTransitionsConcealTargetsAndMapChildFaults(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			err := test.invoke(&App{examSittings: &examSittingUseCasesFake{err: test.cause}})
-			if !Is(err, test.code) {
+			if !apperror.Is(err, test.code) {
 				t.Fatalf("error = %v, want %s", err, test.code)
 			}
 			if test.field != "" {
-				mapped, ok := As(err)
+				mapped, ok := apperror.As(err)
 				if !ok || mapped.Fields()["field"] != test.field {
 					t.Fatalf("safe fields = %#v", mapped)
 				}

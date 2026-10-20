@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -441,7 +442,7 @@ func (s *accountTokenService) checkAccountRecoveryRateLimit(
 		return rateLimitUnavailableAppError(err)
 	}
 	if limited {
-		return NewError("authentication.rate_limited")
+		return apperror.New("authentication.rate_limited")
 	}
 	return nil
 }
@@ -500,13 +501,13 @@ func (s *accountTokenService) logHiddenRecoveryFailure(
 }
 
 func invalidAccountCredential() error {
-	return NewError("authentication.account_token.invalid")
+	return apperror.New("authentication.account_token.invalid")
 }
 
 func accountRecoveryStoreFailure(err error) error {
-	return NewError("authentication.account_recovery.unavailable").Wrap(err)
+	return apperror.New("authentication.account_recovery.unavailable").Wrap(err)
 }
 
 func accountRecoveryUnavailable(err error) error {
-	return NewError("authentication.account_recovery.unavailable").Wrap(err)
+	return apperror.New("authentication.account_recovery.unavailable").Wrap(err)
 }

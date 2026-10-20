@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -118,7 +119,7 @@ func TestInvitationRequiredBeginRejectsWhenInvitationAdmissionIsDisabled(t *test
 		context.Background(), "campus", "/join", model.SessionClientWeb,
 		"", "", "192.0.2.9", model.NewCredentialToken(),
 	)
-	if result != nil || !Is(err, "authentication.external.account_not_linked") {
+	if result != nil || !apperror.Is(err, "authentication.external.account_not_linked") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if provider.beginCalls != 0 {
@@ -137,7 +138,7 @@ func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersis
 	service.loginStates = states
 
 	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientDesktop, "desktop-1", "Desktop", "127.0.0.1")
-	if result != nil || !Is(err, "authentication.external.request.invalid") {
+	if result != nil || !apperror.Is(err, "authentication.external.request.invalid") {
 		t.Fatalf("desktop ordinary login result=%#v err=%v", result, err)
 	}
 	if provider.beginCalls != 0 || states.saved != nil {
@@ -170,7 +171,7 @@ func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	states.saved = nil
-	if _, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"}); !Is(err, "authentication.strong_required") {
+	if _, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"}); !apperror.Is(err, "authentication.strong_required") {
 		t.Fatalf("weak start error = %v", err)
 	}
 	if states.saved != nil {
@@ -240,7 +241,7 @@ func TestProviderConnectionCallbackTerminalizesAttemptWhenProviderRejectsAfterCo
 		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return now }}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !Is(err, "authentication.external.rejected") {
+	if result != nil || !apperror.Is(err, "authentication.external.rejected") {
 		t.Fatalf("completion result=%#v err=%v", result, err)
 	}
 	if auditor.failID != auditID || auditor.failCode != "authentication.external.rejected" {
@@ -276,7 +277,7 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 					Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor(), AutoProvision: true}}}},
 				policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return databaseNow }}
 
-			if _, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{}); !Is(err, "authentication.external.account_not_linked") {
+			if _, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{}); !apperror.Is(err, "authentication.external.account_not_linked") {
 				t.Fatalf("completion error = %v", err)
 			}
 			if identities.resolution == nil || identities.resolution.User != nil || identities.resolution.Settings != nil ||
@@ -346,7 +347,7 @@ func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t 
 	service.loginStates = &externalLoginStateStoreFake{get: &secondState, consumeResult: &secondState, storeNow: databaseNow}
 	service.audit = externalAuditFake{failureCodes: &failureCodes}
 	result, err = service.complete(context.Background(), "campus", secondBindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !Is(err, "authentication.external.invalid") ||
+	if result != nil || !apperror.Is(err, "authentication.external.invalid") ||
 		!slices.Equal(failureCodes, []string{"authentication.external.invalid"}) {
 		t.Fatalf("terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
 	}
@@ -401,7 +402,7 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 	}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !Is(err, "authentication.external.invalid") {
+	if result != nil || !apperror.Is(err, "authentication.external.invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if identities.resolution != nil || acceptor.state != nil {
@@ -431,7 +432,7 @@ func TestExternalAuthenticationCallbackRejectsLegacyDesktopStateBeforeConsumptio
 	}
 	result, err := service.complete(context.Background(), "campus", bindingToken,
 		model.ExternalAuthenticationCallback{Values: map[string][]string{"code": {"accepted"}}}, model.RequestMetadata{})
-	if result != nil || !Is(err, "authentication.external.invalid") {
+	if result != nil || !apperror.Is(err, "authentication.external.invalid") {
 		t.Fatalf("legacy desktop callback result=%#v err=%v", result, err)
 	}
 	if states.consumeCalls != 0 {
@@ -448,7 +449,7 @@ func TestExternalAuthenticationBeginHidesProviderDisabledByCurrentPolicy(t *test
 	}, newAuthenticationCacheFake(), 10)
 	service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{}}
 	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientWeb, "", "", "192.0.2.9")
-	if result != nil || !Is(err, "authentication.external.provider_not_found") {
+	if result != nil || !apperror.Is(err, "authentication.external.provider_not_found") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if provider.beginCalls != 0 {
@@ -570,7 +571,7 @@ func TestExternalAuthenticationInitiationUsesProviderScopedSourceAccounting(t *t
 	if _, err := service.begin(
 		context.Background(), " CAMPUS-A ", "/", model.SessionClientWeb,
 		"", "", "192.0.2.10:5000",
-	); !Is(err, "authentication.rate_limited") {
+	); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("normalized-source threshold error = %v", err)
 	}
 	if _, err := service.begin(
@@ -616,7 +617,7 @@ func TestExternalAuthenticationInitiationAllowsMaximumThenLimitsNext(t *testing.
 	if _, err := service.begin(
 		context.Background(), "campus", "/", model.SessionClientWeb,
 		"", "", "198.51.100.7",
-	); !Is(err, "authentication.rate_limited") {
+	); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("attempt beyond maximum error = %v", err)
 	}
 	if provider.beginCalls != 2 {
@@ -642,7 +643,7 @@ func TestExternalAuthenticationInitiationPreservesValidationAndFailureOrdering(t
 	if _, err := service.begin(
 		context.Background(), "missing", "/", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !Is(err, "authentication.external.provider_not_found") {
+	); !apperror.Is(err, "authentication.external.provider_not_found") {
 		t.Fatalf("missing-provider error = %v", err)
 	}
 	if cache.addCalls != 0 {
@@ -651,7 +652,7 @@ func TestExternalAuthenticationInitiationPreservesValidationAndFailureOrdering(t
 	if _, err := service.begin(
 		context.Background(), "campus", "https://unsafe.example", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !Is(err, "authentication.external.request.invalid") {
+	); !apperror.Is(err, "authentication.external.request.invalid") {
 		t.Fatalf("invalid-request error = %v", err)
 	}
 	if cache.addCalls != 0 {
@@ -660,7 +661,7 @@ func TestExternalAuthenticationInitiationPreservesValidationAndFailureOrdering(t
 	if _, err := service.begin(
 		context.Background(), "campus", "/", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !Is(err, "authentication.rate_limit_unavailable") {
+	); !apperror.Is(err, "authentication.rate_limit_unavailable") {
 		t.Fatalf("counter failure error = %v", err)
 	}
 	if provider.beginCalls != 0 {

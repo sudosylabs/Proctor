@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -61,7 +62,7 @@ func runAuditedMutation[T any](
 	if attempt.ScopeType != "" || attempt.ScopeID != "" {
 		scoped, ok := auditor.(scopedMutationAuditor)
 		if !ok || !attempt.ScopeType.IsValid() || !model.IsValidId(attempt.ScopeID) {
-			return zero, NewError("audit.event.invalid")
+			return zero, apperror.New("audit.event.invalid")
 		}
 		auditID, err = scoped.BeginAtScope(
 			ctx, attempt.Invocation, attempt.Action, attempt.Resource,
@@ -92,12 +93,12 @@ func runAuditedMutation[T any](
 	}
 
 	mapped := mapError(err)
-	failure, ok := As(mapped)
+	failure, ok := apperror.As(mapped)
 	if !ok {
-		mapped = NewError("audit.event.invalid").Wrap(
+		mapped = apperror.New("audit.event.invalid").Wrap(
 			errors.New("mutation error mapper returned no application error"),
 		)
-		failure, _ = As(mapped)
+		failure, _ = apperror.As(mapped)
 	}
 	if auditErr := auditor.Fail(ctx, auditID, failure.Code()); auditErr != nil {
 		return zero, errors.Join(mapped, auditErr)

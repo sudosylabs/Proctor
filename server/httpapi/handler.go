@@ -20,6 +20,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -185,7 +186,7 @@ func writeDPoPApplicationError(writer http.ResponseWriter, request *http.Request
 }
 
 func applicationError(code string) error {
-	return application.NewError(code)
+	return apperror.New(apperror.Code(code))
 }
 
 func requirePrincipalAssurance(
@@ -195,21 +196,21 @@ func requirePrincipalAssurance(
 	recentAuthenticationTTL time.Duration,
 ) error {
 	if principal.ValidateMFARecovery() != nil {
-		return application.NewError("authentication.invalid_token")
+		return apperror.New("authentication.invalid_token")
 	}
 	if principal.MFARecoveryRequired && requirement != AuthMFARecoverySessionRequired && requirement != AuthRecentMFARecoverySessionRequired {
-		return application.NewError("authentication.invalid_token")
+		return apperror.New("authentication.invalid_token")
 	}
 	strongRequired := requirement == AuthStrongSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
 	recentRequired := requirement == AuthRecentMFARecoverySessionRequired || requirement == AuthRecentSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
 	if strongRequired && !principal.HasStrongAuthentication() {
-		return application.NewError("authentication.strong_required")
+		return apperror.New("authentication.strong_required")
 	}
 	if recentRequired &&
 		!principal.IsRecentlyAuthenticated(now, recentAuthenticationTTL) {
-		return application.NewError("authentication.reauthentication_required")
+		return apperror.New("authentication.reauthentication_required")
 	}
 	return nil
 }

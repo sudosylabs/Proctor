@@ -11,6 +11,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -39,7 +40,7 @@ func TestRetentionNoticesUseExactSessionRecipientAndRejectForeignProjection(t *t
 		t.Fatalf("page=%#v err=%v", page, err)
 	}
 	persistence.items = []model.RetentionNotice{{RecipientUserID: model.NewUserID()}}
-	if page, err = app.ListRetentionNotices(t.Context(), fixture.invocation, "", 1); !Is(err, "retention.unavailable") || page != nil {
+	if page, err = app.ListRetentionNotices(t.Context(), fixture.invocation, "", 1); !apperror.Is(err, "retention.unavailable") || page != nil {
 		t.Fatal("foreign recipient escaped")
 	}
 	for _, kind := range []string{"PAT", "restricted"} {
@@ -52,7 +53,7 @@ func TestRetentionNoticesUseExactSessionRecipientAndRejectForeignProjection(t *t
 		}
 		persistence.requestedUser = ""
 		page, err = app.ListRetentionNotices(t.Context(), NewInvocation(p, fixture.invocation.RequestMetadata()), "", 1)
-		if !Is(err, "authentication.required") || page != nil || !persistence.requestedUser.IsZero() {
+		if !apperror.Is(err, "authentication.required") || page != nil || !persistence.requestedUser.IsZero() {
 			t.Fatalf("%s accessed notices", kind)
 		}
 	}

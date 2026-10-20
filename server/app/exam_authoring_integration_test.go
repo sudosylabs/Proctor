@@ -18,6 +18,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -126,7 +127,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &staleTitle, IdempotencyKey: "exam-edit-stale",
 	})
-	if !application.Is(appErr, "exam.draft.revision_conflict") {
+	if !apperror.Is(appErr, "exam.draft.revision_conflict") {
 		t.Fatalf("stale edit error = %v", appErr)
 	}
 	got, appErr := helper.App.GetExam(ctx, invocation, application.GetExamQuery{ExamID: created.Exam.ID})
@@ -163,7 +164,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		t.Fatal(appErr)
 	}
 	managerInvocation := application.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-manager-integration"})
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !application.Is(appErr, "resource.not_found") {
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager without role error = %v", appErr)
 	}
 	managerBinding, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
@@ -178,7 +179,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().End(ctx, managerBinding.ID.String(), managerBindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !application.Is(appErr, "resource.not_found") {
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager after role revocation error = %v", appErr)
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
@@ -187,7 +188,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.AcademicUnitMember().End(ctx, managerMembership.ID.String(), managerMembership.Revision, model.GetMillis()-100); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !application.Is(appErr, "resource.not_found") {
+	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("Manager after membership loss error = %v", appErr)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50)}); err != nil {
@@ -204,7 +205,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken); !application.Is(appErr, "authentication.invalid_token") {
+	if _, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken); !apperror.Is(appErr, "authentication.invalid_token") {
 		t.Fatalf("disabled Manager authentication error = %v", appErr)
 	}
 	reenabledAt := model.GetMillis()
@@ -262,7 +263,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if _, err := persistence.RoleBinding().End(ctx, binding.ID.String(), bindingEndedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !application.Is(appErr, "authorization.denied") {
+	if _, appErr := helper.App.ListExams(ctx, invocation, application.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
 		t.Fatalf("catalog after role ended error = %v", appErr)
 	}
 	if _, err := persistence.RoleBinding().Save(ctx, &model.RoleBinding{
@@ -282,13 +283,13 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	outsiderInvocation := application.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"})
 	_, appErr = helper.App.GetExam(ctx, outsiderInvocation, application.GetExamQuery{ExamID: created.Exam.ID})
-	if !application.Is(appErr, "resource.not_found") {
+	if !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
 	}
 	_, appErr = helper.App.ArchiveExam(ctx, outsiderInvocation, application.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-denied",
 	})
-	if !application.Is(appErr, "resource.not_found") {
+	if !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("outsider archive error = %v, want concealed resource.not_found", appErr)
 	}
 	overrideRole, err := persistence.Role().Save(ctx, &model.Role{Name: "exam-system-override", DisplayName: "Exam System Override", Permissions: []string{
@@ -372,7 +373,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		ExamID: created.Exam.ID, ExpectedDraftRevision: focusPolicy.Draft.Revision,
 		Title: &postArchiveTitle, IdempotencyKey: "exam-edit-after-archive",
 	})
-	if !application.Is(appErr, "exam.archived") {
+	if !apperror.Is(appErr, "exam.archived") {
 		t.Fatalf("post-archive edit error = %v", appErr)
 	}
 

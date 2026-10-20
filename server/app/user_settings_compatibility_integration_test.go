@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -93,7 +94,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 				Source: "{}\n", FormatVersion: targetVersion, ExpectedRevision: view.Revision,
 				IdempotencyKey: "settings-compatibility-" + string(rune('0'+targetVersion)),
 			})
-			if !application.Is(replaceErr, "user_settings.format_unsupported") {
+			if !apperror.Is(replaceErr, "user_settings.format_unsupported") {
 				t.Fatalf("ReplaceOwnUserSettings() error = %v", replaceErr)
 			}
 		})

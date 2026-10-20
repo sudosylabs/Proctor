@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -26,16 +27,16 @@ type AccessPolicyApplication interface {
 type unavailableAccessPolicyApplication struct{}
 
 func (unavailableAccessPolicyApplication) GetAccessPolicy(context.Context, application.Invocation) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, application.NewError("access_policy.unavailable")
+	return application.AccessPolicyView{}, apperror.New("access_policy.unavailable")
 }
 func (unavailableAccessPolicyApplication) PreflightAccessPolicy(context.Context, application.Invocation, application.PreflightAccessPolicyCommand) (application.AccessPolicyPreflightResult, error) {
-	return application.AccessPolicyPreflightResult{}, application.NewError("access_policy.unavailable")
+	return application.AccessPolicyPreflightResult{}, apperror.New("access_policy.unavailable")
 }
 func (unavailableAccessPolicyApplication) ReplaceAccessPolicy(context.Context, application.Invocation, application.ReplaceAccessPolicyCommand) (application.AccessPolicyView, error) {
-	return application.AccessPolicyView{}, application.NewError("access_policy.unavailable")
+	return application.AccessPolicyView{}, apperror.New("access_policy.unavailable")
 }
 func (unavailableAccessPolicyApplication) DiscoverAccess(context.Context) (application.PublicAccessDiscovery, error) {
-	return application.PublicAccessDiscovery{}, application.NewError("access_policy.unavailable")
+	return application.PublicAccessDiscovery{}, apperror.New("access_policy.unavailable")
 }
 
 type accessPolicySettingsRequest struct {
@@ -183,7 +184,7 @@ func requiredAccessPolicySettings(body accessPolicySettingsRequest) (model.Acces
 	requiredBoolean := func(field string, value Optional[bool]) (bool, error) {
 		candidate := value.ValuePointer()
 		if candidate == nil {
-			return false, application.NewError("request.invalid").WithField("field", field)
+			return false, apperror.New("request.invalid").WithField("field", field)
 		}
 		return *candidate, nil
 	}
@@ -213,7 +214,7 @@ func requiredAccessPolicySettings(body accessPolicySettingsRequest) (model.Acces
 	}
 	providerAdmissions := body.ProviderAdmissions.ValuePointer()
 	if providerAdmissions == nil {
-		return model.AccessPolicySettings{}, false, application.NewError("request.invalid").WithField("field", "provider_admissions")
+		return model.AccessPolicySettings{}, false, apperror.New("request.invalid").WithField("field", "provider_admissions")
 	}
 	return model.AccessPolicySettings{
 		LocalLoginEnabled: localLogin, PublicRegistrationEnabled: publicRegistration,

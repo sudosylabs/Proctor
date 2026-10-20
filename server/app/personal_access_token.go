@@ -19,6 +19,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -420,7 +421,7 @@ func (s *personalAccessTokenAdministrationService) prepareSecurityNotice(
 		AcademicUnitScoped: !token.AcademicUnitID.IsZero(),
 	})
 	if err != nil {
-		return store.PersonalAccessTokenSecurityNotice{}, NewError("mail.unavailable").Wrap(err)
+		return store.PersonalAccessTokenSecurityNotice{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	return store.PersonalAccessTokenSecurityNotice{
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
@@ -442,13 +443,13 @@ func requireInteractiveSession(
 ) error {
 	if principal.Validate() != nil ||
 		principal.CredentialType != model.CredentialSessionAccess {
-		return NewError("authentication.session_required")
+		return apperror.New("authentication.session_required")
 	}
 	if recent && !principal.IsRecentlyAuthenticated(
 		now,
 		recentAuthenticationTTL,
 	) {
-		return NewError("authentication.reauthentication_required")
+		return apperror.New("authentication.reauthentication_required")
 	}
 	return nil
 }
@@ -488,11 +489,11 @@ func (s *personalAccessTokenAdministrationService) failPreparedMutation(
 ) error {
 	mapped := personalAccessTokenFailure("personal_access_token", err)
 	code := "personal_access_token.unavailable"
-	if failure, ok := As(mapped); ok {
+	if failure, ok := apperror.As(mapped); ok {
 		code = failure.Code()
 	}
 	if terminalErr := s.tokens.FailMutation(ctx, &store.PersonalAccessTokenMutationFailure{PreparationID: preparationID, ErrorCode: code}); terminalErr != nil {
-		return NewError("audit.unavailable").Wrap(terminalErr)
+		return apperror.New("audit.unavailable").Wrap(terminalErr)
 	}
 	return mapped
 }
@@ -520,11 +521,11 @@ func (a personalAccessTokenAuditAdapter) Prepare(
 }
 
 func invalidPersonalAccessTokenRequest(field string) error {
-	return NewError("personal_access_token.invalid").WithField("field", field)
+	return apperror.New("personal_access_token.invalid").WithField("field", field)
 }
 
 func personalAccessTokenFailure(resource string, err error) error {
-	code := "personal_access_token.unavailable"
+	code := apperror.Code("personal_access_token.unavailable")
 	var conflict *store.ErrConflict
 	switch {
 	case store.IsNotFound(err):
@@ -532,5 +533,5 @@ func personalAccessTokenFailure(resource string, err error) error {
 	case errors.As(err, &conflict) && conflict.Resource == "personal_access_token" && conflict.Constraint == "personal_access_tokens_maximum_per_user":
 		code = "personal_access_token.maximum_reached"
 	}
-	return NewError(code).WithField("resource", resource).Wrap(err)
+	return apperror.New(code).WithField("resource", resource).Wrap(err)
 }

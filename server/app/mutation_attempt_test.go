@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -98,7 +99,7 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 	t.Parallel()
 
 	events := []string{}
-	beginErr := NewError("audit.unavailable")
+	beginErr := apperror.New("audit.unavailable")
 	auditor := &mutationAttemptAuditorFake{
 		events: &events, beginID: model.NewId(), beginErr: beginErr,
 	}
@@ -115,7 +116,7 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 			mutated = true
 			return "", nil
 		},
-		func(err error) error { return NewError("programme.conflict").Wrap(err) },
+		func(err error) error { return apperror.New("programme.conflict").Wrap(err) },
 	)
 	if err != beginErr {
 		t.Fatalf("runAuditedMutation() error = %v, want begin error", err)
@@ -167,7 +168,7 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 	events := []string{}
 	auditID := model.NewId()
 	storeErr := errors.New("store failed")
-	mapped := NewError("programme.conflict").Wrap(storeErr)
+	mapped := apperror.New("programme.conflict").Wrap(storeErr)
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
 	at := time.UnixMilli(500)
 	_, err := runAuditedMutation(
@@ -209,7 +210,7 @@ func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T)
 
 	events := []string{}
 	storeErr := errors.New("store failed")
-	auditErr := NewError("audit.unavailable")
+	auditErr := apperror.New("audit.unavailable")
 	auditor := &mutationAttemptAuditorFake{
 		events: &events, beginID: model.NewId(), failErr: auditErr,
 	}
@@ -224,11 +225,11 @@ func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T)
 		func(context.Context, mutationAttemptReference) (struct{}, error) {
 			return struct{}{}, storeErr
 		},
-		func(err error) error { return NewError("programme.conflict").Wrap(err) },
+		func(err error) error { return apperror.New("programme.conflict").Wrap(err) },
 	)
 	// The audit failure must stay observable without replacing the original
 	// classification that callers and transport mapping resolve first.
-	appErr, ok := As(err)
+	appErr, ok := apperror.As(err)
 	if !ok || appErr.Code() != "programme.conflict" || !errors.Is(err, storeErr) || !errors.Is(err, auditErr) {
 		t.Fatalf("runAuditedMutation() error = %v, want original conflict joined with audit error", err)
 	}
@@ -257,7 +258,7 @@ func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
 				},
 				func(error) error { return mapped },
 			)
-			appErr, ok := As(err)
+			appErr, ok := apperror.As(err)
 			if !ok || appErr.Code() != "audit.event.invalid" {
 				t.Fatalf("runAuditedMutation() error = %v", err)
 			}
@@ -273,7 +274,7 @@ func TestMutationAttemptPreservesMappedErrorWrapper(t *testing.T) {
 
 	events := []string{}
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
-	appFailure := NewError("role.conflict")
+	appFailure := apperror.New("role.conflict")
 	mapped := fmt.Errorf("persistence context: %w", appFailure)
 	_, err := runAuditedMutation(
 		context.Background(), auditor,

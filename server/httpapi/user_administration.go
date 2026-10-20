@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -104,7 +105,7 @@ func (module userAdministrationResourceModule) listSessions(request operationReq
 		defaultQuery(request.request, "include_revoked", "false"),
 	)
 	if err != nil {
-		return operationResult{}, application.NewError("request.invalid").WithField("field", "include_revoked")
+		return operationResult{}, apperror.New("request.invalid").WithField("field", "include_revoked")
 	}
 	sessions, listErr := module.sessions.ListUserSessions(
 		request.context,

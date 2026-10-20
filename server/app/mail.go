@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -78,11 +79,11 @@ type mailAuthorizationAdapter struct {
 
 func (a mailAuthorizationAdapter) Authorize(ctx context.Context, invocation Invocation, action model.Action) (model.Resource, error) {
 	if a.authorization == nil || a.institutions == nil {
-		return model.Resource{}, NewError("mail.unavailable")
+		return model.Resource{}, apperror.New("mail.unavailable")
 	}
 	institution, err := a.institutions.GetSingleton(ctx)
 	if err != nil || institution == nil || !institution.ID.IsValid() {
-		return model.Resource{}, NewError("mail.unavailable").Wrap(err)
+		return model.Resource{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}
 	if err = a.authorization.authorizeCurrentState(ctx, invocation.Principal(), action, resource, invocation.RequestMetadata()); err != nil {
@@ -141,28 +142,28 @@ func newMailService(mailStore mailStore, users mailUserStore, authorization mail
 
 func (a *App) SendTestMail(ctx context.Context, invocation Invocation) (MailDeliveryView, error) {
 	if a == nil || a.mail == nil {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.SendTest(ctx, invocation)
 }
 
 func (a *App) GetMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if a == nil || a.mail == nil {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.Get(ctx, invocation, id)
 }
 
 func (a *App) ListMailDeliveries(ctx context.Context, invocation Invocation, query ListMailDeliveriesQuery) (MailDeliveryPage, error) {
 	if a == nil || a.mail == nil {
-		return MailDeliveryPage{}, NewError("mail.unavailable")
+		return MailDeliveryPage{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.List(ctx, invocation, query)
 }
 
 func (a *App) GetMailMetrics(ctx context.Context, invocation Invocation) (MailMetricsSnapshot, error) {
 	if a == nil || a.mail == nil {
-		return MailMetricsSnapshot{}, NewError("mail.unavailable")
+		return MailMetricsSnapshot{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.Metrics(ctx, invocation)
 }
@@ -176,14 +177,14 @@ func (s *mailService) Metrics(ctx context.Context, invocation Invocation) (MailM
 
 func (a *App) CancelMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if a == nil || a.mail == nil {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.Cancel(ctx, invocation, id)
 }
 
 func (a *App) RetryMailDelivery(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
 	if a == nil || a.mail == nil {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.Retry(ctx, invocation, id)
 }
@@ -194,7 +195,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
 	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
-		return MailDeliveryView{}, NewError("authentication.reauthentication_required")
+		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
 	institutionResource, err := s.authorization.Authorize(ctx, invocation, model.ActionMailManage)
 	if err != nil {
@@ -204,25 +205,25 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 		return MailDeliveryView{}, err
 	}
 	if !s.sender.Enabled() || s.sealer == nil {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
 	if err != nil {
 		return MailDeliveryView{}, mailAppError(err)
 	}
 	if user == nil || user.Validate() != nil || user.ID != principal.UserID {
-		return MailDeliveryView{}, NewError("mail.unavailable")
+		return MailDeliveryView{}, apperror.New("mail.unavailable")
 	}
 	if !user.EmailVerified {
-		return MailDeliveryView{}, NewError("mail.recipient_unverified")
+		return MailDeliveryView{}, apperror.New("mail.recipient_unverified")
 	}
 	if !user.IsActive() {
-		return MailDeliveryView{}, NewError("mail.recipient_ineligible")
+		return MailDeliveryView{}, apperror.New("mail.recipient_ineligible")
 	}
 	now := model.TimeUTC(s.now())
 	prepared, err := s.composer.PrepareOperatorTest(appmail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
+		return MailDeliveryView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	audit, err := s.audit.PrepareTest(ctx, invocation, institutionResource, prepared.Delivery.ID)
 	if err != nil {
@@ -251,7 +252,7 @@ func (s *mailService) Get(ctx context.Context, invocation Invocation, id model.M
 		return MailDeliveryView{}, err
 	}
 	if !id.IsValid() {
-		return MailDeliveryView{}, NewError("request.invalid")
+		return MailDeliveryView{}, apperror.New("request.invalid")
 	}
 	delivery, err := s.mail.GetDelivery(ctx, id)
 	if err != nil {
@@ -275,7 +276,7 @@ func (s *mailService) List(ctx context.Context, invocation Invocation, query Lis
 	if err != nil {
 		var invalid *store.ErrInvalidInput
 		if errors.As(err, &invalid) {
-			return MailDeliveryPage{}, NewError("mail.query.invalid").Wrap(err)
+			return MailDeliveryPage{}, apperror.New("mail.query.invalid").Wrap(err)
 		}
 		return MailDeliveryPage{}, mailAppError(err)
 	}
@@ -300,14 +301,14 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 		return MailDeliveryView{}, invalidTokenAppError()
 	}
 	if !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
-		return MailDeliveryView{}, NewError("authentication.reauthentication_required")
+		return MailDeliveryView{}, apperror.New("authentication.reauthentication_required")
 	}
 	institutionResource, err := s.authorization.Authorize(ctx, invocation, model.ActionMailManage)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
 	if !id.IsValid() {
-		return MailDeliveryView{}, NewError("request.invalid")
+		return MailDeliveryView{}, apperror.New("request.invalid")
 	}
 	delivery, err := s.mail.GetDelivery(ctx, id)
 	if err != nil {
@@ -317,10 +318,10 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 	if retry {
 		relevance, relevanceErr := evaluateMailDeliveryRelevance(ctx, delivery)
 		if relevanceErr != nil || relevance != mailDeliveryRelevant {
-			return MailDeliveryView{}, NewError("mail.conflict").Wrap(relevanceErr)
+			return MailDeliveryView{}, apperror.New("mail.conflict").Wrap(relevanceErr)
 		}
 		if _, transitionErr := delivery.OperatorRetry(now); transitionErr != nil {
-			return MailDeliveryView{}, NewError("mail.conflict").Wrap(transitionErr)
+			return MailDeliveryView{}, apperror.New("mail.conflict").Wrap(transitionErr)
 		}
 	}
 	auditID, err := s.audit.PrepareControl(ctx, invocation, institutionResource, delivery, operation)
@@ -341,10 +342,10 @@ func (s *mailService) mutate(ctx context.Context, invocation Invocation, operati
 func (s *mailService) checkTestRateLimit(ctx context.Context, userID model.UserID) error {
 	_, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{purpose: authenticationAttemptPurposeMailTest, window: mailTestRateLimitWindow, limits: []authenticationAttemptLimit{{dimension: authenticationAttemptDimensionIdentity, maximum: mailTestRateLimitMaximum, identity: userID.String()}}})
 	if err != nil {
-		return NewError("mail.unavailable").Wrap(err)
+		return apperror.New("mail.unavailable").Wrap(err)
 	}
 	if limited {
-		return NewError("mail.test.rate_limited")
+		return apperror.New("mail.test.rate_limited")
 	}
 	return nil
 }
@@ -371,10 +372,10 @@ func digestRenderedMail(subject, text, html string) string {
 func mailAppError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").Wrap(err)
+		return apperror.New("resource.not_found").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("mail.conflict").Wrap(err)
+		return apperror.New("mail.conflict").Wrap(err)
 	default:
-		return NewError("mail.unavailable").Wrap(err)
+		return apperror.New("mail.unavailable").Wrap(err)
 	}
 }

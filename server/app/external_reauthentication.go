@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,7 +32,7 @@ func (s *externalAuthenticationService) beginReauthentication(ctx context.Contex
 		return nil, invalidTokenAppError()
 	}
 	if principal.AuthenticationMethod == "password" || !principal.ExternalIdentityID.IsValid() {
-		return nil, NewError("authentication.reauthentication_method_required")
+		return nil, apperror.New("authentication.reauthentication_method_required")
 	}
 	returnTo := ""
 	switch command.Task {
@@ -39,11 +40,11 @@ func (s *externalAuthenticationService) beginReauthentication(ctx context.Contex
 		returnTo = "/account/security"
 	case "connect-provider":
 		if principal.MFARecoveryRequired {
-			return nil, NewError("authentication.external.request.invalid")
+			return nil, apperror.New("authentication.external.request.invalid")
 		}
 		returnTo = "/account/connect-provider"
 	default:
-		return nil, NewError("authentication.external.request.invalid")
+		return nil, apperror.New("authentication.external.request.invalid")
 	}
 	auditID, err := s.mutationAudit.Begin(ctx, invocation, "authentication.reauthenticate", model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()}, "external", map[string]any{"session_id": principal.SessionID.String(), "provider": principal.AuthenticationProviderID, "task": command.Task}, nil)
 	if err != nil {
@@ -60,7 +61,7 @@ func (s *externalAuthenticationService) beginReauthentication(ctx context.Contex
 
 func (s *externalAuthenticationService) completeReauthentication(ctx context.Context, state *model.ExternalLoginState, assertion *model.ExternalAuthenticationAssertion) (*model.ExternalAuthenticationCompletion, error) {
 	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeReauthenticate || state.Validate() != nil || !state.ConsumedAt.Valid || assertion == nil || assertion.ProviderId != state.Provider || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli() {
-		return nil, s.failConsumedProviderConnection(ctx, state, NewError("authentication.external.rejected"))
+		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New("authentication.external.rejected"))
 	}
 	result, err := s.sessions.ReauthenticateExternalWithAudit(ctx, &store.SessionExternalReauthentication{StateID: state.ID, ProviderID: state.Provider, Subject: assertion.Subject, AuthenticatedAt: model.TimeFromMillis(assertion.AuthenticatedAt)})
 	if err != nil {

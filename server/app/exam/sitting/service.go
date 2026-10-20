@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,27 +38,6 @@ func (call Call) Principal() model.Principal {
 }
 
 func (call Call) RequestMetadata() model.RequestMetadata { return call.metadata }
-
-// Fault is the stable failure surface consumed by the parent application.
-type Fault struct {
-	Code       string
-	SafeFields map[string]any
-	Cause      error
-}
-
-func (fault *Fault) Error() string {
-	if fault == nil {
-		return "Exam Sitting fault"
-	}
-	return fault.Code
-}
-
-func (fault *Fault) Unwrap() error {
-	if fault == nil {
-		return nil
-	}
-	return fault.Cause
-}
 
 type ScheduleCommand struct {
 	ExamID           model.ExamID
@@ -226,7 +206,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.ExamRevisionID.IsValid() || !command.ClassID.IsValid() ||
 		command.ScheduledStartAt.IsZero() || !command.ScheduledStartAt.Before(command.ScheduledEndAt) {
-		return store.ExamSittingSnapshot{}, invalid("schedule")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "schedule")
 	}
 	idempotency, err := prepareScheduleIdempotency(call, command)
 	if err != nil {
@@ -234,7 +214,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	}
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return store.ExamSittingSnapshot{}, invalid("principal")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
 	at := model.TimeUTC(service.now())
 	authorization, err := service.authorizeExam(ctx, call, command.ExamID, at, model.ActionExamSittingCreate, model.ActionExamSittingCreateOverride)
@@ -245,7 +225,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	sitting, err := model.NewExamSitting(sittingID, command.ExamID, command.ExamRevisionID, command.ClassID,
 		command.ScheduledStartAt, command.ScheduledEndAt, at)
 	if err != nil {
-		return store.ExamSittingSnapshot{}, invalidCause("schedule", err)
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "schedule").Wrap(err)
 	}
 	openJob, deadlineJob, err := service.jobs.BoundaryJobs(sittingID, sitting.Revision, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
 	if err != nil || openJob == nil || deadlineJob == nil {
@@ -255,7 +235,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 		ExamRevisionID: command.ExamRevisionID, SittingID: sittingID, SittingRevision: sitting.Revision, ClassID: command.ClassID,
 		StartsAt: sitting.ScheduledStartAt, EndsAt: sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailScheduled})
 	if err != nil || mail == nil {
-		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting schedule mail"), err))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.Join(errors.New("prepare Sitting schedule mail"), err))
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"exam_revision_id": command.ExamRevisionID.String(), "class_id": command.ClassID.String()}
@@ -283,7 +263,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 
 func (service *Service) Get(ctx context.Context, call Call, examID model.ExamID, sittingID model.ExamSittingID) (store.ExamSittingSnapshot, error) {
 	if !examID.IsValid() || !sittingID.IsValid() {
-		return store.ExamSittingSnapshot{}, invalid("identity")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "identity")
 	}
 	at := model.TimeUTC(service.now())
 	if _, err := service.authorize(ctx, call, examID, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, at,
@@ -299,7 +279,7 @@ func (service *Service) Get(ctx context.Context, call Call, examID model.ExamID,
 		return store.ExamSittingSnapshot{}, err
 	}
 	if value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	return value, nil
 }
@@ -309,10 +289,10 @@ func (service *Service) Get(ctx context.Context, call Call, examID model.ExamID,
 // gate before accepting or retaining a resource-scoped subscription.
 func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID model.ExamSittingID) error {
 	if !sittingID.IsValid() {
-		return invalid("exam_sitting_id")
+		return apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
 	if call.Principal().Validate() != nil {
-		return invalid("principal")
+		return apperror.Invalid("exam.sitting.invalid", "principal")
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
@@ -323,7 +303,7 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 		return err
 	}
 	if value.Sitting.ID != sittingID {
-		return unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+		return apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	_, err = service.authorize(ctx, call, value.Sitting.ExamID,
 		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.now()),
@@ -336,7 +316,7 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 // Browser history has no administrator or general examination override.
 func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call Call, sittingID model.ExamSittingID) (model.AcademicUnitID, error) {
 	if !sittingID.IsValid() || call.Principal().Validate() != nil {
-		return "", invalid("exam_sitting_id")
+		return "", apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
@@ -347,21 +327,21 @@ func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call C
 		return "", err
 	}
 	if value.Sitting.ID != sittingID {
-		return "", unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+		return "", apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	access, err := service.access.Access(ctx, value.Sitting.ExamID, call.Principal().UserID)
 	if err != nil {
 		return "", mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != value.Sitting.ExamID {
-		return "", unavailable(errors.New("Exam access projection is incomplete"))
+		return "", apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
 	if !access.ActorIsManager {
 		if err := service.authorizer.Deny(ctx, call, model.ActionExamAttemptBrowserActivityView, resource, access.Exam.AcademicUnitID); err != nil {
 			return "", err
 		}
-		return "", &Fault{Code: "exam.sitting.not_found"}
+		return "", apperror.New("exam.sitting.not_found")
 	}
 	if err := service.authorizer.Authorize(ctx, call, model.ActionExamAttemptBrowserActivityView, resource); err != nil {
 		return "", err
@@ -404,10 +384,10 @@ func (service *Service) authorizeSubmission(ctx context.Context, call Call, exam
 	submissionID model.SubmissionID, action, overrideAction model.Action,
 ) (bool, error) {
 	if !examID.IsValid() || !submissionID.IsValid() {
-		return false, invalid("submission_id")
+		return false, apperror.Invalid("exam.sitting.invalid", "submission_id")
 	}
 	if call.Principal().Validate() != nil {
-		return false, invalid("principal")
+		return false, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
 	decision, err := service.authorize(ctx, call, examID,
 		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.TimeUTC(service.now()),
@@ -423,10 +403,10 @@ func (service *Service) authorizeSubmission(ctx context.Context, call Call, exam
 // It returns no mutable Sitting state and performs no mutation.
 func (service *Service) AuthorizeManage(ctx context.Context, call Call, sittingID model.ExamSittingID) (bool, error) {
 	if !sittingID.IsValid() {
-		return false, invalid("exam_sitting_id")
+		return false, apperror.Invalid("exam.sitting.invalid", "exam_sitting_id")
 	}
 	if call.Principal().Validate() != nil {
-		return false, invalid("principal")
+		return false, apperror.Invalid("exam.sitting.invalid", "principal")
 	}
 	snapshot, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
@@ -437,7 +417,7 @@ func (service *Service) AuthorizeManage(ctx context.Context, call Call, sittingI
 		return false, err
 	}
 	if value.Sitting.ID != sittingID {
-		return false, unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+		return false, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	decision, err := service.authorize(ctx, call, value.Sitting.ExamID,
 		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.now()),
@@ -464,7 +444,7 @@ func (service *Service) List(ctx context.Context, call Call, query ListQuery) (P
 	}
 	for index := range items {
 		if items[index].Sitting == nil || items[index].Sitting.ExamID != query.ExamID || items[index].Sitting.Validate() != nil {
-			return Page{}, unavailable(errors.New("Exam Sitting Store returned an invalid list item"))
+			return Page{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid list item"))
 		}
 	}
 	page := Page{Items: items, HasMore: len(items) > query.Limit}
@@ -484,7 +464,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		(command.ExamRevisionID == nil && command.ClassID == nil && command.ScheduledStartAt == nil && command.ScheduledEndAt == nil) ||
 		command.ExamRevisionID != nil && !command.ExamRevisionID.IsValid() || command.ClassID != nil && !command.ClassID.IsValid() ||
 		command.ScheduledStartAt != nil && command.ScheduledStartAt.IsZero() || command.ScheduledEndAt != nil && command.ScheduledEndAt.IsZero() {
-		return store.ExamSittingSnapshot{}, invalid("schedule")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "schedule")
 	}
 	idempotency, err := prepareScheduleUpdateIdempotency(call, command)
 	if err != nil {
@@ -506,7 +486,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		return store.ExamSittingSnapshot{}, err
 	}
 	if snapshot.Sitting.ExamID != command.ExamID || snapshot.Sitting.ID != command.SittingID {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched snapshot"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched snapshot"))
 	}
 	revisionID, classID := snapshot.Sitting.ExamRevisionID, snapshot.Sitting.ClassID
 	startAt, endAt := snapshot.Sitting.ScheduledStartAt, snapshot.Sitting.ScheduledEndAt
@@ -523,12 +503,12 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		endAt = model.TimeUTC(*command.ScheduledEndAt)
 	}
 	if !startAt.Before(endAt) {
-		return store.ExamSittingSnapshot{}, invalid("schedule")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "schedule")
 	}
 	noChanges := revisionID == snapshot.Sitting.ExamRevisionID && classID == snapshot.Sitting.ClassID &&
 		startAt.Equal(snapshot.Sitting.ScheduledStartAt) && endAt.Equal(snapshot.Sitting.ScheduledEndAt)
 	if noChanges && snapshot.Sitting.Revision == command.ExpectedRevision && snapshot.Sitting.State == model.ExamSittingScheduled && !authorization.examArchived {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.sitting.no_changes"}
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.no_changes")
 	}
 	openJob, deadlineJob, err := service.jobs.BoundaryJobs(command.SittingID, command.ExpectedRevision+1, startAt, endAt)
 	if err != nil || openJob == nil || deadlineJob == nil {
@@ -539,7 +519,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		ClassID: classID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: startAt, EndsAt: endAt,
 		ChangeKind: store.ExamSittingMailRescheduled})
 	if err != nil || mail == nil {
-		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting reschedule mail"), err))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.Join(errors.New("prepare Sitting reschedule mail"), err))
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"exam_revision_id": revisionID.String(), "class_id": classID.String(),
@@ -573,7 +553,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 
 func (service *Service) Cancel(ctx context.Context, call Call, command CancelCommand) (store.ExamSittingSnapshot, error) {
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
-		return store.ExamSittingSnapshot{}, invalid("cancellation")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "cancellation")
 	}
 	idempotency, err := prepareTransitionIdempotency(call, idempotencyOperationCancel, PauseCommand(command))
 	if err != nil {
@@ -599,7 +579,7 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 		ClassID: snapshot.Sitting.ClassID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: snapshot.Sitting.ScheduledStartAt,
 		EndsAt: snapshot.Sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailCancelled})
 	if err != nil || mail == nil {
-		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting cancellation mail"), err))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.Join(errors.New("prepare Sitting cancellation mail"), err))
 	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"expected_sitting_revision": command.ExpectedRevision, "reason_code": string(model.ExamSittingReasonManagerCanceled)}
@@ -655,7 +635,7 @@ func (service *Service) runManagerTransition(ctx context.Context, call Call, com
 	transition store.ExamSittingLifecycleTransitionCode, allowArchived, finalize bool, run managerTransitionStoreCall,
 ) (store.ExamSittingSnapshot, error) {
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
-		return store.ExamSittingSnapshot{}, invalid(operation)
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", operation)
 	}
 	idempotency, err := prepareTransitionIdempotency(call, idempotencyOperation, command)
 	if err != nil {
@@ -669,7 +649,7 @@ func (service *Service) runManagerTransition(ctx context.Context, call Call, com
 		return store.ExamSittingSnapshot{}, err
 	}
 	if authorization.examArchived && !allowArchived {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.archived"}
+		return store.ExamSittingSnapshot{}, apperror.New("exam.archived")
 	}
 	var finalizeJob *model.Job
 	if finalize {
@@ -704,7 +684,7 @@ func (service *Service) Extend(ctx context.Context, call Call, command ExtendCom
 	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || command.ScheduledEndAt.IsZero() ||
 		!validPrivateReason(command.PrivateReason) {
-		return store.ExamSittingSnapshot{}, invalid("extend")
+		return store.ExamSittingSnapshot{}, apperror.Invalid("exam.sitting.invalid", "extend")
 	}
 	idempotency, err := prepareExtensionIdempotency(call, command)
 	if err != nil {
@@ -718,7 +698,7 @@ func (service *Service) Extend(ctx context.Context, call Call, command ExtendCom
 		return store.ExamSittingSnapshot{}, err
 	}
 	if authorization.examArchived {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "exam.archived"}
+		return store.ExamSittingSnapshot{}, apperror.New("exam.archived")
 	}
 	deadline := model.TimeUTC(command.ScheduledEndAt)
 	deadlineJob, err := service.jobs.DeadlineJob(command.SittingID, command.ExpectedRevision+1, deadline)
@@ -778,14 +758,14 @@ func (service *Service) ListNoShows(ctx context.Context, call Call, examID model
 	after model.UserID, limit int,
 ) (NoShowPage, error) {
 	if !examID.IsValid() || !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
-		return NoShowPage{}, invalid("no_show_list")
+		return NoShowPage{}, apperror.Invalid("exam.sitting.invalid", "no_show_list")
 	}
 	snapshot, err := service.Get(ctx, call, examID, sittingID)
 	if err != nil {
 		return NoShowPage{}, err
 	}
 	if snapshot.Sitting == nil || (snapshot.Sitting.State != model.ExamSittingClosing && snapshot.Sitting.State != model.ExamSittingClosed) {
-		return NoShowPage{}, &Fault{Code: "exam.sitting.state_conflict"}
+		return NoShowPage{}, apperror.New("exam.sitting.state_conflict")
 	}
 	items, err := service.persistence.ListNoShows(ctx, store.ExamSittingNoShowListOptions{
 		SittingID: sittingID, AfterCandidateUserID: after, Limit: limit + 1,
@@ -794,7 +774,7 @@ func (service *Service) ListNoShows(ctx context.Context, call Call, examID model
 		return NoShowPage{}, mapStoreError(err)
 	}
 	if len(items) > limit+1 {
-		return NoShowPage{}, unavailable(errors.New("Exam Sitting Store returned an oversized no-show page"))
+		return NoShowPage{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an oversized no-show page"))
 	}
 	hasMore := len(items) > limit
 	if hasMore {
@@ -803,7 +783,7 @@ func (service *Service) ListNoShows(ctx context.Context, call Call, examID model
 	previous := after
 	for _, item := range items {
 		if !item.CandidateUserID.IsValid() || (!previous.IsZero() && item.CandidateUserID.String() <= previous.String()) {
-			return NoShowPage{}, unavailable(errors.New("Exam Sitting Store returned an invalid no-show page"))
+			return NoShowPage{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid no-show page"))
 		}
 		previous = item.CandidateUserID
 	}
@@ -826,7 +806,7 @@ func (service *Service) runSystemLifecycle(ctx context.Context, call SystemCall,
 	prepareFinalize bool, run systemLifecycleStoreCall,
 ) (store.ExamSittingLifecycleResult, error) {
 	if !call.valid() || !sittingID.IsValid() {
-		return store.ExamSittingLifecycleResult{}, invalid("system_call")
+		return store.ExamSittingLifecycleResult{}, apperror.Invalid("exam.sitting.invalid", "system_call")
 	}
 	current, err := service.persistence.Resolve(ctx, sittingID)
 	if err != nil {
@@ -834,7 +814,7 @@ func (service *Service) runSystemLifecycle(ctx context.Context, call SystemCall,
 	}
 	snapshot, err := requireSnapshot(current)
 	if err != nil || snapshot.Sitting.ID != sittingID || !snapshot.AcademicUnitID.IsValid() {
-		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned a mismatched system snapshot"))
+		return store.ExamSittingLifecycleResult{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched system snapshot"))
 	}
 	var finalizeJob *model.Job
 	if prepareFinalize {
@@ -872,7 +852,7 @@ func (service *Service) ListLifecycleDue(ctx context.Context, options store.Exam
 	invalidCursor := options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero() ||
 		!options.AfterSittingID.IsZero() && !options.AfterSittingID.IsValid()
 	if invalidCursor || options.Limit < 1 || options.Limit > 200 {
-		return nil, invalid("lifecycle_due")
+		return nil, apperror.Invalid("exam.sitting.invalid", "lifecycle_due")
 	}
 	options.AfterDueAt = model.TimeUTC(options.AfterDueAt)
 	items, err := service.persistence.ListLifecycleDue(ctx, options)
@@ -881,7 +861,7 @@ func (service *Service) ListLifecycleDue(ctx context.Context, options store.Exam
 	}
 	for _, item := range items {
 		if item.Value == nil || item.Value.Sitting == nil || item.Value.Sitting.Validate() != nil || item.DueAt.IsZero() || item.DueAt.Location() != time.UTC {
-			return nil, unavailable(errors.New("Exam Sitting Store returned an invalid lifecycle due item"))
+			return nil, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid lifecycle due item"))
 		}
 	}
 	if items == nil {
@@ -894,11 +874,11 @@ func requireManagerLifecycleResult(result *store.ExamSittingLifecycleResult, exa
 	transition store.ExamSittingLifecycleTransitionCode,
 ) (store.ExamSittingSnapshot, error) {
 	if result == nil || result.Value == nil || !result.Changed || result.Transition != transition {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned an invalid manager lifecycle result"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid manager lifecycle result"))
 	}
 	value, err := requireSnapshot(result.Value)
 	if err != nil || value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched manager lifecycle result"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched manager lifecycle result"))
 	}
 	return value, nil
 }
@@ -906,11 +886,11 @@ func requireManagerLifecycleResult(result *store.ExamSittingLifecycleResult, exa
 func requireSystemLifecycleResult(result *store.ExamSittingLifecycleResult, examID model.ExamID, sittingID model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {
 	if result == nil || result.Value == nil || result.Changed != (result.Transition != "") || result.Replayed ||
 		result.Changed && !validLifecycleTransition(result.Transition) {
-		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned an invalid system lifecycle result"))
+		return store.ExamSittingLifecycleResult{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an invalid system lifecycle result"))
 	}
 	value, err := requireSnapshot(result.Value)
 	if err != nil || value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
-		return store.ExamSittingLifecycleResult{}, unavailable(errors.New("Exam Sitting Store returned a mismatched system lifecycle result"))
+		return store.ExamSittingLifecycleResult{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched system lifecycle result"))
 	}
 	return *result, nil
 }
@@ -941,11 +921,7 @@ func (service *Service) publishLifecycle(ctx context.Context, result *store.Exam
 
 func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
 	mapped := mapStoreError(err)
-	code := "exam.sitting.unavailable"
-	var fault *Fault
-	if errors.As(mapped, &fault) {
-		code = fault.Code
-	}
+	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.systemAudit.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
@@ -958,7 +934,7 @@ func jobFactoryUnavailable(message string, cause error) error {
 	} else {
 		cause = errors.Join(errors.New(message), cause)
 	}
-	return unavailable(cause)
+	return apperror.New("exam.sitting.unavailable").Wrap(cause)
 }
 
 func validPrivateReason(reason string) bool {
@@ -973,16 +949,16 @@ func listOptions(query ListQuery) (store.ExamSittingListOptions, error) {
 	invalidOverlap := query.OverlapStartAt.IsZero() != query.OverlapEndAt.IsZero() ||
 		!query.OverlapStartAt.IsZero() && !query.OverlapStartAt.Before(query.OverlapEndAt)
 	if invalidIdentity || invalidCursor || invalidOverlap || query.Limit < 1 || query.Limit > 200 || len(query.States) > 6 {
-		return store.ExamSittingListOptions{}, invalid("list_query")
+		return store.ExamSittingListOptions{}, apperror.Invalid("exam.sitting.invalid", "list_query")
 	}
 	states := append([]model.ExamSittingState(nil), query.States...)
 	seen := make(map[model.ExamSittingState]struct{}, len(states))
 	for _, state := range states {
 		if !state.IsValid() {
-			return store.ExamSittingListOptions{}, invalid("state")
+			return store.ExamSittingListOptions{}, apperror.Invalid("exam.sitting.invalid", "state")
 		}
 		if _, duplicate := seen[state]; duplicate {
-			return store.ExamSittingListOptions{}, invalid("state")
+			return store.ExamSittingListOptions{}, apperror.Invalid("exam.sitting.invalid", "state")
 		}
 		seen[state] = struct{}{}
 	}
@@ -1006,18 +982,18 @@ func (service *Service) authorizeExam(ctx context.Context, call Call, examID mod
 func (service *Service) authorize(ctx context.Context, call Call, examID model.ExamID, resource model.Resource, at time.Time, ordinaryAction, overrideAction model.Action) (authorizationDecision, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
-		return authorizationDecision{}, invalid("exam_id")
+		return authorizationDecision{}, apperror.Invalid("exam.sitting.invalid", "exam_id")
 	}
 	access, err := service.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return authorizationDecision{}, mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != examID {
-		return authorizationDecision{}, unavailable(errors.New("Exam access projection is incomplete"))
+		return authorizationDecision{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
 	action, err := manageraccess.SelectAction(ctx, service.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
-		return authorizationDecision{}, unavailable(err)
+		return authorizationDecision{}, apperror.New("exam.sitting.unavailable").Wrap(err)
 	}
 	if err = service.authorizer.Authorize(ctx, call, action, resource); err != nil {
 		return authorizationDecision{}, err
@@ -1027,14 +1003,14 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 
 func requireSnapshot(snapshot *store.ExamSittingSnapshot) (store.ExamSittingSnapshot, error) {
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.Validate() != nil {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned an incomplete snapshot"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an incomplete snapshot"))
 	}
 	return *snapshot, nil
 }
 
 func requireCommandResult(result *store.ExamSittingCommandResult) (store.ExamSittingSnapshot, error) {
 	if result == nil || result.Value == nil {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned an incomplete result"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned an incomplete result"))
 	}
 	return requireSnapshot(result.Value)
 }
@@ -1045,7 +1021,7 @@ func requireOwnedCommandResult(result *store.ExamSittingCommandResult, examID mo
 		return store.ExamSittingSnapshot{}, err
 	}
 	if value.Sitting.ExamID != examID || value.Sitting.ID != sittingID {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched result"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched result"))
 	}
 	return value, nil
 }
@@ -1056,33 +1032,19 @@ func requireScheduledCommandResult(result *store.ExamSittingCommandResult, examI
 		return store.ExamSittingSnapshot{}, err
 	}
 	if value.Sitting.ExamID != examID || (!result.Replayed && value.Sitting.ID != generatedID) {
-		return store.ExamSittingSnapshot{}, unavailable(errors.New("Exam Sitting Store returned a mismatched result"))
+		return store.ExamSittingSnapshot{}, apperror.New("exam.sitting.unavailable").Wrap(errors.New("Exam Sitting Store returned a mismatched result"))
 	}
 	return value, nil
 }
 
 func (service *Service) failAudit(ctx context.Context, auditID string, err error) error {
 	mapped := mapStoreError(err)
-	code := "exam.sitting.unavailable"
-	var fault *Fault
-	if errors.As(mapped, &fault) {
-		code = fault.Code
-	}
+	code := apperror.CodeOf(mapped, "exam.sitting.unavailable")
 	if auditErr := service.auditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
 	return mapped
 }
-
-func invalid(field string) error {
-	return &Fault{Code: "exam.sitting.invalid", SafeFields: map[string]any{"field": field}}
-}
-
-func invalidCause(field string, cause error) error {
-	return &Fault{Code: "exam.sitting.invalid", SafeFields: map[string]any{"field": field}, Cause: cause}
-}
-
-func unavailable(cause error) error { return &Fault{Code: "exam.sitting.unavailable", Cause: cause} }
 
 func mapStoreError(err error) error {
 	var idempotencyConflict *store.ErrIdempotencyConflict
@@ -1091,22 +1053,22 @@ func mapStoreError(err error) error {
 	var conflict *store.ErrConflict
 	switch {
 	case errors.As(err, &idempotencyConflict):
-		return &Fault{Code: "idempotency.conflict", Cause: err}
+		return apperror.New("idempotency.conflict").Wrap(err)
 	case errors.As(err, &idempotencyInProgress):
-		return &Fault{Code: "idempotency.in_progress", Cause: err}
+		return apperror.New("idempotency.in_progress").Wrap(err)
 	case store.IsNotFound(err):
-		return &Fault{Code: "exam.sitting.not_found", Cause: err}
+		return apperror.New("exam.sitting.not_found").Wrap(err)
 	case errors.As(err, &conflict):
 		return mapConflict(conflict, err)
 	case errors.As(err, &invalidInput):
-		return invalidCause("value", err)
+		return apperror.Invalid("exam.sitting.invalid", "value").Wrap(err)
 	default:
-		return unavailable(err)
+		return apperror.New("exam.sitting.unavailable").Wrap(err)
 	}
 }
 
 func mapConflict(conflict *store.ErrConflict, cause error) error {
-	code := "exam.sitting.conflict"
+	code := apperror.Code("exam.sitting.conflict")
 	switch conflict.Constraint {
 	case "exam_sitting_revision":
 		code = "exam.sitting.revision_conflict"
@@ -1133,5 +1095,5 @@ func mapConflict(conflict *store.ErrConflict, cause error) error {
 	case "exam_archived":
 		code = "exam.archived"
 	}
-	return &Fault{Code: code, Cause: cause}
+	return apperror.New(code).Wrap(cause)
 }

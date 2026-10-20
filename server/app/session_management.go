@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -127,17 +128,17 @@ func (s *selfSessionService) RevokeOne(
 	}
 	sessionID := strings.TrimSpace(command.SessionID)
 	if !model.IsValidId(sessionID) {
-		return NewError("session.id.invalid").WithField("field", "session_id")
+		return apperror.New("session.id.invalid").WithField("field", "session_id")
 	}
 	session, err := s.sessions.Get(ctx, sessionID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return NewError("session.not_found")
+			return apperror.New("session.not_found")
 		}
 		return authenticationUnavailable(err)
 	}
 	if session.UserID != principal.UserID {
-		return NewError("session.not_found")
+		return apperror.New("session.not_found")
 	}
 
 	revocations := sessionRevocationCoordinator{sessions: s.sessions, audit: s.audit, effects: s.effects, now: s.now}
@@ -188,7 +189,7 @@ func (s *selfSessionService) RevokeAll(
 
 func selfSessionRevocationError(err error) error {
 	if store.IsNotFound(err) {
-		return NewError("session.not_found")
+		return apperror.New("session.not_found")
 	}
 	return authenticationUnavailable(err)
 }

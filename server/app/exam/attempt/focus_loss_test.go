@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -142,8 +143,8 @@ func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t 
 				Generation: 1, Sequence: 1, DurationMilliseconds: 500,
 				ContinuityCredential: model.NewCredentialToken(),
 			})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" ||
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" ||
 				f.persistence.focusTarget != nil || f.persistence.focusSignal != nil || f.effects.focusLoss != 0 {
 				t.Fatalf("error=%v target=%#v signal=%#v effects=%#v", err,
 					f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
@@ -330,8 +331,8 @@ func TestEvaluateFocusLossMapsChangedSameSequenceToStableConflict(t *testing.T) 
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 8,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.focus_loss_conflict" || f.effects.focusLoss != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.focus_loss_conflict" || f.effects.focusLoss != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
 	}
 }

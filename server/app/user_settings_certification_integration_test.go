@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -137,7 +138,7 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		case completed.err == nil:
 			successes++
 			winner = completed.result
-		case application.Is(completed.err, "user_settings.revision_conflict"):
+		case apperror.Is(completed.err, "user_settings.revision_conflict"):
 			conflicts++
 		default:
 			t.Fatalf("concurrent replacement error = %v", completed.err)
@@ -249,7 +250,7 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		IdempotencyKey: "private-idempotency-marker",
 	}
 	uncertain.failNext.Store(true)
-	if _, err := helper.App.ReplaceOwnUserSettings(ctx, invocation, command); !application.Is(err, "user_settings.unavailable") {
+	if _, err := helper.App.ReplaceOwnUserSettings(ctx, invocation, command); !apperror.Is(err, "user_settings.unavailable") {
 		t.Fatalf("unknown replacement outcome error = %v", err)
 	}
 	authoritative, err := helper.App.ReadOwnUserSettings(ctx, invocation)

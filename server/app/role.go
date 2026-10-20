@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -102,7 +103,7 @@ func (a *App) GetRole(ctx context.Context, invocation Invocation, query GetRoleQ
 func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "role_id")
+		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	if _, err := s.authorization.AuthorizeView(ctx, invocation); err != nil {
 		return nil, err
@@ -163,7 +164,7 @@ func (a *App) UpdateRole(ctx context.Context, invocation Invocation, command Upd
 func (s *roleService) Update(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "role_id")
+		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
 	if err != nil {
@@ -174,7 +175,7 @@ func (s *roleService) Update(ctx context.Context, invocation Invocation, command
 		return nil, roleError(err)
 	}
 	if current.BuiltIn {
-		return nil, NewError("role.built_in.protected").WithField("resource", "role")
+		return nil, apperror.New("role.built_in.protected").WithField("resource", "role")
 	}
 	patch := &model.RolePatch{
 		DisplayName: command.DisplayName,
@@ -243,7 +244,7 @@ func (a *App) ArchiveRole(ctx context.Context, invocation Invocation, command Ar
 func (s *roleService) Archive(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return NewError("request.invalid").WithField("field", "role_id")
+		return apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	resource, err := s.authorization.AuthorizeManage(ctx, invocation)
 	if err != nil {
@@ -254,7 +255,7 @@ func (s *roleService) Archive(ctx context.Context, invocation Invocation, comman
 		return roleError(err)
 	}
 	if current.BuiltIn {
-		return NewError("role.built_in.protected").WithField("resource", "role")
+		return apperror.New("role.built_in.protected").WithField("resource", "role")
 	}
 	_, err = runAuditedMutation(
 		ctx,
@@ -390,34 +391,34 @@ func (e roleRealtimeEffects) AuthorizationChanged(ctx context.Context) {
 }
 
 func roleError(err error) error {
-	var appFailure *Error
+	var appFailure *apperror.Error
 	if errors.As(err, &appFailure) {
 		return err
 	}
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "role").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "role").Wrap(err)
 	case store.IsConflict(err):
 		var conflict *store.ErrConflict
 		_ = errors.As(err, &conflict)
 		if conflict != nil && conflict.Constraint == "roles_built_in_protected" {
-			return NewError("role.built_in.protected").WithField("resource", "role").Wrap(err)
+			return apperror.New("role.built_in.protected").WithField("resource", "role").Wrap(err)
 		}
-		return NewError("role.conflict").WithField("resource", "role").Wrap(err)
+		return apperror.New("role.conflict").WithField("resource", "role").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("role.invalid").WithField("resource", "role").Wrap(err)
+			return apperror.New("role.invalid").WithField("resource", "role").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "role").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "role").Wrap(err)
 	}
 }
 
 func validateKnownPermissions(permissions []string) error {
 	for _, permission := range permissions {
 		if !model.IsGrantableAction(permission) {
-			return NewError("role.permission.unknown").WithField("permission", permission)
+			return apperror.New("role.permission.unknown").WithField("permission", permission)
 		}
 	}
 	return nil
@@ -440,7 +441,7 @@ func validatePatchedPermissions(current []string, permissions *[]string) error {
 		if _, preserved := existingUnknown[permission]; preserved {
 			continue
 		}
-		return NewError("role.permission.unknown").WithField("permission", permission)
+		return apperror.New("role.permission.unknown").WithField("permission", permission)
 	}
 	return nil
 }

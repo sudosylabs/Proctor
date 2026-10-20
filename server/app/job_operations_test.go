@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -171,7 +172,7 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !Is(appErr, "job.cancel.unsupported") {
+	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !apperror.Is(appErr, "job.cancel.unsupported") {
 		t.Fatalf("Cancel() error=%#v", appErr)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -82,7 +83,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 		NewInvocation(principal, model.RequestMetadata{}),
 		RevokeSessionCommand{SessionID: persistence.session.ID.String()},
 	)
-	if !Is(err, "session.not_found") {
+	if !apperror.Is(err, "session.not_found") {
 		t.Fatalf("error = %v, want session.not_found", err)
 	}
 	if persistence.revokeCalls != 0 {
@@ -137,7 +138,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewId()}
 				effects := &selfSessionEffectsFake{events: &events}
 				if outcome == "attempt unavailable" {
-					audit.beginErr = NewError("audit.unavailable")
+					audit.beginErr = apperror.New("audit.unavailable")
 				}
 				if outcome == "completion unavailable" {
 					persistence.revokeErr = errors.New("audit completion unavailable")
@@ -215,7 +216,7 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			switch operation {
 			case "revoke_own_session":
 				err = self.RevokeOne(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
-				if !Is(err, "session.not_found") || audit.failCode != "session.not_found" {
+				if !apperror.Is(err, "session.not_found") || audit.failCode != "session.not_found" {
 					t.Fatalf("repeat = %v audit=%#v", err, audit)
 				}
 			case "revoke_own_sessions":

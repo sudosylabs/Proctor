@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -399,13 +400,13 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSessions(t *testing.T) {
 	now := model.TimeFromMillis(1_800_000_000_000)
 	unitID := model.NewAcademicUnitID()
-	authorizer := &invitationAuthorizerFake{err: NewError("authorization.denied")}
+	authorizer := &invitationAuthorizerFake{err: apperror.New("authorization.denied")}
 	service := newInvitationServiceForTest(t, &invitationStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		authorizer, &invitationMailPreparerFake{}, now)
 	command := RunInvitationBatchCommand{Operation: InvitationBatchTeacherAcademicUnitCreate, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unitID.String(), IdempotencyKey: "authorize-first", Items: []InvitationBatchItemCommand{{IdempotencyKey: "row-1", RoleID: "not-an-id"}}}
 	_, err := service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !Is(err, "authorization.denied") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
+	if !apperror.Is(err, "authorization.denied") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
 		t.Fatalf("batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
 	}
 
@@ -414,7 +415,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
 	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
 	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !Is(err, "authentication.invalid_token") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
+	if !apperror.Is(err, "authentication.invalid_token") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
 		t.Fatalf("Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 	}
 
@@ -422,7 +423,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	command.Operation = InvitationBatchTeacherAcademicUnitCreate
 	command.Items = make([]InvitationBatchItemCommand, MaximumInvitationBatchItems+1)
 	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !Is(err, "request.invalid") || len(authorizer.actions) != 0 {
+	if !apperror.Is(err, "request.invalid") || len(authorizer.actions) != 0 {
 		t.Fatalf("oversized batch error/actions = %v / %v", err, authorizer.actions)
 	}
 }
@@ -439,7 +440,7 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 	classID, periodID := model.NewClassID(), model.NewAcademicPeriodID()
 	persistence := &invitationStoreFake{}
 	authorizer := &invitationAuthorizerFake{actionErrors: map[model.Action]error{
-		model.ActionInvitationCreate: NewError("authorization.denied"),
+		model.ActionInvitationCreate: apperror.New("authorization.denied"),
 	}}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		authorizer, &invitationMailPreparerFake{}, now)
@@ -531,7 +532,7 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
 			BatchScopeType: model.RoleScopeClass, BatchScopeID: classID.String(), batchDuplicate: true,
 			batchCanonicalKey: invitationBatchItemIdempotencyKey("mail-disabled", "canonical")})
-	if !Is(err, "invitation.mail_unavailable") || len(persistence.batchDuplicates) != 0 {
+	if !apperror.Is(err, "invitation.mail_unavailable") || len(persistence.batchDuplicates) != 0 {
 		t.Fatalf("fresh resend duplicate with disabled mail error=%v durable duplicates=%v", err, persistence.batchDuplicates)
 	}
 }
@@ -673,7 +674,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	_, appErr := service.AcceptAcademicUnitRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
-	if !Is(appErr, "invitation.invalid") || auditor.failID != auditID || auditor.failCode != "invitation.invalid" ||
+	if !apperror.Is(appErr, "invitation.invalid") || auditor.failID != auditID || auditor.failCode != "invitation.invalid" ||
 		!slices.Equal(events, []string{"resolve", "begin-at-scope", "accept", "fail"}) {
 		t.Fatalf("scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
 	}
@@ -692,7 +693,7 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
-	if _, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !Is(err, "authentication.strong_required") {
+	if _, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !apperror.Is(err, "authentication.strong_required") {
 		t.Fatalf("weak IssueInstitutionRole() error = %v", err)
 	}
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
@@ -721,7 +722,7 @@ func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
 	_, err := service.IssueTeacherAcademicUnit(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
-	if !Is(err, "invitation.role_not_delegable") || persistence.teacherIssued != nil {
+	if !apperror.Is(err, "invitation.role_not_delegable") || persistence.teacherIssued != nil {
 		t.Fatalf("IssueTeacherAcademicUnit() = %v / %#v", err, persistence.teacherIssued)
 	}
 }
@@ -929,7 +930,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	now := model.TimeFromMillis(1_800_000_000_000)
 	periodID, classID := model.NewAcademicPeriodID(), model.NewClassID()
-	authorizer := &invitationAuthorizerFake{err: NewError("authorization.denied")}
+	authorizer := &invitationAuthorizerFake{err: apperror.New("authorization.denied")}
 	mail := &invitationMailPreparerFake{disabled: true}
 	service, err := newInvitationService(&invitationStoreFake{}, invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}},
 		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}},
@@ -941,7 +942,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	}
 	_, appErr := service.IssueStudentClass(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
-	if !Is(appErr, "authorization.denied") || len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionInvitationCreate {
+	if !apperror.Is(appErr, "authorization.denied") || len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionInvitationCreate {
 		t.Fatalf("IssueStudentClass() error/actions = %v / %v", appErr, authorizer.actions)
 	}
 }
@@ -1088,7 +1089,7 @@ func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *test
 		t.Fatalf("teacher-capable Invitation accounting used legacy student qualifier: %#v", entries)
 	}
 	err = limiter.Check(context.Background(), identity, "127.0.0.1")
-	failure, ok := As(err)
+	failure, ok := apperror.As(err)
 	if !ok || failure.Code() != "authentication.rate_limited" {
 		t.Fatalf("second Check() error = %v", err)
 	}

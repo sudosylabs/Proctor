@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -25,7 +26,7 @@ func TestPersonalAccessTokenScopesRejectRelationshipOnlyParticipationAction(t *t
 	t.Parallel()
 
 	_, err := normalizePersonalAccessTokenScopes([]string{string(model.ActionExamSittingParticipate)})
-	if err == nil || !Is(err, "personal_access_token.invalid") {
+	if err == nil || !apperror.Is(err, "personal_access_token.invalid") {
 		t.Fatalf("normalizePersonalAccessTokenScopes() error = %v, want personal_access_token.invalid", err)
 	}
 }
@@ -39,7 +40,7 @@ func TestPersonalAccessTokenScopesRejectInteractiveOnlyAdministration(t *testing
 		model.ActionRoleBindingManage,
 		model.ActionRoleManage,
 	} {
-		if _, err := normalizePersonalAccessTokenScopes([]string{string(action)}); !Is(err, "personal_access_token.invalid") {
+		if _, err := normalizePersonalAccessTokenScopes([]string{string(action)}); !apperror.Is(err, "personal_access_token.invalid") {
 			t.Fatalf("scope %q error = %v, want personal_access_token.invalid", action, err)
 		}
 	}
@@ -76,7 +77,7 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 			ExpiresAt: now.Add(time.Hour).UnixMilli(),
 		},
 	)
-	if !Is(err, "personal_access_token.invalid") {
+	if !apperror.Is(err, "personal_access_token.invalid") {
 		t.Fatalf("error = %v, want personal_access_token.invalid", err)
 	}
 	if tokens.saveCalls != 0 {
@@ -216,7 +217,7 @@ func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T
 		NewInvocation(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
 		RevokePersonalAccessTokenCommand{TokenID: token.ID.String()},
 	)
-	if !Is(err, "resource.not_found") {
+	if !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("error = %v, want resource.not_found", err)
 	}
 	if tokens.revokeCalls != 0 || audit.beginCalls != 0 {
@@ -299,13 +300,13 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 	invocation := NewInvocation(stale, model.RequestMetadata{})
 
 	_, err := service.Create(context.Background(), invocation, CreatePersonalAccessTokenCommand{})
-	if !Is(err, "authentication.reauthentication_required") {
+	if !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("create error = %v", err)
 	}
 	_, err = service.SetDisabled(context.Background(), invocation, SetPersonalAccessTokenDisabledCommand{
 		TokenID: model.NewPersonalAccessTokenID().String(), Disabled: false,
 	})
-	if !Is(err, "authentication.reauthentication_required") {
+	if !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("enable error = %v", err)
 	}
 	if tokens.saveCalls != 0 || tokens.stateCalls != 0 {
@@ -503,7 +504,7 @@ func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFa
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true}); !Is(appErr, "personal_access_token.unavailable") {
+	if _, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID.String(), Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
 		t.Fatalf("SetDisabled(render failure) error = %v", appErr)
 	}
 	if tokens.failCalls != 1 || tokens.stateCalls != 0 {

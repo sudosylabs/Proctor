@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -201,11 +202,11 @@ func sessionIds(sessions []*model.Session) []string {
 }
 
 func invalidRealtimeRequest(field string) error {
-	return NewError("websocket.request.invalid").WithField("field", field)
+	return apperror.New("websocket.request.invalid").WithField("field", field)
 }
 
 func internalRealtimeError(err error) error {
-	return NewError("websocket.internal").Wrap(err)
+	return apperror.New("websocket.internal").Wrap(err)
 }
 
 func (a *App) AttachRealtimeSink(sink apprealtime.Sink) error {

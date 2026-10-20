@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -40,7 +41,7 @@ func userEmailState(user *model.User) *UserEmailState {
 
 func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, command ChangeUserEmailCommand) (*UserEmailState, error) {
 	if a == nil || a.userProfiles == nil || a.accountTokens == nil {
-		return nil, NewError("administration.unavailable")
+		return nil, apperror.New("administration.unavailable")
 	}
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 	id := strings.TrimSpace(command.UserID)
 	newEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
 	if !model.IsValidId(id) || !model.IsValidEmail(newEmail) {
-		return nil, NewError("user.invalid").WithField("field", "email")
+		return nil, apperror.New("user.invalid").WithField("field", "email")
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {
@@ -72,7 +73,7 @@ func (a *App) ChangeUserEmail(ctx context.Context, invocation Invocation, comman
 
 func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocation, command VerifyUserEmailPrivilegedCommand) (*UserEmailState, error) {
 	if a == nil || a.userProfiles == nil || a.accountTokens == nil {
-		return nil, NewError("administration.unavailable")
+		return nil, apperror.New("administration.unavailable")
 	}
 	if err := requireStrongRecentSession(invocation.Principal(), a.accountTokens.now(), a.recentAuthenticationTTL); err != nil {
 		return nil, err
@@ -82,7 +83,7 @@ func (a *App) VerifyUserEmailPrivileged(ctx context.Context, invocation Invocati
 	}
 	id := strings.TrimSpace(command.UserID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	current, err := a.accountTokens.users.Get(ctx, id)
 	if err != nil || current == nil || !current.IsActive() {

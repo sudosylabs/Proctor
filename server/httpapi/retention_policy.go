@@ -13,6 +13,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -135,7 +136,7 @@ func (module retentionPolicyResourceModule) replace(
 func requiredRetentionPolicySettings(body retentionPolicyRequest) (model.RetentionPolicySettings, error) {
 	settings := model.RetentionPolicySettings{}
 	if body.CandidateNotices.IsNull() {
-		return settings, application.NewError("request.invalid").WithField("field", "candidate_notices")
+		return settings, apperror.New("request.invalid").WithField("field", "candidate_notices")
 	}
 	if value := body.CandidateNotices.ValuePointer(); value != nil {
 		settings.CandidateNotices = *value
@@ -156,7 +157,7 @@ func requiredRetentionPolicySettings(body retentionPolicyRequest) (model.Retenti
 	for _, field := range fields {
 		value := field.source.ValuePointer()
 		if value == nil {
-			return model.RetentionPolicySettings{}, application.NewError("request.invalid").WithField("field", field.name)
+			return model.RetentionPolicySettings{}, apperror.New("request.invalid").WithField("field", field.name)
 		}
 		*field.destination = *value
 	}

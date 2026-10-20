@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -735,7 +736,7 @@ func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContract
 	}
 
 	application.mu.Lock()
-	application.browserAppendErr = app.NewError("browser_activity.gap_too_large")
+	application.browserAppendErr = apperror.New("browser_activity.gap_too_large")
 	application.mu.Unlock()
 	runtime.handleRequest(context.Background(), requestWithData(t, 43, examAttemptBrowserAppendAction, appendRequest))
 	response = nextInboundResponse(t, runtime)
@@ -836,7 +837,7 @@ func TestConnectionRuntimeRenewalUsesStrictPayloadAndSafeConnectionLossMessage(t
 	if response := nextInboundResponse(t, runtime); response.Status != "error" || response.Error == nil || response.Error.Code != "websocket.request.invalid" {
 		t.Fatalf("strict renewal response = %#v", response)
 	}
-	application.renewErr = app.NewError("exam.attempt.connection_lost")
+	application.renewErr = apperror.New("exam.attempt.connection_lost")
 	runtime.attempt = &examAttemptBinding{attemptID: model.NewExamAttemptID(), participationID: model.NewAttemptParticipationID(),
 		connectionID: model.NewAttemptConnectionID(), generation: 1}
 	credential := model.NewCredentialToken()
@@ -988,7 +989,7 @@ func TestConnectionRuntimePreservesInboundErrorContract(t *testing.T) {
 			request: func(t *testing.T) *Request {
 				return requestWithData(t, 24, "subscribe", validInboundSubscription())
 			},
-			authorize:   app.NewError("authorization.denied"),
+			authorize:   apperror.New("authorization.denied"),
 			wantCode:    "authorization.denied",
 			wantMessage: "WebSocket subscription denied.",
 		},
@@ -997,7 +998,7 @@ func TestConnectionRuntimePreservesInboundErrorContract(t *testing.T) {
 			request: func(t *testing.T) *Request {
 				return requestWithData(t, 25, "subscribe", validInboundSubscription())
 			},
-			authorize:   app.NewError("authorization.unavailable"),
+			authorize:   apperror.New("authorization.unavailable"),
 			wantCode:    "authorization.unavailable",
 			wantMessage: "WebSocket subscription failed.",
 		},
@@ -1006,7 +1007,7 @@ func TestConnectionRuntimePreservesInboundErrorContract(t *testing.T) {
 			request: func(t *testing.T) *Request {
 				return requestWithData(t, 27, "subscribe", validInboundSubscription())
 			},
-			authorize:   app.NewError("resource.not_found"),
+			authorize:   apperror.New("resource.not_found"),
 			wantCode:    "resource.not_found",
 			wantMessage: "WebSocket subscription failed.",
 		},
@@ -1051,7 +1052,7 @@ func TestConnectionRuntimeRevokesInvalidPrincipal(t *testing.T) {
 	clock := newRuntimeTestClock(now)
 	socket := newInboundTestSocket()
 	application := &inboundTestApplication{
-		validationErr: app.NewError("authentication.session.invalid"),
+		validationErr: apperror.New("authentication.session.invalid"),
 	}
 	runtime := newInboundRuntime(application, socket, clock)
 	done := make(chan struct{})
@@ -1137,7 +1138,7 @@ func TestConnectionRuntimeJoinsSimultaneousInboundTermination(t *testing.T) {
 		clock := newRuntimeTestClock(now)
 		socket := newInboundTestSocket()
 		runtime := newInboundRuntime(
-			&inboundTestApplication{validationErr: app.NewError("authentication.session.invalid")},
+			&inboundTestApplication{validationErr: apperror.New("authentication.session.invalid")},
 			socket,
 			clock,
 		)
@@ -1254,7 +1255,7 @@ func TestDeliveryErrorHasBoundedPrivateRecoveryAndRetryDelay(t *testing.T) {
 			if name == "unrelated" {
 				code = "exam.attempt.not_found"
 			}
-			runtime.enqueueDeliveryError(3, code, app.NewError(code).Wrap(&deliveryRecoveryTestError{error: errors.New("private-native-payload"), value: state}))
+			runtime.enqueueDeliveryError(3, code, apperror.New(apperror.Code(code)).Wrap(&deliveryRecoveryTestError{error: errors.New("private-native-payload"), value: state}))
 			response := nextInboundResponse(t, runtime)
 			if response.Error == nil || response.Sequence != 3 || (response.Error.Delivery != nil) != (name == "valid") {
 				t.Fatal("invalid delivery error extension")

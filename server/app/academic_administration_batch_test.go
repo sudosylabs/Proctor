@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -23,7 +24,7 @@ type academicAdministrationBatchAuthorizerFake struct {
 
 func (f *academicAdministrationBatchAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
 	if action != model.ActionOnboardingBatchManage {
-		return NewError("authorization.denied")
+		return apperror.New("authorization.denied")
 	}
 	f.resource = resource
 	return f.err
@@ -249,7 +250,7 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialPersonalAccessToken}},
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})
-	if !Is(err, "authentication.invalid_token") {
+	if !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("PAT sensitive batch error = %v", err)
 	}
 	if len(commands.disabled) != 0 {

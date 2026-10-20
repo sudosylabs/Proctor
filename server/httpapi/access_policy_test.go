@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -45,7 +46,7 @@ func (a *replayingAccessPolicyHTTPApplication) ReplaceAccessPolicy(_ context.Con
 	if a.command.IdempotencyKey == command.IdempotencyKey &&
 		(a.command.ExpectedRevision != command.ExpectedRevision || a.command.RevokeExistingSessions != command.RevokeExistingSessions ||
 			a.command.Settings.DesktopAuthorizationEnabled != command.Settings.DesktopAuthorizationEnabled) {
-		return application.AccessPolicyView{}, application.NewError("idempotency.conflict")
+		return application.AccessPolicyView{}, apperror.New("idempotency.conflict")
 	}
 	return a.view, nil
 }

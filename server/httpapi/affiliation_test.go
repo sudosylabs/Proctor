@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -75,7 +76,7 @@ func TestAffiliationResourceSerializesAllowedAuthorizationFailure(t *testing.T) 
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: application.NewError("authorization.denied")}))
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: apperror.New("authorization.denied")}))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+model.NewId()+"/affiliations", nil)
 	request.Header.Set("Authorization", "Bearer credential")
@@ -97,7 +98,7 @@ func TestAffiliationResourceFailsClosedForUndeclaredError(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: application.NewError("user.conflict")}))
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, affiliationResource(&affiliationHTTPApplication{listErr: apperror.New("user.conflict")}))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+model.NewId()+"/affiliations", nil)
 	request.Header.Set("Authorization", "Bearer credential")

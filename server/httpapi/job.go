@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -99,7 +100,7 @@ func jobResource(jobs JobOperationsApplication) resource {
 func (module jobResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := listJobsQuery(request.request)
 	if err != nil {
-		return operationResult{}, application.NewError("job.query.invalid")
+		return operationResult{}, apperror.New("job.query.invalid")
 	}
 	page, appErr := module.jobs.ListJobs(request.context, request.invocation(), query)
 	if appErr != nil {
@@ -113,7 +114,7 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("job.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("job.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -136,7 +137,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	}
 	limit, before, err := attemptPagination(request.request)
 	if err != nil {
-		return operationResult{}, application.NewError("job.query.invalid")
+		return operationResult{}, apperror.New("job.query.invalid")
 	}
 	page, appErr := module.jobs.ListJobAttempts(request.context, request.invocation(), application.ListJobAttemptsQuery{JobID: model.JobID(jobID), BeforeNumber: before, Limit: limit})
 	if appErr != nil {
@@ -149,7 +150,7 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 	if len(page.Items) == limit {
 		response.NextCursor, err = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
 		if err != nil {
-			return operationResult{}, application.NewError("job.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("job.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

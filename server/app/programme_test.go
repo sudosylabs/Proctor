@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -109,7 +110,7 @@ func (a *programmeAuthorizerFake) AuthorizeWithScope(
 func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	denied := NewError("authorization.denied")
+	denied := apperror.New("authorization.denied")
 	service := newProgrammeService(
 		&programmeStoreFake{events: &events},
 		&programmeAuthorizerFake{events: &events, err: denied},
@@ -119,7 +120,7 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewId(), Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize"}) {
@@ -139,7 +140,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewId(), Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if !Is(err, "programme.conflict") || auditor.failCode != "programme.conflict" {
+	if !apperror.Is(err, "programme.conflict") || auditor.failCode != "programme.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create", "audit-fail"}) {

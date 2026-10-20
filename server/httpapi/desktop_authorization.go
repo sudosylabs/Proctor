@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -264,7 +265,7 @@ func (m desktopAuthorizationResourceModule) cancel(request operationRequest) (op
 func (m desktopAuthorizationResourceModule) binding(request *http.Request) (string, error) {
 	binding, err := singleCookieValue(request, BrowserDesktopAuthorizationCookieName)
 	if err != nil || binding == "" {
-		return "", application.NewError("authentication.desktop_authorization.invalid")
+		return "", apperror.New("authentication.desktop_authorization.invalid")
 	}
 	return binding, nil
 }
@@ -304,7 +305,7 @@ func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (
 		if nonce, ok := application.DPoPChallengeNonce(err); ok {
 			headers.Set("DPoP-Nonce", nonce)
 			headers.Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
-		} else if application.Is(err, "authentication.dpop.invalid") || application.Is(err, "authentication.dpop.replayed") {
+		} else if apperror.Is(err, "authentication.dpop.invalid") || apperror.Is(err, "authentication.dpop.replayed") {
 			headers.Set("WWW-Authenticate", `DPoP error="invalid_dpop_proof"`)
 		}
 		return operationResult{}, errorWithHeaders(err, headers)

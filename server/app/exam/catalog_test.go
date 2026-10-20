@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -98,8 +99,8 @@ func TestArchiveNewAttemptRejectsArchivedAndStaleExamThroughAuditedStoreGuard(t 
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			_, err := fixture.service.Archive(context.Background(), fixture.call, ArchiveCommand{ExamID: fixture.examID,
 				ExpectedExamRevision: test.revision, IdempotencyKey: "test-key"})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != test.want || fixture.auditor.failedCode != test.want {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != test.want || fixture.auditor.failedCode != test.want {
 				t.Fatalf("archive error/audit = %v/%s, want %s", err, fixture.auditor.failedCode, test.want)
 			}
 		})

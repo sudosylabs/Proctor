@@ -15,6 +15,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 type StudentProgressionApplication interface {
@@ -136,17 +137,17 @@ func (m studentProgressionModule) report(request operationRequest) (protocolResu
 type unavailableStudentProgressionApplication struct{}
 
 func (unavailableStudentProgressionApplication) DryRunStudentProgression(context.Context, application.Invocation, application.DryRunStudentProgressionCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, application.NewError("student_progression.unavailable")
+	return application.OnboardingImportView{}, apperror.New("student_progression.unavailable")
 }
 func (unavailableStudentProgressionApplication) GetStudentProgression(context.Context, application.Invocation, string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
-	return application.OnboardingImportView{}, nil, application.NewError("student_progression.unavailable")
+	return application.OnboardingImportView{}, nil, apperror.New("student_progression.unavailable")
 }
 func (unavailableStudentProgressionApplication) CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, application.NewError("student_progression.unavailable")
+	return application.OnboardingImportView{}, apperror.New("student_progression.unavailable")
 }
 func (unavailableStudentProgressionApplication) CancelStudentProgression(context.Context, application.Invocation, string) (application.OnboardingImportView, error) {
-	return application.OnboardingImportView{}, application.NewError("student_progression.unavailable")
+	return application.OnboardingImportView{}, apperror.New("student_progression.unavailable")
 }
 func (unavailableStudentProgressionApplication) StudentProgressionReport(context.Context, application.Invocation, string, io.Writer) error {
-	return application.NewError("student_progression.unavailable")
+	return apperror.New("student_progression.unavailable")
 }

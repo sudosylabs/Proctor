@@ -12,6 +12,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -174,7 +175,7 @@ func (s *academicUnitQueryService) Get(
 ) (*model.AcademicUnit, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: id}
 	if err := s.authorization.Authorize(
@@ -206,7 +207,7 @@ func (s *academicUnitQueryService) List(
 ) ([]*model.AcademicUnit, error) {
 	parentID := strings.TrimSpace(query.ParentID)
 	if parentID != "" && !model.IsValidId(parentID) {
-		return nil, NewError("request.invalid").WithField("field", "parent_id")
+		return nil, apperror.New("request.invalid").WithField("field", "parent_id")
 	}
 	if parentID != "" {
 		resource := model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
@@ -283,22 +284,22 @@ func nonNilAcademicUnits(units []*model.AcademicUnit) []*model.AcademicUnit {
 func academicUnitReadError(resource string, err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").
+		return apperror.New("resource.not_found").
 			WithField("resource", resource).
 			Wrap(err)
 	case store.IsConflict(err):
-		return NewError(resource+".conflict").
+		return apperror.New(apperror.Code(resource+".conflict")).
 			WithField("resource", resource).
 			Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError(resource+".invalid").
+			return apperror.New(apperror.Code(resource+".invalid")).
 				WithField("resource", resource).
 				Wrap(err)
 		}
-		return NewError("administration.unavailable").
+		return apperror.New("administration.unavailable").
 			WithField("resource", resource).
 			Wrap(err)
 	}

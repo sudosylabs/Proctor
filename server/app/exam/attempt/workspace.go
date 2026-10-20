@@ -14,6 +14,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -100,7 +101,7 @@ func (service *Service) ListWorkspaceJournal(ctx context.Context, call Call, que
 		return WorkspaceJournalPage{}, err
 	}
 	if query.AfterCursor < 0 || query.Limit < 1 || query.Limit > model.AttemptWorkspaceJournalReadMaximum {
-		return WorkspaceJournalPage{}, invalid("workspace_journal")
+		return WorkspaceJournalPage{}, apperror.Invalid("exam.attempt.invalid", "workspace_journal")
 	}
 	stored, err := service.deps.Workspace.ListJournal(ctx, store.CandidateWorkspaceJournalOptions{
 		Access: access, AfterCursor: query.AfterCursor, Limit: query.Limit,
@@ -110,13 +111,13 @@ func (service *Service) ListWorkspaceJournal(ctx context.Context, call Call, que
 	}
 	if stored == nil || !stored.WorkspaceID.IsValid() || stored.CurrentCursor < query.AfterCursor ||
 		(stored.RefreshRequired && (len(stored.Entries) != 0 || stored.HasMore)) {
-		return WorkspaceJournalPage{}, unavailable(errors.New("inconsistent Attempt Workspace journal page"))
+		return WorkspaceJournalPage{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace journal page"))
 	}
 	entries := make([]model.AttemptWorkspaceJournalEntry, len(stored.Entries))
 	for index, entry := range stored.Entries {
 		if entry.Validate() != nil || entry.WorkspaceID != stored.WorkspaceID || entry.Cursor <= query.AfterCursor || entry.Cursor > stored.CurrentCursor ||
 			(index > 0 && entry.Cursor != entries[index-1].Cursor+1) {
-			return WorkspaceJournalPage{}, unavailable(errors.New("inconsistent Attempt Workspace journal entry"))
+			return WorkspaceJournalPage{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace journal entry"))
 		}
 		entries[index] = entry
 	}
@@ -131,7 +132,7 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call,
 	}
 	path, err := model.NormalizeAttemptWorkspacePath(command.Path)
 	if err != nil || path != command.Path {
-		return WorkspaceMutationResult{}, invalidCause("workspace_command", err)
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_command").Wrap(err)
 	}
 	idempotency, err := prepareWorkspaceMutationIdempotency(call, command.IdempotencyKey, access.AttemptID,
 		model.AttemptWorkspaceMutationCreateDirectory, struct {
@@ -142,7 +143,7 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call,
 	}
 	entryID := service.deps.NewWorkspaceEntry()
 	if !entryID.IsValid() {
-		return WorkspaceMutationResult{}, invalid("workspace_entry_id")
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_entry_id")
 	}
 	target, err := service.resolveWorkspaceMutationTarget(ctx, access)
 	if err != nil {
@@ -199,7 +200,7 @@ func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, com
 	if (command.Recursive && (command.ExpectedWorkspaceCursor == nil ||
 		*command.ExpectedWorkspaceCursor < 0 || !command.ExpectedContentVersion.IsZero())) ||
 		(!command.Recursive && command.ExpectedWorkspaceCursor != nil) {
-		return WorkspaceMutationResult{}, invalid("workspace_recursive_delete")
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_recursive_delete")
 	}
 	expected, err := validateWorkspaceEntryFence(command.EntryID, command.ExpectedPath)
 	if err != nil {
@@ -236,7 +237,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	if !entryID.IsValid() || body == nil || size < 0 || size > model.AttemptWorkspaceMaximumFileBytes ||
 		mediaType == "" || strings.TrimSpace(mediaType) != mediaType || len(mediaType) > 255 ||
 		!validWorkspaceSHA256(expectedSHA) {
-		return WorkspaceMutationResult{}, invalid("workspace_file")
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_file")
 	}
 	if operation == model.AttemptWorkspaceMutationCreateFile {
 		destinationPath, err = validateWorkspacePath(destinationPath)
@@ -247,7 +248,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 		}
 	}
 	if err != nil {
-		return WorkspaceMutationResult{}, invalidCause("workspace_file", err)
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_file").Wrap(err)
 	}
 	var semantic any
 	if operation == model.AttemptWorkspaceMutationCreateFile {
@@ -271,7 +272,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	}
 	objectID, version := service.deps.NewWorkspaceObject(), service.deps.NewWorkspaceVersion()
 	if !objectID.IsValid() || !version.IsValid() {
-		return WorkspaceMutationResult{}, invalid("workspace_identity")
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_identity")
 	}
 	if _, err = service.deps.Workspace.ReserveObject(ctx, &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}); err != nil {
 		return WorkspaceMutationResult{}, mapStore(err)
@@ -280,13 +281,13 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	if err != nil {
 		_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
 		if isInvalidAttemptWorkspaceContent(err) {
-			return WorkspaceMutationResult{}, invalidCause("workspace_content", err)
+			return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_content").Wrap(err)
 		}
-		return WorkspaceMutationResult{}, unavailable(err)
+		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
 	if staged == nil || staged.Validate() != nil || staged.SHA256 != expectedSHA {
 		_ = service.deps.Workspace.MarkObjectReclaimable(ctx, objectID)
-		return WorkspaceMutationResult{}, invalid("workspace_sha256")
+		return WorkspaceMutationResult{}, apperror.Invalid("exam.attempt.invalid", "workspace_sha256")
 	}
 	if _, err = service.deps.Workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
 		ObjectID: objectID, ContentVersion: version, Content: *staged}); err != nil {
@@ -317,7 +318,7 @@ func workspaceMutationSelector(call Call, access WorkspaceMutationAccess) (store
 		return store.ExamAttemptWorkspaceMutationAccess{}, err
 	}
 	if !access.ParticipationID.IsValid() || access.Generation < 1 {
-		return store.ExamAttemptWorkspaceMutationAccess{}, invalid("workspace_access")
+		return store.ExamAttemptWorkspaceMutationAccess{}, apperror.Invalid("exam.attempt.invalid", "workspace_access")
 	}
 	return store.ExamAttemptWorkspaceMutationAccess{AttemptID: read.AttemptID, ParticipationID: access.ParticipationID,
 		Generation: access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
@@ -337,11 +338,11 @@ func projectWorkspaceMutation(stored *store.ExamAttemptWorkspaceMutationResult, 
 	if stored == nil || stored.SittingID != target.SittingID || stored.ClassID != target.ClassID || stored.CandidateUserID != target.CandidateUserID ||
 		stored.WorkspaceID != target.WorkspaceID || stored.Change.Validate() != nil || stored.Change.WorkspaceID != stored.WorkspaceID ||
 		stored.Change.Operation != operation || stored.Change.Cursor < 1 || (!stored.Replayed && stored.Change.EntryID != entryID) {
-		return WorkspaceMutationResult{}, unavailable(errors.New("inconsistent Attempt Workspace mutation result"))
+		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace mutation result"))
 	}
 	if operation == model.AttemptWorkspaceMutationDeleteEntry {
 		if stored.Entry != nil {
-			return WorkspaceMutationResult{}, unavailable(errors.New("deleted Workspace entry remained visible"))
+			return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("deleted Workspace entry remained visible"))
 		}
 		return WorkspaceMutationResult{AttemptID: attemptID, SittingID: stored.SittingID, CandidateUserID: stored.CandidateUserID,
 			WorkspaceID: stored.WorkspaceID, Change: stored.Change, Replayed: stored.Replayed}, nil
@@ -350,7 +351,7 @@ func projectWorkspaceMutation(stored *store.ExamAttemptWorkspaceMutationResult, 
 		(!stored.Replayed && stored.Entry.EntryID != entryID) ||
 		(expectedKind != "" && stored.Entry.Kind != expectedKind) ||
 		(!stored.Replayed && expectedVersion.IsValid() && (stored.Entry.ContentVersion != expectedVersion || stored.Change.ContentVersion != expectedVersion)) {
-		return WorkspaceMutationResult{}, unavailable(errors.New("inconsistent Attempt Workspace entry result"))
+		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace entry result"))
 	}
 	entry := *stored.Entry
 	return WorkspaceMutationResult{AttemptID: attemptID, SittingID: stored.SittingID, CandidateUserID: stored.CandidateUserID,
@@ -363,7 +364,7 @@ func (service *Service) resolveWorkspaceMutationTarget(ctx context.Context, acce
 		return nil, mapStore(err)
 	}
 	if !validWorkspaceTarget(target, access) {
-		return nil, unavailable(errors.New("inconsistent Attempt Workspace mutation target"))
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt Workspace mutation target"))
 	}
 	return target, nil
 }
@@ -390,7 +391,7 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, call Call, t
 		return WorkspaceMutationResult{}, err
 	}
 	if result.Change.Recursive != mutation.Recursive {
-		return WorkspaceMutationResult{}, unavailable(errors.New("inconsistent recursive Workspace mutation result"))
+		return WorkspaceMutationResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent recursive Workspace mutation result"))
 	}
 	if !result.Replayed {
 		if effectErr := service.deps.Effects.WorkspaceChanged(ctx, result); effectErr != nil {
@@ -402,11 +403,11 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, call Call, t
 
 func validateWorkspaceEntryFence(entryID model.AttemptWorkspaceEntryID, expectedPath string) (string, error) {
 	if !entryID.IsValid() {
-		return "", invalid("workspace_command")
+		return "", apperror.Invalid("exam.attempt.invalid", "workspace_command")
 	}
 	path, err := validateWorkspacePath(expectedPath)
 	if err != nil {
-		return "", invalidCause("workspace_path", err)
+		return "", apperror.Invalid("exam.attempt.invalid", "workspace_path").Wrap(err)
 	}
 	return path, nil
 }
@@ -418,7 +419,7 @@ func validateWorkspaceMove(entryID model.AttemptWorkspaceEntryID, expectedPath, 
 	}
 	destination, err := validateWorkspacePath(destinationPath)
 	if err != nil || destination == expected {
-		return "", "", invalidCause("workspace_destination_path", err)
+		return "", "", apperror.Invalid("exam.attempt.invalid", "workspace_destination_path").Wrap(err)
 	}
 	return expected, destination, nil
 }
@@ -464,6 +465,6 @@ func isInvalidAttemptWorkspaceContent(err error) bool {
 }
 
 func isAttemptUnavailable(err error) bool {
-	var fault *Fault
-	return errors.As(err, &fault) && fault.Code == "exam.attempt.unavailable"
+	var fault *apperror.Error
+	return errors.As(err, &fault) && fault.Code() == "exam.attempt.unavailable"
 }

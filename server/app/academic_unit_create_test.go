@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -268,7 +269,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 			authorizeInstallation: func(
 				context.Context, Invocation, model.Action,
 			) (model.Resource, error) {
-				return model.Resource{}, NewError("authorization.denied")
+				return model.Resource{}, apperror.New("authorization.denied")
 			},
 		},
 		&academicUnitCommandAuditor{events: &events},
@@ -278,7 +279,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 		model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v, want authorization.denied", err)
 	}
 	if creator.input != nil || len(events) != 0 {
@@ -322,7 +323,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		ParentID: parentID, Name: "computing", DisplayName: "Computing",
 	})
-	if !Is(err, "academic_unit.conflict") {
+	if !apperror.Is(err, "academic_unit.conflict") {
 		t.Fatalf("Create() error = %v, want academic_unit.conflict", err)
 	}
 	if auditor.failCode != "academic_unit.conflict" {

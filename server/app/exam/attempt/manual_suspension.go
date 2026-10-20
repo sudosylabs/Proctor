@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -49,11 +50,11 @@ type ManualSuspensionResult struct {
 func (service *Service) SuspendByManager(ctx context.Context, call Call, command ManualSuspensionCommand) (ManualSuspensionResult, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return ManualSuspensionResult{}, &Fault{Code: "authentication.invalid_token"}
+		return ManualSuspensionResult{}, apperror.New("authentication.invalid_token")
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
-		return ManualSuspensionResult{}, invalid("manual_suspension")
+		return ManualSuspensionResult{}, apperror.Invalid("exam.attempt.invalid", "manual_suspension")
 	}
 	idempotency, err := prepareManualSuspensionIdempotency(call, command)
 	if err != nil {
@@ -68,7 +69,7 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 		return ManualSuspensionResult{}, mapStore(err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != command.SittingID || !sitting.Sitting.ClassID.IsValid() {
-		return ManualSuspensionResult{}, unavailable(errors.New("incomplete Sitting ownership projection"))
+		return ManualSuspensionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("incomplete Sitting ownership projection"))
 	}
 	action := model.ActionExamSittingManage
 	if override {
@@ -82,7 +83,7 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 		return ManualSuspensionResult{}, err
 	}
 	if sitting.Sitting.ExamID != command.ExamID {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
 	if err != nil {
@@ -91,14 +92,14 @@ func (service *Service) SuspendByManager(ctx context.Context, call Call, command
 	if managerSnapshot == nil || managerSnapshot.Attempt == nil || managerSnapshot.Attempt.Validate() != nil ||
 		managerSnapshot.Attempt.ExamID != command.ExamID ||
 		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, unavailable(errors.New("inconsistent manual suspension Attempt projection")))
+		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manual suspension Attempt projection")))
 	}
 	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	suspensionID := service.deps.NewSuspension()
 	if !suspensionID.IsValid() {
-		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, invalid("suspension_id"))
+		return ManualSuspensionResult{}, service.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "suspension_id"))
 	}
 	stored, err := service.deps.Persistence.SuspendAttempt(ctx, &store.ExamAttemptManualSuspension{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: suspensionID,
@@ -137,7 +138,7 @@ func projectManualSuspension(stored *store.ExamAttemptManualSuspensionResult, co
 		stored.ConnectionClosed != (stored.Connection != nil) ||
 		(stored.Connection != nil && (!stored.Connection.ID.IsValid() || stored.Connection.State != model.AttemptConnectionClosed ||
 			stored.Connection.CloseReason != model.AttemptConnectionCloseKicked || !stored.Connection.ClosedAt.Valid)) {
-		return ManualSuspensionResult{}, unavailable(errors.New("inconsistent Attempt manual suspension outcome"))
+		return ManualSuspensionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Attempt manual suspension outcome"))
 	}
 	result := ManualSuspensionResult{ExamID: stored.ExamID, SittingID: stored.SittingID, ClassID: stored.ClassID,
 		CandidateUserID: stored.CandidateUserID, Attempt: *stored.Attempt, Participation: *stored.Participation,

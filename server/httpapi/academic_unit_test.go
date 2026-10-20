@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -51,7 +52,7 @@ func (a *academicUnitHTTPApplication) GetAcademicUnit(
 	query application.GetAcademicUnitQuery,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID || query.ID != a.unit.ID.String() {
-		return nil, application.NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	if a.getErr != nil {
 		return nil, a.getErr
@@ -81,7 +82,7 @@ func (a *academicUnitHTTPApplication) CreateAcademicUnit(
 	command application.CreateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
-		return nil, application.NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	a.createCommand = command
 	return a.created, nil
@@ -93,7 +94,7 @@ func (a *academicUnitHTTPApplication) UpdateAcademicUnit(
 	command application.UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
-		return nil, application.NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	a.updateCommand = command
 	return a.unit, nil
@@ -105,7 +106,7 @@ func (a *academicUnitHTTPApplication) ArchiveAcademicUnit(
 	command application.ArchiveAcademicUnitCommand,
 ) error {
 	if invocation.Principal().UserID != a.principal.UserID {
-		return application.NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	a.archiveCommand = command
 	return nil
@@ -219,7 +220,7 @@ func TestAcademicUnitHTTPErrorUsesProblemDetailsContract(t *testing.T) {
 			AuthenticatedAt:        time.Now(),
 		},
 		unit: unit,
-		getErr: application.NewError("resource.not_found").
+		getErr: apperror.New("resource.not_found").
 			WithField("resource", "academic_unit"),
 	}
 	httpAPI := newFocusedResourceAPI(t, logger, fakeApplication, academicUnitResource(fakeApplication))

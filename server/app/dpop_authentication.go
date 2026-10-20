@@ -12,6 +12,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -142,7 +143,7 @@ func (s *authenticationService) verifyDesktopProof(
 	}
 	target, err := s.dpopTarget(path)
 	if err != nil {
-		return nil, NewError("authentication.dpop.invalid")
+		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	if !access {
 		accessToken = ""

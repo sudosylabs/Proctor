@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -18,15 +19,15 @@ import (
 
 func prepareIdempotency(call Call, operation, key string, semantic any) (*store.CommandIdempotency, error) {
 	if key == "" {
-		return nil, &Fault{Code: "idempotency.key_required"}
+		return nil, apperror.New("idempotency.key_required")
 	}
 	prepared, err := applicationidempotency.Prepare(call.Principal().UserID, operation, key, semantic)
 	var encodingError *applicationidempotency.SemanticEncodingError
 	switch {
 	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, &Fault{Code: "idempotency.invalid_key", Cause: err}
+		return nil, apperror.New("idempotency.invalid_key").Wrap(err)
 	case errors.As(err, &encodingError):
-		return nil, &Fault{Code: "request.invalid", Cause: err}
+		return nil, apperror.New("request.invalid").Wrap(err)
 	default:
 		return prepared, err
 	}
@@ -48,7 +49,7 @@ func prepareConnectIdempotency(call Call, command ConnectCommand) (*store.Comman
 	if command.InitialConfiguration != nil {
 		canonical, err := command.InitialConfiguration.CanonicalAdmission()
 		if err != nil {
-			return nil, &Fault{Code: "request.invalid", Cause: err}
+			return nil, apperror.New("request.invalid").Wrap(err)
 		}
 		proposal = canonical
 	}

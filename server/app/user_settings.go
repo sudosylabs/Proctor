@@ -13,6 +13,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -124,7 +125,7 @@ func (a *App) ReplaceOwnUserSettings(
 	command ReplaceOwnUserSettingsCommand,
 ) (UserSettingsReplacementResult, error) {
 	if a == nil || a.userSettings == nil {
-		return UserSettingsReplacementResult{}, NewError("user_settings.unavailable")
+		return UserSettingsReplacementResult{}, apperror.New("user_settings.unavailable")
 	}
 	return a.userSettings.ReplaceOwn(ctx, invocation, command)
 }
@@ -139,13 +140,13 @@ func (s *userSettingsService) ReplaceOwn(
 		return UserSettingsReplacementResult{}, invalidTokenAppError()
 	}
 	if command.IdempotencyKey == "" {
-		return UserSettingsReplacementResult{}, NewError("idempotency.key_required")
+		return UserSettingsReplacementResult{}, apperror.New("idempotency.key_required")
 	}
 	if command.FormatVersion != model.UserSettingsFormatVersion1 {
-		return UserSettingsReplacementResult{}, NewError("user_settings.format_unsupported")
+		return UserSettingsReplacementResult{}, apperror.New("user_settings.format_unsupported")
 	}
 	if !command.ExpectedRevision.IsValid() {
-		return UserSettingsReplacementResult{}, NewError("request.invalid").WithField("field", "expected_revision")
+		return UserSettingsReplacementResult{}, apperror.New("request.invalid").WithField("field", "expected_revision")
 	}
 	diagnostics := validateUserSettingsSource(command.Source)
 	if len(diagnostics) != 0 {
@@ -156,7 +157,7 @@ func (s *userSettingsService) ReplaceOwn(
 			}
 		}
 		encoded, _ := json.Marshal(public)
-		return UserSettingsReplacementResult{}, NewError("user_settings.invalid").WithField("diagnostics", string(encoded))
+		return UserSettingsReplacementResult{}, apperror.New("user_settings.invalid").WithField("diagnostics", string(encoded))
 	}
 	current, err := s.settings.Get(ctx, principal.UserID)
 	if err != nil || current == nil || current.UserID != principal.UserID || current.Validate() != nil {
@@ -166,7 +167,7 @@ func (s *userSettingsService) ReplaceOwn(
 		return UserSettingsReplacementResult{}, userSettingsUnavailable(err)
 	}
 	if current.FormatVersion != model.UserSettingsFormatVersion1 {
-		return UserSettingsReplacementResult{}, NewError("user_settings.format_unsupported")
+		return UserSettingsReplacementResult{}, apperror.New("user_settings.format_unsupported")
 	}
 	nextRevision := model.NewUserSettingsRevision()
 	updatedAt := model.TimeUTC(s.now())
@@ -247,9 +248,9 @@ func userSettingsReplacementError(err error) error {
 	var invalid *store.ErrInvalidInput
 	switch {
 	case errors.As(err, &revision):
-		return NewError("user_settings.revision_conflict").WithField("current_revision", revision.CurrentRevision.String()).Wrap(err)
+		return apperror.New("user_settings.revision_conflict").WithField("current_revision", revision.CurrentRevision.String()).Wrap(err)
 	case errors.As(err, &invalid):
-		return NewError("user_settings.invalid").Wrap(err)
+		return apperror.New("user_settings.invalid").Wrap(err)
 	case idempotencyError(err) != nil:
 		return idempotencyError(err)
 	default:
@@ -261,7 +262,7 @@ func userSettingsReplacementError(err error) error {
 // principal. There is intentionally no caller-supplied User identifier.
 func (a *App) ReadOwnUserSettings(ctx context.Context, invocation Invocation) (UserSettingsView, error) {
 	if a == nil || a.userSettings == nil {
-		return UserSettingsView{}, NewError("user_settings.unavailable")
+		return UserSettingsView{}, apperror.New("user_settings.unavailable")
 	}
 	return a.userSettings.ReadOwn(ctx, invocation)
 }
@@ -292,7 +293,7 @@ func (s *userSettingsService) ReadOwn(ctx context.Context, invocation Invocation
 }
 
 func userSettingsUnavailable(err error) error {
-	return NewError("user_settings.unavailable").Wrap(err)
+	return apperror.New("user_settings.unavailable").Wrap(err)
 }
 
 func prepareInitialUserSettingsDocument(user *model.User) (*model.UserSettingsDocument, error) {

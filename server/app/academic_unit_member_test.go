@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -129,10 +130,10 @@ func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 	service := newAcademicUnitMemberService(
 		&academicUnitMemberStoreFake{events: &events},
 		relationshipUserStoreTestFake{},
-		&programmeAuthorizerFake{events: &events, preflightErr: NewError("authorization.denied")},
+		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewId,
 	)
-	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewId()}); !Is(err, "authorization.denied") {
+	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewId()}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("End() error = %v, want authorization.denied", err)
 	}
 	if want := []string{"authorize-preflight"}; !reflect.DeepEqual(events, want) {
@@ -150,10 +151,10 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 	service := newAcademicUnitMemberService(
 		&academicUnitMemberStoreFake{events: &events, current: current},
 		relationshipUserStoreTestFake{},
-		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
+		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewId,
 	)
-	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
+	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()}); !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -253,7 +254,7 @@ func (fake *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceDirectory(_ 
 func (fake *examStarterWorkspaceHTTPFake) CreateExamStarterWorkspaceFile(_ context.Context, _ application.Invocation, command application.CreateExamStarterWorkspaceFileCommand) (application.ExamStarterWorkspaceResult, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
-		return application.ExamStarterWorkspaceResult{}, application.NewError("exam.starter_workspace.invalid")
+		return application.ExamStarterWorkspaceResult{}, apperror.New("exam.starter_workspace.invalid")
 	}
 	fake.createFile, fake.uploaded = command, raw
 	return fake.result(), nil

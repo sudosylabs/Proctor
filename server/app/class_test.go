@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -62,9 +63,9 @@ func (s *classStoreFake) ArchiveWithAudit(_ context.Context, input *store.ClassA
 func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
+	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
 	_, err := service.Get(context.Background(), Invocation{}, GetClassQuery{ID: model.NewId()})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v", err)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize"}) {
@@ -123,7 +124,7 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 			events := []string{}
 			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewId())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
 			err := test.run(service)
-			appErr, ok := As(err)
+			appErr, ok := apperror.As(err)
 			if !ok || appErr.Code() != "resource.not_found" || appErr.Fields()["resource"] != "class" {
 				t.Fatalf("error = %#v", err)
 			}
@@ -138,7 +139,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
 	_, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: levelID, AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
-	if !Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
+	if !apperror.Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
 	}
 }

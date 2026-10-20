@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
@@ -382,7 +383,7 @@ func TestOnboardingImportReportRequiresTerminalState(t *testing.T) {
 	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), State: model.OnboardingImportPreviewReady,
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewInstitutionID().String()}
 	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: current}, authorization: &invitationAuthorizerFake{}}
-	if err := service.Report(context.Background(), Invocation{}, current.ID.String(), &strings.Builder{}); !Is(err, "onboarding_import.conflict") {
+	if err := service.Report(context.Background(), Invocation{}, current.ID.String(), &strings.Builder{}); !apperror.Is(err, "onboarding_import.conflict") {
 		t.Fatalf("preview report error = %v", err)
 	}
 }

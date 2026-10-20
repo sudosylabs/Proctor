@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -40,9 +41,9 @@ func TestCreateExamBuildsChildCallAndIdempotency(t *testing.T) {
 
 func TestCreateExamRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
+	application := &App{exams: &examUseCasesFake{err: apperror.New("idempotency.key_required")}}
 	_, err := application.CreateExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), CreateExamCommand{AcademicUnitID: model.NewAcademicUnitID(), Title: "Algorithms"})
-	if !Is(err, "idempotency.key_required") {
+	if !apperror.Is(err, "idempotency.key_required") {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
 	}
 }
@@ -85,12 +86,12 @@ func TestEditExamDraftTextBuildsPresenceAwareIdempotentChildCommand(t *testing.T
 
 func TestEditExamDraftTextRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
+	application := &App{exams: &examUseCasesFake{err: apperror.New("idempotency.key_required")}}
 	title := "Algorithms"
 	_, err := application.EditExamDraftText(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), EditExamDraftTextCommand{
 		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Title: &title,
 	})
-	if !Is(err, "idempotency.key_required") {
+	if !apperror.Is(err, "idempotency.key_required") {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
 	}
 }
@@ -141,12 +142,12 @@ func TestConfigureExamDraftFocusLossBuildsTypedIdempotentChildCommand(t *testing
 
 func TestConfigureExamDraftFocusLossRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
+	application := &App{exams: &examUseCasesFake{err: apperror.New("idempotency.key_required")}}
 	_, err := application.ConfigureExamDraftFocusLoss(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ConfigureExamDraftFocusLossCommand{
 		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Enabled: true, MinimumDuration: time.Second,
 		IncidentCount: 1, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag,
 	})
-	if !Is(err, "idempotency.key_required") {
+	if !apperror.Is(err, "idempotency.key_required") {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
 	}
 }
@@ -170,10 +171,10 @@ func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *test
 	t.Parallel()
 	principal := testExamPrincipal(model.NewUserID())
 	resource := model.Resource{Type: model.ResourceExam, ID: model.NewExamID().String()}
-	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {
+	for _, failure := range []error{apperror.New("exam.not_found"), apperror.New("authorization.denied")} {
 		application := &App{exams: &examUseCasesFake{err: failure}}
 		err := application.AuthorizeWebSocketSubscription(context.Background(), principal, model.RequestMetadata{}, model.ActionExamView, resource)
-		if !Is(err, "resource.not_found") {
+		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("error = %v, want concealed resource.not_found", err)
 		}
 	}
@@ -181,11 +182,11 @@ func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *test
 
 func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 	t.Parallel()
-	for _, failure := range []error{&examengine.Fault{Code: "exam.not_found"}, NewError("authorization.denied")} {
+	for _, failure := range []error{apperror.New("exam.not_found"), apperror.New("authorization.denied")} {
 		child := &examUseCasesFake{err: failure}
 		application := &App{exams: child}
 		_, err := application.GetExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), GetExamQuery{ExamID: model.NewExamID()})
-		if !Is(err, "resource.not_found") {
+		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("GetExam error = %v, want concealed not found", err)
 		}
 	}

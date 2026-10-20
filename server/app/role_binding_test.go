@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -144,7 +145,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		UserID: model.NewId(), RoleID: roleID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewId(), StartAt: 100,
 	})
-	if !Is(err, "role_binding.system_admin_requires_institution_scope") {
+	if !apperror.Is(err, "role_binding.system_admin_requires_institution_scope") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-binding-scope", "get-role"}
@@ -201,7 +202,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID.String()})
-	if !Is(err, "role_binding.last_system_admin") {
+	if !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
 	}
 	if _, available := persistence.endInput.Capabilities.Providers["campus"]; !available {

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -121,7 +122,7 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false})
-	if !Is(err, "user.conflict") {
+	if !apperror.Is(err, "user.conflict") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "audit-fail"}
@@ -163,7 +164,7 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: userID, Enabled: false})
-	if !Is(err, "request.invalid") {
+	if !apperror.Is(err, "request.invalid") {
 		t.Fatalf("error = %v", err)
 	}
 	if want := []string{"authorize-manage"}; !reflect.DeepEqual(events, want) {
@@ -232,7 +233,7 @@ func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events, err: errors.New("render failed")},
 		&accountStateEffectsFake{events: &events}, time.Now)
-	if _, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false}); !Is(err, "administration.unavailable") {
+	if _, err := service.SetEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID.String(), Enabled: false}); !apperror.Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
 	if want := []string{"authorize-manage", "get-user", "prepare-mail"}; !reflect.DeepEqual(events, want) {

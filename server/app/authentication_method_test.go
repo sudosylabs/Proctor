@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -82,7 +83,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	passwords.enroll = nil
-	if err = service.enrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple"); !Is(err, "authentication.strong_required") {
+	if err = service.enrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple"); !apperror.Is(err, "authentication.strong_required") {
 		t.Fatalf("weak enrollment error = %v", err)
 	}
 	if passwords.enroll != nil {
@@ -109,12 +110,12 @@ func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	saturatePasswordWork(t, hasher)
-	if err := service.enrollPassword(context.Background(), invocation, "correct horse battery staple"); !Is(err, "service.busy") {
+	if err := service.enrollPassword(context.Background(), invocation, "correct horse battery staple"); !apperror.Is(err, "service.busy") {
 		t.Fatalf("saturated enrollment = %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := service.enrollPassword(ctx, invocation, "correct horse battery staple"); !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+	if err := service.enrollPassword(ctx, invocation, "correct horse battery staple"); !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled enrollment = %v", err)
 	}
 	if passwords.enroll != nil || audit.attempt.Operation != "" {

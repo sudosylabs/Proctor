@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -59,7 +60,7 @@ func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 	if _, err = security.Verify(
 		context.Background(), proof, "POST",
 		"https://proctor.example/api/v1/auth/desktop/token", "", &jwk, binding,
-	); !Is(err, "authentication.dpop.replayed") {
+	); !apperror.Is(err, "authentication.dpop.replayed") {
 		t.Fatalf("replayed Verify() error = %v", err)
 	}
 }

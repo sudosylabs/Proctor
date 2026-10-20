@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -287,7 +288,7 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 			for _, operation := range operations {
 				t.Run(operation.name, func(t *testing.T) {
 					err := operation.run()
-					var appErr *Error
+					var appErr *apperror.Error
 					if !errors.As(err, &appErr) || appErr.Code() != tc.wantCode {
 						t.Fatalf("error = %v, want %s", err, tc.wantCode)
 					}
@@ -390,7 +391,7 @@ func TestAccessPolicyReplacementMapsConflictingIdempotencyReuse(t *testing.T) {
 	_, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, IdempotencyKey: "reused-key",
 	})
-	if !Is(err, "idempotency.conflict") {
+	if !apperror.Is(err, "idempotency.conflict") {
 		t.Fatalf("error = %v", err)
 	}
 	if persistence.preflightInput != nil {
@@ -419,7 +420,7 @@ func TestAccessPolicyReplacementCompletesRevisionBlockerAndStoreFailures(t *test
 			_, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
 				ExpectedRevision: 1, Settings: settings, IdempotencyKey: "failed-" + tc.name,
 			})
-			if !Is(err, tc.wantCode) {
+			if !apperror.Is(err, tc.wantCode) {
 				t.Fatalf("error = %v, want %s", err, tc.wantCode)
 			}
 			if audit.attempt.Operation != "replace" || audit.failID != audit.beginID || audit.failCode != tc.wantCode {
@@ -438,7 +439,7 @@ func TestAccessPolicyReadFailsSafelyForMissingSnapshot(t *testing.T) {
 	for _, snapshot := range []*store.AccessPolicySnapshot{nil, {}} {
 		persistence.snapshot = snapshot
 		_, err := service.Read(context.Background(), invocation)
-		if !Is(err, "access_policy.unavailable") {
+		if !apperror.Is(err, "access_policy.unavailable") {
 			t.Fatalf("snapshot %#v error = %v", snapshot, err)
 		}
 	}

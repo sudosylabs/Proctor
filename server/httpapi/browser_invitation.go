@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 type BrowserInvitationApplication interface {
@@ -54,15 +55,15 @@ type browserInvitationResourceModule struct {
 type unavailableBrowserInvitationApplication struct{}
 
 func (unavailableBrowserInvitationApplication) StartBrowserInvitation(context.Context, application.Invocation, application.StartBrowserInvitationCommand) (*application.BrowserInvitationStart, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 
 func (unavailableBrowserInvitationApplication) AcceptBrowserInvitation(context.Context, application.Invocation, application.BrowserInvitationAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 
 func (unavailableBrowserInvitationApplication) AcceptBrowserInvitationWithSession(context.Context, application.Invocation, application.BrowserInvitationSessionAcceptanceCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 
 func browserInvitationResource(application BrowserInvitationApplication, cookies browserCookies) resource {
@@ -172,7 +173,7 @@ func (module browserInvitationResourceModule) acceptWithSession(request operatio
 func (module browserInvitationResourceModule) proof(request *http.Request) (string, error) {
 	proof, err := singleCookieValue(request, BrowserInvitationProofCookieName)
 	if err != nil || proof == "" {
-		return "", application.NewError("invitation.invalid")
+		return "", apperror.New("invitation.invalid")
 	}
 	return proof, nil
 }

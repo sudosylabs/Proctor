@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -175,7 +176,7 @@ func (s academicAdministrationCommandServices) RevokeUserSessions(ctx context.Co
 
 func (a *App) RunAcademicAdministrationBatch(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
 	if a == nil || a.academicAdministrationBatches == nil {
-		return AcademicAdministrationBatchResult{}, NewError("administration.unavailable")
+		return AcademicAdministrationBatchResult{}, apperror.New("administration.unavailable")
 	}
 	return a.academicAdministrationBatches.Run(ctx, invocation, command)
 }
@@ -189,7 +190,7 @@ func (s *academicAdministrationBatchService) Run(ctx context.Context, invocation
 	if s == nil || s.commands == nil || s.authorization == nil || s.now == nil || !command.Operation.IsValid() ||
 		!model.IsValidId(command.ScopeID) || command.IdempotencyKey == "" || len(command.Items) < 1 ||
 		len(command.Items) > MaximumAcademicAdministrationBatchItems || !academicAdministrationBatchScopeMatches(command.Operation, command.ScopeType) {
-		return AcademicAdministrationBatchResult{}, NewError("request.invalid")
+		return AcademicAdministrationBatchResult{}, apperror.New("request.invalid")
 	}
 	resource, err := academicAdministrationBatchResource(command.ScopeType, command.ScopeID)
 	if err != nil {
@@ -377,7 +378,7 @@ func academicAdministrationBatchResource(scopeType model.RoleScopeType, scopeID 
 	case model.RoleScopeClass:
 		return model.Resource{Type: model.ResourceClass, ID: scopeID}, nil
 	default:
-		return model.Resource{}, NewError("request.invalid")
+		return model.Resource{}, apperror.New("request.invalid")
 	}
 }
 
@@ -459,7 +460,7 @@ func (s *academicAdministrationBatchService) runItem(ctx context.Context, invoca
 			return "", "", err
 		}
 		if metadata.Duplicate {
-			return "", "", NewError("onboarding_batch.duplicate")
+			return "", "", apperror.New("onboarding_batch.duplicate")
 		}
 		status := InvitationBatchItemSucceeded
 		if replayed {
@@ -489,14 +490,14 @@ func (s *academicAdministrationBatchService) runItem(ctx context.Context, invoca
 			return "", "", err
 		}
 		if metadata.Duplicate {
-			return "", "", NewError("onboarding_batch.duplicate")
+			return "", "", apperror.New("onboarding_batch.duplicate")
 		}
 		if replayed {
 			return item.UserID, InvitationBatchItemNoOp, nil
 		}
 		return item.UserID, InvitationBatchItemSucceeded, nil
 	default:
-		return "", "", NewError("request.invalid")
+		return "", "", apperror.New("request.invalid")
 	}
 }
 
@@ -542,7 +543,7 @@ func academicAdministrationModelOutcome(value any, replayed bool, metadata *stor
 		return "", "", err
 	}
 	if metadata != nil && metadata.Duplicate {
-		return "", "", NewError("onboarding_batch.duplicate")
+		return "", "", apperror.New("onboarding_batch.duplicate")
 	}
 	var id string
 	switch typed := value.(type) {
@@ -568,7 +569,7 @@ func academicAdministrationModelOutcome(value any, replayed bool, metadata *stor
 		}
 	}
 	if id == "" {
-		return "", "", NewError("administration.unavailable")
+		return "", "", apperror.New("administration.unavailable")
 	}
 	status := InvitationBatchItemSucceeded
 	if replayed {
@@ -578,7 +579,7 @@ func academicAdministrationModelOutcome(value any, replayed bool, metadata *stor
 }
 
 func academicAdministrationBatchPublicErrorCode(err error) string {
-	if failure, ok := As(err); ok {
+	if failure, ok := apperror.As(err); ok {
 		switch failure.Code() {
 		case "request.invalid", "resource.not_found", "authorization.denied", "authorization.request.invalid",
 			"authorization.unavailable", "audit.unavailable", "administration.unavailable", "mail.unavailable",

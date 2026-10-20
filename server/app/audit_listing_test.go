@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -137,7 +138,7 @@ func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testin
 	}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{events: &events})
 	_, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("error = %v, want authorization.denied", err)
 	}
 	if want := []string{"authorize-view"}; !reflect.DeepEqual(events, want) {
@@ -153,7 +154,7 @@ func TestAuditListingRejectsInvalidQuery(t *testing.T) {
 		&auditListingAuthorizerFake{events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
 	_, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 500})
-	if !Is(err, "audit.query.invalid") {
+	if !apperror.Is(err, "audit.query.invalid") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-view"}

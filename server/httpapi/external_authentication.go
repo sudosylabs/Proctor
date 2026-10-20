@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -251,5 +252,5 @@ func externalAuthenticationCallbackFromRequest(
 }
 
 func invalidExternalCallbackError() error {
-	return application.NewError("authentication.external.invalid")
+	return apperror.New("authentication.external.invalid")
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -134,7 +135,7 @@ func TestExamExportHTTPDownloadHasFixedPrivateAttachment(t *testing.T) {
 	if fake.query.Scope != scope || fake.query.ExportID != e.ID {
 		t.Fatalf("download scope=%#v", fake.query)
 	}
-	fake.failure = application.NewError("exam.export.expired")
+	fake.failure = apperror.New("exam.export.expired")
 	w = send()
 	if w.Code != http.StatusGone || strings.Contains(w.Body.String(), "archive") {
 		t.Fatalf("expired=%d %s", w.Code, w.Body.String())

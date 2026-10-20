@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -51,7 +52,7 @@ func TestAcademicClientRevisionPreconditions(t *testing.T) {
 						code = "authorization.denied"
 					}
 					if code != "" {
-						if !Is(err, code) {
+						if !apperror.Is(err, code) {
 							t.Fatalf("error = %v, want %s", err, code)
 						}
 						for _, event := range events {
@@ -87,7 +88,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 	at := model.TimeFromMillis(100)
 	var deniedErr error
 	if denied {
-		deniedErr = NewError("authorization.denied")
+		deniedErr = apperror.New("authorization.denied")
 	}
 	authorization := &programmeAuthorizerFake{events: events, err: deniedErr}
 	audit := &institutionAuditorFake{events: events, beginID: model.NewId()}

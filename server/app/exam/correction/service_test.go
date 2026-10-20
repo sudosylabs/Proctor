@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -86,8 +87,8 @@ func TestStageResourceContentCapacityRefusalLeavesOnlyPendingReservation(t *test
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "service.busy" || !errors.Is(err, f.content.err) {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "service.busy" || !errors.Is(err, f.content.err) {
 		t.Fatalf("capacity outcome=%v", err)
 	}
 	if f.persistence.reservation == nil || f.persistence.readyCalls != 0 || f.persistence.application != nil || f.effects.calls != 0 {
@@ -134,8 +135,8 @@ func TestStageResourceContentStopsWhenCurrentManagerMembershipCannotBeRead(t *te
 	failure := errors.New("membership unavailable")
 	f.memberships.err = failure
 	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.sitting.correction.unavailable" || !errors.Is(err, failure) {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)
 	}
 	if want := "access,membership"; strings.Join(f.order, ",") != want {
@@ -208,8 +209,8 @@ func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.sitting.correction.invalid" || len(f.order) != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.invalid" || len(f.order) != 0 {
 		t.Fatalf("error=%v order=%v", err, f.order)
 	}
 }

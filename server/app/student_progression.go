@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,14 +38,14 @@ type CommitStudentProgressionCommand struct {
 
 func (a *App) DryRunStudentProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("student_progression.unavailable")
+		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
 	}
 	return a.onboardingImports.dryRunProgression(ctx, invocation, command)
 }
 
 func (a *App) GetStudentProgression(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, []OnboardingImportRowView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, nil, NewError("student_progression.unavailable")
+		return OnboardingImportView{}, nil, apperror.New("student_progression.unavailable")
 	}
 	view, rows, err := a.onboardingImports.get(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	if err != nil {
@@ -55,7 +56,7 @@ func (a *App) GetStudentProgression(ctx context.Context, invocation Invocation, 
 
 func (a *App) CommitStudentProgression(ctx context.Context, invocation Invocation, command CommitStudentProgressionCommand) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("student_progression.unavailable")
+		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
 	}
 	view, err := a.onboardingImports.commit(ctx, invocation, CommitOnboardingImportCommand{ID: command.ID, ExpectedRevision: command.ExpectedRevision,
 		PreviewDigest: command.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: command.IdempotencyKey}, model.OnboardingImportStudentProgression)
@@ -64,7 +65,7 @@ func (a *App) CommitStudentProgression(ctx context.Context, invocation Invocatio
 
 func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("student_progression.unavailable")
+		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
 	}
 	view, err := a.onboardingImports.cancel(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	return view, studentProgressionError(err)
@@ -72,7 +73,7 @@ func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocatio
 
 func (a *App) StudentProgressionReport(ctx context.Context, invocation Invocation, id string, output io.Writer) error {
 	if a == nil || a.onboardingImports == nil {
-		return NewError("student_progression.unavailable")
+		return apperror.New("student_progression.unavailable")
 	}
 	return studentProgressionError(a.onboardingImports.report(ctx, invocation, id, output, model.OnboardingImportStudentProgression))
 }
@@ -82,7 +83,7 @@ func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocat
 	destinationPeriodID, destinationClassID := strings.TrimSpace(command.DestinationPeriodID), strings.TrimSpace(command.DestinationClassID)
 	if !model.IsValidId(sourcePeriodID) || !model.IsValidId(sourceClassID) || !model.IsValidId(destinationPeriodID) || !model.IsValidId(destinationClassID) ||
 		sourceClassID == destinationClassID || command.EffectiveAt <= 0 {
-		return OnboardingImportView{}, NewError("request.invalid")
+		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
 	for _, classID := range []string{sourceClassID, destinationClassID} {
 		resource := model.Resource{Type: model.ResourceClass, ID: classID}
@@ -109,7 +110,7 @@ func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocat
 		return OnboardingImportView{}, studentProgressionError(err)
 	}
 	if sourceClass.AcademicPeriodID != sourcePeriod.ID || destinationClass.AcademicPeriodID != destinationPeriod.ID || sourceClass.IsArchived() || destinationClass.IsArchived() {
-		return OnboardingImportView{}, NewError("student_progression.target_conflict")
+		return OnboardingImportView{}, apperror.New("student_progression.target_conflict")
 	}
 	sourceLevel, err := s.levels.Get(ctx, sourceClass.ProgrammeLevelID.String())
 	if err != nil {
@@ -120,11 +121,11 @@ func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocat
 		return OnboardingImportView{}, studentProgressionError(err)
 	}
 	if sourceLevel.ProgrammeID != destinationLevel.ProgrammeID {
-		return OnboardingImportView{}, NewError("student_progression.lineage_conflict")
+		return OnboardingImportView{}, apperror.New("student_progression.lineage_conflict")
 	}
 	effectiveAt := model.TimeFromMillis(command.EffectiveAt)
 	if effectiveAt.Before(destinationPeriod.StartsAt) || !effectiveAt.Before(destinationPeriod.EndsAt) {
-		return OnboardingImportView{}, NewError("student_progression.effective_date_conflict")
+		return OnboardingImportView{}, apperror.New("student_progression.effective_date_conflict")
 	}
 	if err = s.validatePrincipal(ctx, invocation.Principal()); err != nil {
 		return OnboardingImportView{}, err
@@ -133,7 +134,7 @@ func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocat
 	id := model.NewOnboardingImportID()
 	job, err := newOnboardingImportJob(model.JobTypeStudentProgressionPreview, id, at)
 	if err != nil {
-		return OnboardingImportView{}, NewError("student_progression.unavailable").Wrap(err)
+		return OnboardingImportView{}, apperror.New("student_progression.unavailable").Wrap(err)
 	}
 	value := &store.OnboardingImport{ID: id, Mode: model.OnboardingImportStudentProgression, State: model.OnboardingImportParsing,
 		ScopeType: model.RoleScopeClass, ScopeID: destinationClass.ID.String(), ActorUserID: invocation.Principal().UserID, Principal: invocation.Principal(),
@@ -205,28 +206,28 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 		return err
 	}
 	if sourcePeriod.Revision != current.SourcePeriodRevision {
-		return NewError("student_progression.target_conflict")
+		return apperror.New("student_progression.target_conflict")
 	}
 	destinationPeriod, err := s.periods.Get(ctx, current.DestinationPeriodID.String())
 	if err != nil {
 		return err
 	}
 	if destinationPeriod.Revision != current.DestinationPeriodRevision {
-		return NewError("student_progression.target_conflict")
+		return apperror.New("student_progression.target_conflict")
 	}
 	sourceClass, err := s.classes.Get(ctx, current.SourceClassID.String())
 	if err != nil {
 		return err
 	}
 	if sourceClass.Revision != current.SourceClassRevision {
-		return NewError("student_progression.target_conflict")
+		return apperror.New("student_progression.target_conflict")
 	}
 	destinationClass, err := s.classes.Get(ctx, current.DestinationClassID.String())
 	if err != nil {
 		return err
 	}
 	if destinationClass.Revision != current.DestinationClassRevision {
-		return NewError("student_progression.target_conflict")
+		return apperror.New("student_progression.target_conflict")
 	}
 	rosterAt := studentProgressionRosterInstant(current, sourcePeriod)
 	members, err := s.imports.ListStudentProgressionRoster(ctx, sourceClass.ID, rosterAt, store.OnboardingImportMaximumRows+1)
@@ -234,7 +235,7 @@ func (s *onboardingImportService) previewProgression(ctx context.Context, id mod
 		return err
 	}
 	if len(members) > store.OnboardingImportMaximumRows {
-		return NewError("student_progression.roster_too_large")
+		return apperror.New("student_progression.roster_too_large")
 	}
 	rows := make([]store.OnboardingImportRow, 0, len(members))
 	for index, member := range members {
@@ -327,21 +328,21 @@ func studentProgressionError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if failure, ok := As(err); ok {
+	if failure, ok := apperror.As(err); ok {
 		switch failure.Code() {
 		case "onboarding_import.conflict":
-			return NewError("student_progression.conflict").Wrap(err)
+			return apperror.New("student_progression.conflict").Wrap(err)
 		case "onboarding_import.unavailable":
-			return NewError("student_progression.unavailable").Wrap(err)
+			return apperror.New("student_progression.unavailable").Wrap(err)
 		}
 		return failure
 	}
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "student_progression").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "student_progression").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("student_progression.conflict").Wrap(err)
+		return apperror.New("student_progression.conflict").Wrap(err)
 	default:
-		return NewError("student_progression.unavailable").Wrap(err)
+		return apperror.New("student_progression.unavailable").Wrap(err)
 	}
 }

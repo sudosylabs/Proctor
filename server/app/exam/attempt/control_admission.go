@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -70,7 +71,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 		return nil, err
 	}
 	if !user.IsValid() {
-		return nil, &Fault{Code: "authentication.invalid_token"}
+		return nil, apperror.New("authentication.invalid_token")
 	}
 	a.mu.Lock()
 	lane := a.lane
@@ -83,11 +84,11 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	slots := a.slots
 	if lane.waiters == 0 && len(slots) >= lane.workers {
 		a.mu.Unlock()
-		return nil, &Fault{Code: "exam.delivery.control_rate_limited"}
+		return nil, apperror.New("exam.delivery.control_rate_limited")
 	}
 	if !a.spend(user, now, lane) {
 		a.mu.Unlock()
-		return nil, &Fault{Code: "exam.delivery.control_rate_limited"}
+		return nil, apperror.New("exam.delivery.control_rate_limited")
 	}
 	select {
 	case slots <- struct{}{}:
@@ -98,7 +99,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	if a.waiting >= lane.waiters {
 		a.refund(user)
 		a.mu.Unlock()
-		return nil, &Fault{Code: "exam.delivery.control_rate_limited"}
+		return nil, apperror.New("exam.delivery.control_rate_limited")
 	}
 	a.waiting++
 	a.mu.Unlock()
@@ -110,7 +111,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 	case <-ctx.Done():
 		err = ctx.Err()
 	case <-timer.C:
-		err = &Fault{Code: "exam.delivery.control_rate_limited"}
+		err = apperror.New("exam.delivery.control_rate_limited")
 	}
 	a.mu.Lock()
 	a.waiting--

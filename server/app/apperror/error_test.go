@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-package app_test
+package apperror_test
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 func TestErrorCarriesStableCodeSafeFieldsAndCause(t *testing.T) {
@@ -21,7 +21,7 @@ func TestErrorCarriesStableCodeSafeFieldsAndCause(t *testing.T) {
 
 	cause := errors.New("private database detail")
 	fields := map[string]string{"field": "name", "resource_id": "abc"}
-	err := app.NewError("academic_unit.invalid").
+	err := apperror.New("academic_unit.invalid").
 		WithFields(fields).
 		Wrap(cause)
 
@@ -57,34 +57,34 @@ func TestErrorRejectsEmptyCode(t *testing.T) {
 			t.Fatal("NewError(\"\") did not panic")
 		}
 	}()
-	_ = app.NewError("")
+	_ = apperror.New("")
 }
 
 func TestErrorMatchingHelpers(t *testing.T) {
 	t.Parallel()
 
 	cause := errors.New("root cause")
-	err := app.NewError("class.enrollment_conflict").Wrap(cause)
+	err := apperror.New("class.enrollment_conflict").Wrap(cause)
 	wrapped := errors.Join(errors.New("context"), err)
 
-	if !app.Is(err, "class.enrollment_conflict") {
+	if !apperror.Is(err, "class.enrollment_conflict") {
 		t.Fatal("Is() missed direct application error")
 	}
-	if !app.Is(wrapped, "class.enrollment_conflict") {
+	if !apperror.Is(wrapped, "class.enrollment_conflict") {
 		t.Fatal("Is() missed wrapped application error")
 	}
-	if app.Is(err, "class.not_found") {
+	if apperror.Is(err, "class.not_found") {
 		t.Fatal("Is() matched the wrong code")
 	}
-	if app.Is(cause, "class.enrollment_conflict") {
+	if apperror.Is(cause, "class.enrollment_conflict") {
 		t.Fatal("Is() matched a non-application error")
 	}
 
-	got, ok := app.As(wrapped)
+	got, ok := apperror.As(wrapped)
 	if !ok || got.Code() != "class.enrollment_conflict" {
 		t.Fatalf("As() = (%#v, %v)", got, ok)
 	}
-	if _, ok := app.As(cause); ok {
+	if _, ok := apperror.As(cause); ok {
 		t.Fatal("As() matched a non-application error")
 	}
 }
@@ -94,7 +94,7 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 
 	// Reflect over the concrete method set so transport-facing names cannot
 	// reappear without failing this guard.
-	errorType := reflect.TypeOf((*app.Error)(nil))
+	errorType := reflect.TypeOf((*apperror.Error)(nil))
 	forbidden := []string{
 		"HTTPStatus",
 		"StatusCode",
@@ -109,7 +109,7 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 	}
 	for _, name := range forbidden {
 		if _, ok := errorType.MethodByName(name); ok {
-			t.Fatalf("app.Error exposes transport-facing method %s", name)
+			t.Fatalf("apperror.Error exposes transport-facing method %s", name)
 		}
 	}
 
@@ -123,7 +123,7 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 		SafeFields() map[string]string
 	}
 	var asLegacy legacyApplicationError
-	if errors.As(app.NewError("resource.not_found"), &asLegacy) {
-		t.Fatal("app.Error must not implement the legacy HTTP applicationError surface")
+	if errors.As(apperror.New("resource.not_found"), &asLegacy) {
+		t.Fatal("apperror.Error must not implement the legacy HTTP applicationError surface")
 	}
 }

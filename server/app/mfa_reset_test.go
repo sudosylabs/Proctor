@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -61,7 +62,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 				principal.AuthenticationGeneration = 1
 				principal.MFARecoveryRequired = true
 			case "denied":
-				service.security.authorization = mfaResetAuthorizationFake{err: NewError("authorization.denied")}
+				service.security.authorization = mfaResetAuthorizationFake{err: apperror.New("authorization.denied")}
 			case "disabled":
 				service.mechanics.settings.Enabled = false
 			case "commit failure":
@@ -102,10 +103,10 @@ func TestMFARestrictedContextSurvivesDisabledService(t *testing.T) {
 	if status.ServiceEnabled || !status.MFARecoveryRequired || status.AuthenticationMethod != "password" {
 		t.Fatal("disabled service concealed mandatory reenrollment")
 	}
-	if _, err := service.Setup(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{}); !Is(err, "authentication.mfa.disabled") {
+	if _, err := service.Setup(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{}); !apperror.Is(err, "authentication.mfa.disabled") {
 		t.Fatalf("disabled setup = %v", err)
 	}
-	if _, err := service.Challenge(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"}); !Is(err, "authentication.session_required") {
+	if _, err := service.Challenge(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"}); !apperror.Is(err, "authentication.session_required") {
 		t.Fatalf("restricted challenge = %v", err)
 	}
 }
@@ -119,7 +120,7 @@ func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
 	invocation := NewInvocation(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
 	_, _ = service.Challenge(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
 	_, err := service.Challenge(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})
-	if !Is(err, "authentication.rate_limited") {
+	if !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("unbounded factor challenge: %v", err)
 	}
 }

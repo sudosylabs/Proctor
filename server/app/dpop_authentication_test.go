@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -72,7 +73,7 @@ func TestDPoPAuthenticationAfterMFARecoverySupportsPrincipalRevalidation(t *test
 		t.Fatalf("fresh recovered Desktop Session rejected by realtime revalidation: %v", err)
 	}
 	recovery.generation++
-	if err = service.ValidatePrincipal(ctx, *principal); !Is(err, "authentication.invalid_token") {
+	if err = service.ValidatePrincipal(ctx, *principal); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("a subsequent recovery did not invalidate the old Desktop principal: %v", err)
 	}
 	session.MFARecoveryRequired = true

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -141,15 +142,15 @@ func (s *institutionService) Update(
 func institutionError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "institution").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "institution").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("institution.conflict").WithField("resource", "institution").Wrap(err)
+		return apperror.New("institution.conflict").WithField("resource", "institution").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("institution.invalid").WithField("resource", "institution").Wrap(err)
+			return apperror.New("institution.invalid").WithField("resource", "institution").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "institution").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "institution").Wrap(err)
 	}
 }

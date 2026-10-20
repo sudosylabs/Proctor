@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -25,7 +26,7 @@ func TestMembershipPageFilters(t *testing.T) {
 	}
 	history, instant := true, int64(2000)
 	for _, query := range []MembershipPageQuery{{Limit: 201}, {Limit: -1}, {History: &history, ActiveAt: &instant}} {
-		if _, _, err := resolveMembershipPage(query, now); !Is(err, "request.invalid") {
+		if _, _, pageErr := resolveMembershipPage(query, now); !apperror.Is(pageErr, "request.invalid") {
 			t.Fatalf("invalid query = %#v, %v", query, err)
 		}
 	}
@@ -65,10 +66,10 @@ func TestAcademicUnitMemberPagingAuthorizesEveryPage(t *testing.T) {
 	if persistence.pageOptions.ActiveAt != 1000 || persistence.pageOptions.AfterID != member.ID || persistence.pageOptions.AfterUserID != member.UserID {
 		t.Fatalf("cursor was not honored: %#v", persistence.pageOptions)
 	}
-	authorization.err = NewError("authorization.denied")
+	authorization.err = apperror.New("authorization.denied")
 	events = nil
 	_, err = service.ListPage(ctx, Invocation{}, ListAcademicUnitMembersPageQuery{AcademicUnitID: scopeID.String(), AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
-	if !Is(err, "authorization.denied") || len(events) != 1 || events[0] != "authorize" {
+	if !apperror.Is(err, "authorization.denied") || len(events) != 1 || events[0] != "authorize" {
 		t.Fatalf("revoked membership read: %v, events=%v", err, events)
 	}
 }
@@ -99,10 +100,10 @@ func TestClassMemberPagingAuthorizesEveryPage(t *testing.T) {
 	if persistence.pageOptions.ActiveAt != 1000 || persistence.pageOptions.AfterID != member.ID || persistence.pageOptions.AfterUserID != member.UserID {
 		t.Fatalf("cursor was not honored: %#v", persistence.pageOptions)
 	}
-	authorization.err = NewError("authorization.denied")
+	authorization.err = apperror.New("authorization.denied")
 	events = nil
 	_, err = service.ListPage(ctx, Invocation{}, ListClassMembersPageQuery{ClassID: scopeID.String(), AfterUserID: member.UserID, AfterID: member.ID, MembershipPageQuery: MembershipPageQuery{ActiveAt: &first.ActiveAt}})
-	if !Is(err, "authorization.denied") || len(events) != 1 || events[0] != "authorize" {
+	if !apperror.Is(err, "authorization.denied") || len(events) != 1 || events[0] != "authorize" {
 		t.Fatalf("revoked membership read: %v, events=%v", err, events)
 	}
 }

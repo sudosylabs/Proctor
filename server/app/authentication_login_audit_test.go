@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -76,7 +77,7 @@ type failingLoginMFAVerifier struct {
 }
 
 func (failingLoginMFAVerifier) VerifyLogin(context.Context, string, string, time.Time) (model.AuthenticationStrength, int64, error) {
-	return "", 0, NewError("authentication.mfa.invalid_code")
+	return "", 0, apperror.New("authentication.mfa.invalid_code")
 }
 
 func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*authenticationService, *authenticationStoreFake, *localLoginAuditorFake, *model.User) {
@@ -146,7 +147,7 @@ func TestLocalLoginFailuresAreDurablyAudited(t *testing.T) {
 			_, err := service.login(context.Background(), localLoginInvocation(), LoginCommand{
 				LoginID: test.loginID, Password: test.password, ClientType: model.SessionClientCLI, Source: "192.0.2.10:2",
 			})
-			if !Is(err, test.code) {
+			if !apperror.Is(err, test.code) {
 				t.Fatalf("err = %v", err)
 			}
 			if len(persistence.sessions) != 0 || len(audit.pending) != 0 || len(audit.terminal) != 1 {
@@ -171,10 +172,10 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 	service.loginRateLimit.MaximumAttempts = 1
 	command := LoginCommand{LoginID: user.Email, Password: "incorrect password", ClientType: model.SessionClientCLI, Source: "192.0.2.10:3"}
-	if _, err := service.login(context.Background(), localLoginInvocation(), command); !Is(err, "authentication.invalid_credentials") {
+	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.invalid_credentials") {
 		t.Fatalf("first err = %v", err)
 	}
-	if _, err := service.login(context.Background(), localLoginInvocation(), command); !Is(err, "authentication.rate_limited") {
+	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("limited err = %v", err)
 	}
 	if len(audit.terminal) != 1 || audit.terminal[0].errorCode != "authentication.invalid_credentials" {
@@ -185,12 +186,12 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 func TestLocalLoginRevokesSessionWhenSuccessAuditCannotComplete(t *testing.T) {
 	t.Parallel()
 	service, persistence, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
-	audit.completeErr = NewError("audit.unavailable")
+	audit.completeErr = apperror.New("audit.unavailable")
 
 	result, err := service.login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "192.0.2.10:4",
 	})
-	if result != nil || !Is(err, "audit.unavailable") {
+	if result != nil || !apperror.Is(err, "audit.unavailable") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if len(persistence.sessions) != 1 {

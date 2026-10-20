@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,10 +32,10 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}); !Is(err, "resource.not_found") {
+	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}); !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("archived institution error = %v", err)
 	}
-	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewId()}); !Is(err, "authorization.request.invalid") {
+	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewId()}); !apperror.Is(err, "authorization.request.invalid") {
 		t.Fatalf("incompatible resource error = %v", err)
 	}
 }
@@ -218,7 +219,7 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 	}
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewAcademicPeriodID().String()}
-	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata()); !Is(err, "authorization.denied") {
+	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata()); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("target preflight error = %v, want authorization.denied", err)
 	}
 	period := &model.AcademicPeriod{
@@ -226,7 +227,7 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
 		Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
 	}
-	if err := access.authorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !Is(err, "authorization.denied") {
+	if err := access.authorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("owner preflight error = %v, want authorization.denied", err)
 	}
 	if periods.gets != 0 || units.listAncestors != 0 {
@@ -262,7 +263,7 @@ func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *t
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	if err := access.authorizeResourcePreflight(
 		context.Background(), invocation, model.ActionClassMembersManage, model.ResourceClass,
-	); !Is(err, "authorization.denied") {
+	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("preflight error = %v, want authorization.denied", err)
 	}
 	if classes.gets != 0 {
@@ -333,7 +334,7 @@ func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testin
 	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, unitResource, invocation.RequestMetadata()); err != nil {
 		t.Fatalf("preflight plus terminal descendant view = %v", err)
 	}
-	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata()); !Is(err, "authorization.denied") {
+	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata()); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("preflight plus terminal cross-subtree view = %v", err)
 	}
 	institutionResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: institutionPeriodID.String()}
@@ -617,7 +618,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	if err != nil || query.InstitutionWide || len(query.AcademicUnitRootIDs) != 0 {
 		t.Fatalf("ceiling query=%#v err=%v", query, err)
 	}
-	if _, err = authorization.authorizedScopes(context.Background(), principal, model.ActionAcademicUnitView, model.ResourceClass); !Is(err, "authorization.request.invalid") {
+	if _, err = authorization.authorizedScopes(context.Background(), principal, model.ActionAcademicUnitView, model.ResourceClass); !apperror.Is(err, "authorization.request.invalid") {
 		t.Fatalf("compatibility error = %v", err)
 	}
 }
@@ -835,7 +836,7 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: model.NewId()})
-	if !Is(err, "authorization.unavailable") {
+	if !apperror.Is(err, "authorization.unavailable") {
 		t.Fatalf("error = %v, want authorization.unavailable", err)
 	}
 }

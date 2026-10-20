@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -444,8 +445,8 @@ func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 		ExamID: testFixture.examID, ExamRevisionID: testFixture.revisionID, ClassID: testFixture.classID,
 		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.sitting.unavailable" || !errors.Is(err, failure) {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)
 	}
 	if testFixture.authorizer.action != "" || testFixture.persistence.schedule != nil || testFixture.auditor.operation != "" {
@@ -765,8 +766,8 @@ func newFixture(t *testing.T) fixture {
 
 func assertFaultCode(t *testing.T, err error, want string) {
 	t.Helper()
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != want {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != want {
 		t.Fatalf("fault = %v, want %q", err, want)
 	}
 }
@@ -933,7 +934,7 @@ func (fake *authorizerFake) Deny(_ context.Context, _ Call, action model.Action,
 	if fake.denyErr != nil {
 		return fake.denyErr
 	}
-	return &Fault{Code: "exam.sitting.not_found"}
+	return apperror.New("exam.sitting.not_found")
 }
 
 type auditorFake struct {

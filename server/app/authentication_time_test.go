@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -42,7 +43,7 @@ func TestSessionAuthenticationUsesMicrosecondExpiryBoundaries(t *testing.T) {
 					}
 					principal, err := service.authenticateAccess(context.Background(), raw)
 					if test.expired {
-						if principal != nil || !Is(err, "authentication.invalid_token") {
+						if principal != nil || !apperror.Is(err, "authentication.invalid_token") {
 							t.Fatalf("authentication at %v = %#v, %v", service.now(), principal, err)
 						}
 						if expiry != "access credential" && !persistence.sessions[session.ID.String()].RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
@@ -86,7 +87,7 @@ func TestSessionPrincipalRevalidationUsesMicrosecondExpiryBoundaries(t *testing.
 					service.now = func() time.Time { return deadline.Add(test.offset) }
 					err = service.ValidatePrincipal(context.Background(), *principal)
 					if test.expired {
-						if !Is(err, "authentication.invalid_token") || !session.RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
+						if !apperror.Is(err, "authentication.invalid_token") || !session.RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
 							t.Fatalf("Principal validation at %v = %v; revoked at %v", service.now(), err, session.RevokedAt)
 						}
 					} else if err != nil || session.RevokedAt.Valid {

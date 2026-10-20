@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,7 +30,7 @@ func (m examAttemptHTTPModule) deliveryBudget(request operationRequest) (operati
 		return operationResult{}, err
 	}
 	if value == nil || value.Validate() != nil {
-		return operationResult{}, application.NewError("exam.attempt.unavailable")
+		return operationResult{}, apperror.New("exam.attempt.unavailable")
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }
@@ -58,7 +59,7 @@ func (m examAttemptHTTPModule) stopDeliveryDetails(request operationRequest) (op
 		return operationResult{}, err
 	}
 	if value == nil || value.Validate(body.Family) != nil {
-		return operationResult{}, application.NewError("exam.attempt.unavailable")
+		return operationResult{}, apperror.New("exam.attempt.unavailable")
 	}
 	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -50,12 +51,12 @@ func TestArchiveExamBuildsIdempotentChildCommand(t *testing.T) {
 
 func TestArchiveExamConcealsUnauthorizedAndMissingTargets(t *testing.T) {
 	t.Parallel()
-	for _, failure := range []error{NewError("authorization.denied"), &examengine.Fault{Code: "exam.not_found", Cause: errors.New("missing")}} {
+	for _, failure := range []error{apperror.New("authorization.denied"), apperror.New("exam.not_found").Wrap(errors.New("missing"))} {
 		application := &App{exams: &examUseCasesFake{err: failure}}
 		_, err := application.ArchiveExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ArchiveExamCommand{
 			ExamID: model.NewExamID(), ExpectedExamRevision: 1, IdempotencyKey: "archive-concealed",
 		})
-		if !Is(err, "resource.not_found") {
+		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("ArchiveExam error = %v, want concealed resource.not_found", err)
 		}
 	}

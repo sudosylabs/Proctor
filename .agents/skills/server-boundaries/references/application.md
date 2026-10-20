@@ -84,6 +84,12 @@ concealment, and deliberate input or result transformations. Type sharing does
 not move normalization, authorization, audit, or effect timing out of the owning
 use case.
 
+Every application module, parent or child, reports expected public failures
+with the one `*apperror.Error` type from the `app/apperror` leaf. Children
+construct it directly with `apperror.New(code)` or `apperror.Invalid(code,
+field)`; they declare no local fault type or per-package error helpers, and
+the parent facade passes their errors through, adding only concealment.
+
 The `app/exam/manageraccess` leaf owns the shared current Exam Manager and exact
 Academic Unit membership rule used to select ordinary or explicit override
 Actions. It receives the caller's access projection and time, performs the

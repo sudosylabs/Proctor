@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -260,7 +261,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
-	if !Is(err, "installation.already_initialized") {
+	if !apperror.Is(err, "installation.already_initialized") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"rate-limit", "hash-password", "bootstrap"}
@@ -290,7 +291,7 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
-	if !Is(err, "installation.already_initialized") {
+	if !apperror.Is(err, "installation.already_initialized") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -311,7 +312,7 @@ func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testin
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: "wrong-bootstrap-secret-that-is-still-long-enough", Source: "192.0.2.10:443",
 	})
-	if !Is(err, "installation.bootstrap_denied") {
+	if !apperror.Is(err, "installation.bootstrap_denied") {
 		t.Fatalf("error = %v", err)
 	}
 	if want := []string{"rate-limit"}; !reflect.DeepEqual(events, want) {
@@ -403,7 +404,7 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 			t.Fatalf("attempt %d error = %v", attempt, err)
 		}
 	}
-	if _, err := service.Bootstrap(context.Background(), Invocation{}, command); !Is(err, "authentication.rate_limited") {
+	if _, err := service.Bootstrap(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("attempt after maximum error = %v", err)
 	}
 
@@ -447,7 +448,7 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 		BootstrapSecret: bootstrapProtection().Secret,
 		Source:          "192.0.2.10:443",
 	})
-	if !Is(err, "administration.unavailable") || !errors.Is(err, cacheFailure) {
+	if !apperror.Is(err, "administration.unavailable") || !errors.Is(err, cacheFailure) {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"rate-limit"}
@@ -476,7 +477,7 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 		BootstrapSecret: bootstrapProtection().Secret,
 		Source:          "192.0.2.10:443",
 	})
-	if !Is(err, "administration.unavailable") {
+	if !apperror.Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{}

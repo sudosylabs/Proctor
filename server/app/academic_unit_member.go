@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -114,15 +115,15 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	}
 	unitID, err := model.ParseAcademicUnitID(resource.ID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
 	memberID, err := model.ParseAcademicUnitMemberID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_member_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id").Wrap(err)
 	}
 	candidate := &model.AcademicUnitMember{
 		AcademicUnitID: unitID,
@@ -146,7 +147,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 			TemplateKey: model.MailTemplateAcademicUnitAssigned, ActionAt: at,
 		})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.add.v1", command.IdempotencyKey, struct {
@@ -197,7 +198,7 @@ func (a *App) EndAcademicUnitMember(ctx context.Context, invocation Invocation, 
 func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_member_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id")
 	}
 	if err := s.authorization.AuthorizePreflight(
 		ctx, invocation, model.ActionAcademicUnitMembersManage, model.ResourceAcademicUnit,
@@ -213,7 +214,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		return nil, concealMembershipAuthorizationError(err, "academic_unit_member")
 	}
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.AcademicUnitID.String() {
-		return nil, NewError("resource.not_found").WithField("resource", "academic_unit_member")
+		return nil, apperror.New("resource.not_found").WithField("resource", "academic_unit_member")
 	}
 	idempotency, err := newCommandIdempotency(invocation, "academic_unit_member.end.v1", command.IdempotencyKey, struct {
 		ID      string `json:"id"`
@@ -238,7 +239,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 			TemplateKey: model.MailTemplateAcademicUnitAssignmentEnded, ActionAt: at,
 		})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	changed := false
@@ -275,15 +276,15 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 }
 
 func concealMembershipAuthorizationError(err error, resource string) error {
-	if Is(err, "authorization.denied") {
-		return NewError("resource.not_found").WithField("resource", resource)
+	if apperror.Is(err, "authorization.denied") {
+		return apperror.New("resource.not_found").WithField("resource", resource)
 	}
 	return err
 }
 
 func (s *academicUnitMemberService) authorizeUnit(ctx context.Context, invocation Invocation, unitID string, action model.Action) (model.Resource, error) {
 	if !model.IsValidId(unitID) {
-		return model.Resource{}, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return model.Resource{}, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
@@ -298,20 +299,20 @@ func academicUnitMemberError(err error) error {
 	}
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
 	case store.IsConflict(err):
 		var conflict *store.ErrConflict
 		if errors.As(err, &conflict) && conflict.Constraint == "academic_unit_member_end_time" {
-			return NewError("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
+			return apperror.New("resource.not_found").WithField("resource", "academic_unit_member").Wrap(err)
 		}
-		return NewError("academic_unit_member.conflict").WithField("resource", "academic_unit_member").Wrap(err)
+		return apperror.New("academic_unit_member.conflict").WithField("resource", "academic_unit_member").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("academic_unit_member.invalid").WithField("resource", "academic_unit_member").Wrap(err)
+			return apperror.New("academic_unit_member.invalid").WithField("resource", "academic_unit_member").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "academic_unit_member").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "academic_unit_member").Wrap(err)
 	}
 }
 
@@ -345,10 +346,10 @@ func (s *academicUnitMemberService) ListPage(ctx context.Context, invocation Inv
 	}
 	scopeID, err := model.ParseAcademicUnitID(resource.ID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	if query.AfterID.IsZero() != query.AfterUserID.IsZero() || (!query.AfterID.IsZero() && (!query.AfterID.IsValid() || !query.AfterUserID.IsValid())) {
-		return nil, NewError("request.invalid").WithField("field", "cursor")
+		return nil, apperror.New("request.invalid").WithField("field", "cursor")
 	}
 	options := store.AcademicUnitMemberPageOptions{AcademicUnitID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
 

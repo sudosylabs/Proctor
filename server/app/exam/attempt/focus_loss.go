@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -79,7 +80,7 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 		return FocusLossEvaluation{}, mapStore(err)
 	}
 	if !validFocusLossTarget(target, selector) {
-		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent Focus Loss audit target"))
+		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss audit target"))
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
@@ -131,7 +132,7 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 		return FocusLossEvaluation{}, mapStore(err)
 	}
 	if target == nil || !target.SubmissionID.IsValid() || !validFocusLossTarget(&target.ExamAttemptFocusLossTarget, selector) {
-		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent late Focus Loss audit target"))
+		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late Focus Loss audit target"))
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
@@ -159,7 +160,7 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 		stored.Discrepancy.Sequence != command.Sequence || stored.Discrepancy.DurationMilliseconds != command.DurationMilliseconds ||
 		stored.Discrepancy.Source != command.Source || (!stored.Duplicate &&
 		(stored.Discrepancy.ID != discrepancyID || stored.Discrepancy.SignalID != signalID)) {
-		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent late Focus Loss outcome"))
+		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent late Focus Loss outcome"))
 	}
 	result := FocusLossEvaluation{ExamID: target.ExamID, SittingID: target.SittingID, CandidateUserID: target.CandidateUserID,
 		SubmissionID: target.SubmissionID, AttemptID: target.AttemptID, ParticipationID: target.ParticipationID,
@@ -184,7 +185,7 @@ func focusLossSelector(call Call, command FocusLossCommand) (store.ExamAttemptFo
 		command.Generation < 1 || command.Sequence < 1 ||
 		command.DurationMilliseconds < 1 || command.DurationMilliseconds > model.FocusLossMaximumDurationMilliseconds ||
 		!command.Source.IsValid() {
-		return store.ExamAttemptFocusLossAccess{}, invalid("focus_loss")
+		return store.ExamAttemptFocusLossAccess{}, apperror.Invalid("exam.attempt.invalid", "focus_loss")
 	}
 	return store.ExamAttemptFocusLossAccess{AttemptID: selector.AttemptID, ParticipationID: command.ParticipationID,
 		Generation: command.Generation, CandidateUserID: selector.CandidateUserID, SessionID: selector.SessionID,
@@ -210,10 +211,10 @@ func projectFocusLoss(stored *store.ExamAttemptFocusLossResult, target *store.Ex
 		!stored.DatabaseTime.Equal(stored.Signal.ReceivedAt) || stored.MissingBefore < 0 ||
 		stored.WindowIncidentCount < 0 || stored.RetainedEvidenceCount < 0 ||
 		stored.RetainedEvidenceCount > model.FocusLossMaximumEvidenceEpisodes || stored.DiagnosticCount < 0 {
-		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent Focus Loss outcome"))
+		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss outcome"))
 	}
 	if !validFocusLossEnforcement(stored, access) {
-		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent Focus Loss enforcement outcome"))
+		return FocusLossEvaluation{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent Focus Loss enforcement outcome"))
 	}
 	result := FocusLossEvaluation{ExamID: stored.ExamID, SittingID: stored.SittingID, CandidateUserID: stored.CandidateUserID,
 		AttemptID: stored.AttemptID, ParticipationID: stored.ParticipationID, Generation: stored.Generation,

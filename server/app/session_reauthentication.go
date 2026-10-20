@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,7 +35,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 	// A Session retains its original authentication method and provider. A
 	// password cannot silently substitute for an external identity's proof.
 	if principal.AuthenticationMethod != "password" || principal.AuthenticationProviderID != "" {
-		return nil, NewError("authentication.reauthentication_method_required")
+		return nil, apperror.New("authentication.reauthentication_method_required")
 	}
 	receipt, limited, err := s.attempts.account(ctx, authenticationAttemptIntent{
 		purpose: authenticationAttemptPurposeReauthentication, window: s.loginRateLimit.Window,
@@ -47,7 +48,7 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 		return nil, rateLimitUnavailableAppError(err)
 	}
 	if limited {
-		return nil, NewError("authentication.rate_limited")
+		return nil, apperror.New("authentication.rate_limited")
 	}
 	allowed, err := s.accessPolicy.AllowsLocalLogin(ctx)
 	if err != nil {

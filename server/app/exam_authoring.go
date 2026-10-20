@@ -10,9 +10,10 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
+	"slices"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -134,27 +135,26 @@ func (a *App) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation In
 }
 
 func examError(err error, conceal bool) error {
+	return presentExamChildError(err, conceal, "exam.unavailable", "exam.not_found")
+}
+
+// presentExamChildError presents a failure returned by an Exam child module.
+// Application errors pass through unchanged; any other failure becomes the
+// family's unavailable code. Concealing callers turn authorization denials and
+// the family's listed absence codes into the generic resource.not_found so a
+// caller without access cannot distinguish a hidden resource from a missing one.
+func presentExamChildError(err error, conceal bool, unavailable apperror.Code, concealed ...apperror.Code) error {
 	if err == nil {
 		return nil
 	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
+	failure, ok := apperror.As(err)
+	if !ok {
+		return apperror.New(unavailable).Wrap(err)
 	}
-	var fault *examengine.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.unavailable").Wrap(err)
+	if conceal && (failure.Code() == "authorization.denied" || slices.Contains(concealed, apperror.Code(failure.Code()))) {
+		return apperror.New("resource.not_found").Wrap(err)
 	}
-	if conceal && fault.Code == "exam.not_found" {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return err
 }
 
 type examAuthorizationAdapter struct{ authorization *accessControlService }

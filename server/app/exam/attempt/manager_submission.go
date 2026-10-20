@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -31,11 +32,11 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 ) (SubmissionResult, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return SubmissionResult{}, &Fault{Code: "authentication.invalid_token"}
+		return SubmissionResult{}, apperror.New("authentication.invalid_token")
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		command.ExpectedAttemptRevision < 1 || !validManagerEndReason(command.PrivateReason) {
-		return SubmissionResult{}, invalid("manager_end")
+		return SubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "manager_end")
 	}
 	idempotency, err := prepareManagerEndIdempotency(call, command)
 	if err != nil {
@@ -52,7 +53,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		return SubmissionResult{}, mapStore(err)
 	}
 	if sitting == nil || sitting.Sitting == nil || sitting.Sitting.ID != command.SittingID || !sitting.Sitting.ClassID.IsValid() {
-		return SubmissionResult{}, unavailable(errors.New("inconsistent manager-ended Sitting projection"))
+		return SubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manager-ended Sitting projection"))
 	}
 	action := model.ActionExamSittingManage
 	if override {
@@ -68,7 +69,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		return SubmissionResult{}, err
 	}
 	if sitting.Sitting.ExamID != command.ExamID {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+		return SubmissionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	managerSnapshot, err := service.deps.Persistence.Get(ctx, command.ExamID, command.AttemptID)
 	if err != nil {
@@ -78,10 +79,10 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		managerSnapshot.Attempt.ExamID != command.ExamID ||
 		!validActiveSuspension(managerSnapshot.ActiveSuspension, managerSnapshot.Attempt.ID) {
 		return SubmissionResult{}, service.failAudit(ctx, auditID,
-			unavailable(errors.New("inconsistent manager-ended Attempt projection")))
+			apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manager-ended Attempt projection")))
 	}
 	if managerSnapshot.Attempt.SittingID != command.SittingID || managerSnapshot.Attempt.CandidateUserID == principal.UserID {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, &Fault{Code: "exam.attempt.not_found"})
+		return SubmissionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.not_found"))
 	}
 	request := store.ExamSubmissionManagerEndRequest{ExamID: command.ExamID, SittingID: command.SittingID,
 		AttemptID: command.AttemptID, ActorUserID: principal.UserID, ManagerOverride: override,
@@ -94,16 +95,16 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 		preparation.Target.ExamID != command.ExamID || preparation.Target.AttemptID != command.AttemptID ||
 		preparation.ExpectedAttemptRevision != command.ExpectedAttemptRevision || preparation.SealAt.IsZero() {
 		return SubmissionResult{}, service.failAudit(ctx, auditID,
-			unavailable(errors.New("invalid manager-ended Submission preparation")))
+			apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid manager-ended Submission preparation")))
 	}
 	if preparation.Target.CandidateUserID != managerSnapshot.Attempt.CandidateUserID ||
 		preparation.Target.ClassID != sitting.Sitting.ClassID {
 		return SubmissionResult{}, service.failAudit(ctx, auditID,
-			unavailable(errors.New("mismatched manager-ended Submission preparation")))
+			apperror.New("exam.attempt.unavailable").Wrap(errors.New("mismatched manager-ended Submission preparation")))
 	}
 	proposed := service.deps.NewSubmission()
 	if !proposed.IsValid() {
-		return SubmissionResult{}, service.failAudit(ctx, auditID, invalid("submission_id"))
+		return SubmissionResult{}, service.failAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
 	}
 	var notice *store.PreparedMail
 	var expectedRecipientRevision int64
@@ -117,7 +118,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 			if prepareErr == nil {
 				prepareErr = errors.New("invalid manager-ended Submission receipt mail preparation")
 			}
-			return SubmissionResult{}, service.failAudit(ctx, auditID, unavailable(prepareErr))
+			return SubmissionResult{}, service.failAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
 		}
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
@@ -155,7 +156,7 @@ func projectManagerEndResult(stored *store.ExamSubmissionManagerEndResult,
 		stored.CandidateUserID != target.CandidateUserID || stored.ParticipationID != target.ParticipationID ||
 		stored.Generation != target.Generation || stored.ConnectionID != target.ConnectionID ||
 		(!stored.Replayed && stored.Receipt.SubmissionID != proposed) || (stored.Replayed && stored.ConnectionClosed) {
-		return SubmissionResult{}, unavailable(errors.New("inconsistent manager-ended Submission result"))
+		return SubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent manager-ended Submission result"))
 	}
 	return SubmissionResult{Receipt: stored.Receipt, Provenance: model.ExamSubmissionManagerEndedAttempt,
 		ExamID: stored.ExamID, SittingID: stored.SittingID, ClassID: stored.ClassID,

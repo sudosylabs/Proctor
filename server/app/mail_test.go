@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
@@ -493,16 +494,16 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	pat.AuthenticatedAt = time.Time{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, err = service.SendTest(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !Is(err, "authentication.invalid_token") {
+	if _, err = service.SendTest(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("PAT error = %v", err)
 	}
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, err = service.SendTest(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !Is(err, "authentication.reauthentication_required") {
+	if _, err = service.SendTest(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("stale Session error = %v", err)
 	}
 	user.EmailVerified = false
-	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !Is(err, "mail.recipient_unverified") {
+	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.recipient_unverified") {
 		t.Fatalf("unverified error = %v", err)
 	}
 	user.EmailVerified = true
@@ -511,7 +512,7 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 			t.Fatal(err)
 		}
 	}
-	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !Is(err, "mail.test.rate_limited") {
+	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.test.rate_limited") {
 		t.Fatalf("rate limit error = %v", err)
 	}
 }
@@ -530,8 +531,8 @@ func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *tes
 	if appErr != nil || len(page.Items) != 1 || persistence.lists != 1 || authorizer.actions[0] != model.ActionMailView {
 		t.Fatalf("List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	}
-	authorizer.err = NewError("authorization.denied")
-	if _, appErr = service.Get(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authorization.denied") || persistence.gets != 0 {
+	authorizer.err = apperror.New("authorization.denied")
+	if _, appErr = service.Get(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authorization.denied") || persistence.gets != 0 {
 		t.Fatalf("denied Get() err=%v gets=%d", appErr, persistence.gets)
 	}
 	encoded, _ := json.Marshal(page)
@@ -557,12 +558,12 @@ func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testin
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
-	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authentication.invalid_token") || persistence.gets != 0 {
+	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.invalid_token") || persistence.gets != 0 {
 		t.Fatalf("Cancel(PAT) err=%v gets=%d", appErr, persistence.gets)
 	}
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, appErr := service.Cancel(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
+	if _, appErr := service.Cancel(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
 		t.Fatalf("Cancel(stale) err=%v gets=%d", appErr, persistence.gets)
 	}
 	view, appErr := service.Cancel(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)

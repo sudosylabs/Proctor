@@ -23,7 +23,7 @@ import (
 	"net/url"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -227,5 +227,5 @@ func browserCSRFToken(binding string) string {
 }
 
 func csrfError() error {
-	return application.NewError("authentication.csrf.invalid")
+	return apperror.New("authentication.csrf.invalid")
 }

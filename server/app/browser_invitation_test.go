@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -204,14 +205,14 @@ func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
 	// An explicit nil result from an otherwise successful dependency must not
 	// become a successful application response or a later nil dereference.
 	_, err = service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-	if !Is(err, "invitation.unavailable") {
+	if !apperror.Is(err, "invitation.unavailable") {
 		t.Fatalf("Start error = %v, want invitation.unavailable", err)
 	}
 
 	transactions.createNil = false
 	transactions.resolveNil = true
 	_, _, err = service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
-	if !Is(err, "invitation.unavailable") {
+	if !apperror.Is(err, "invitation.unavailable") {
 		t.Fatalf("resolve error = %v, want invitation.unavailable", err)
 	}
 }
@@ -240,7 +241,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-			if !Is(err, "invitation.unavailable") {
+			if !apperror.Is(err, "invitation.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
 		})
@@ -274,7 +275,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 				}
 			}
 			_, err := service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-			if !Is(err, "invitation.unavailable") {
+			if !apperror.Is(err, "invitation.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
 		})
@@ -291,7 +292,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 		t.Run("resolve "+name, func(t *testing.T) {
 			service := newService(&browserInvitationTransactionStoreFake{resolveResult: result})
 			_, _, err := service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
-			if !Is(err, "invitation.unavailable") {
+			if !apperror.Is(err, "invitation.unavailable") {
 				t.Fatalf("resolve error = %v", err)
 			}
 		})
@@ -327,7 +328,7 @@ func TestBrowserInvitationSessionAcceptanceRequiresWebSession(t *testing.T) {
 			Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Source: "source",
 		},
 	)
-	if !Is(err, "invitation.invalid") || transactions.resolveCalls != 0 {
+	if !apperror.Is(err, "invitation.invalid") || transactions.resolveCalls != 0 {
 		t.Fatalf("AcceptSession error=%v resolve_calls=%d, want invitation.invalid before persistence", err, transactions.resolveCalls)
 	}
 }

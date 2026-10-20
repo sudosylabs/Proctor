@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -55,7 +56,7 @@ func TestMFAActivationUsesNativeExclusiveDeadline(t *testing.T) {
 			}
 			_, err = service.Activate(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ActivateMFACommand{Code: code})
 			if !test.valid {
-				if !Is(err, "authentication.mfa.invalid_code") || persistence.activation != nil || len(mailer.requests) != 0 {
+				if !apperror.Is(err, "authentication.mfa.invalid_code") || persistence.activation != nil || len(mailer.requests) != 0 {
 					t.Fatalf("expired activation: error=%v mutation=%v notices=%d", err, persistence.activation != nil, len(mailer.requests))
 				}
 				return

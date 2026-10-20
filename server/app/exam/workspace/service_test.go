@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -458,8 +459,8 @@ func (*fakeWorkspaceContent) OpenStarterWorkspaceObject(context.Context, model.S
 }
 
 func faultCode(err error) string {
-	if fault, ok := err.(*Fault); ok {
-		return fault.Code
+	if fault, ok := apperror.As(err); ok {
+		return fault.Code()
 	}
 	return ""
 }

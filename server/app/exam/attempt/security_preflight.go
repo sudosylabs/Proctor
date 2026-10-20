@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -32,14 +33,14 @@ type ReportSecurityPreflightCommand struct {
 func (service *Service) securityPreflightAccess(ctx context.Context, call Call, sittingID model.ExamSittingID) (store.SecurityPreflightAccess, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return store.SecurityPreflightAccess{}, &Fault{Code: "authentication.invalid_token"}
+		return store.SecurityPreflightAccess{}, apperror.New("authentication.invalid_token")
 	}
 	if !principal.HasRegisteredDesktopKey() {
-		return store.SecurityPreflightAccess{}, &Fault{Code: "exam.attempt.registered_desktop_required"}
+		return store.SecurityPreflightAccess{}, apperror.New("exam.attempt.registered_desktop_required")
 	}
 	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, principal)
 	if err != nil || build.Build.Validate() != nil || build.Build.NativeAgreement == nil || build.CompatibilityPolicyRevision < 1 {
-		return store.SecurityPreflightAccess{}, &Fault{Code: "exam.attempt.desktop_incompatible", Cause: err}
+		return store.SecurityPreflightAccess{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)
 	}
 	return store.SecurityPreflightAccess{SittingID: sittingID, CandidateUserID: principal.UserID, SessionID: principal.SessionID, DesktopRegistrationID: principal.DesktopRegistrationID, DPoPKeyThumbprint: principal.DPoPKeyThumbprint, DesktopBuild: build.Build, DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision}, nil
 }
@@ -49,7 +50,7 @@ func (service *Service) beginPreflightAudit(ctx context.Context, call Call, sitt
 		return "", mapStore(err)
 	}
 	if snapshot == nil || snapshot.Sitting == nil || snapshot.Sitting.ID != sittingID || !snapshot.Sitting.ClassID.IsValid() {
-		return "", unavailable(errors.New("preflight Sitting ownership is invalid"))
+		return "", apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Sitting ownership is invalid"))
 	}
 	return service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.RoleScopeClass, snapshot.Sitting.ClassID.String(), operation, map[string]any{"exam_sitting_id": sittingID.String()})
 }
@@ -60,7 +61,7 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 	}
 	defer release()
 	if !command.SittingID.IsValid() || command.AttemptID != "" && !command.AttemptID.IsValid() || !model.IsValidSHA256Fingerprint(command.NativeRegistryDigest) || !model.IsValidSHA256Fingerprint(command.SourceManifestDigest) || !model.IsValidSHA256Fingerprint(command.ConfigurationManifestFingerprint) {
-		return nil, invalid("security_preflight")
+		return nil, apperror.Invalid("exam.attempt.invalid", "security_preflight")
 	}
 	access, err := service.securityPreflightAccess(ctx, call, command.SittingID)
 	if err != nil {
@@ -85,7 +86,7 @@ func (service *Service) PrepareSecurityPreflight(ctx context.Context, call Call,
 		return nil, service.failAudit(ctx, audit, mapSecurityPreflightError(err))
 	}
 	if result == nil || result.Challenge.Validate() != nil || result.Resolved.Policy.Validate(result.ServerTime) != nil || result.Resolved.Policy.SittingID != command.SittingID {
-		return nil, unavailable(errors.New("preflight Store returned an invalid policy"))
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Store returned an invalid policy"))
 	}
 	return result, nil
 }
@@ -96,7 +97,7 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 	}
 	defer release()
 	if !model.IsValidAgreementID(command.PreflightID) || command.Report.Validate() != nil {
-		return nil, invalid("security_preflight_report")
+		return nil, apperror.Invalid("exam.attempt.invalid", "security_preflight_report")
 	}
 	principal := call.Principal()
 	// Authenticate before looking up a resource selector or beginning an audit.
@@ -125,7 +126,7 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 		return nil, service.failAudit(ctx, audit, mapSecurityPreflightError(err))
 	}
 	if result == nil || result.PreflightID != command.PreflightID || !model.IsValidSHA256Fingerprint(result.ReportDigest) || (result.Admission != "eligible" && result.Admission != "blocked") {
-		return nil, unavailable(errors.New("preflight Store returned an invalid report receipt"))
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("preflight Store returned an invalid report receipt"))
 	}
 	return result, nil
 }
@@ -134,14 +135,14 @@ func mapSecurityPreflightError(err error) error {
 	if errors.As(err, &conflict) {
 		switch conflict.Constraint {
 		case "preflight_expired", "preflight_superseded", "preflight_consumed", "preflight_rate_limited", "policy_changed", "session_changed", "configuration_unsupported", "attempt_not_ready":
-			return &Fault{Code: "exam.security." + conflict.Constraint, Cause: err}
+			return apperror.New(apperror.Code("exam.security." + conflict.Constraint)).Wrap(err)
 		}
 	}
 	if errors.Is(err, model.ErrNativeCatalogUnavailable) {
-		return &Fault{Code: "exam.security.catalog_unavailable", Cause: err}
+		return apperror.New("exam.security.catalog_unavailable").Wrap(err)
 	}
 	if errors.Is(err, model.ErrNativeCoverageUnsupported) {
-		return &Fault{Code: "exam.security.unsupported_capability", Cause: err}
+		return apperror.New("exam.security.unsupported_capability").Wrap(err)
 	}
 	return mapStore(err)
 }
@@ -153,7 +154,7 @@ func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, at
 	}
 	defer release()
 	if !attemptID.IsValid() {
-		return nil, invalid("attempt_id")
+		return nil, apperror.Invalid("exam.attempt.invalid", "attempt_id")
 	}
 	access, err := service.securityPreflightAccess(ctx, call, "")
 	if err != nil {
@@ -164,7 +165,7 @@ func (service *Service) RecoverSecurityPolicy(ctx context.Context, call Call, at
 		return nil, mapSecurityPreflightError(err)
 	}
 	if result == nil || result.ServerTime.IsZero() || result.SecurityCoverage.Validate() != nil || result.CurrentSources == nil || result.CurrentCoverage == nil || result.SourceResetReceipts == nil || len(result.CurrentSources) > 11 || len(result.CurrentCoverage) > 64 || len(result.SourceResetReceipts) > 11 || result.Security.Validate() != nil || result.Security.Policy.Scope.AttemptID != attemptID || result.FrozenAttemptConfiguration.Validate() != nil {
-		return nil, unavailable(errors.New("inconsistent security policy recovery"))
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent security policy recovery"))
 	}
 	return result, nil
 }
@@ -187,18 +188,18 @@ func (service *Service) UpdateSecurityCoverage(ctx context.Context, call Call, c
 		return model.SecurityCoverageResult{}, err
 	}
 	if !command.ParticipationID.IsValid() || command.Generation < 1 || command.Coverage.Validate() != nil {
-		return model.SecurityCoverageResult{}, invalid("security_coverage")
+		return model.SecurityCoverageResult{}, apperror.Invalid("exam.attempt.invalid", "security_coverage")
 	}
 	build, err := service.deps.DesktopBuilds.ResolveAttemptDesktopBuild(ctx, call.Principal())
 	if err != nil || build.Build.Validate() != nil || build.Build.NativeAgreement == nil || build.CompatibilityPolicyRevision < 1 {
-		return model.SecurityCoverageResult{}, &Fault{Code: "exam.attempt.desktop_incompatible", Cause: err}
+		return model.SecurityCoverageResult{}, apperror.New("exam.attempt.desktop_incompatible").Wrap(err)
 	}
 	result, err := service.deps.Persistence.UpdateSecurityCoverage(ctx, &store.ExamAttemptSecurityCoverageUpdate{Access: selector, ParticipationID: command.ParticipationID, Generation: command.Generation, DesktopBuild: build.Build, DesktopCompatibilityPolicyRevision: build.CompatibilityPolicyRevision, Coverage: command.Coverage})
 	if err != nil {
 		return model.SecurityCoverageResult{}, mapSecurityPreflightError(err)
 	}
 	if result.Validate() != nil {
-		return model.SecurityCoverageResult{}, unavailable(errors.New("inconsistent security coverage result"))
+		return model.SecurityCoverageResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent security coverage result"))
 	}
 	return result, nil
 }

@@ -9,8 +9,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -96,27 +94,7 @@ func (a *App) OpenExamResource(ctx context.Context, invocation Invocation, q Ope
 }
 
 func examResourceError(err error, conceal bool) error {
-	if err == nil {
-		return nil
-	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
-	}
-	var fault *examresource.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.resource.unavailable").Wrap(err)
-	}
-	if conceal && fault.Code == "exam.resource.not_found" {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return presentExamChildError(err, conceal, "exam.resource.unavailable", "exam.resource.not_found")
 }
 
 type examResourceAuthorizationAdapter struct{ authorization *accessControlService }

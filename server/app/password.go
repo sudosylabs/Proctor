@@ -26,6 +26,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
+
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 var ErrPasswordMismatch = errors.New("password does not match")
@@ -92,7 +94,7 @@ func (h *passwordHasher) Hash(ctx context.Context, password string) (string, err
 		return "", err
 	}
 	if err := h.Validate(password); err != nil {
-		return "", NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		return "", apperror.New("authentication.password.invalid").WithField("field", "password").Wrap(err)
 	}
 	release, err := h.admit(ctx)
 	if err != nil {
@@ -204,24 +206,24 @@ func (h *passwordHasher) admit(ctx context.Context) (func(), error) {
 		if h.recorder != nil {
 			h.recorder.Rejected()
 		}
-		return nil, NewError("service.busy")
+		return nil, apperror.New("service.busy")
 	}
 }
 
 // passwordHashError preserves validation and capacity failures while keeping
 // operational failures under the owning use case's unavailable code.
-func passwordHashError(err error, unavailableCode string) error {
-	if Is(err, "authentication.password.invalid") {
+func passwordHashError(err error, unavailableCode apperror.Code) error {
+	if apperror.Is(err, "authentication.password.invalid") {
 		return err
 	}
 	return passwordWorkError(err, unavailableCode)
 }
 
-func passwordWorkError(err error, unavailableCode string) error {
-	if Is(err, "service.busy") {
+func passwordWorkError(err error, unavailableCode apperror.Code) error {
+	if apperror.Is(err, "service.busy") {
 		return err
 	}
-	return NewError(unavailableCode).Wrap(err)
+	return apperror.New(unavailableCode).Wrap(err)
 }
 
 func (h *passwordHasher) NeedsRehash(encoded string) bool {

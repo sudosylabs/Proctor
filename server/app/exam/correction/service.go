@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -37,25 +38,6 @@ func (c Call) Principal() model.Principal {
 	return p
 }
 func (c Call) RequestMetadata() model.RequestMetadata { return c.metadata }
-
-type Fault struct {
-	Code       string
-	SafeFields map[string]any
-	Cause      error
-}
-
-func (f *Fault) Error() string {
-	if f == nil {
-		return "exam correction fault"
-	}
-	return f.Code
-}
-func (f *Fault) Unwrap() error {
-	if f == nil {
-		return nil
-	}
-	return f.Cause
-}
 
 type AccessStore interface {
 	Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error)
@@ -180,7 +162,7 @@ func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, m
 
 func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageResourceContentCommand) (ResourceStage, error) {
 	if !c.ExamID.IsValid() || !c.SittingID.IsValid() || !c.BaseRevisionID.IsValid() || !c.Target.IsValid() || !c.MediaType.IsValid() || c.Body == nil || c.Size < 0 || c.Size > model.ExamResourceMaximumBytes || !validSHA256(c.ExpectedSHA256) || (c.Target == store.ExamCorrectionResourceAddition && !c.ResourceID.IsZero()) || (c.Target == store.ExamCorrectionResourceReplacement && !c.ResourceID.IsValid()) {
-		return ResourceStage{}, invalid("upload")
+		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "upload")
 	}
 	idempotency, err := prepareStageIdempotency(call, c)
 	if err != nil {
@@ -200,7 +182,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 		entryID = s.newEntryID()
 		entry, err = model.NewFileEntryForPurpose(entryID, model.FilePurposeExamResource, model.FileIndexingNone, at)
 		if err != nil {
-			return ResourceStage{}, invalidCause("file_entry", err)
+			return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "file_entry").Wrap(err)
 		}
 	} else {
 		var base *model.ExamRevision
@@ -209,7 +191,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 			return ResourceStage{}, mapStore(err)
 		}
 		if base == nil || base.ID != c.BaseRevisionID || base.ExamID != c.ExamID {
-			return ResourceStage{}, unavailable(errors.New("missing base revision"))
+			return ResourceStage{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing base revision"))
 		}
 		found := false
 		for _, r := range base.Resources {
@@ -220,17 +202,17 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 			}
 		}
 		if !found {
-			return ResourceStage{}, &Fault{Code: "exam.sitting.correction.not_found"}
+			return ResourceStage{}, apperror.New("exam.sitting.correction.not_found")
 		}
 	}
 	revisionID, leaseID, renditionID := s.newFileRevisionID(), s.newLeaseID(), s.newRenditionID()
 	revision, e := model.NewFileRevision(revisionID, entryID, model.FileAvailabilityPending, model.FileIndexingNotRequired, at)
 	if e != nil {
-		return ResourceStage{}, invalidCause("file_revision", e)
+		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "file_revision").Wrap(e)
 	}
 	lease, e := model.NewUploadLease(leaseID, revisionID, principal.UserID, at, at.Add(model.UploadLeaseMaximumLifetime))
 	if e != nil {
-		return ResourceStage{}, invalidCause("upload_lease", e)
+		return ResourceStage{}, apperror.Invalid("exam.sitting.correction.invalid", "upload_lease").Wrap(e)
 	}
 	auditID, err := s.auditor.Begin(ctx, call, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_correction_resource_stage_reserve", map[string]any{
 		"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "base_revision_id": c.BaseRevisionID.String(), "target": string(c.Target),
@@ -243,7 +225,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 		return ResourceStage{}, s.failAudit(ctx, auditID, err)
 	}
 	if stage == nil {
-		return ResourceStage{}, unavailable(errors.New("missing stage outcome"))
+		return ResourceStage{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing stage outcome"))
 	}
 	if err = validateStage(stage, c, principal.UserID); err != nil {
 		return ResourceStage{}, err
@@ -254,7 +236,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 			return ResourceStage{}, mapContent(writeErr)
 		}
 		if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(c.ExpectedSHA256)) != 1 {
-			return ResourceStage{}, &Fault{Code: "exam.sitting.correction.invalid_content", Cause: errors.New("content checksum mismatch")}
+			return ResourceStage{}, apperror.New("exam.sitting.correction.invalid_content").Wrap(errors.New("content checksum mismatch"))
 		}
 		stage, err = s.persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.now())})
 		if err != nil {
@@ -265,23 +247,23 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 		}
 	}
 	if stage.State != store.ExamCorrectionResourceStageReady && stage.State != store.ExamCorrectionResourceStageConsumed {
-		return ResourceStage{}, unavailable(errors.New("stage did not become ready"))
+		return ResourceStage{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("stage did not become ready"))
 	}
 	return projectStage(stage), nil
 }
 
 func validateStage(stage *store.ExamCorrectionResourceStage, c StageResourceContentCommand, actor model.UserID) error {
 	if stage == nil || !stage.ID.IsValid() || stage.ExamID != c.ExamID || stage.SittingID != c.SittingID || stage.BaseRevisionID != c.BaseRevisionID || stage.Target != c.Target || !stage.ResourceID.IsValid() || !stage.FileEntryID.IsValid() || !stage.FileRevisionID.IsValid() || !stage.UploadLeaseID.IsValid() || !stage.RenditionID.IsValid() || stage.CreatedByUserID != actor || stage.ExpiresAt.IsZero() || (c.Target == store.ExamCorrectionResourceReplacement && stage.ResourceID != c.ResourceID) {
-		return unavailable(errors.New("inconsistent stage outcome"))
+		return apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("inconsistent stage outcome"))
 	}
 	if stage.State != store.ExamCorrectionResourceStagePending && stage.State != store.ExamCorrectionResourceStageReady && stage.State != store.ExamCorrectionResourceStageConsumed {
-		return unavailable(errors.New("invalid stage state"))
+		return apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("invalid stage state"))
 	}
 	if stage.State != store.ExamCorrectionResourceStagePending && (stage.Rendition == nil || stage.Rendition.ID != stage.RenditionID || stage.Rendition.RevisionID != stage.FileRevisionID || stage.Rendition.Validate() != nil) {
-		return unavailable(errors.New("incomplete ready stage"))
+		return apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("incomplete ready stage"))
 	}
 	if stage.Rendition != nil && (model.ExamResourceMediaType(stage.Rendition.MediaType) != c.MediaType || stage.Rendition.Size != c.Size || subtle.ConstantTimeCompare([]byte(stage.Rendition.SHA256), []byte(c.ExpectedSHA256)) != 1) {
-		return unavailable(errors.New("stage metadata differs from command"))
+		return apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("stage metadata differs from command"))
 	}
 	return nil
 }
@@ -297,7 +279,7 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 	c.Resources = append([]ResourceManifestItem(nil), c.Resources...)
 	if c.BrowserPolicy.Present {
 		if err := c.BrowserPolicy.Policy.ValidateInstitutionOrigin(s.institutionOrigin); err != nil {
-			return Result{}, invalidCause("browser_policy", err)
+			return Result{}, apperror.Invalid("exam.sitting.correction.invalid", "browser_policy").Wrap(err)
 		}
 	}
 	idempotency, err := prepareApplyIdempotency(call, c)
@@ -346,36 +328,36 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 
 func validateApply(c ApplyCommand) error {
 	if !c.ExamID.IsValid() || !c.SittingID.IsValid() || !c.ExpectedCurrentRevisionID.IsValid() || c.ExpectedSittingRevision < 1 || len(c.Resources) > model.ExamResourceMaximumCount || !utf8.ValidString(c.PrivateReason) || strings.TrimSpace(c.PrivateReason) == "" || strings.TrimSpace(c.PrivateReason) != c.PrivateReason || utf8.RuneCountInString(c.PrivateReason) > 1000 || len(c.PrivateReason) > 4000 {
-		return invalid("command")
+		return apperror.Invalid("exam.sitting.correction.invalid", "command")
 	}
 	if !c.Instructions.Present && c.Instructions.Markdown != "" {
-		return invalid("instructions_markdown")
+		return apperror.Invalid("exam.sitting.correction.invalid", "instructions_markdown")
 	}
 	if c.Instructions.Present && (!utf8.ValidString(c.Instructions.Markdown) || len(c.Instructions.Markdown) > model.ExamInstructionsMarkdownMaxBytes) {
-		return invalid("instructions_markdown")
+		return apperror.Invalid("exam.sitting.correction.invalid", "instructions_markdown")
 	}
 	if !c.BrowserPolicy.Present && c.BrowserPolicy.Policy.SchemaVersion != 0 || c.BrowserPolicy.Present && c.BrowserPolicy.Policy.Validate() != nil {
-		return invalid("browser_policy")
+		return apperror.Invalid("exam.sitting.correction.invalid", "browser_policy")
 	}
 	if err := model.ValidateCandidateCorrectionSelection(c.CandidateSummary, c.AffectedCapabilities); err != nil {
-		return invalid("candidate_summary")
+		return apperror.Invalid("exam.sitting.correction.invalid", "candidate_summary")
 	}
 	resourceIDs := map[model.ExamResourceID]struct{}{}
 	stageIDs := map[model.ExamCorrectionResourceStageID]struct{}{}
 	for _, r := range c.Resources {
 		if !r.ResourceID.IsValid() || strings.TrimSpace(r.DisplayName) != r.DisplayName || r.DisplayName == "" || !utf8.ValidString(r.DisplayName) || utf8.RuneCountInString(r.DisplayName) > model.ExamResourceDisplayNameMaxRunes || !utf8.ValidString(r.DescriptionMarkdown) || len(r.DescriptionMarkdown) > model.ExamResourceDescriptionMaxBytes {
-			return invalid("resources")
+			return apperror.Invalid("exam.sitting.correction.invalid", "resources")
 		}
 		if _, ok := resourceIDs[r.ResourceID]; ok {
-			return invalid("resources")
+			return apperror.Invalid("exam.sitting.correction.invalid", "resources")
 		}
 		resourceIDs[r.ResourceID] = struct{}{}
 		if !r.StageID.IsZero() && !r.StageID.IsValid() {
-			return invalid("resources")
+			return apperror.Invalid("exam.sitting.correction.invalid", "resources")
 		}
 		if r.StageID.IsValid() {
 			if _, ok := stageIDs[r.StageID]; ok {
-				return invalid("resources")
+				return apperror.Invalid("exam.sitting.correction.invalid", "resources")
 			}
 			stageIDs[r.StageID] = struct{}{}
 		}
@@ -392,14 +374,14 @@ type authorizationDecision struct {
 func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID, sittingID model.ExamSittingID) (authorizationDecision, error) {
 	p := call.Principal()
 	if p.Validate() != nil {
-		return authorizationDecision{}, invalid("principal")
+		return authorizationDecision{}, apperror.Invalid("exam.sitting.correction.invalid", "principal")
 	}
 	access, err := s.access.Access(ctx, examID, p.UserID)
 	if err != nil {
 		return authorizationDecision{}, mapStore(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.ID != examID {
-		return authorizationDecision{}, unavailable(errors.New("missing access"))
+		return authorizationDecision{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing access"))
 	}
 	var at time.Time
 	if access.ActorIsManager {
@@ -407,7 +389,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	}
 	action, err := manageraccess.SelectAction(ctx, s.memberships, p.UserID, access, at, model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
 	if err != nil {
-		return authorizationDecision{}, unavailable(err)
+		return authorizationDecision{}, apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 	}
 	if err = s.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}); err != nil {
 		return authorizationDecision{}, err
@@ -416,11 +398,7 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 }
 func (s *Service) failAudit(ctx context.Context, id string, err error) error {
 	mapped := mapStore(err)
-	code := "exam.sitting.correction.unavailable"
-	var f *Fault
-	if errors.As(mapped, &f) {
-		code = f.Code
-	}
+	code := apperror.CodeOf(mapped, "exam.sitting.correction.unavailable")
 	if auditErr := s.auditor.Fail(ctx, id, code); auditErr != nil {
 		return errors.Join(mapped, auditErr)
 	}
@@ -428,7 +406,7 @@ func (s *Service) failAudit(ctx context.Context, id string, err error) error {
 }
 func projectResult(stored *store.ExamCorrectionResult, c ApplyCommand) (Result, error) {
 	if stored == nil || stored.Revision == nil || stored.Sitting == nil || stored.Sitting.Sitting == nil {
-		return Result{}, unavailable(errors.New("missing correction outcome"))
+		return Result{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("missing correction outcome"))
 	}
 	s := stored.Sitting.Sitting
 	if stored.Revision.ExamID != c.ExamID || stored.Revision.ID == c.ExpectedCurrentRevisionID || stored.Revision.Kind != model.ExamRevisionPublicationLiveCorrection || stored.Revision.Number < 1 ||
@@ -436,32 +414,23 @@ func projectResult(stored *store.ExamCorrectionResult, c ApplyCommand) (Result, 
 		s.ExamRevisionID != stored.Revision.ID || s.Revision != c.ExpectedSittingRevision+1 ||
 		(s.State != model.ExamSittingOpen && s.State != model.ExamSittingPaused) || s.UpdatedAt.IsZero() ||
 		stored.EffectiveAt.IsZero() || !model.TimeUTC(stored.EffectiveAt).Equal(model.TimeUTC(stored.Revision.PublishedAt)) {
-		return Result{}, unavailable(errors.New("inconsistent correction outcome"))
+		return Result{}, apperror.New("exam.sitting.correction.unavailable").Wrap(errors.New("inconsistent correction outcome"))
 	}
 	return Result{ExamID: c.ExamID, SittingID: c.SittingID, PreviousRevisionID: stored.PreviousRevisionID,
 		RevisionID: stored.Revision.ID, RevisionNumber: stored.Revision.Number, SittingState: s.State,
 		SittingRevision: s.Revision, EffectiveAt: model.TimeUTC(stored.EffectiveAt),
 		AcknowledgementRequired: c.AcknowledgementRequired, AffectedCapabilities: append([]model.CandidateCapability{}, c.AffectedCapabilities...), Replayed: stored.Replayed}, nil
 }
-func invalid(field string) error {
-	return &Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": field}}
-}
-func invalidCause(field string, cause error) error {
-	return &Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": field}, Cause: cause}
-}
-func unavailable(cause error) error {
-	return &Fault{Code: "exam.sitting.correction.unavailable", Cause: cause}
-}
 func mapContent(err error) error {
 	var capacity workCapacityError
 	if errors.As(err, &capacity) {
-		return &Fault{Code: "service.busy", Cause: err}
+		return apperror.New("service.busy").Wrap(err)
 	}
 	var invalidContent invalidContentError
 	if errors.As(err, &invalidContent) {
-		return &Fault{Code: "exam.sitting.correction.invalid_content", Cause: err}
+		return apperror.New("exam.sitting.correction.invalid_content").Wrap(err)
 	}
-	return unavailable(err)
+	return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 }
 func mapStore(err error) error {
 	var conflict *store.ErrConflict
@@ -470,13 +439,13 @@ func mapStore(err error) error {
 	var idemProgress *store.ErrIdempotencyInProgress
 	switch {
 	case errors.As(err, &idemConflict):
-		return &Fault{Code: "idempotency.conflict", Cause: err}
+		return apperror.New("idempotency.conflict").Wrap(err)
 	case errors.As(err, &idemProgress):
-		return &Fault{Code: "idempotency.in_progress", Cause: err}
+		return apperror.New("idempotency.in_progress").Wrap(err)
 	case store.IsNotFound(err):
-		return &Fault{Code: "exam.sitting.correction.not_found", Cause: err}
+		return apperror.New("exam.sitting.correction.not_found").Wrap(err)
 	case errors.As(err, &conflict):
-		codes := map[string]string{
+		codes := map[string]apperror.Code{
 			"exam_archived":                     "exam.archived",
 			"exam_sitting_revision":             "exam.sitting.revision_conflict",
 			"exam_sitting_state":                "exam.sitting.state_conflict",
@@ -490,13 +459,13 @@ func mapStore(err error) error {
 			"exam_correction_resource_stage":    "exam.sitting.correction.stage_invalid",
 		}
 		if code := codes[conflict.Constraint]; code != "" {
-			return &Fault{Code: code, Cause: err}
+			return apperror.New(code).Wrap(err)
 		}
-		return &Fault{Code: "exam.sitting.correction.conflict", Cause: err}
+		return apperror.New("exam.sitting.correction.conflict").Wrap(err)
 	case errors.As(err, &invalidInput):
-		return invalidCause("value", err)
+		return apperror.Invalid("exam.sitting.correction.invalid", "value").Wrap(err)
 	default:
-		return unavailable(err)
+		return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 	}
 }
 func validSHA256(value string) bool {

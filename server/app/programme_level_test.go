@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -64,12 +65,12 @@ func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T
 	programmeID := model.NewId()
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: NewError("resource.not_found").WithField("resource", "programme")},
+		&programmeAuthorizerFake{events: &events, err: apperror.New("resource.not_found").WithField("resource", "programme")},
 		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 	)
 
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programmeID})
-	failure, ok := As(err)
+	failure, ok := apperror.As(err)
 	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "programme" {
 		t.Fatalf("Create() error = %#v", err)
 	}
@@ -153,11 +154,11 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 	programme := &model.Programme{ID: model.ProgrammeID(model.NewId())}
 	service := newProgrammeLevelService(
 		&programmeLevelStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
+		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID.String(), Name: "year-1", DisplayName: "Year 1"})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize"}) {
@@ -176,7 +177,7 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 		auditor, time.Now, model.NewId,
 	)
 	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID.String(), Name: "year-1", DisplayName: "Year 1"})
-	if !Is(err, "programme_level.conflict") || auditor.failCode != "programme_level.conflict" {
+	if !apperror.Is(err, "programme_level.conflict") || auditor.failCode != "programme_level.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create", "audit-fail"}) {

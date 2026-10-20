@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -61,8 +62,8 @@ func TestRecordsRejectsSelfWaiverWithDurableDenial(t *testing.T) {
 	persistence.scope.CandidateUserID = f.userID
 	_, err := records.WaiveReview(context.Background(), f.call, WaiveReviewCommand{Scope: persistence.scope.Scope,
 		ReasonCode: "review_not_required", PrivateReason: "Private institutional rationale", IdempotencyKey: "waiver-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.not_found" || !authorizer.denied || persistence.waiver != nil {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.not_found" || !authorizer.denied || persistence.waiver != nil {
 		t.Fatalf("self waiver = %v, denied=%v, mutation=%#v", err, authorizer.denied, persistence.waiver)
 	}
 	if !reflect.DeepEqual(*f.order, []string{"records.resolve", "records.deny_self"}) {
@@ -99,14 +100,14 @@ func TestRecordsIdempotencyAndAuditFailClosed(t *testing.T) {
 	f, records, persistence, _ := newRecordsFixture(t)
 	command := CompleteRecordsCommand{Scope: persistence.scope.Scope, ExpectedRevision: 1}
 	_, err := records.CompleteRecords(context.Background(), f.call, command)
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "idempotency.key_required" || len(*f.order) != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "idempotency.key_required" || len(*f.order) != 0 {
 		t.Fatalf("required key = %v, order=%v", err, *f.order)
 	}
 	command.IdempotencyKey = "completion-key"
 	persistence.err = store.NewErrConflict("authorization", "authority", nil)
 	_, err = records.CompleteRecords(context.Background(), f.call, command)
-	if !errors.As(err, &fault) || fault.Code != "exam.not_found" || f.auditor.failedCode != "exam.not_found" {
+	if !errors.As(err, &fault) || fault.Code() != "exam.not_found" || f.auditor.failedCode != "exam.not_found" {
 		t.Fatalf("current authority failure = %v, audit=%s", err, f.auditor.failedCode)
 	}
 }
@@ -141,8 +142,8 @@ func TestRecordsHoldReleaseRequiresStrongRecentProof(t *testing.T) {
 				}
 				return
 			}
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != tc.want || persistence.release != nil {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != tc.want || persistence.release != nil {
 				t.Fatalf("release = %v, mutation=%#v", err, persistence.release)
 			}
 		})
@@ -170,7 +171,7 @@ type recordsAuthorizerFake struct {
 func (f *recordsAuthorizerFake) Deny(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.AcademicUnitID) error {
 	*f.order = append(*f.order, "records.deny_self")
 	f.denied = true
-	return &Fault{Code: "exam.not_found"}
+	return apperror.New("exam.not_found")
 }
 
 type recordsStoreFake struct {

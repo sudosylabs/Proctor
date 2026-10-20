@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -95,7 +96,7 @@ func (s *sessionAdministrationService) List(
 ) ([]*model.Session, error) {
 	userID := strings.TrimSpace(query.UserID)
 	if !model.IsValidId(userID) {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	if err := s.authorization.AuthorizeView(ctx, invocation, userID); err != nil {
 		return nil, err
@@ -134,10 +135,10 @@ func (s *sessionAdministrationService) RevokeOne(
 	userID := strings.TrimSpace(command.UserID)
 	sessionID := strings.TrimSpace(command.SessionID)
 	if !model.IsValidId(userID) {
-		return NewError("request.invalid").WithField("field", "user_id")
+		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	if !model.IsValidId(sessionID) {
-		return NewError("request.invalid").WithField("field", "session_id")
+		return apperror.New("request.invalid").WithField("field", "session_id")
 	}
 	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
 		return err
@@ -194,7 +195,7 @@ func (s *sessionAdministrationService) RevokeAll(
 ) error {
 	userID := strings.TrimSpace(command.UserID)
 	if !model.IsValidId(userID) {
-		return NewError("request.invalid").WithField("field", "user_id")
+		return apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	if err := s.authorization.AuthorizeManage(ctx, invocation, userID); err != nil {
 		return err
@@ -284,12 +285,12 @@ func sessionAdministrationError(err error) error {
 	}
 	switch {
 	case store.IsNotFound(err):
-		return NewError("session.not_found").WithField("resource", "session").Wrap(err)
+		return apperror.New("session.not_found").WithField("resource", "session").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		if errors.As(err, &invalid) {
-			return NewError("request.invalid").WithField("resource", "session").Wrap(err)
+			return apperror.New("request.invalid").WithField("resource", "session").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "session").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "session").Wrap(err)
 	}
 }

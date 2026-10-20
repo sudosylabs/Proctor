@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
@@ -87,7 +88,7 @@ func (adapter onboardingImportJobs) PreviewProgression(ctx context.Context, id m
 	if err == nil {
 		return "", nil
 	}
-	if failure, ok := As(err); ok {
+	if failure, ok := apperror.As(err); ok {
 		switch failure.Code() {
 		case "authorization.denied", "authentication.invalid_token":
 			return "student_progression.authorization_lost", err
@@ -105,7 +106,7 @@ func (adapter onboardingImportJobs) Parse(ctx context.Context, id model.Onboardi
 	if err == nil {
 		return "", nil
 	}
-	if failure, ok := As(err); ok && (failure.Code() == "authentication.invalid_token" || failure.Code() == "authorization.denied") {
+	if failure, ok := apperror.As(err); ok && (failure.Code() == "authentication.invalid_token" || failure.Code() == "authorization.denied") {
 		return "onboarding_import.authorization_lost", err
 	}
 	if errors.Is(err, errOnboardingImportInvalidFile) {

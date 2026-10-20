@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -161,7 +162,7 @@ func (s *academicUnitCommandService) Create(
 		authorized = institution
 	} else {
 		if !model.IsValidId(parentID) {
-			return nil, NewError("request.invalid").WithField("field", "parent_id")
+			return nil, apperror.New("request.invalid").WithField("field", "parent_id")
 		}
 		action = model.ActionAcademicUnitManage
 		authorized = model.Resource{Type: model.ResourceAcademicUnit, ID: parentID}
@@ -177,17 +178,17 @@ func (s *academicUnitCommandService) Create(
 
 	unitID, err := model.ParseAcademicUnitID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
 	institutionID, err := model.ParseInstitutionID(institution.ID)
 	if err != nil {
-		return nil, NewError("administration.unavailable").WithField("resource", "institution").Wrap(err)
+		return nil, apperror.New("administration.unavailable").WithField("resource", "institution").Wrap(err)
 	}
 	var parentUnitID model.AcademicUnitID
 	if parentID != "" {
 		parentUnitID, err = model.ParseAcademicUnitID(parentID)
 		if err != nil {
-			return nil, NewError("request.invalid").WithField("field", "parent_id").Wrap(err)
+			return nil, apperror.New("request.invalid").WithField("field", "parent_id").Wrap(err)
 		}
 	}
 	candidate := &model.AcademicUnit{
@@ -268,7 +269,7 @@ func (s *academicUnitCommandService) Update(
 	command UpdateAcademicUnitCommand,
 ) (*model.AcademicUnit, error) {
 	if !model.IsValidId(command.ID) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
 	if err := s.authorization.Authorize(
@@ -291,7 +292,7 @@ func (s *academicUnitCommandService) Update(
 		} else {
 			parentUnitID, parseErr := model.ParseAcademicUnitID(parentID)
 			if parseErr != nil {
-				return nil, NewError("request.invalid").WithField("field", "parent_id").Wrap(parseErr)
+				return nil, apperror.New("request.invalid").WithField("field", "parent_id").Wrap(parseErr)
 			}
 			candidate.ParentID = parentUnitID
 		}
@@ -362,7 +363,7 @@ func (s *academicUnitCommandService) Archive(
 	command ArchiveAcademicUnitCommand,
 ) error {
 	if !model.IsValidId(command.ID) {
-		return NewError("request.invalid").WithField("field", "academic_unit_id")
+		return apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: command.ID}
 	if err := s.authorization.Authorize(

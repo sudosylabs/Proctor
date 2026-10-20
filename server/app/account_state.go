@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -66,13 +67,13 @@ func (a *App) SetUserEnabled(ctx context.Context, invocation Invocation, command
 func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
 	userID := strings.TrimSpace(command.ID)
 	if !model.IsValidId(userID) {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	if err := s.authorization.AuthorizeAccountStateManage(ctx, invocation, userID); err != nil {
 		return nil, err
 	}
 	if invocation.Principal().UserID.String() == userID && !command.Enabled {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	current, err := s.users.Get(ctx, userID)
 	if err != nil {
@@ -157,7 +158,7 @@ func accountStateError(err error) error {
 	}
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) && conflict.Constraint == "users_last_system_admin" {
-		return NewError("user.last_system_admin").WithField("resource", "user").Wrap(err)
+		return apperror.New("user.last_system_admin").WithField("resource", "user").Wrap(err)
 	}
 	return userProfileError(err)
 }

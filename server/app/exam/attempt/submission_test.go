@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -231,8 +232,8 @@ func TestManagerEndConcealsSelfAccessAndFailsClosedOnAuditFailure(t *testing.T) 
 					t.Fatalf("EndByManager(audit failure) error = %v", err)
 				}
 			} else {
-				var fault *Fault
-				if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" {
+				var fault *apperror.Error
+				if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" {
 					t.Fatalf("EndByManager(self) error = %v", err)
 				}
 			}
@@ -266,8 +267,8 @@ func TestManagedSubmissionNestedOwnershipMismatchIsConcealed(t *testing.T) {
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	_, err := f.service.GetSubmission(context.Background(), f.call, GetSubmissionQuery{ExamID: model.NewExamID(),
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, SubmissionID: submissionID})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" ||
 		strings.Join(f.order, ",") != "submission.authorize,submission.resolve_owner" {
 		t.Fatalf("error=%v order=%v", err, f.order)
 	}
@@ -345,8 +346,8 @@ func TestOpenSubmissionFileFailsClosedOnRetainedSelectorMismatch(t *testing.T) {
 	_, err := f.service.OpenSubmissionFile(context.Background(), f.call, OpenSubmissionFileQuery{
 		GetSubmissionQuery: GetSubmissionQuery{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 			AttemptID: f.attemptID, SubmissionID: submission.ID}, EntryID: entryID})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" ||
 		f.content.openAttemptID.IsValid() || f.content.starterID.IsValid() {
 		t.Fatalf("error=%v starter=%s attempt=%s", err, f.content.starterID, f.content.openAttemptID)
 	}

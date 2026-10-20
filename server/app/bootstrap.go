@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -88,7 +89,7 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
 	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if institutionErr != nil || userErr != nil || (!command.EnableLocalLogin && command.Password == "") {
-		return nil, NewError("administrator_recovery.invalid")
+		return nil, apperror.New("administrator_recovery.invalid")
 	}
 	passwordHash := ""
 	if command.Password != "" {
@@ -103,10 +104,10 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 		EnableLocalLogin: command.EnableLocalLogin, RotatePasswordHash: passwordHash,
 	})
 	if err != nil {
-		return nil, NewError("administrator_recovery.failed").Wrap(err)
+		return nil, apperror.New("administrator_recovery.failed").Wrap(err)
 	}
 	if result == nil {
-		return nil, NewError("administrator_recovery.failed").Wrap(errors.New("persistence returned no recovery result"))
+		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("persistence returned no recovery result"))
 	}
 	return &AdministratorRecoveryResult{
 		LocalLoginEnabled: result.LocalLoginEnabled,
@@ -202,10 +203,10 @@ func (s *bootstrapService) GetStatus(ctx context.Context) (*model.InstallationSt
 		if store.IsNotFound(err) {
 			return &model.InstallationStatus{Initialized: false}, nil
 		}
-		return nil, NewError("installation.unavailable").Wrap(err)
+		return nil, apperror.New("installation.unavailable").Wrap(err)
 	}
 	if err := state.Validate(); err != nil {
-		return nil, NewError("installation.unavailable").Wrap(err)
+		return nil, apperror.New("installation.unavailable").Wrap(err)
 	}
 	return &model.InstallationStatus{Initialized: true}, nil
 }
@@ -217,18 +218,18 @@ func (a *App) BootstrapInstallation(ctx context.Context, invocation Invocation, 
 func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	if strings.TrimSpace(command.InstitutionName) == "" || strings.TrimSpace(command.AdministratorUsername) == "" ||
 		strings.TrimSpace(command.AdministratorEmail) == "" || command.Password == "" {
-		return nil, NewError("request.invalid").WithField("field", "bootstrap")
+		return nil, apperror.New("request.invalid").WithField("field", "bootstrap")
 	}
 	if err := s.checkRateLimit(ctx, command.Source); err != nil {
 		return nil, err
 	}
 	providedDigest := digestBootstrapSecret(command.BootstrapSecret)
 	if !s.bootstrapAvailable || subtle.ConstantTimeCompare(providedDigest[:], s.bootstrapSecretDigest[:]) != 1 {
-		return nil, NewError("installation.bootstrap_denied")
+		return nil, apperror.New("installation.bootstrap_denied")
 	}
 	fingerprint, err := fingerprintBootstrapCommand(command)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "bootstrap").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "bootstrap").Wrap(err)
 	}
 	hash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
@@ -242,11 +243,11 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 		Timezone: command.AdministratorTimezone,
 	}, s.now())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "administrator").Wrap(err)
 	}
 	administratorSettings, err := prepareInitialUserSettingsDocument(administrator)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "administrator").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "administrator").Wrap(err)
 	}
 	input := &store.InstallationBootstrap{
 		BootstrapSecretDigest: providedDigest,
@@ -281,7 +282,7 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	result, err := s.installations.Bootstrap(ctx, input)
 	if err != nil {
 		if store.IsConflict(err) {
-			return nil, NewError("installation.already_initialized").Wrap(err)
+			return nil, apperror.New("installation.already_initialized").Wrap(err)
 		}
 		// The commit boundary may be ambiguous. Repeating the proof- and
 		// fingerprint-fenced named aggregate either returns the retained exact
@@ -291,9 +292,9 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 			return result, nil
 		}
 		if store.IsConflict(retryErr) {
-			return nil, NewError("installation.already_initialized").Wrap(retryErr)
+			return nil, apperror.New("installation.already_initialized").Wrap(retryErr)
 		}
-		return nil, NewError("installation.unavailable").Wrap(errors.Join(err, retryErr))
+		return nil, apperror.New("installation.unavailable").Wrap(errors.Join(err, retryErr))
 	}
 	return result, nil
 }
@@ -340,10 +341,10 @@ func (s *bootstrapService) checkRateLimit(ctx context.Context, source string) er
 		}},
 	})
 	if err != nil {
-		return NewError("administration.unavailable").Wrap(err)
+		return apperror.New("administration.unavailable").Wrap(err)
 	}
 	if limited {
-		return NewError("authentication.rate_limited")
+		return apperror.New("authentication.rate_limited")
 	}
 	return nil
 }

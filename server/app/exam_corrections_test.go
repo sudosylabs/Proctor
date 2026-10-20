@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -128,10 +129,10 @@ func TestCorrectionFacadeConcealsFailuresAndDiscardsResults(t *testing.T) {
 		code   string
 		fields map[string]string
 	}{
-		{"denied", NewError("authorization.denied"), "resource.not_found", nil},
-		{"missing", &examcorrection.Fault{Code: "exam.sitting.correction.not_found"}, "resource.not_found", nil},
-		{"safe fields", &examcorrection.Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": "resources"}}, "exam.sitting.correction.invalid", map[string]string{"field": "resources"}},
-		{"busy", &examcorrection.Fault{Code: "service.busy"}, "service.busy", nil},
+		{"denied", apperror.New("authorization.denied"), "resource.not_found", nil},
+		{"missing", apperror.New("exam.sitting.correction.not_found"), "resource.not_found", nil},
+		{"safe fields", apperror.Invalid("exam.sitting.correction.invalid", "resources"), "exam.sitting.correction.invalid", map[string]string{"field": "resources"}},
+		{"busy", apperror.New("service.busy"), "service.busy", nil},
 		{"dependency", errors.New("storage unavailable"), "exam.sitting.correction.unavailable", nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -145,7 +146,7 @@ func TestCorrectionFacadeConcealsFailuresAndDiscardsResults(t *testing.T) {
 				t.Fatalf("failed command returned a result: %#v, %#v", stage, result)
 			}
 			for _, err := range []error{stageErr, applyErr} {
-				mapped, ok := As(err)
+				mapped, ok := apperror.As(err)
 				if !ok || mapped.Code() != test.code || !reflect.DeepEqual(mapped.Fields(), test.fields) || !errors.Is(err, test.cause) {
 					t.Fatalf("error = %#v; want %s, fields %v, retained cause", mapped, test.code, test.fields)
 				}

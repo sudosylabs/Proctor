@@ -33,6 +33,7 @@ func TestUserSettingsApplicationBoundary(t *testing.T) {
 		"encoding/json":                {},
 		"errors":                       {},
 		"time":                         {},
+		serverModule + "/app/apperror": {},
 		serverModule + "/app/realtime": {},
 		serverModule + "/model":        {},
 		serverModule + "/store":        {},

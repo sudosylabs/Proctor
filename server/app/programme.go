@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -77,7 +78,7 @@ func (a *App) GetProgramme(ctx context.Context, invocation Invocation, query Get
 func (s *programmeService) Get(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "programme_id")
+		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgramme, ID: id}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, resource); err != nil {
@@ -97,7 +98,7 @@ func (a *App) ListProgrammes(ctx context.Context, invocation Invocation, query L
 func (s *programmeService) List(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
 	unitID := strings.TrimSpace(query.AcademicUnitID)
 	if !model.IsValidId(unitID) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeView, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}); err != nil {
 		return nil, err
@@ -121,7 +122,7 @@ func (a *App) CreateProgramme(ctx context.Context, invocation Invocation, comman
 func (s *programmeService) Create(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
 	unitID := strings.TrimSpace(command.AcademicUnitID)
 	if !model.IsValidId(unitID) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, resource)
@@ -130,11 +131,11 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	}
 	programmeID, err := model.ParseProgrammeID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "programme_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "programme_id").Wrap(err)
 	}
 	academicUnitID, err := model.ParseAcademicUnitID(unitID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
 	}
 	candidate := &model.Programme{
 		AcademicUnitID: academicUnitID,
@@ -259,7 +260,7 @@ func (s *programmeService) Archive(ctx context.Context, invocation Invocation, c
 func (s *programmeService) getForMutation(ctx context.Context, invocation Invocation, id string) (*model.Programme, model.RoleScopeType, string, error) {
 	id = strings.TrimSpace(id)
 	if !model.IsValidId(id) {
-		return nil, "", "", NewError("request.invalid").WithField("field", "programme_id")
+		return nil, "", "", apperror.New("request.invalid").WithField("field", "programme_id")
 	}
 	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionProgrammeManage, model.Resource{Type: model.ResourceProgramme, ID: id})
 	if err != nil {
@@ -275,15 +276,15 @@ func (s *programmeService) getForMutation(ctx context.Context, invocation Invoca
 func programmeError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "programme").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "programme").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("programme.conflict").WithField("resource", "programme").Wrap(err)
+		return apperror.New("programme.conflict").WithField("resource", "programme").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("programme.invalid").WithField("resource", "programme").Wrap(err)
+			return apperror.New("programme.invalid").WithField("resource", "programme").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "programme").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "programme").Wrap(err)
 	}
 }

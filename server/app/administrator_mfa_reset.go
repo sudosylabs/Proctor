@@ -12,6 +12,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -47,24 +48,24 @@ func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command Ad
 	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
 	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if institutionErr != nil || userErr != nil {
-		return nil, NewError("administrator_recovery.invalid")
+		return nil, apperror.New("administrator_recovery.invalid")
 	}
 	if !s.recoveryPolicy.mfaEnabled {
-		return nil, NewError("authentication.mfa.disabled")
+		return nil, apperror.New("authentication.mfa.disabled")
 	}
 	if s.recoveryPolicy.capabilities == nil {
-		return nil, NewError("administrator_recovery.failed").Wrap(errors.New("administrator recovery capabilities are unavailable"))
+		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("administrator recovery capabilities are unavailable"))
 	}
 	result, err := s.installations.ResetAdministratorMFA(ctx, &store.AdministratorMFAReset{
 		InstitutionID: institutionID, UserID: userID, MFAEnabled: s.recoveryPolicy.mfaEnabled,
 		Capabilities: accessDeploymentCapabilities(s.recoveryPolicy.capabilities.Snapshot()),
 	})
 	if err != nil {
-		return nil, NewError("administrator_recovery.failed").Wrap(err)
+		return nil, apperror.New("administrator_recovery.failed").Wrap(err)
 	}
 	if result == nil || !model.IsValidId(result.RecordID) || result.Recovery == nil || result.Recovery.Validate() != nil ||
 		result.Recovery.UserID != userID || !result.Recovery.ReenrollmentRequired {
-		return nil, NewError("administrator_recovery.failed").Wrap(errors.New("persistence returned no valid MFA recovery evidence"))
+		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("persistence returned no valid MFA recovery evidence"))
 	}
 	return &AdministratorMFAResetResult{RecoveryGeneration: result.Recovery.Generation, ReenrollmentRequired: true}, nil
 }

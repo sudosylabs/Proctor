@@ -13,6 +13,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -151,7 +152,7 @@ func (s *authenticationMethodService) unlink(ctx context.Context, invocation Inv
 		return err
 	}
 	if !id.IsValid() {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	userID := invocation.Principal().UserID
 	result, appErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation,

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -90,7 +91,7 @@ func (a userSettingsAuditAdapter) PrepareReplacement(
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess ||
 		principal.UserID != input.UserID || !input.PreviousRevision.IsValid() ||
 		!input.ResultingRevision.IsValid() || input.FormatVersion <= 0 || input.SourceBytes < 0 {
-		return nil, NewError("audit.event.invalid")
+		return nil, apperror.New("audit.event.invalid")
 	}
 	institution, err := a.audit.institutions.GetSingleton(ctx)
 	if err != nil {
@@ -142,7 +143,7 @@ func (s *auditService) BeginAuthentication(
 ) (*model.AuditEvent, error) {
 	if !model.IsValidId(userID) || !model.IsValidId(institutionID) ||
 		!clientType.IsValid() || method == "" {
-		return nil, NewError("audit.event.invalid")
+		return nil, apperror.New("audit.event.invalid")
 	}
 	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
@@ -191,7 +192,7 @@ func (s *auditService) BeginLocalLogin(
 	metadata model.RequestMetadata,
 ) (*model.AuditEvent, error) {
 	if !userID.IsValid() || !clientType.IsValid() {
-		return nil, NewError("audit.event.invalid")
+		return nil, apperror.New("audit.event.invalid")
 	}
 	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
@@ -223,7 +224,7 @@ func (s *auditService) RecordLocalLoginFailure(
 	errorCode string,
 ) error {
 	if errorCode == "" {
-		return NewError("audit.event.invalid")
+		return apperror.New("audit.event.invalid")
 	}
 	if s.audits == nil {
 		return auditUnavailable(store.NewErrNotFound("audit_store", ""))
@@ -266,7 +267,7 @@ func (s *auditService) RecordExternalAuthenticationFailure(
 	errorCode string,
 ) error {
 	if method == "" {
-		return NewError("audit.event.invalid")
+		return apperror.New("audit.event.invalid")
 	}
 	parameters, err := model.EncodeAuditData(map[string]string{
 		"provider": providerID,
@@ -438,7 +439,7 @@ func (s *auditService) BeginAccountActionAtScope(
 	parameters any,
 ) (*model.AuditEvent, error) {
 	if !actor.userID.IsValid() || !actor.clientType.IsValid() {
-		return nil, NewError("audit.event.invalid")
+		return nil, apperror.New("audit.event.invalid")
 	}
 	if s.audits == nil {
 		return nil, auditUnavailable(store.NewErrNotFound("audit_store", ""))
@@ -615,7 +616,7 @@ func (s *auditService) List(
 		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
 		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
 		(query.Resource != nil && query.Resource.Validate() != nil) {
-		return nil, NewError("audit.query.invalid")
+		return nil, apperror.New("audit.query.invalid")
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorId: query.ActorID, Action: query.Action, Resource: query.Resource,
@@ -629,5 +630,5 @@ func (s *auditService) List(
 }
 
 func auditUnavailable(err error) error {
-	return NewError("audit.unavailable").Wrap(err)
+	return apperror.New("audit.unavailable").Wrap(err)
 }

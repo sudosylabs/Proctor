@@ -10,6 +10,7 @@ package app
 import (
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -25,10 +26,10 @@ func requireStrongRecentSession(
 		return invalidTokenAppError()
 	}
 	if !principal.HasStrongAuthentication() {
-		return NewError("authentication.strong_required")
+		return apperror.New("authentication.strong_required")
 	}
 	if !principal.IsRecentlyAuthenticated(now, recentAuthenticationTTL) {
-		return NewError("authentication.reauthentication_required")
+		return apperror.New("authentication.reauthentication_required")
 	}
 	return nil
 }

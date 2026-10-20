@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -157,7 +158,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 				verifyErr := hasher.Verify(context.Background(), hasher.dummyHash, "incorrect password")
 				dummyErr := hasher.VerifyDummy(context.Background(), "incorrect password")
 				for _, err := range []error{hashErr, verifyErr, dummyErr} {
-					if !Is(err, "service.busy") {
+					if !apperror.Is(err, "service.busy") {
 						t.Fatalf("saturated password operation = %v, want service.busy", err)
 					}
 				}
@@ -178,7 +179,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 					t.Fatalf("cancelled request = %v, want context cancellation", err)
 				}
 			}
-			if _, err := hasher.Hash(context.Background(), "short"); !Is(err, "authentication.password.invalid") {
+			if _, err := hasher.Hash(context.Background(), "short"); !apperror.Is(err, "authentication.password.invalid") {
 				t.Fatalf("invalid password consumed capacity: %v", err)
 			}
 			if err := hasher.Verify(context.Background(), "malformed", "incorrect password"); !errors.Is(err, ErrPasswordMismatch) {
@@ -255,10 +256,10 @@ func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(
 		err  error
 		code string
 	}{
-		{name: "busy", err: NewError("service.busy"), code: "service.busy"},
+		{name: "busy", err: apperror.New("service.busy"), code: "service.busy"},
 		{name: "cancelled", err: context.Canceled, code: unavailableCode},
 		{name: "operational failure", err: errors.New("password work unavailable"), code: unavailableCode},
-		{name: "invalid password", err: NewError("authentication.password.invalid"), code: "authentication.password.invalid"},
+		{name: "invalid password", err: apperror.New("authentication.password.invalid"), code: "authentication.password.invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -272,7 +273,7 @@ func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(
 				return "", test.err
 			})
 			err := invoke(t, ctx, hasher)
-			if !Is(err, test.code) || calls != 1 || !errors.Is(err, test.err) {
+			if !apperror.Is(err, test.code) || calls != 1 || !errors.Is(err, test.err) {
 				t.Fatalf("password failure = %v, calls %d; want %s wrapping %v after one call", err, calls, test.code, test.err)
 			}
 		})

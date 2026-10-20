@@ -13,6 +13,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -117,7 +118,7 @@ func (module systemResourceModule) ping(request operationRequest) (operationResu
 		request.context,
 		query,
 	)
-	if application.Is(evaluationErr, "request.invalid") {
+	if apperror.Is(evaluationErr, "request.invalid") {
 		return operationResult{}, evaluationErr
 	}
 	responseTime := model.TimeUTC(module.now())
@@ -163,13 +164,13 @@ func desktopCompatibilityQuery(request *http.Request) (application.DesktopCompat
 	for key, candidates := range values {
 		maximum, known := allowed[key]
 		if !known || len(candidates) != 1 || candidates[0] == "" || len(candidates[0]) > maximum {
-			return application.DesktopCompatibilityQuery{}, application.NewError("request.invalid").WithField("field", key)
+			return application.DesktopCompatibilityQuery{}, apperror.New("request.invalid").WithField("field", key)
 		}
 	}
 	selector := func(key string) (string, error) {
 		candidates := values[key]
 		if len(candidates) != 1 || candidates[0] == "" || len(candidates[0]) > allowed[key] {
-			return "", application.NewError("request.invalid").WithField("field", key)
+			return "", apperror.New("request.invalid").WithField("field", key)
 		}
 		return candidates[0], nil
 	}
@@ -195,7 +196,7 @@ func desktopCompatibilityQuery(request *http.Request) (application.DesktopCompat
 	}
 	realtimeProtocol, parseErr := strconv.Atoi(realtimeText)
 	if parseErr != nil || realtimeProtocol < 1 {
-		return application.DesktopCompatibilityQuery{}, application.NewError("request.invalid").WithField(
+		return application.DesktopCompatibilityQuery{}, apperror.New("request.invalid").WithField(
 			"field",
 			"realtime_protocol",
 		)

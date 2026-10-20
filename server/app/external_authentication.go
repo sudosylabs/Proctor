@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -271,7 +272,7 @@ func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation
 }
 
 func appErrorCode(err error) string {
-	if appErr, ok := As(err); ok {
+	if appErr, ok := apperror.As(err); ok {
 		return appErr.Code()
 	}
 	return "authentication.internal"
@@ -281,18 +282,18 @@ func authenticationMethodMutationError(err error) error {
 	var conflict *store.ErrConflict
 	switch {
 	case errors.Is(err, store.ErrAuthenticationMethodDisabled):
-		return NewError("authentication.method.disabled")
+		return apperror.New("authentication.method.disabled")
 	case errors.Is(err, store.ErrLastUsableAuthenticationMethod):
-		return NewError("authentication.method.last_usable")
+		return apperror.New("authentication.method.last_usable")
 	case store.IsNotFound(err):
-		return NewError("authentication.method.not_found")
+		return apperror.New("authentication.method.not_found")
 	case errors.As(err, &conflict):
 		if conflict.Constraint == "external_identities_provider_subject_key" {
-			return NewError("authentication.method.provider_conflict")
+			return apperror.New("authentication.method.provider_conflict")
 		}
-		return NewError("authentication.method.conflict")
+		return apperror.New("authentication.method.conflict")
 	default:
-		return NewError("authentication.method.unavailable").Wrap(err)
+		return apperror.New("authentication.method.unavailable").Wrap(err)
 	}
 }
 
@@ -358,13 +359,13 @@ func (s *externalAuthenticationService) beginForPurpose(
 		clientType != model.SessionClientWeb ||
 		len(deviceID) > model.SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(deviceName) > model.SessionDeviceNameMaxRunes {
-		return nil, NewError("authentication.external.request.invalid")
+		return nil, apperror.New("authentication.external.request.invalid")
 	}
 	if purpose == model.ExternalAuthenticationPurposeConnect && !targetUserID.IsValid() {
 		return nil, invalidTokenAppError()
 	}
 	if purpose == model.ExternalAuthenticationPurposeDesktopAuthorization && !browserTransactionID.IsValid() {
-		return nil, NewError("authentication.desktop_authorization.invalid")
+		return nil, apperror.New("authentication.desktop_authorization.invalid")
 	}
 	invitationClaimHash := ""
 	if invitationClaim != "" {
@@ -372,7 +373,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 			admission.Mode != model.ProviderAdmissionInvitationRequired ||
 			!admission.InvitationAdmissionEnabled ||
 			!model.IsValidCredentialToken(invitationClaim) {
-			return nil, NewError("authentication.external.account_not_linked")
+			return nil, apperror.New("authentication.external.account_not_linked")
 		}
 		purpose = model.ExternalAuthenticationPurposeInvitationAdmission
 		invitationClaimHash = model.HashInvitationClaim(invitationClaim)
@@ -433,7 +434,7 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	if err != nil {
 		if invitationClaimHash != "" && store.IsNotFound(err) {
-			return nil, NewError("authentication.external.account_not_linked")
+			return nil, apperror.New("authentication.external.account_not_linked")
 		}
 		return nil, authenticationUnavailable(err)
 	}
@@ -553,7 +554,7 @@ func (s *externalAuthenticationService) complete(
 		},
 	)
 	if providerErr != nil {
-		errorCode := "authentication.external.rejected"
+		errorCode := apperror.Code("authentication.external.rejected")
 		if !errors.Is(providerErr, ErrExternalAuthenticationRejected) {
 			errorCode = "authentication.external.unavailable"
 		}
@@ -563,11 +564,11 @@ func (s *externalAuthenticationService) complete(
 			method,
 			metadata,
 			institution.ID.String(),
-			errorCode,
+			string(errorCode),
 		); appErr != nil {
 			return nil, s.failConsumedProviderConnection(ctx, state, appErr)
 		}
-		return nil, s.failConsumedProviderConnection(ctx, state, NewError(errorCode).Wrap(providerErr))
+		return nil, s.failConsumedProviderConnection(ctx, state, apperror.New(errorCode).Wrap(providerErr))
 	}
 	if assertion == nil || assertion.ProviderId != providerID {
 		if auditErr := s.audit.RecordExternalAuthenticationFailure(
@@ -605,7 +606,7 @@ func (s *externalAuthenticationService) complete(
 				institution.ID.String(), "authentication.external.account_not_linked"); auditErr != nil {
 				return nil, auditErr
 			}
-			return nil, NewError("authentication.external.account_not_linked")
+			return nil, apperror.New("authentication.external.account_not_linked")
 		}
 		result, acceptErr := s.invitationAcceptor.AcceptExternalIdentity(ctx, state, assertion,
 			accessDeploymentCapabilities(s.capabilities.Snapshot()), metadata, method)
@@ -619,10 +620,10 @@ func (s *externalAuthenticationService) complete(
 			}
 			var conflict *store.ErrConflict
 			if errors.As(acceptErr, &conflict) {
-				return nil, NewError("authentication.external.account_conflict").Wrap(acceptErr)
+				return nil, apperror.New("authentication.external.account_conflict").Wrap(acceptErr)
 			}
 			if store.IsNotFound(acceptErr) {
-				return nil, NewError("authentication.external.account_not_linked")
+				return nil, apperror.New("authentication.external.account_not_linked")
 			}
 			return nil, authenticationUnavailable(acceptErr)
 		}
@@ -698,9 +699,9 @@ func (s *externalAuthenticationService) complete(
 		case errors.Is(err, store.ErrAuthenticationMethodDisabled):
 			return nil, invalidExternalAuthenticationError()
 		case errors.As(err, &conflict):
-			return nil, NewError("authentication.external.account_conflict").Wrap(err)
+			return nil, apperror.New("authentication.external.account_conflict").Wrap(err)
 		case store.IsNotFound(err):
-			return nil, NewError("authentication.external.account_not_linked")
+			return nil, apperror.New("authentication.external.account_not_linked")
 		default:
 			return nil, authenticationUnavailable(err)
 		}
@@ -791,7 +792,7 @@ func (s *externalAuthenticationService) complete(
 			auditEvent.ID.String(),
 			model.AuditStatusFail,
 			func() string {
-				if f, ok := As(legacy); ok {
+				if f, ok := apperror.As(legacy); ok {
 					return f.Code()
 				}
 				return "authentication.internal"
@@ -877,7 +878,7 @@ func (s *externalAuthenticationService) checkInitiationRateLimit(
 		return rateLimitUnavailableAppError(err)
 	}
 	if limited {
-		return NewError("authentication.rate_limited")
+		return apperror.New("authentication.rate_limited")
 	}
 	return nil
 }
@@ -935,20 +936,20 @@ func externalAuthenticationCallbackURL(
 }
 
 func externalProviderNotFoundError() error {
-	return NewError("authentication.external.provider_not_found")
+	return apperror.New("authentication.external.provider_not_found")
 }
 
 func invalidExternalAuthenticationError() error {
-	return NewError("authentication.external.invalid")
+	return apperror.New("authentication.external.invalid")
 }
 
 func externalProviderOperationError(err error) error {
 	if errors.Is(err, ErrExternalAuthenticationRejected) {
-		return NewError("authentication.external.rejected").Wrap(err)
+		return apperror.New("authentication.external.rejected").Wrap(err)
 	}
 	if errors.Is(err, ErrExternalAuthenticationUnavailable) ||
 		errors.Is(err, ErrExternalAuthenticationInvalid) {
-		return NewError("authentication.external.unavailable").Wrap(err)
+		return apperror.New("authentication.external.unavailable").Wrap(err)
 	}
 	return authenticationUnavailable(err)
 }

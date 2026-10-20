@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -46,7 +47,7 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 			policy := nativeObservePolicy(t)
 			view, err := fixture.service.ConfigureDraftNativePolicy(context.Background(), fixture.call, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: test.revision, NativePolicy: policy, IdempotencyKey: "native-key"})
 			if test.want != "" {
-				if err == nil || err.Error() != test.want {
+				if err == nil || !apperror.Is(err, test.want) && err.Error() != test.want {
 					t.Fatalf("error = %v, want %s", err, test.want)
 				}
 				if fixture.effects.updatedRevision != 0 {

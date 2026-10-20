@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -72,7 +72,7 @@ func TestWebSocketResourceMapsDeclaredAndRejectsUndeclaredTransportFailures(t *t
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			logger, _ := newTestLogger(t)
-			transport := &focusedWebSocketTransport{acceptErr: application.NewError(test.code)}
+			transport := &focusedWebSocketTransport{acceptErr: apperror.New(apperror.Code(test.code))}
 			httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, webSocketResource(transport))
 
 			request := httptest.NewRequest(http.MethodGet, "/api/v1/websocket", nil)

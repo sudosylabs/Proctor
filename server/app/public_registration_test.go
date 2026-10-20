@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -89,7 +90,7 @@ func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDi
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.20",
 			})
-			if !Is(err, test.wantCode) {
+			if !apperror.Is(err, test.wantCode) {
 				t.Fatalf("Register() = %v, want %s", err, test.wantCode)
 			}
 			if persistence.input != nil || mail.prepareCalls != 0 {
@@ -136,7 +137,7 @@ func TestPublicRegistrationDoesNotConcealUnrelatedPersistenceConflicts(t *testin
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			})
-			if !Is(err, "authentication.registration.unavailable") {
+			if !apperror.Is(err, "authentication.registration.unavailable") {
 				t.Fatalf("unrelated persistence conflict = %v, want authentication.registration.unavailable", err)
 			}
 		})
@@ -154,7 +155,7 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "correct horse battery staple", Source: "192.0.2.31",
 	}
-	if err := mailFailure.Register(context.Background(), Invocation{}, command); !Is(err, "authentication.registration.unavailable") {
+	if err := mailFailure.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
 		t.Fatalf("mail preparation failure = %v", err)
 	}
 	if mailFailureStore.input != nil {
@@ -162,7 +163,7 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 	}
 
 	persistenceFailure := newTestPublicRegistrationService(t, &publicRegistrationStoreFake{err: errors.New("database unavailable")}, &publicRegistrationMailFake{enabled: true}, time.Now())
-	if err := persistenceFailure.Register(context.Background(), Invocation{}, command); !Is(err, "authentication.registration.unavailable") {
+	if err := persistenceFailure.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
 		t.Fatalf("persistence failure = %v", err)
 	}
 }
@@ -194,7 +195,7 @@ func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *te
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "", Source: "192.0.2.32",
 	})
-	if !Is(err, "authentication.password.invalid") {
+	if !apperror.Is(err, "authentication.password.invalid") {
 		t.Fatalf("invalid password = %v", err)
 	}
 	if persistence.input != nil || mail.prepareCalls != 0 {
@@ -224,7 +225,7 @@ func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(
 				Username: "student", Email: "student@example.edu", FirstName: test.firstName,
 				LastName: test.lastName, Password: "correct horse battery staple", Source: "192.0.2.33",
 			})
-			if !Is(err, "authentication.registration.invalid") {
+			if !apperror.Is(err, "authentication.registration.invalid") {
 				t.Fatalf("missing personal name = %v", err)
 			}
 			if persistence.input != nil || mail.prepareCalls != 0 {
@@ -246,7 +247,7 @@ func TestPublicRegistrationUsesPrivateSharedAttemptAccounting(t *testing.T) {
 		t.Fatal(err)
 	}
 	command.Email = "student@example.edu"
-	if err := service.Register(context.Background(), Invocation{}, command); !Is(err, "authentication.rate_limited") {
+	if err := service.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("second registration = %v", err)
 	}
 	for key := range cache.snapshot() {
@@ -339,7 +340,7 @@ type registrationPasswordHasherFake struct{}
 
 func (*registrationPasswordHasherFake) Hash(_ context.Context, password string) (string, error) {
 	if password == "" {
-		return "", NewError("authentication.password.invalid")
+		return "", apperror.New("authentication.password.invalid")
 	}
 	return "$argon2id$registration-test", nil
 }

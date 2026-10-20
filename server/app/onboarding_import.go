@@ -23,6 +23,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -146,35 +147,35 @@ func newOnboardingImportService(deps Dependencies, invitations *invitationServic
 
 func (a *App) UploadOnboardingImport(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("onboarding_import.unavailable")
+		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Upload(ctx, invocation, command)
 }
 
 func (a *App) GetOnboardingImport(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, []OnboardingImportRowView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, nil, NewError("onboarding_import.unavailable")
+		return OnboardingImportView{}, nil, apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Get(ctx, invocation, id)
 }
 
 func (a *App) CommitOnboardingImport(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("onboarding_import.unavailable")
+		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Commit(ctx, invocation, command)
 }
 
 func (a *App) CancelOnboardingImport(ctx context.Context, invocation Invocation, id string) (OnboardingImportView, error) {
 	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, NewError("onboarding_import.unavailable")
+		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Cancel(ctx, invocation, id)
 }
 
 func (a *App) OnboardingImportReport(ctx context.Context, invocation Invocation, id string, output io.Writer) error {
 	if a == nil || a.onboardingImports == nil {
-		return NewError("onboarding_import.unavailable")
+		return apperror.New("onboarding_import.unavailable")
 	}
 	return a.onboardingImports.Report(ctx, invocation, id, output)
 }
@@ -185,7 +186,7 @@ func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocat
 	if command.Body == nil || command.Mode == model.OnboardingImportStudentProgression || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
 		(command.Mode == model.OnboardingImportTeacherAcademicUnit && !model.IsValidId(command.RoleID)) ||
 		(command.Mode != model.OnboardingImportTeacherAcademicUnit && command.RoleID != "") {
-		return OnboardingImportView{}, NewError("request.invalid")
+		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
 	resource := onboardingImportResource(command.ScopeType, command.ScopeID)
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchManage, resource); err != nil {
@@ -206,9 +207,9 @@ func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocat
 			id := model.NewOnboardingImportID()
 			if _, _, stageErr := s.content.StageOnboardingImport(ctx, id, command.Body, store.OnboardingImportMaximumBytes); stageErr != nil {
 				if s.content.IsOnboardingImportTooLarge(stageErr) {
-					return nil, NewError("onboarding_import.invalid_file").Wrap(stageErr)
+					return nil, apperror.New("onboarding_import.invalid_file").Wrap(stageErr)
 				}
-				return nil, NewError("onboarding_import.unavailable").Wrap(stageErr)
+				return nil, apperror.New("onboarding_import.unavailable").Wrap(stageErr)
 			}
 			job, jobErr := newOnboardingImportJob(model.JobTypeOnboardingImportParse, id, at)
 			if jobErr != nil {
@@ -257,7 +258,7 @@ func (s *onboardingImportService) get(ctx context.Context, invocation Invocation
 		return OnboardingImportView{}, nil, err
 	}
 	if expectedMode != "" && value.Mode != expectedMode {
-		return OnboardingImportView{}, nil, NewError("resource.not_found").WithField("resource", "student_progression")
+		return OnboardingImportView{}, nil, apperror.New("resource.not_found").WithField("resource", "student_progression")
 	}
 	rows := make([]OnboardingImportRowView, 0, value.TotalRows)
 	for after := 0; ; {
@@ -283,7 +284,7 @@ func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocat
 func (s *onboardingImportService) commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand, expectedMode model.OnboardingImportMode) (OnboardingImportView, error) {
 	id := model.OnboardingImportID(strings.TrimSpace(command.ID))
 	if !id.IsValid() || command.ExpectedRevision < 1 || len(command.PreviewDigest) != sha256.Size*2 || !command.Policy.IsValid() || !validInvitationBatchItemKey(command.IdempotencyKey) {
-		return OnboardingImportView{}, NewError("request.invalid")
+		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
 	current, err := s.imports.GetOnboardingImport(ctx, id)
 	if err != nil {
@@ -294,7 +295,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 		return OnboardingImportView{}, err
 	}
 	if expectedMode != "" && current.Mode != expectedMode {
-		return OnboardingImportView{}, NewError("resource.not_found").WithField("resource", "student_progression")
+		return OnboardingImportView{}, apperror.New("resource.not_found").WithField("resource", "student_progression")
 	}
 	if err = s.validatePrincipal(ctx, invocation.Principal()); err != nil {
 		return OnboardingImportView{}, err
@@ -305,7 +306,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 	at := model.TimeUTC(s.now())
 	job, err := newOnboardingImportJob(model.JobTypeOnboardingImportExecute, id, at)
 	if err != nil {
-		return OnboardingImportView{}, NewError("onboarding_import.unavailable").Wrap(err)
+		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable").Wrap(err)
 	}
 	digest := sha256.Sum256([]byte(command.IdempotencyKey))
 	auditAction, auditOperation := model.ActionOnboardingBatchManage, "onboarding_import.commit"
@@ -357,7 +358,7 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 		return OnboardingImportView{}, err
 	}
 	if expectedMode != "" && current.Mode != expectedMode {
-		return OnboardingImportView{}, NewError("resource.not_found").WithField("resource", "student_progression")
+		return OnboardingImportView{}, apperror.New("resource.not_found").WithField("resource", "student_progression")
 	}
 	at := model.TimeUTC(s.now())
 	auditAction, auditOperation := model.ActionOnboardingBatchManage, "onboarding_import.cancel"
@@ -399,7 +400,7 @@ func (s *onboardingImportService) Report(ctx context.Context, invocation Invocat
 
 func (s *onboardingImportService) report(ctx context.Context, invocation Invocation, rawID string, output io.Writer, expectedMode model.OnboardingImportMode) error {
 	if output == nil {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	id := model.OnboardingImportID(strings.TrimSpace(rawID))
 	current, err := s.imports.GetOnboardingImport(ctx, id)
@@ -410,15 +411,15 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 		return err
 	}
 	if expectedMode != "" && current.Mode != expectedMode {
-		return NewError("resource.not_found").WithField("resource", "student_progression")
+		return apperror.New("resource.not_found").WithField("resource", "student_progression")
 	}
 	if current.State != model.OnboardingImportCompleted && current.State != model.OnboardingImportCompletedWithErrors &&
 		current.State != model.OnboardingImportCanceled && current.State != model.OnboardingImportFailed {
-		return NewError("onboarding_import.conflict")
+		return apperror.New("onboarding_import.conflict")
 	}
 	writer := csv.NewWriter(output)
 	if err = writer.Write([]string{"row", "reference", "operation", "status", "invitation_id", "resource_id", "public_code"}); err != nil {
-		return NewError("onboarding_import.unavailable").Wrap(err)
+		return apperror.New("onboarding_import.unavailable").Wrap(err)
 	}
 	for after := 0; ; {
 		page, pageErr := s.imports.ListOnboardingImportRows(ctx, id, after, store.OnboardingImportPageSize)
@@ -427,7 +428,7 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 		}
 		for _, row := range page.Rows {
 			if err = writer.Write([]string{strconv.Itoa(row.RowNumber), escapeSpreadsheetFormula(row.Reference), row.Operation, string(row.Status), row.InvitationID.String(), row.ResourceID, row.PublicCode}); err != nil {
-				return NewError("onboarding_import.unavailable").Wrap(err)
+				return apperror.New("onboarding_import.unavailable").Wrap(err)
 			}
 			after = row.RowNumber
 		}
@@ -437,14 +438,14 @@ func (s *onboardingImportService) report(ctx context.Context, invocation Invocat
 	}
 	writer.Flush()
 	if err = writer.Error(); err != nil {
-		return NewError("onboarding_import.unavailable").Wrap(err)
+		return apperror.New("onboarding_import.unavailable").Wrap(err)
 	}
 	return nil
 }
 
 func (s *onboardingImportService) authorizeImport(ctx context.Context, invocation Invocation, value *store.OnboardingImport, mutation bool) error {
 	if value == nil {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	if value.Mode != model.OnboardingImportStudentProgression {
 		action := model.ActionOnboardingBatchView
@@ -507,7 +508,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
 		}
-		return NewError("administration.unavailable").Wrap(err)
+		return apperror.New("administration.unavailable").Wrap(err)
 	}
 	if token.UserID != principal.UserID || !token.IsActiveAt(s.now()) || !slices.Equal(token.Scopes, principal.CredentialScopes) || token.AcademicUnitID != principal.AcademicUnitID {
 		return invalidTokenAppError()
@@ -517,7 +518,7 @@ func (s *onboardingImportService) validatePrincipal(ctx context.Context, princip
 		if store.IsNotFound(err) {
 			return invalidTokenAppError()
 		}
-		return NewError("administration.unavailable").Wrap(err)
+		return apperror.New("administration.unavailable").Wrap(err)
 	}
 	if !user.IsActive() {
 		return invalidTokenAppError()
@@ -574,20 +575,20 @@ func onboardingImportError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if _, ok := As(err); ok {
+	if _, ok := apperror.As(err); ok {
 		return err
 	}
 	if store.IsNotFound(err) {
-		return NewError("resource.not_found")
+		return apperror.New("resource.not_found")
 	}
 	if store.IsConflict(err) {
-		return NewError("onboarding_import.conflict").Wrap(err)
+		return apperror.New("onboarding_import.conflict").Wrap(err)
 	}
 	var invalid *store.ErrInvalidInput
 	if errors.As(err, &invalid) {
-		return NewError("request.invalid").Wrap(err)
+		return apperror.New("request.invalid").Wrap(err)
 	}
-	return NewError("onboarding_import.unavailable").Wrap(err)
+	return apperror.New("onboarding_import.unavailable").Wrap(err)
 }
 
 func escapeSpreadsheetFormula(value string) string {
@@ -864,7 +865,7 @@ func onboardingImportDuplicateKey(row store.OnboardingImportRow) string {
 }
 
 func onboardingImportPreviewErrorCode(err error) string {
-	if _, ok := As(err); !ok {
+	if _, ok := apperror.As(err); !ok {
 		return "request.invalid"
 	}
 	return invitationBatchPublicErrorCode(err)
@@ -909,7 +910,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 	item := AcademicAdministrationBatchItemCommand{IdempotencyKey: strconv.Itoa(row.RowNumber), UserID: row.UserID.String(),
 		RelationshipID: row.RelationshipID, RoleID: row.RoleID.String(), AffiliationKind: row.AffiliationKind, StartAt: row.StartsAt, EndAt: row.EndsAt}
 	if !operation.IsValid() || !academicAdministrationBatchScopeMatches(operation, current.ScopeType) || validateAcademicAdministrationBatchItem(operation, item) != nil {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	row.Operation, row.ScopeType, row.ScopeID = string(operation), current.ScopeType, current.ScopeID
 	resource, revision, err := s.academicAdministrationImportScope(ctx, current.ScopeType, current.ScopeID)
@@ -929,7 +930,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return userProfileError(userErr)
 		}
 		if user == nil || user.IsArchived() {
-			return NewError("resource.not_found")
+			return apperror.New("resource.not_found")
 		}
 		row.UserID = user.ID
 		return nil
@@ -964,7 +965,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return academicUnitMemberError(getErr)
 		}
 		if value.AcademicUnitID.String() != current.ScopeID {
-			return NewError("resource.not_found")
+			return apperror.New("resource.not_found")
 		}
 		row.UserID = value.UserID
 		return s.authorization.Authorize(ctx, invocation, model.ActionAcademicUnitMembersManage, resource)
@@ -985,7 +986,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return classMemberError(getErr)
 		}
 		if previous.UserID != row.UserID {
-			return NewError("resource.not_found")
+			return apperror.New("resource.not_found")
 		}
 		if row.StartsAt == 0 {
 			row.StartsAt = current.CreatedAt.UnixMilli()
@@ -1000,7 +1001,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return classMemberError(getErr)
 		}
 		if value.ClassID.String() != current.ScopeID {
-			return NewError("resource.not_found")
+			return apperror.New("resource.not_found")
 		}
 		row.UserID = value.UserID
 		return s.authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource)
@@ -1026,7 +1027,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 			return roleBindingError(getErr)
 		}
 		if value.ScopeType != current.ScopeType || value.ScopeID != current.ScopeID {
-			return NewError("resource.not_found")
+			return apperror.New("resource.not_found")
 		}
 		row.UserID = value.UserID
 		return s.authorization.Authorize(ctx, invocation, model.ActionRoleBindingManage, resource)
@@ -1041,7 +1042,7 @@ func (s *onboardingImportService) resolveAcademicAdministrationImportRow(ctx con
 		}
 		return s.authorization.Authorize(ctx, invocation, model.ActionSessionManage, model.Resource{Type: model.ResourceUser, ID: row.UserID.String()})
 	default:
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 }
 
@@ -1070,14 +1071,14 @@ func (s *onboardingImportService) academicAdministrationImportScope(ctx context.
 		}
 		return resource, value.Revision, nil
 	default:
-		return model.Resource{}, 0, NewError("request.invalid")
+		return model.Resource{}, 0, apperror.New("request.invalid")
 	}
 }
 
 func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Context, invocation Invocation, current *store.OnboardingImport, values map[string]string, row *store.OnboardingImportRow) error {
 	kind := strings.ToLower(values["kind"])
 	if kind == "" {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	institution, err := s.institutions.Get(ctx, current.ScopeID)
 	if err != nil {
@@ -1127,7 +1128,7 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 		return validateImportRoleCandidate(current.ActorUserID, model.InvitationPurposeAcademicUnitRole, unit.ID, role, row)
 	}
 	if kind != "student" {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	programme, err := s.programmes.GetByName(ctx, unit.ID.String(), values["programme"])
 	if err != nil {
@@ -1160,14 +1161,14 @@ func (s *onboardingImportService) resolveInstitutionImportRow(ctx context.Contex
 
 func (s *onboardingImportService) resolveExactAcademicUnit(ctx context.Context, institutionID, name string) (*model.AcademicUnit, error) {
 	if !model.IsValidId(institutionID) || name == "" {
-		return nil, NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	exact, err := s.units.GetByName(ctx, institutionID, name)
 	if err != nil {
 		return nil, invitationError(err)
 	}
 	if exact == nil || exact.IsArchived() {
-		return nil, NewError("resource.not_found")
+		return nil, apperror.New("resource.not_found")
 	}
 	return exact, nil
 }
@@ -1368,7 +1369,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 			return model.OnboardingImportRowNoOp, "", item.ResourceID, "", nil
 		}
 		if onboardingImportRetryablePublicCode(item.ErrorCode) {
-			return "", "", "", "", NewError(item.ErrorCode)
+			return "", "", "", "", apperror.New(apperror.Code(item.ErrorCode))
 		}
 		return model.OnboardingImportRowFailed, "", "", item.ErrorCode, nil
 	}
@@ -1390,13 +1391,13 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 		return model.OnboardingImportRowNoOp, item.InvitationID, "", "", nil
 	}
 	if onboardingImportRetryablePublicCode(item.ErrorCode) {
-		return "", "", "", "", NewError(item.ErrorCode)
+		return "", "", "", "", apperror.New(apperror.Code(item.ErrorCode))
 	}
 	return model.OnboardingImportRowFailed, "", "", item.ErrorCode, nil
 }
 
 func onboardingImportRetryableError(err error) bool {
-	appErr, ok := As(err)
+	appErr, ok := apperror.As(err)
 	return ok && onboardingImportRetryablePublicCode(appErr.Code())
 }
 
@@ -1417,7 +1418,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 			return err
 		}
 		if revision != row.TargetRevision {
-			return NewError("onboarding_import.conflict")
+			return apperror.New("onboarding_import.conflict")
 		}
 		if row.RelationshipRevision > 0 {
 			relationship, relationshipErr := s.classMembers.Get(ctx, row.RelationshipID)
@@ -1425,7 +1426,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 				return classMemberError(relationshipErr)
 			}
 			if relationship.Revision != row.RelationshipRevision || relationship.UserID != row.UserID {
-				return NewError("student_progression.conflict")
+				return apperror.New("student_progression.conflict")
 			}
 		}
 		if operation == AcademicAdministrationRoleBindingCreate {
@@ -1434,7 +1435,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 				return roleBindingError(roleErr)
 			}
 			if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
-				return NewError("onboarding_import.conflict")
+				return apperror.New("onboarding_import.conflict")
 			}
 		}
 		return nil
@@ -1446,7 +1447,7 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 			return invitationError(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
-			return NewError("invitation.conflict")
+			return apperror.New("invitation.conflict")
 		}
 	case InvitationBatchTeacherAcademicUnitCreate, InvitationBatchAcademicUnitRoleCreate:
 		value, err := s.units.Get(ctx, row.ScopeID)
@@ -1454,14 +1455,14 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 			return invitationError(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
-			return NewError("invitation.conflict")
+			return apperror.New("invitation.conflict")
 		}
 		role, err := s.roles.Get(ctx, row.RoleID.String())
 		if err != nil {
 			return invitationError(err)
 		}
 		if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
-			return NewError("invitation.conflict")
+			return apperror.New("invitation.conflict")
 		}
 	case InvitationBatchInstitutionRoleCreate:
 		value, err := s.institutions.Get(ctx, row.ScopeID)
@@ -1469,17 +1470,17 @@ func (s *onboardingImportService) revalidateFrozenTarget(ctx context.Context, ro
 			return invitationError(err)
 		}
 		if value.Revision != row.TargetRevision || value.IsArchived() {
-			return NewError("invitation.conflict")
+			return apperror.New("invitation.conflict")
 		}
 		role, err := s.roles.Get(ctx, row.RoleID.String())
 		if err != nil {
 			return invitationError(err)
 		}
 		if role.UpdatedAt.UnixMicro() != row.RoleRevision || role.IsArchived() {
-			return NewError("invitation.conflict")
+			return apperror.New("invitation.conflict")
 		}
 	default:
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	return nil
 }

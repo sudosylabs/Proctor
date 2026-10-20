@@ -13,6 +13,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -45,14 +46,14 @@ type mailKeyInspector interface {
 
 func (a *App) StartMailRekey(ctx context.Context, invocation Invocation, retiringKeyID string) (MailRekeyView, error) {
 	if a == nil || a.mail == nil {
-		return MailRekeyView{}, NewError("mail.unavailable")
+		return MailRekeyView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.StartRekey(ctx, invocation, retiringKeyID)
 }
 
 func (a *App) GetMailKeyState(ctx context.Context, invocation Invocation) (MailKeyStateView, error) {
 	if a == nil || a.mail == nil {
-		return MailKeyStateView{}, NewError("mail.unavailable")
+		return MailKeyStateView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.KeyState(ctx, invocation)
 }
@@ -65,17 +66,17 @@ func (s *mailService) KeyState(ctx context.Context, invocation Invocation) (Mail
 		return MailKeyStateView{}, err
 	}
 	if s.keyState == nil || s.sealer == nil {
-		return MailKeyStateView{}, NewError("mail.unavailable")
+		return MailKeyStateView{}, apperror.New("mail.unavailable")
 	}
 	state, err := s.keyState.InspectKeyState(ctx)
 	if err != nil || state == nil {
-		return MailKeyStateView{}, NewError("mail.unavailable").Wrap(err)
+		return MailKeyStateView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	view := MailKeyStateView{PrimaryKeyID: s.sealer.PrimaryKeyID(), RequiredPrimaryKeyID: state.RequiredPrimaryKeyID,
 		Active: make([]MailPayloadKeyUsageView, 0, len(state.Active))}
 	for _, usage := range state.Active {
 		if usage.KeyID == "" || usage.ActiveReferences <= 0 {
-			return MailKeyStateView{}, NewError("mail.unavailable").Wrap(errors.New("mail key state is invalid"))
+			return MailKeyStateView{}, apperror.New("mail.unavailable").Wrap(errors.New("mail key state is invalid"))
 		}
 		view.Active = append(view.Active, MailPayloadKeyUsageView{KeyID: usage.KeyID, ActiveReferences: usage.ActiveReferences})
 	}
@@ -91,21 +92,21 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 		return MailRekeyView{}, err
 	}
 	if s.rekey == nil || s.rekeyAudit == nil || s.sealer == nil || s.wake == nil {
-		return MailRekeyView{}, NewError("mail.unavailable")
+		return MailRekeyView{}, apperror.New("mail.unavailable")
 	}
 	primaryKeyID := s.sealer.PrimaryKeyID()
 	if retiringKeyID == "" || retiringKeyID == primaryKeyID || !s.sealer.HasKey(retiringKeyID) {
-		return MailRekeyView{}, NewError("mail.rekey.invalid")
+		return MailRekeyView{}, apperror.New("mail.rekey.invalid")
 	}
 	command, err := json.Marshal(MailRekeyCommandV1{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
 	if err != nil {
-		return MailRekeyView{}, NewError("mail.unavailable").Wrap(err)
+		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	now := model.TimeUTC(s.now())
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailRekey, 1, command,
 		"mail-rekey:"+primaryKeyID+":"+retiringKeyID, now, now, 10)
 	if err != nil {
-		return MailRekeyView{}, NewError("mail.unavailable").Wrap(err)
+		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	operation, err := runAuditedMutation(ctx, s.rekeyAudit, mutationAttempt{
 		Invocation: invocation, Action: model.ActionMailRekey, Resource: resource,
@@ -120,7 +121,7 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 	}
 	if operation == nil || !operation.JobID.IsValid() || operation.PrimaryKeyID != primaryKeyID ||
 		operation.RetiringKeyID != retiringKeyID || operation.CreatedAt.IsZero() {
-		return MailRekeyView{}, NewError("mail.unavailable").Wrap(errors.New("mail rekey persistence returned an invalid operation"))
+		return MailRekeyView{}, apperror.New("mail.unavailable").Wrap(errors.New("mail rekey persistence returned an invalid operation"))
 	}
 	s.wake()
 	return MailRekeyView{JobID: operation.JobID, PrimaryKeyID: operation.PrimaryKeyID,
@@ -129,7 +130,7 @@ func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, ret
 
 func mailRekeyStartError(err error) error {
 	if store.IsConflict(err) {
-		return NewError("mail.rekey.conflict").Wrap(err)
+		return apperror.New("mail.rekey.conflict").Wrap(err)
 	}
-	return NewError("mail.unavailable").Wrap(err)
+	return apperror.New("mail.unavailable").Wrap(err)
 }

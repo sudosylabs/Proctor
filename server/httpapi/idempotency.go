@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"regexp"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 const idempotencyHeader = "Idempotency-Key"
@@ -31,7 +31,7 @@ func (a *API) withIdempotency(next http.Handler, requirement IdempotencyRequirem
 		values, supplied := request.Header[http.CanonicalHeaderKey(idempotencyHeader)]
 		if requirement == IdempotencyNone {
 			if supplied {
-				writeApplicationError(writer, request, a.logger, application.NewError("idempotency.not_supported"))
+				writeApplicationError(writer, request, a.logger, apperror.New("idempotency.not_supported"))
 				return
 			}
 			next.ServeHTTP(writer, request)
@@ -39,14 +39,14 @@ func (a *API) withIdempotency(next http.Handler, requirement IdempotencyRequirem
 		}
 		if !supplied {
 			if requirement == IdempotencyRequired {
-				writeApplicationError(writer, request, a.logger, application.NewError("idempotency.key_required"))
+				writeApplicationError(writer, request, a.logger, apperror.New("idempotency.key_required"))
 				return
 			}
 			next.ServeHTTP(writer, request)
 			return
 		}
 		if len(values) != 1 || !validIdempotencyKey.MatchString(values[0]) {
-			writeApplicationError(writer, request, a.logger, application.NewError("idempotency.invalid_key"))
+			writeApplicationError(writer, request, a.logger, apperror.New("idempotency.invalid_key"))
 			return
 		}
 		ctx := context.WithValue(request.Context(), idempotencyKeyContextKey{}, values[0])

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -37,7 +38,7 @@ func TestAdministratorMFAResetRequiresEnabledServiceAndExactTargetBeforeMutation
 				capabilities: &accessPolicyCapabilitiesFake{}, mfaEnabled: test.enabled,
 			}}
 			result, err := service.ResetAdministratorMFA(context.Background(), AdministratorMFAResetCommand{InstitutionID: test.institution, UserID: test.user})
-			if result != nil || !Is(err, test.code) || len(events) != 0 {
+			if result != nil || !apperror.Is(err, test.code) || len(events) != 0 {
 				t.Fatalf("result=%#v error=%v events=%v", result, err, events)
 			}
 		})

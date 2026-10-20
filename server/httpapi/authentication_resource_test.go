@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -268,7 +269,7 @@ func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t 
 	}
 	applicationFake := &externalAuthenticationEntryHTTPApplication{
 		providers:      []model.ExternalAuthenticationProvider{{Id: "configured-but-unknown", Type: "oidc"}},
-		providersError: application.NewError("authentication.internal"),
+		providersError: apperror.New("authentication.internal"),
 	}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
 	response := httptest.NewRecorder()
@@ -307,7 +308,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 		t.Fatalf("invalid login body = %d %s", invalid.Code, invalid.Body.String())
 	}
 
-	authentication.loginError = application.NewError("resource.not_found")
+	authentication.loginError = apperror.New("resource.not_found")
 	undeclared := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		undeclared,
@@ -321,7 +322,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 		t.Fatalf("undeclared login error = %d %s", undeclared.Code, undeclared.Body.String())
 	}
 
-	authentication.loginError = application.NewError("authentication.mfa.invalid_code")
+	authentication.loginError = apperror.New("authentication.mfa.invalid_code")
 	invalidSecondFactor := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		invalidSecondFactor,
@@ -366,7 +367,7 @@ func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testin
 		t.Fatalf("display-name registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
 	}
 
-	applicationFake.registrationError = application.NewError("authentication.registration.invitation_required")
+	applicationFake.registrationError = apperror.New("authentication.registration.invitation_required")
 	disabled := httptest.NewRecorder()
 	httpAPI.ServeHTTP(disabled, newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"private"}`)))

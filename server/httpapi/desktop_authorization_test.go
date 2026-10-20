@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -62,7 +63,7 @@ func (a *desktopAuthorizationHTTPApplication) StartDesktopAuthorization(_ contex
 func TestDesktopAuthorizationHTTPExposesBoundedAttemptFailures(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	applicationFake := &desktopAuthorizationHTTPApplication{startErr: application.NewError("authentication.rate_limited")}
+	applicationFake := &desktopAuthorizationHTTPApplication{startErr: apperror.New("authentication.rate_limited")}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, desktopAuthorizationResource(applicationFake, testDesktopAuthorizationCookies(t)))
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/desktop/authorizations", strings.NewReader(
 		`{"callback_url":"http://127.0.0.1:49152/random","state":"state","code_challenge":"challenge"}`))

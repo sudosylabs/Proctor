@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -110,7 +111,7 @@ func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
 	call := NewCall(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	_, err := prepareIdempotency(call, "operation", "", struct{}{})
-	if fault, ok := err.(*Fault); !ok || fault.Code != "idempotency.key_required" {
+	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v", err)
 	}
 }

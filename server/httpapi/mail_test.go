@@ -19,6 +19,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -89,7 +90,7 @@ func TestMailResourceRejectsCallerSuppliedContentAndProjectsNoSecrets(t *testing
 	fake := &recordingMailAPI{view: application.MailDeliveryView{ID: id, OccurrenceID: model.NewMailOccurrenceID(), TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(time.Hour), MessageID: "<mail." + id.String() + "@example.test>"}}
 	module := mailResourceModule{mail: fake}
 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/test", bytes.NewBufferString(`{"recipient":"attacker@example.test","body":"chosen"}`))
-	if _, err := module.sendTest(operationRequest{request: request}); !application.Is(err, "request.invalid") || fake.sends != 0 {
+	if _, err := module.sendTest(operationRequest{request: request}); !apperror.Is(err, "request.invalid") || fake.sends != 0 {
 		t.Fatalf("caller content accepted: %v sends=%d", err, fake.sends)
 	}
 	request, _ = http.NewRequest(http.MethodPost, "/api/v1/mail/test", nil)
@@ -125,11 +126,11 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 		t.Fatalf("cursor=%#v err=%v", decoded, err)
 	}
 	request, _ = http.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?state=not-a-state", nil)
-	if _, err = module.listDeliveries(operationRequest{request: request}); !application.Is(err, "mail.query.invalid") || fake.lists != 1 {
+	if _, err = module.listDeliveries(operationRequest{request: request}); !apperror.Is(err, "mail.query.invalid") || fake.lists != 1 {
 		t.Fatalf("invalid filter err=%v lists=%d", err, fake.lists)
 	}
 	request, _ = http.NewRequest(http.MethodPost, "/api/v1/mail/deliveries/"+id.String()+"/retry", bytes.NewBufferString(`{"body":"forbidden"}`))
-	if _, err = module.retryDelivery(operationRequest{request: request, params: Params{MailDeliveryID: id.String()}}); !application.Is(err, "request.invalid") || len(fake.ids) != 0 {
+	if _, err = module.retryDelivery(operationRequest{request: request, params: Params{MailDeliveryID: id.String()}}); !apperror.Is(err, "request.invalid") || len(fake.ids) != 0 {
 		t.Fatalf("retry body err=%v ids=%v", err, fake.ids)
 	}
 }
@@ -189,7 +190,7 @@ func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) 
 	invalid, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111","encryption_key":"secret"}`))
 	invalid.Header.Set("Content-Type", "application/json")
-	if _, err = module.startRekey(operationRequest{request: invalid}); !application.Is(err, "request.invalid") || len(fake.rekeys) != 1 {
+	if _, err = module.startRekey(operationRequest{request: invalid}); !apperror.Is(err, "request.invalid") || len(fake.rekeys) != 1 {
 		t.Fatalf("secret-bearing rekey body error = %v calls=%#v", err, fake.rekeys)
 	}
 	stateResult, err := module.getKeyState(operationRequest{request: &http.Request{}})

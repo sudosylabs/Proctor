@@ -117,7 +117,7 @@ error.
 
 ## Errors and validation
 
-Application methods return standard `error`. Expected public failures use `*app.Error` with a stable dotted domain code, explicitly safe fields, and an optional wrapped cause. They contain no protocol status, localization, request ID, SQL detail, or stack trace.
+Application methods return standard `error`. Expected public failures use the single `*apperror.Error` type from the `app/apperror` leaf with a stable dotted domain code, explicitly safe fields, and an optional wrapped cause. They contain no protocol status, localization, request ID, SQL detail, or stack trace.
 
 ~~~text
 driver failure
@@ -126,7 +126,7 @@ typed store/port failure
     ↓
 domain/application interpretation
     ↓
-app.Error for an expected public failure
+apperror.Error for an expected public failure
     ↓
 HTTP Problem Details or WebSocket protocol error
 ~~~

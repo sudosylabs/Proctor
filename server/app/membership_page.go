@@ -10,6 +10,7 @@ package app
 import (
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,13 +28,13 @@ func resolveMembershipPage(query MembershipPageQuery, now time.Time) (int64, int
 		limit = 50
 	}
 	if limit < 1 || limit > 200 {
-		return 0, 0, NewError("request.invalid").WithField("field", "limit")
+		return 0, 0, apperror.New("request.invalid").WithField("field", "limit")
 	}
 	if query.ActiveAt != nil && *query.ActiveAt <= 0 {
-		return 0, 0, NewError("request.invalid").WithField("field", "active_at")
+		return 0, 0, apperror.New("request.invalid").WithField("field", "active_at")
 	}
 	if query.History != nil && *query.History && query.ActiveAt != nil {
-		return 0, 0, NewError("request.invalid").WithField("field", "history")
+		return 0, 0, apperror.New("request.invalid").WithField("field", "history")
 	}
 	activeAt := model.MillisFromTime(now)
 	if query.ActiveAt != nil {

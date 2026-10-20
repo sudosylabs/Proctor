@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -53,7 +54,7 @@ func TestProgrammeLevelHTTPPreservesMissingProgrammeProblemField(t *testing.T) {
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	programmeID := model.NewId()
-	levels := &programmeLevelHTTPApplication{err: application.NewError("resource.not_found").WithField("resource", "programme")}
+	levels := &programmeLevelHTTPApplication{err: apperror.New("resource.not_found").WithField("resource", "programme")}
 	httpAPI := newFocusedResourceAPI(
 		t, logger, classRouteAuthenticator{principal: principal}, programmeLevelResource(levels),
 	)

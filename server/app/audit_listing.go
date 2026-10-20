@@ -11,6 +11,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -63,7 +64,7 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
 		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
 		(query.Resource != nil && query.Resource.Validate() != nil) {
-		return nil, NewError("audit.query.invalid")
+		return nil, apperror.New("audit.query.invalid")
 	}
 	events, err := s.audits.List(ctx, store.AuditListOptions{
 		ActorId: strings.TrimSpace(query.ActorID), Action: strings.TrimSpace(query.Action),
@@ -168,5 +169,5 @@ func academicAuditActions() []string {
 
 func auditListingError(err error) error {
 
-	return NewError("audit.unavailable").WithField("resource", "audit").Wrap(err)
+	return apperror.New("audit.unavailable").WithField("resource", "audit").Wrap(err)
 }

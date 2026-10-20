@@ -15,6 +15,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -24,7 +25,7 @@ func (unavailableDesktopCompatibilityApplication) EvaluateDesktopCompatibility(
 	context.Context,
 	application.DesktopCompatibilityQuery,
 ) (application.DesktopCompatibilityResult, error) {
-	return application.DesktopCompatibilityResult{}, application.NewError(
+	return application.DesktopCompatibilityResult{}, apperror.New(
 		"desktop_compatibility_policy.unavailable",
 	)
 }
@@ -33,7 +34,7 @@ func (unavailableDesktopCompatibilityApplication) GetDesktopCompatibilityPolicy(
 	context.Context,
 	application.Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
-	return nil, application.NewError("desktop_compatibility_policy.unavailable")
+	return nil, apperror.New("desktop_compatibility_policy.unavailable")
 }
 
 func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPolicy(
@@ -41,7 +42,7 @@ func (unavailableDesktopCompatibilityApplication) ReplaceDesktopCompatibilityPol
 	application.Invocation,
 	application.ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
-	return nil, application.NewError("desktop_compatibility_policy.unavailable")
+	return nil, apperror.New("desktop_compatibility_policy.unavailable")
 }
 
 type desktopCompatibilityPolicyRequest struct {
@@ -152,30 +153,30 @@ func requiredDesktopCompatibilityPolicySettings(
 ) (model.DesktopCompatibilityPolicySettings, error) {
 	minimumRelease := body.MinimumDesktopRelease.ValuePointer()
 	if minimumRelease == nil {
-		return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "minimum_desktop_release")
 	}
 	revokedBuildIDs := body.RevokedDesktopBuildIDs.ValuePointer()
 	if revokedBuildIDs == nil {
-		return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "revoked_desktop_build_ids")
 	}
 	message := body.AdministratorMessage.ValuePointer()
 	if message == nil {
-		return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "administrator_message")
 	}
 	availability := body.Availability.ValuePointer()
 	if availability == nil {
-		return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "availability")
 	}
 	if !body.RetryAt.IsSet() {
-		return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+		return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 			"request.invalid",
 		).WithField("field", "retry_at")
 	}
@@ -183,7 +184,7 @@ func requiredDesktopCompatibilityPolicySettings(
 	if value := body.RetryAt.ValuePointer(); value != nil {
 		parsed, parseErr := time.Parse(time.RFC3339Nano, *value)
 		if parseErr != nil {
-			return model.DesktopCompatibilityPolicySettings{}, application.NewError(
+			return model.DesktopCompatibilityPolicySettings{}, apperror.New(
 				"request.invalid",
 			).WithField("field", "retry_at").Wrap(parseErr)
 		}

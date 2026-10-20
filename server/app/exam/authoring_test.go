@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -66,8 +67,8 @@ func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) 
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "idempotency.key_required" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "idempotency.key_required" {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
 	}
 	if len(*fixture.order) != 0 {
@@ -79,8 +80,8 @@ func TestCreateRejectsInvalidDraftBeforeResolutionOrAuthorization(t *testing.T) 
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   ", IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.invalid" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.invalid" {
 		t.Fatalf("error = %v", err)
 	}
 	if len(*fixture.order) != 0 {
@@ -109,8 +110,8 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
 	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.conflict" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" {
 		t.Fatalf("error = %v", err)
 	}
 	if fixture.auditor.failedCode != "exam.conflict" {
@@ -126,8 +127,8 @@ func TestCreateFailedAuditCompletionPreservesStoreFailure(t *testing.T) {
 	auditErr := errors.New("audit completion unavailable")
 	fixture.auditor.failErr = auditErr
 	_, err := fixture.service.Create(context.Background(), fixture.call, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.conflict" || !errors.Is(err, auditErr) {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" || !errors.Is(err, auditErr) {
 		t.Fatalf("error = %v, want store conflict joined with audit completion failure", err)
 	}
 }
@@ -175,8 +176,8 @@ func TestEditDraftTextNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.draft.no_changes" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.draft.no_changes" {
 		t.Fatalf("error = %v, want exam.draft.no_changes", err)
 	}
 	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
@@ -207,8 +208,8 @@ func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.
 				ExamID: fixture.examID, ExpectedDraftRevision: test.expectedRevision, Title: &title,
 				IdempotencyKey: "test-key",
 			})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != test.want {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != test.want {
 				t.Fatalf("error = %v, want %s", err, test.want)
 			}
 			if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != test.want {
@@ -229,8 +230,8 @@ func TestEditDraftTextArchivedNoOpStillRejectsAsArchived(t *testing.T) {
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.archived" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.archived" {
 		t.Fatalf("error = %v, want exam.archived", err)
 	}
 	if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != "exam.archived" {
@@ -312,8 +313,8 @@ func TestConfigureDraftFocusLossNoChangeSkipsAuditPersistenceAndEffect(t *testin
 	_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, FocusLoss: model.DefaultExamPolicySet().FocusLoss, IdempotencyKey: "test-key",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.draft.no_changes" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.draft.no_changes" {
 		t.Fatalf("error = %v, want exam.draft.no_changes", err)
 	}
 	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
@@ -340,8 +341,8 @@ func TestConfigureDraftFocusLossArchivedNoOpAndStaleEditsReachAuditedStoreGuard(
 			_, err := fixture.service.ConfigureDraftFocusLoss(context.Background(), fixture.call, ConfigureDraftFocusLossCommand{
 				ExamID: fixture.examID, ExpectedDraftRevision: test.revision, FocusLoss: model.DefaultExamPolicySet().FocusLoss, IdempotencyKey: "test-key",
 			})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != test.want {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != test.want {
 				t.Fatalf("error = %v, want %s", err, test.want)
 			}
 			if fixture.persistence.focusLossUpdate == nil || fixture.auditor.failedCode != test.want || fixture.effects.updatedRevision != 0 {
@@ -460,8 +461,8 @@ func TestGetStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	failure := errors.New("membership unavailable")
 	fixture.memberships.err = failure
 	_, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID)
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.unavailable" || !errors.Is(err, failure) {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)
 	}
 	if want := []string{"store.access", "membership"}; !reflect.DeepEqual(*fixture.order, want) {

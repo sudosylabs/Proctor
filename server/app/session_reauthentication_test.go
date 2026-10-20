@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -50,7 +51,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 		{name: "external Session", password: "CorrectHorseBatteryStaple1!", method: "oidc", code: "authentication.reauthentication_method_required"},
 		{name: "password changed", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.ErrPasswordCredentialChanged, code: "authentication.invalid_credentials", commit: true},
 		{name: "Session revoked", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.NewErrNotFound("session", ""), code: "authentication.invalid_credentials", commit: true},
-		{name: "audit unavailable", password: "CorrectHorseBatteryStaple1!", method: "password", auditErr: NewError("audit.unavailable"), code: "audit.unavailable"},
+		{name: "audit unavailable", password: "CorrectHorseBatteryStaple1!", method: "password", auditErr: apperror.New("audit.unavailable"), code: "audit.unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -76,7 +77,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			service.mfa = mfa
 			actual, err := service.ReauthenticatePassword(ctx, NewInvocation(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})
 			if test.code != "" {
-				if !Is(err, test.code) || actual != nil {
+				if !apperror.Is(err, test.code) || actual != nil {
 					t.Fatalf("result=%v err=%v", actual, err)
 				}
 			} else if err != nil || actual != session {

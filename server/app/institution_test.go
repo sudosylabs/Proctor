@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -196,7 +197,7 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 	)
 	name := "duplicate"
 	_, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{Name: &name})
-	if !Is(err, "institution.conflict") || auditor.failCode != "institution.conflict" {
+	if !apperror.Is(err, "institution.conflict") || auditor.failCode != "institution.conflict" {
 		t.Fatalf("Update() error = %v, audit code = %q", err, auditor.failCode)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update", "audit-fail"}) {
@@ -220,7 +221,7 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 	)
 
 	_, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
-	if !Is(err, "institution.invalid") {
+	if !apperror.Is(err, "institution.invalid") {
 		t.Fatalf("Update() error = %v", err)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {

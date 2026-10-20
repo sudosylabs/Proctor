@@ -18,6 +18,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -80,10 +81,10 @@ func (s *accessControlService) evaluate(
 	}
 	definition, known := model.DefinitionForAction(action)
 	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
-		return false, unresolved, NewError("authorization.request.invalid")
+		return false, unresolved, apperror.New("authorization.request.invalid")
 	}
 	if definition.RelationshipOnly {
-		return false, unresolved, NewError("authorization.request.invalid")
+		return false, unresolved, apperror.New("authorization.request.invalid")
 	}
 	if principal.CredentialType == model.CredentialPersonalAccessToken && definition.PersonalAccessTokenForbidden {
 		return false, unresolved, nil
@@ -166,12 +167,12 @@ func (s *accessControlService) authorizeAcademicPeriodOwner(
 	period *model.AcademicPeriod,
 ) error {
 	if period == nil || period.Validate() != nil {
-		return NewError("authorization.request.invalid")
+		return apperror.New("authorization.request.invalid")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: period.ID.String()}
 	definition, known := model.DefinitionForAction(action)
 	if !known || definition.ResourceType != model.ResourceAcademicPeriod {
-		return NewError("authorization.request.invalid")
+		return apperror.New("authorization.request.invalid")
 	}
 	if appErr := s.authorizeAcademicPeriodPreflight(ctx, invocation, action, resource); appErr != nil {
 		return appErr
@@ -271,21 +272,21 @@ func (s *accessControlService) authorizeUserAccountState(
 		return invalidTokenAppError()
 	}
 	if !known || resource.Validate() != nil || !definition.AcceptsResource(resource.Type) {
-		return NewError("authorization.request.invalid")
+		return apperror.New("authorization.request.invalid")
 	}
 	user, err := s.resolver.users.Get(ctx, userID)
 	if err != nil {
 		return authorizationResourceError("user", err)
 	}
 	if user.IsArchived() {
-		return NewError("resource.not_found").WithField("resource", "user")
+		return apperror.New("resource.not_found").WithField("resource", "user")
 	}
 	institution, err := s.resolver.institutions.GetSingleton(ctx)
 	if err != nil {
 		return authorizationResourceError("institution", err)
 	}
 	if institution.IsArchived() {
-		return NewError("resource.not_found").WithField("resource", "institution")
+		return apperror.New("resource.not_found").WithField("resource", "institution")
 	}
 	resolved := resolvedAuthorizationResource{
 		institutionID:  institution.ID.String(),
@@ -415,7 +416,7 @@ func (s *accessControlService) authorizeUserRead(
 }
 
 func authorizationDeniedError() error {
-	return NewError("authorization.denied")
+	return apperror.New("authorization.denied")
 }
 
 func authorizationAuditScope(
@@ -471,11 +472,11 @@ func roleBindingApplies(
 
 func authorizationResourceError(resource string, err error) error {
 	if store.IsNotFound(err) {
-		return NewError("resource.not_found").WithField("resource", resource).Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", resource).Wrap(err)
 	}
 	return authorizationUnavailableError(err)
 }
 
 func authorizationUnavailableError(err error) error {
-	return NewError("authorization.unavailable").Wrap(err)
+	return apperror.New("authorization.unavailable").Wrap(err)
 }

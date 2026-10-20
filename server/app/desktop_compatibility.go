@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -158,7 +159,7 @@ func (a *App) EvaluateDesktopCompatibility(
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
 	if a == nil || a.desktopCompatibility == nil {
-		return DesktopCompatibilityResult{}, NewError("desktop_compatibility_policy.unavailable")
+		return DesktopCompatibilityResult{}, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 	return a.desktopCompatibility.Evaluate(ctx, query)
 }
@@ -169,7 +170,7 @@ func (a *App) GetDesktopCompatibilityPolicy(
 	invocation Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	if a == nil || a.desktopCompatibility == nil {
-		return nil, NewError("desktop_compatibility_policy.unavailable")
+		return nil, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 	return a.desktopCompatibility.Read(ctx, invocation)
 }
@@ -181,7 +182,7 @@ func (a *App) ReplaceDesktopCompatibilityPolicy(
 	command ReplaceDesktopCompatibilityPolicyCommand,
 ) (*model.DesktopCompatibilityPolicy, error) {
 	if a == nil || a.desktopCompatibility == nil {
-		return nil, NewError("desktop_compatibility_policy.unavailable")
+		return nil, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 	return a.desktopCompatibility.Replace(ctx, invocation, command)
 }
@@ -208,7 +209,7 @@ func (s *desktopCompatibilityService) evaluate(
 	var result DesktopCompatibilityResult
 	if skipBuildChecks {
 		if policy.Validate() != nil {
-			return DesktopCompatibilityResult{}, NewError("desktop_compatibility_policy.unavailable")
+			return DesktopCompatibilityResult{}, apperror.New("desktop_compatibility_policy.unavailable")
 		}
 		result = DesktopCompatibilityResult{
 			Availability: policy.Availability, RetryAt: policy.RetryAt,
@@ -294,10 +295,10 @@ func (s *desktopCompatibilityService) Replace(
 		return nil, err
 	}
 	if command.ExpectedRevision < 1 || command.Settings.Validate() != nil {
-		return nil, NewError("desktop_compatibility_policy.invalid")
+		return nil, apperror.New("desktop_compatibility_policy.invalid")
 	}
 	if command.IdempotencyKey == "" {
-		return nil, NewError("idempotency.key_required")
+		return nil, apperror.New("idempotency.key_required")
 	}
 	idempotency, err := newCommandIdempotency(
 		invocation,
@@ -356,7 +357,7 @@ func (s *desktopCompatibilityService) Replace(
 		return nil, err
 	}
 	if stored == nil || stored.Policy == nil || stored.Policy.Validate() != nil {
-		return nil, NewError("desktop_compatibility_policy.unavailable")
+		return nil, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 	return stored.Policy.Clone(), nil
 }
@@ -382,16 +383,16 @@ func desktopCompatibilityPolicyError(err error) error {
 	var conflict *store.ErrConflict
 	switch {
 	case errors.As(err, &revision):
-		return NewError("desktop_compatibility_policy.revision_conflict").WithField(
+		return apperror.New("desktop_compatibility_policy.revision_conflict").WithField(
 			"current_revision",
 			strconv.FormatInt(revision.CurrentRevision, 10),
 		).Wrap(err)
 	case errors.As(err, &conflict) && conflict.Constraint == "actor_not_system_administrator":
-		return NewError("authorization.denied").Wrap(err)
+		return apperror.New("authorization.denied").Wrap(err)
 	case idempotencyError(err) != nil:
 		return idempotencyError(err)
 	default:
-		return NewError("desktop_compatibility_policy.unavailable").Wrap(err)
+		return apperror.New("desktop_compatibility_policy.unavailable").Wrap(err)
 	}
 }
 
@@ -403,7 +404,7 @@ func (catalog *desktopBuildCatalog) evaluate(
 		return DesktopCompatibilityResult{}, err
 	}
 	if catalog == nil || policy == nil || policy.Validate() != nil {
-		return DesktopCompatibilityResult{}, NewError("desktop_compatibility_policy.unavailable")
+		return DesktopCompatibilityResult{}, apperror.New("desktop_compatibility_policy.unavailable")
 	}
 
 	matchingTarget := make([]model.DesktopBuildTuple, 0, len(catalog.entries))
@@ -472,7 +473,7 @@ func validateDesktopCompatibilityQuery(query DesktopCompatibilityQuery) error {
 		validDesktopTargetSelector.MatchString(query.Architecture) &&
 		query.RealtimeProtocol > 0
 	if !selectorsValid {
-		return NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	return nil
 }

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -206,7 +207,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: userID, SessionID: session.ID.String(),
 	})
-	if !Is(err, "administration.unavailable") {
+	if !apperror.Is(err, "administration.unavailable") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "audit-fail"}
@@ -303,7 +304,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: userID, SessionID: session.ID.String(),
 	})
-	if !Is(err, "session.not_found") {
+	if !apperror.Is(err, "session.not_found") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage", "get-session"}
@@ -331,12 +332,12 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				persistence.revokeAllResult = &store.UserSessionsRevocationResult{}
 				persistence.noOp, persistence.replayed = outcome == "empty", outcome == "replay"
 			case "attempt unavailable":
-				audit.beginErr = NewError("audit.unavailable")
+				audit.beginErr = apperror.New("audit.unavailable")
 				unchanged = true // An unattempted mutation does not replace the caller's value.
 			case "commit unavailable", "failure audit unavailable":
 				persistence.revokeAllErr = errors.New("atomic revocation failed")
 				if outcome == "failure audit unavailable" {
-					audit.failErr = NewError("audit.unavailable")
+					audit.failErr = apperror.New("audit.unavailable")
 				}
 			}
 			effects := &sessionAdministrationEffectsFake{events: &events}
@@ -356,7 +357,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				// A failed failure-audit completion joins, never replaces, the commit failure.
 				wantCode = "administration.unavailable"
 			}
-			if (wantCode == "" && err != nil) || (wantCode != "" && !Is(err, wantCode)) {
+			if (wantCode == "" && err != nil) || (wantCode != "" && !apperror.Is(err, wantCode)) {
 				t.Fatalf("error = %v, want %q", err, wantCode)
 			}
 			if unchanged != (outcome == "empty" || outcome == "replay" || outcome == "attempt unavailable") {

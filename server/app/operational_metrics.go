@@ -10,6 +10,7 @@ package app
 import (
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -45,7 +46,7 @@ func operationalOutcome(err error) string {
 	if err == nil {
 		return "success"
 	}
-	failure, ok := As(err)
+	failure, ok := apperror.As(err)
 	if !ok {
 		return "error"
 	}

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -355,7 +355,7 @@ func TestRoutingKernelValidatesResultsBeforeEmittingResponseEffects(t *testing.T
 				return streamingUploadProtocolResult(http.StatusOK, map[string]string{"status": "wrong"}).withHeaders(cookieHeaders), nil
 			}),
 			protocolRoute("undeclared-protocol-error", RouteProtocolRedirect, AuthPublic, http.MethodGet, apiPath(literal("invalid-protocol-error")), []string{"request.invalid"}, func(operationRequest) (protocolResult, error) {
-				return protocolResult{}, errorWithHeaders(application.NewError("resource.not_found"), cookieHeaders)
+				return protocolResult{}, errorWithHeaders(apperror.New("resource.not_found"), cookieHeaders)
 			}),
 		),
 	)

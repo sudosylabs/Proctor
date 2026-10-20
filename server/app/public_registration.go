@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -95,7 +96,7 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 		return registrationUnavailable(err)
 	}
 	if !registrationEnabled || !localLoginEnabled {
-		return NewError("authentication.registration.invitation_required")
+		return apperror.New("authentication.registration.invitation_required")
 	}
 	normalizedEmail := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(command.Email)))
 	if err = s.checkRateLimit(ctx, normalizedEmail, command.Source); err != nil {
@@ -107,7 +108,7 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 	firstName := strings.TrimSpace(model.SanitizeUnicode(command.FirstName))
 	lastName := strings.TrimSpace(model.SanitizeUnicode(command.LastName))
 	if firstName == "" || lastName == "" {
-		return NewError("authentication.registration.invalid")
+		return apperror.New("authentication.registration.invalid")
 	}
 
 	at := model.TimeUTC(s.now())
@@ -118,7 +119,7 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 		LastName:  lastName,
 	}, at)
 	if err != nil {
-		return NewError("authentication.registration.invalid").Wrap(err)
+		return apperror.New("authentication.registration.invalid").Wrap(err)
 	}
 	passwordHash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
@@ -170,7 +171,7 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 		return nil
 	}
 	if errors.Is(err, store.ErrAuthenticationMethodDisabled) || store.IsNotFound(err) {
-		return NewError("authentication.registration.invitation_required")
+		return apperror.New("authentication.registration.invitation_required")
 	}
 	return registrationUnavailable(err)
 }
@@ -186,16 +187,16 @@ func (s *publicRegistrationService) checkRateLimit(ctx context.Context, identity
 		},
 	})
 	if err != nil {
-		return NewError("authentication.rate_limit_unavailable").Wrap(err)
+		return apperror.New("authentication.rate_limit_unavailable").Wrap(err)
 	}
 	if limited {
-		return NewError("authentication.rate_limited")
+		return apperror.New("authentication.rate_limited")
 	}
 	return nil
 }
 
 func registrationUnavailable(err error) error {
-	return NewError("authentication.registration.unavailable").Wrap(err)
+	return apperror.New("authentication.registration.unavailable").Wrap(err)
 }
 
 type currentPublicRegistrationPolicy struct{ policies store.AccessPolicyStore }

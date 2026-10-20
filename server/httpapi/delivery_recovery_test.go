@@ -7,16 +7,27 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+// testDeliveryRecoveryCause mirrors the Attempt module's private recovery
+// carrier: transports discover recovery state only through the cause chain.
+type testDeliveryRecoveryCause struct {
+	recovery *model.DeliveryRecovery
+	cause    error
+}
+
+func (c testDeliveryRecoveryCause) Error() string                             { return c.cause.Error() }
+func (c testDeliveryRecoveryCause) Unwrap() error                             { return c.cause }
+func (c testDeliveryRecoveryCause) DeliveryRecovery() *model.DeliveryRecovery { return c.recovery }
 
 func TestDeliveryRecoveryProblemConcealsInvalidAndUnrelatedState(t *testing.T) {
 	for _, name := range []string{"current", "invalid", "unrelated"} {
@@ -29,9 +40,9 @@ func TestDeliveryRecoveryProblemConcealsInvalidAndUnrelatedState(t *testing.T) {
 			if name == "unrelated" {
 				code = "exam.attempt.not_found"
 			}
-			fault := &attempt.Fault{Code: code, Recovery: state, Cause: errors.New("private-secret-and-record-payload")}
+			fault := testDeliveryRecoveryCause{recovery: state, cause: errors.New("private-secret-and-record-payload")}
 			response := httptest.NewRecorder()
-			WriteError(response, httptest.NewRequest("POST", "/api/v1/example", nil), app.NewError(code).Wrap(fault))
+			WriteError(response, httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/example", nil), apperror.New(apperror.Code(code)).Wrap(fault))
 			var result map[string]json.RawMessage
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
@@ -49,7 +60,7 @@ func TestDeliveryRecoveryProblemConcealsInvalidAndUnrelatedState(t *testing.T) {
 
 func TestControlRateLimitProblemHasRetryAdviceAndNoPrivateSnapshot(t *testing.T) {
 	response := httptest.NewRecorder()
-	WriteError(response, httptest.NewRequest("GET", "/api/v1/example", nil), app.NewError("exam.delivery.control_rate_limited"))
+	WriteError(response, httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/example", nil), apperror.New("exam.delivery.control_rate_limited"))
 	if response.Code != 429 || response.Header().Get("Retry-After") != "1" || strings.Contains(response.Body.String(), `"delivery":`) {
 		t.Fatalf("control retry response=%d %s", response.Code, response.Body.String())
 	}

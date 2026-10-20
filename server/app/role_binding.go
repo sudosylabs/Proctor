@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -122,7 +123,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 	switch {
 	case userID != "" && query.ScopeType == "" && scopeID == "":
 		if !model.IsValidId(userID) {
-			return nil, NewError("request.invalid").WithField("field", "user_id")
+			return nil, apperror.New("request.invalid").WithField("field", "user_id")
 		}
 		visibility, err := s.authorization.AuthorizeRoleBindingList(ctx, invocation, model.ActionRoleBindingView)
 		if err != nil {
@@ -149,7 +150,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 		}
 		return bindings, nil
 	default:
-		return nil, NewError("request.invalid").WithField("field", "scope")
+		return nil, apperror.New("request.invalid").WithField("field", "scope")
 	}
 }
 
@@ -160,18 +161,18 @@ func (a *App) CreateRoleBinding(ctx context.Context, invocation Invocation, comm
 func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "role_id")
+		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	scopeID := strings.TrimSpace(command.ScopeID)
 	if !command.ScopeType.IsValid() || !model.IsValidId(scopeID) {
-		return nil, NewError("request.invalid").WithField("field", "role_binding")
+		return nil, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	if command.StartAt < 0 || (command.EndAt != 0 && command.EndAt <= command.StartAt) {
-		return nil, NewError("request.invalid").WithField("field", "role_binding")
+		return nil, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	resource, err := s.authorization.AuthorizeRoleBindingScope(
 		ctx, invocation, model.ActionRoleBindingManage, command.ScopeType, scopeID,
@@ -200,7 +201,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	}
 	if role.Name == model.SystemAdministratorRoleName &&
 		candidate.ScopeType != model.RoleScopeInstitution {
-		return nil, NewError("role_binding.system_admin_requires_institution_scope")
+		return nil, apperror.New("role_binding.system_admin_requires_institution_scope")
 	}
 	delegatedPermissions := role.Permissions
 	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
@@ -230,7 +231,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	idempotency, err := newCommandIdempotency(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
@@ -293,7 +294,7 @@ func (a *App) EndRoleBinding(ctx context.Context, invocation Invocation, command
 func (s *roleBindingService) End(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "role_binding_id")
+		return nil, apperror.New("request.invalid").WithField("field", "role_binding_id")
 	}
 	if err := s.authorization.AuthorizeRoleBindingPreflight(ctx, invocation, model.ActionRoleBindingManage); err != nil {
 		return nil, err
@@ -309,7 +310,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		return nil, err
 	}
 	if command.BatchScopeID != "" && (command.BatchScopeType != current.ScopeType || strings.TrimSpace(command.BatchScopeID) != current.ScopeID) {
-		return nil, NewError("resource.not_found").WithField("resource", "role_binding")
+		return nil, apperror.New("resource.not_found").WithField("resource", "role_binding")
 	}
 	idempotency, err := newCommandIdempotency(invocation, "role_binding.end.v1", command.IdempotencyKey, struct {
 		ID        string              `json:"id"`
@@ -338,7 +339,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	ended, err := runAuditedMutation(
@@ -387,29 +388,29 @@ func roleBindingError(err error) error {
 	if mapped := idempotencyError(err); mapped != nil {
 		return mapped
 	}
-	var appFailure *Error
+	var appFailure *apperror.Error
 	if errors.As(err, &appFailure) {
 		return err
 	}
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "role_binding").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "role_binding").Wrap(err)
 	case store.IsConflict(err):
 		var conflict *store.ErrConflict
 		_ = errors.As(err, &conflict)
 		if conflict != nil && conflict.Constraint == "role_bindings_last_system_admin" {
-			return NewError("role_binding.last_system_admin").WithField("resource", "role_binding").Wrap(err)
+			return apperror.New("role_binding.last_system_admin").WithField("resource", "role_binding").Wrap(err)
 		}
 		if conflict != nil && conflict.Constraint == "role_bindings_system_admin_institution_scope" {
-			return NewError("role_binding.system_admin_requires_institution_scope").WithField("resource", "role_binding").Wrap(err)
+			return apperror.New("role_binding.system_admin_requires_institution_scope").WithField("resource", "role_binding").Wrap(err)
 		}
-		return NewError("role_binding.conflict").WithField("resource", "role_binding").Wrap(err)
+		return apperror.New("role_binding.conflict").WithField("resource", "role_binding").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("role_binding.invalid").WithField("resource", "role_binding").Wrap(err)
+			return apperror.New("role_binding.invalid").WithField("resource", "role_binding").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "role_binding").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "role_binding").Wrap(err)
 	}
 }

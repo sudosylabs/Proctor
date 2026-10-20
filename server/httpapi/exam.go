@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -423,7 +424,7 @@ func (m examResourceModule) list(request operationRequest) (operationResult, err
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.TimeUTC(last.UpdatedAt).Format(time.RFC3339Nano), ExamID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -653,7 +654,7 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 		last := page.Items[len(page.Items)-1].Manager
 		response.NextCursor, err = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.TimeUTC(last.GrantedAt).Format(time.RFC3339Nano), UserID: last.UserID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

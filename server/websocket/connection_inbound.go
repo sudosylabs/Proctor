@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -150,7 +151,7 @@ func (c *connectionRuntime) handleRequest(
 		); err != nil {
 			code := "authorization.denied"
 			presentation := websocketErrorSubscriptionDenied
-			if failure, ok := app.As(err); ok {
+			if failure, ok := apperror.As(err); ok {
 				code = failure.Code()
 				if code != "authorization.denied" {
 					presentation = websocketErrorSubscriptionFailed
@@ -337,7 +338,7 @@ func (c *connectionRuntime) handleExamAttemptBrowserStart(ctx context.Context, r
 	})
 	if err != nil {
 		code := "exam.attempt.unavailable"
-		if failure, ok := app.As(err); ok {
+		if failure, ok := apperror.As(err); ok {
 			code = failure.Code()
 		}
 		var refusal *app.BrowserSourceRefusal
@@ -385,7 +386,7 @@ func (c *connectionRuntime) handleExamAttemptBrowserAppend(ctx context.Context, 
 	})
 	if err != nil {
 		code := "exam.attempt.unavailable"
-		if failure, ok := app.As(err); ok {
+		if failure, ok := apperror.As(err); ok {
 			code = failure.Code()
 		}
 		c.enqueueDeliveryError(request.Sequence, code, err)

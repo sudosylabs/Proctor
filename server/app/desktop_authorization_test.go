@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -50,13 +51,13 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			}
 			saturatePasswordWork(t, authentication.hasher)
 			result, err := service.AuthenticateLocal(context.Background(), command)
-			if result != nil || !Is(err, "service.busy") {
+			if result != nil || !apperror.Is(err, "service.busy") {
 				t.Fatalf("saturated Desktop authentication = %#v/%v", result, err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			result, err = service.AuthenticateLocal(ctx, command)
-			if result != nil || !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+			if result != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancelled Desktop authentication = %#v/%v", result, err)
 			}
 			if transactions.authenticated != nil || len(persistence.sessions) != 0 {
@@ -167,7 +168,7 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	result, err := service.Start(context.Background(), command)
-	if result != nil || !Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
+	if result != nil || !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
 		t.Fatalf("Start() = %#v, %v; persisted=%#v", result, err, persistence.created)
 	}
 }
@@ -193,7 +194,7 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	_, err = service.Start(context.Background(), command)
-	if !Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
+	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
 		t.Fatalf("Start() error=%v persisted=%#v", err, persistence.created)
 	}
 }
@@ -312,7 +313,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 	persistence.contextUserID = principal.UserID
 	_, err = service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
-	if !Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
+	if !apperror.Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
 		t.Fatalf("Approve() error=%v failure audit=%q/%q", err, auditor.auditID, auditor.failureCode)
 	}
 	persistence.issueErr = nil
@@ -321,7 +322,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
 	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
-	if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
+	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 		t.Fatalf("Exchange() error=%v failure audit=%q", err, auditor.failureCode)
 	}
 }
@@ -354,7 +355,7 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
 
 	result, err := service.Exchange(context.Background(), Invocation{}, command)
-	if result != nil || !Is(err, "authentication.dpop.unavailable") {
+	if result != nil || !apperror.Is(err, "authentication.dpop.unavailable") {
 		t.Fatalf("Exchange() = %#v, %v; want no credential response", result, err)
 	}
 	sessions := identity.authentication.sessions.(*desktopAuthorizationSessionStoreStub)
@@ -388,7 +389,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			}
 			setTestDesktopAuthorizationBuild(t, &command)
 			_, err = service.Start(context.Background(), command)
-			if !Is(err, "authentication.desktop_authorization.unavailable") {
+			if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
 		})
@@ -420,7 +421,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		}
 		setTestDesktopAuthorizationBuild(t, &command)
 		_, err := service.Start(context.Background(), command)
-		if !Is(err, "authentication.desktop_authorization.unavailable") {
+		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
 			t.Fatalf("Start error = %v", err)
 		}
 	})
@@ -436,7 +437,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		}, contextUserID: principal.UserID}, auditor)
 		_, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
-		if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
+		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Approve error/audit = %v/%q", err, auditor.failureCode)
 		}
 	})
@@ -456,7 +457,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			RefreshExpiresAt: at.Add(time.Hour),
 		}
 		_, err := service.Exchange(context.Background(), Invocation{}, exchangeCommand)
-		if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
+		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Exchange error/audit = %v/%q", err, auditor.failureCode)
 		}
 	})
@@ -468,7 +469,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	persistence := &desktopAuthorizationStoreFake{}
 	auditor := &recordingDesktopAuthorizationAuditor{}
-	limiter := &desktopAuthorizationAttemptLimiterFake{err: NewError("authentication.rate_limited")}
+	limiter := &desktopAuthorizationAttemptLimiterFake{err: apperror.New("authentication.rate_limited")}
 	service, err := newDesktopAuthorizationService(
 		persistence,
 		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
@@ -489,7 +490,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	_, err = service.Start(context.Background(), command)
-	if !Is(err, "authentication.rate_limited") || persistence.created != nil || auditor.prepareExchange != 0 || auditor.prepareIssue != 0 {
+	if !apperror.Is(err, "authentication.rate_limited") || persistence.created != nil || auditor.prepareExchange != 0 || auditor.prepareIssue != 0 {
 		t.Fatalf("Start() error=%v persisted=%#v audit prepares=%d/%d", err, persistence.created, auditor.prepareIssue, auditor.prepareExchange)
 	}
 	if limiter.operation != desktopAuthorizationAttemptStart || limiter.identity != model.HashToken(state) || limiter.source != "192.0.2.10:5000" {
@@ -501,7 +502,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 		t, service, at, code, model.NewCredentialToken(), model.NewCredentialToken(), "192.0.2.10:5001",
 	)
 	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
-	if !Is(err, "authentication.rate_limited") || persistence.exchanged != nil || auditor.prepareExchange != 0 {
+	if !apperror.Is(err, "authentication.rate_limited") || persistence.exchanged != nil || auditor.prepareExchange != 0 {
 		t.Fatalf("Exchange() error=%v persisted=%#v exchange audits=%d", err, persistence.exchanged, auditor.prepareExchange)
 	}
 	if limiter.operation != desktopAuthorizationAttemptExchange || limiter.identity != model.HashToken(code) || limiter.source != "192.0.2.10:5001" {
@@ -524,7 +525,7 @@ func TestDesktopAuthorizationAttemptAccountingSeparatesStartAndExchange(t *testi
 	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1"); err != nil {
 		t.Fatalf("first start: %v", err)
 	}
-	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1"); !Is(err, "authentication.rate_limited") {
+	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1"); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("repeated start error = %v", err)
 	}
 	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptExchange, identity, "192.0.2.20:1"); err != nil {

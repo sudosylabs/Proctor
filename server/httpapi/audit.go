@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -89,7 +90,7 @@ func auditResource(audits AuditListingApplication) resource {
 func (module auditResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := auditQueryFromRequest(request.request)
 	if err != nil {
-		return operationResult{}, application.NewError("audit.query.invalid")
+		return operationResult{}, apperror.New("audit.query.invalid")
 	}
 	events, listErr := module.audits.ListAuditEvents(
 		request.context,
@@ -110,7 +111,7 @@ func (module auditResourceModule) list(request operationRequest) (operationResul
 			Id:       last.ID.String(),
 		})
 		if err != nil {
-			return operationResult{}, application.NewError("audit.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("audit.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

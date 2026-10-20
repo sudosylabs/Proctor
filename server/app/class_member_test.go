@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -348,10 +349,10 @@ func TestClassMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 	service := newClassMemberService(
 		&classMemberStoreFake{events: &events}, &classMemberClassStoreFake{events: &events},
 		&classMemberUserStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, preflightErr: NewError("authorization.denied")},
+		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewId,
 	)
-	if _, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: model.NewId()}); !Is(err, "authorization.denied") {
+	if _, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: model.NewId()}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("End() error = %v, want authorization.denied", err)
 	}
 	if want := []string{"authorize-preflight"}; !reflect.DeepEqual(events, want) {
@@ -369,10 +370,10 @@ func TestClassMemberEndConcealsCrossScopeTarget(t *testing.T) {
 	service := newClassMemberService(
 		&classMemberStoreFake{events: &events, current: current}, &classMemberClassStoreFake{events: &events},
 		&classMemberUserStoreFake{events: &events},
-		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
+		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewId,
 	)
-	if _, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
+	if _, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID.String()}); !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
 	}
 }

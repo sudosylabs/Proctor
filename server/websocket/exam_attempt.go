@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -403,7 +404,7 @@ func decodeStrictExamAttemptObject[T any](document json.RawMessage, label string
 func examAttemptConnectError(err error) (string, websocketErrorPresentation) {
 	code := "exam.attempt.unavailable"
 	presentation := websocketErrorAttemptConnectionFailed
-	if failure, ok := app.As(err); ok {
+	if failure, ok := apperror.As(err); ok {
 		code = failure.Code()
 		if code == "resource.not_found" || code == "authorization.denied" {
 			presentation = websocketErrorAttemptConnectionDenied
@@ -415,7 +416,7 @@ func examAttemptConnectError(err error) (string, websocketErrorPresentation) {
 func examAttemptRenewError(err error) (string, websocketErrorPresentation) {
 	code := "exam.attempt.unavailable"
 	presentation := websocketErrorAttemptRenewalFailed
-	if failure, ok := app.As(err); ok {
+	if failure, ok := apperror.As(err); ok {
 		code = failure.Code()
 		switch code {
 		case "resource.not_found", "authorization.denied":
@@ -428,7 +429,7 @@ func examAttemptRenewError(err error) (string, websocketErrorPresentation) {
 }
 
 func examAttemptFocusLossError(err error) (string, websocketErrorPresentation) {
-	failure, ok := app.As(err)
+	failure, ok := apperror.As(err)
 	if !ok {
 		return "exam.attempt.unavailable", websocketErrorFocusLossFailed
 	}

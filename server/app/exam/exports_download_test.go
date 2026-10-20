@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -60,8 +61,8 @@ func TestExamExportDownloadRechecksAuthorityAfterStorageOpen(t *testing.T) {
 				t.Fatalf("pending download escaped %s: %#v, %v, closed=%v", scenario, download, err, body.closed)
 			}
 			if scenario == "database expiry" {
-				var fault *Fault
-				if !errors.As(err, &fault) || fault.Code != "exam.export.expired" {
+				var fault *apperror.Error
+				if !errors.As(err, &fault) || fault.Code() != "exam.export.expired" {
 					t.Fatalf("expiry returned the wrong failure: %v", err)
 				}
 			}

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
@@ -268,7 +268,7 @@ func TestWriteErrorMapsApplicationErrorsWithoutLeakingCauses(t *testing.T) {
 		httpapi.WriteError(
 			writer,
 			request,
-			application.NewError("request.invalid").
+			apperror.New("request.invalid").
 				WithField("field", "email").
 				Wrap(errors.New("sensitive internal cause")),
 		)

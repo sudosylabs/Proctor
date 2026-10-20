@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"time"
 
@@ -81,27 +80,7 @@ func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocat
 }
 
 func examCorrectionError(err error, conceal bool) error {
-	if err == nil {
-		return nil
-	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
-	}
-	var fault *examcorrection.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.sitting.correction.unavailable").Wrap(err)
-	}
-	if conceal && fault.Code == "exam.sitting.correction.not_found" {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return presentExamChildError(err, conceal, "exam.sitting.correction.unavailable", "exam.sitting.correction.not_found")
 }
 
 type examCorrectionAuthorizationAdapter struct{ authorization *accessControlService }

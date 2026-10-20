@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -406,7 +407,7 @@ func mfaProvisioningURI(issuer string, accountName string, secret string) string
 }
 
 func mfaInvalidCodeError() error {
-	return NewError("authentication.mfa.invalid_code")
+	return apperror.New("authentication.mfa.invalid_code")
 }
 
 func mfaStoreFailure(err error) error {
@@ -414,11 +415,11 @@ func mfaStoreFailure(err error) error {
 }
 
 func mfaStoreError(err error) error {
-	code := "authentication.mfa.unavailable"
+	code := apperror.Code("authentication.mfa.unavailable")
 	if store.IsNotFound(err) {
 		code = "authentication.mfa.not_found"
 	} else if store.IsConflict(err) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
 		code = "authentication.mfa.conflict"
 	}
-	return NewError(code).Wrap(err)
+	return apperror.New(code).Wrap(err)
 }

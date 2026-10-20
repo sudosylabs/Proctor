@@ -15,6 +15,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -146,7 +147,7 @@ func (m examExportsHTTPModule) create(request operationRequest) (operationResult
 		return operationResult{}, err
 	}
 	if value.Validate() != nil || value.Scope != scope {
-		return operationResult{}, application.NewError("exam.export.unavailable")
+		return operationResult{}, apperror.New("exam.export.unavailable")
 	}
 	return jsonResult(http.StatusAccepted, exportResponse(value)).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -161,7 +162,7 @@ func (m examExportsHTTPModule) get(request operationRequest) (operationResult, e
 		return operationResult{}, err
 	}
 	if value.Validate() != nil || value.ID != query.ExportID || value.Scope != query.Scope {
-		return operationResult{}, application.NewError("exam.export.unavailable")
+		return operationResult{}, apperror.New("exam.export.unavailable")
 	}
 	return jsonResult(http.StatusOK, exportResponse(value)).withHeaders(privateNoStoreHeaders()), nil
 }
@@ -176,13 +177,13 @@ func (m examExportsHTTPModule) open(request operationRequest) (protocolResult, e
 		return protocolResult{}, err
 	}
 	if opened == nil {
-		return protocolResult{}, application.NewError("exam.export.unavailable")
+		return protocolResult{}, apperror.New("exam.export.unavailable")
 	}
 	if opened.Export.Validate() != nil || opened.Export.State != model.ExamExportReady || opened.Export.ID != query.ExportID || opened.Export.Scope != query.Scope || opened.Body == nil {
 		if opened.Body != nil {
 			_ = opened.Body.Close()
 		}
-		return protocolResult{}, application.NewError("exam.export.unavailable")
+		return protocolResult{}, apperror.New("exam.export.unavailable")
 	}
 	headers := privateNoStoreHeaders()
 	headers.Set("Content-Type", "application/zip")

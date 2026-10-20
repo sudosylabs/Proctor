@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -50,7 +51,7 @@ func TestDesktopAuthorizationApproveRejectsForeignPrincipal(t *testing.T) {
 
 	approval, err := service.Approve(context.Background(), NewInvocation(foreign, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
-	if approval != nil || !Is(err, "authentication.desktop_authorization.rejected") {
+	if approval != nil || !apperror.Is(err, "authentication.desktop_authorization.rejected") {
 		t.Fatalf("foreign approval = %#v, %v", approval, err)
 	}
 	if persistence.issued != nil || auditor.prepareIssue != 0 {
@@ -80,7 +81,7 @@ func TestDesktopAuthorizationApproveAndExchangeAuditTheApprovingAccount(t *testi
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
 	desktop := model.RequestMetadata{RequestID: "exchange-request", IPAddress: "192.0.2.31", UserAgent: "desktop"}
-	if _, err := service.Exchange(context.Background(), NewInvocation(model.Principal{}, desktop), exchangeCommand); !Is(err, "authentication.desktop_authorization.rejected") {
+	if _, err := service.Exchange(context.Background(), NewInvocation(model.Principal{}, desktop), exchangeCommand); !apperror.Is(err, "authentication.desktop_authorization.rejected") {
 		t.Fatalf("exchange err = %v", err)
 	}
 	if auditor.exchangeActor != account || auditor.exchangeRequest != desktop {

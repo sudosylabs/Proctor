@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -245,7 +246,7 @@ func TestSystemPingFailsClosedInsideSuccessfulResponseWhenUnavailable(t *testing
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	applicationFake := &desktopCompatibilityHTTPApplication{
-		evaluationErr: application.NewError("desktop_compatibility_policy.unavailable"),
+		evaluationErr: apperror.New("desktop_compatibility_policy.unavailable"),
 	}
 	httpAPI := newFocusedResourceAPI(
 		t,

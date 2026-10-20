@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -83,8 +84,8 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization}, audit: audit}
 		err := adapter.AuthorizeSubmissionView(context.Background(), examattempt.NewCall(principal, metadata), submissionID)
-		var fault *examattempt.Fault
-		if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" {
+		var fault *apperror.Error
+		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" {
 			t.Fatalf("AuthorizeSubmissionView() error = %v, want concealed not found", err)
 		}
 		if audit.principal.UserID != principal.UserID || audit.action != model.ActionSubmissionView ||
@@ -182,11 +183,11 @@ func TestWorkspaceMutationRawKeySurvivesReconnectWhileChildReceivesCurrentAccess
 func TestCandidateExamAttemptFacadeConcealsAccessDenials(t *testing.T) {
 	t.Parallel()
 	for _, childCode := range []string{"exam.attempt.not_found", "exam.attempt.continuity_invalid"} {
-		fake := &examAttemptUseCasesFake{err: &examattempt.Fault{Code: childCode}}
+		fake := &examAttemptUseCasesFake{err: apperror.New(apperror.Code(childCode))}
 		application := &App{examAttempts: fake}
 		_, err := application.GetCandidateExamPresentation(context.Background(),
 			NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), CandidateExamAttemptAccess{})
-		if !Is(err, "resource.not_found") {
+		if !apperror.Is(err, "resource.not_found") {
 			t.Fatalf("child=%s error=%v", childCode, err)
 		}
 	}
@@ -194,22 +195,22 @@ func TestCandidateExamAttemptFacadeConcealsAccessDenials(t *testing.T) {
 
 func TestTrustedConnectionCloseFacadeConcealsOwnershipMismatch(t *testing.T) {
 	t.Parallel()
-	fake := &examAttemptUseCasesFake{err: &examattempt.Fault{Code: "exam.attempt.not_found"}}
+	fake := &examAttemptUseCasesFake{err: apperror.New("exam.attempt.not_found")}
 	application := &App{examAttempts: fake}
 	_, err := application.CloseExamAttemptConnection(context.Background(),
 		NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), CloseExamAttemptConnectionCommand{})
-	if !Is(err, "resource.not_found") {
+	if !apperror.Is(err, "resource.not_found") {
 		t.Fatalf("error=%v", err)
 	}
 }
 
 func TestConnectExamAttemptRequiresAnIdempotencyKeyBeforeChildCall(t *testing.T) {
 	t.Parallel()
-	fake := &examAttemptUseCasesFake{err: &examattempt.Fault{Code: "idempotency.key_required"}}
+	fake := &examAttemptUseCasesFake{err: apperror.New("idempotency.key_required")}
 	application := &App{examAttempts: fake}
 	_, err := application.ConnectExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}),
 		ConnectExamAttemptCommand{SittingID: model.NewExamSittingID(), ContinuityCredential: model.NewCredentialToken()})
-	if !Is(err, "idempotency.key_required") || len(fake.connects) != 1 {
+	if !apperror.Is(err, "idempotency.key_required") || len(fake.connects) != 1 {
 		t.Fatalf("error=%v calls=%d", err, len(fake.connects))
 	}
 }

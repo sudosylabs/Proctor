@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -380,8 +381,8 @@ func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcom
 			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key"})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != test.wantCode || len(f.workspace.reclaimable) != test.wantReclaim {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != test.wantCode || len(f.workspace.reclaimable) != test.wantReclaim {
 				t.Fatalf("error=%v reclaimable=%v", err, f.workspace.reclaimable)
 			}
 		})
@@ -553,8 +554,8 @@ func TestRenewParticipationRejectsInconsistentStoreProjection(t *testing.T) {
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -576,8 +577,8 @@ func TestRenewParticipationMapsStableCandidateFaults(t *testing.T) {
 				AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 				Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 			})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != test.code {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != test.code {
 				t.Fatalf("error = %v, want %s", err, test.code)
 			}
 		})
@@ -595,8 +596,8 @@ func TestLateRenewalUsesExactExpiryTransitionAndReturnsSafeConnectionLoss(t *tes
 		AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, ConnectionID: f.connectionID,
 		Generation: due.Generation, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_lost" || f.effects.expired != 1 ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.expired != 1 ||
 		strings.Join(f.order, ",") != "renew,expiry.resolve,system.audit,expiry.commit,effect.expire" {
 		t.Fatalf("error=%v effects=%#v order=%v", err, f.effects, f.order)
 	}
@@ -611,8 +612,8 @@ func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
 		AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_lost" || f.effects.expired != 0 ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.expired != 0 ||
 		strings.Join(f.order, ",") != "renew,expiry.resolve" {
 		t.Fatalf("error=%v effects=%#v order=%v", err, f.effects, f.order)
 	}
@@ -686,9 +687,9 @@ func TestScanExpiredParticipationsFailsAuditAndPublishesNothingOnCommitFailure(t
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{expiryDueFixture(f)}
 	f.persistence.expireErr = store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
 	_, err := f.service.ScanExpiredParticipations(context.Background(), 10)
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" ||
-		f.systemAudit.failedCode != fault.Code || f.effects.expired != 0 ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" ||
+		f.systemAudit.failedCode != fault.Code() || f.effects.expired != 0 ||
 		strings.Join(f.order, ",") != "expiry.list,system.audit,expiry.commit,system.audit.fail" {
 		t.Fatalf("error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
 	}
@@ -759,7 +760,7 @@ func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
 
 func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 	t.Parallel()
-	denied := &Fault{Code: "authorization.denied"}
+	denied := apperror.New("authorization.denied")
 	operations := map[string]func(*fixture, model.ExamAttemptID) error{
 		"get": func(f *fixture, attemptID model.ExamAttemptID) error {
 			_, err := f.service.GetManaged(context.Background(), f.call, GetManagedAttemptQuery{
@@ -805,16 +806,16 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 					attemptID = model.NewExamAttemptID()
 				}
 				err := operation(f, attemptID)
-				var fault *Fault
+				var fault *apperror.Error
 				if !errors.As(err, &fault) {
 					t.Fatalf("existing=%t error = %v", existing, err)
 				}
-				codes = append(codes, fault.Code)
+				codes = append(codes, fault.Code())
 				if slices.Contains(f.order, "manager.get") || f.audit.values != nil {
 					t.Fatalf("existing=%t denied caller reached Attempt state: order=%v audit=%#v", existing, f.order, f.audit.values)
 				}
 			}
-			if codes[0] != codes[1] || codes[0] != denied.Code {
+			if codes[0] != codes[1] || codes[0] != denied.Code() {
 				t.Fatalf("denied responses distinguish Attempt existence: %v", codes)
 			}
 		})
@@ -831,8 +832,8 @@ func TestManagerAttemptMissingAfterAuthorizationCompletesFailedAudit(t *testing.
 	_, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: model.NewExamAttemptID(), SuspensionID: model.NewAttemptSuspensionID(),
 		ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.audit.failedCode != "exam.attempt.not_found" ||
 		f.persistence.reallow != nil {
 		t.Fatalf("error=%v audit=%#v order=%v", err, f.audit, f.order)
 	}
@@ -968,8 +969,8 @@ func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
 	f.persistence.replayed = true
 	f.persistence.connectClosed = true
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
 	}
 }
@@ -980,8 +981,8 @@ func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
 	f.persistence.replayed = true
 	f.persistence.participationEnded = true
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
 	}
 }
@@ -991,8 +992,8 @@ func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectionSession = model.NewSessionID()
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" || f.effects.opened != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
 	}
 }
@@ -1002,9 +1003,9 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.sitting_unavailable" ||
-		f.audit.failedCode != fault.Code || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.sitting_unavailable" ||
+		f.audit.failedCode != fault.Code() || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
 		t.Fatalf("error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
 	}
 }
@@ -1014,8 +1015,8 @@ func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_lost" || f.effects.opened != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
 	}
 }
@@ -1075,8 +1076,8 @@ func TestProtectedPresentationRejectsInvalidFrozenCapacity(t *testing.T) {
 				RuntimeCapabilities: runtimeCapabilitiesFixture(f, f.revision.ID), BrowserPolicy: disabledCandidateBrowserPolicyFixture(f.revision.ID),
 			}
 			_, err := f.service.GetPresentation(context.Background(), f.call, CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()})
-			var fault *Fault
-			if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" {
+			var fault *apperror.Error
+			if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" {
 				t.Fatalf("invalid capacity was not rejected: %v", err)
 			}
 		})
@@ -1118,8 +1119,8 @@ func TestProtectedPresentationRejectsAConnectionFromAnotherSession(t *testing.T)
 	_, err := f.service.GetPresentation(context.Background(), otherSession, CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" ||
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" ||
 		f.persistence.candidateAccess.SessionID != principal.SessionID {
 		t.Fatalf("error=%v access=%#v", err, f.persistence.candidateAccess)
 	}
@@ -1140,8 +1141,8 @@ func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
 			return err
 		},
 	} {
-		var fault *Fault
-		if err := open(); !errors.As(err, &fault) || fault.Code != "authentication.invalid_token" {
+		var fault *apperror.Error
+		if err := open(); !errors.As(err, &fault) || fault.Code() != "authentication.invalid_token" {
 			t.Fatalf("error=%v", err)
 		}
 	}
@@ -1178,8 +1179,8 @@ func TestWorkspaceListRejectsUnboundedOrInvalidCursorsBeforeStore(t *testing.T) 
 		f := newFixture(t)
 		query.Access.AttemptID, query.Access.ConnectionID = f.attemptID, f.connectionID
 		_, err := f.service.ListWorkspace(context.Background(), f.call, query)
-		var fault *Fault
-		if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || f.workspace.lists != 0 {
+		var fault *apperror.Error
+		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" || f.workspace.lists != 0 {
 			t.Fatalf("query=%#v error=%v calls=%d", query, err, f.workspace.lists)
 		}
 	}
@@ -1317,8 +1318,8 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 			AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 			ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 		})
-		var fault *Fault
-		if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" || f.effects.closed != 0 {
+		var fault *apperror.Error
+		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" || f.effects.closed != 0 {
 			t.Fatalf("error=%v effects=%#v", err, f.effects)
 		}
 	}
@@ -1331,8 +1332,8 @@ func TestTrustedCloseRejectsUnknownReasonBeforeAudit(t *testing.T) {
 		AttemptID: model.NewExamAttemptID(), SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: model.NewAttemptConnectionID(), Reason: "unknown",
 	})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || len(f.order) != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" || len(f.order) != 0 {
 		t.Fatalf("error=%v order=%v", err, f.order)
 	}
 }

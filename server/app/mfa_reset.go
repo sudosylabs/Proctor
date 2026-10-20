@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,7 +44,7 @@ func (s *mfaApplicationService) ResetUser(ctx context.Context, invocation Invoca
 	userID, err := model.ParseUserID(command.UserID)
 	reason, reference := strings.TrimSpace(command.Reason), strings.TrimSpace(command.VerificationReference)
 	if err != nil || userID == principal.UserID || !command.IdentityVerified || reason == "" || utf8.RuneCountInString(reason) > 512 || reference == "" || utf8.RuneCountInString(reference) > 128 {
-		return NewError("authentication.mfa.reset_invalid")
+		return apperror.New("authentication.mfa.reset_invalid")
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: userID.String()}
 	if err := s.security.authorization.Authorize(ctx, principal, model.ActionUserMFAReset, resource, invocation.RequestMetadata()); err != nil {

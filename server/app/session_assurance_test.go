@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -59,7 +60,7 @@ func TestRequireStrongRecentSessionPreservesAssuranceErrors(t *testing.T) {
 				}
 				return
 			}
-			if !Is(err, test.wantCode) {
+			if !apperror.Is(err, test.wantCode) {
 				t.Fatalf("requireStrongRecentSession() error = %v, want %s", err, test.wantCode)
 			}
 		})

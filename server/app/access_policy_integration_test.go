@@ -21,6 +21,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -122,7 +123,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 			if completed.view.Policy == nil || completed.view.Policy.Revision != 2 {
 				t.Fatalf("winning policy = %#v", completed.view)
 			}
-		case application.Is(completed.err, "access_policy.revision_conflict"):
+		case apperror.Is(completed.err, "access_policy.revision_conflict"):
 			conflicts++
 		default:
 			t.Fatalf("replacement error = %v", completed.err)
@@ -281,7 +282,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	removedProviderNode := testlib.Setup(t, testlib.WithConfig(baseConfig), testlib.WithStore(removedProviderStore))
 	if _, err = removedProviderNode.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
 		ID: removedProviderBinding.ID.String(),
-	}); !application.Is(err, "role_binding.last_system_admin") {
+	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("removed-provider node counted unavailable external administrator: %v", err)
 	}
 	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
@@ -291,12 +292,12 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 	}
 	if _, err = primary.App.SetUserEnabled(context.Background(), invocation, application.SetUserEnabledCommand{
 		ID: externalAdmin.ID.String(), Enabled: false,
-	}); !application.Is(err, "user.last_system_admin") {
+	}); !apperror.Is(err, "user.last_system_admin") {
 		t.Fatalf("disable only policy-usable administrator error = %v", err)
 	}
 	if _, err = primary.App.EndRoleBinding(context.Background(), invocation, application.EndRoleBindingCommand{
 		ID: externalBinding.ID.String(),
-	}); !application.Is(err, "role_binding.last_system_admin") {
+	}); !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("end only policy-usable administrator binding error = %v", err)
 	}
 }

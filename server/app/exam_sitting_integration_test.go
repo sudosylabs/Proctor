@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -295,11 +296,11 @@ func TestExamSittingIntegration(t *testing.T) {
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
-	}); !application.Is(appErr, "resource.not_found") {
+	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after membership revocation error = %v", appErr)
 	}
 	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
-		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !application.Is(appErr, "resource.not_found") {
+		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after membership revocation error = %v", appErr)
 	}
 	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
@@ -312,11 +313,11 @@ func TestExamSittingIntegration(t *testing.T) {
 	}
 	if _, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
-	}); !application.Is(appErr, "resource.not_found") {
+	}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("get after permission revocation error = %v", appErr)
 	}
 	if appErr := helper.App.AuthorizeWebSocketSubscription(ctx, *managerPrincipal, model.RequestMetadata{},
-		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !application.Is(appErr, "resource.not_found") {
+		model.ActionExamSittingView, model.Resource{Type: model.ResourceExamSitting, ID: scheduled.Sitting.ID.String()}); !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("subscription after permission revocation error = %v", appErr)
 	}
 

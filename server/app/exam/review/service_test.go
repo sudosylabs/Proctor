@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -120,13 +121,13 @@ func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
 	f.persistence.prepareErr = store.NewErrConflict("submission_review", "integrity_review_state", nil)
 	_, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.integrity_review.state_conflict" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.integrity_review.state_conflict" {
 		t.Fatalf("Release() error = %v", err)
 	}
 	// The release-time reservation is a durable write, so its attempt must be
 	// audited before it runs and completed as failed when it is refused.
-	if f.auditor.begun != 1 || f.auditor.failedCode != fault.Code || f.mail.calls != 0 || f.persistence.release != nil {
+	if f.auditor.begun != 1 || f.auditor.failedCode != fault.Code() || f.mail.calls != 0 || f.persistence.release != nil {
 		t.Fatalf("audit=%#v mail=%d release=%#v", f.auditor, f.mail.calls, f.persistence.release)
 	}
 }

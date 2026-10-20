@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -147,7 +148,7 @@ func mailResource(application MailApplication) resource {
 
 func (m mailResourceModule) getKeyState(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	view, appErr := m.mail.GetMailKeyState(request.context, request.invocation())
 	if appErr != nil {
@@ -165,7 +166,7 @@ func (m mailResourceModule) getKeyState(request operationRequest) (operationResu
 
 func (m mailResourceModule) startRekey(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	var body mailRekeyRequest
 	if err := request.decodeJSON(&body); err != nil {
@@ -181,7 +182,7 @@ func (m mailResourceModule) startRekey(request operationRequest) (operationResul
 
 func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	raw, err := request.params.RequireJobId()
 	if err != nil {
@@ -211,7 +212,7 @@ func (m mailResourceModule) getRekeyStatus(request operationRequest) (operationR
 
 func (m mailResourceModule) getMetrics(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	snapshot, appErr := m.mail.GetMailMetrics(request.context, request.invocation())
 	if appErr != nil {
@@ -241,12 +242,12 @@ func (m mailResourceModule) getMetrics(request operationRequest) (operationResul
 
 func (m mailResourceModule) sendTest(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	if request.request.Body != nil {
 		content, err := io.ReadAll(io.LimitReader(request.request.Body, 1))
 		if err != nil || len(content) != 0 {
-			return operationResult{}, application.NewError("request.invalid")
+			return operationResult{}, apperror.New("request.invalid")
 		}
 	}
 	view, appErr := m.mail.SendTestMail(request.context, request.invocation())
@@ -258,7 +259,7 @@ func (m mailResourceModule) sendTest(request operationRequest) (operationResult,
 
 func (m mailResourceModule) getDelivery(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	raw, err := request.params.RequireMailDeliveryID()
 	if err != nil {
@@ -273,11 +274,11 @@ func (m mailResourceModule) getDelivery(request operationRequest) (operationResu
 
 func (m mailResourceModule) listDeliveries(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	query, err := listMailDeliveriesQuery(request.request)
 	if err != nil {
-		return operationResult{}, application.NewError("mail.query.invalid")
+		return operationResult{}, apperror.New("mail.query.invalid")
 	}
 	page, appErr := m.mail.ListMailDeliveries(request.context, request.invocation(), query)
 	if appErr != nil {
@@ -291,7 +292,7 @@ func (m mailResourceModule) listDeliveries(request operationRequest) (operationR
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("mail.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -299,21 +300,21 @@ func (m mailResourceModule) listDeliveries(request operationRequest) (operationR
 
 func (m mailResourceModule) cancelDelivery(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	return m.mutateDelivery(request, m.mail.CancelMailDelivery)
 }
 
 func (m mailResourceModule) retryDelivery(request operationRequest) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	return m.mutateDelivery(request, m.mail.RetryMailDelivery)
 }
 
 func (m mailResourceModule) mutateDelivery(request operationRequest, mutate func(context.Context, application.Invocation, model.MailDeliveryID) (application.MailDeliveryView, error)) (operationResult, error) {
 	if m.mail == nil {
-		return operationResult{}, application.NewError("mail.unavailable")
+		return operationResult{}, apperror.New("mail.unavailable")
 	}
 	if err := requireEmptyMailBody(request.request); err != nil {
 		return operationResult{}, err
@@ -335,7 +336,7 @@ func requireEmptyMailBody(request *http.Request) error {
 	}
 	content, err := io.ReadAll(io.LimitReader(request.Body, 1))
 	if err != nil || len(content) != 0 {
-		return application.NewError("request.invalid")
+		return apperror.New("request.invalid")
 	}
 	return nil
 }

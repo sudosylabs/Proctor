@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -145,28 +146,28 @@ type ReplaceAccessPolicyCommand struct {
 
 func (a *App) GetAccessPolicy(ctx context.Context, invocation Invocation) (AccessPolicyView, error) {
 	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyView{}, NewError("access_policy.unavailable")
+		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
 	}
 	return a.accessPolicies.Read(ctx, invocation)
 }
 
 func (a *App) PreflightAccessPolicy(ctx context.Context, invocation Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
 	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyPreflightResult{}, NewError("access_policy.unavailable")
+		return AccessPolicyPreflightResult{}, apperror.New("access_policy.unavailable")
 	}
 	return a.accessPolicies.Preflight(ctx, invocation, command)
 }
 
 func (a *App) ReplaceAccessPolicy(ctx context.Context, invocation Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
 	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyView{}, NewError("access_policy.unavailable")
+		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
 	}
 	return a.accessPolicies.Replace(ctx, invocation, command)
 }
 
 func (a *App) DiscoverAccess(ctx context.Context) (PublicAccessDiscovery, error) {
 	if a == nil || a.accessPolicies == nil {
-		return PublicAccessDiscovery{}, NewError("access_policy.unavailable")
+		return PublicAccessDiscovery{}, apperror.New("access_policy.unavailable")
 	}
 	return a.accessPolicies.Discover(ctx)
 }
@@ -212,7 +213,7 @@ func (s *accessPolicyService) Replace(ctx context.Context, invocation Invocation
 		return AccessPolicyView{}, err
 	}
 	if command.IdempotencyKey == "" {
-		return AccessPolicyView{}, NewError("idempotency.key_required")
+		return AccessPolicyView{}, apperror.New("idempotency.key_required")
 	}
 	input, err := s.preflightInput(command.ExpectedRevision, command.Settings, command.RevokeExistingSessions)
 	if err != nil {
@@ -240,7 +241,7 @@ func (s *accessPolicyService) Replace(ctx context.Context, invocation Invocation
 		return AccessPolicyView{}, err
 	}
 	if stored == nil || stored.Snapshot == nil || stored.Snapshot.Policy == nil {
-		return AccessPolicyView{}, NewError("access_policy.unavailable")
+		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
 	}
 	if stored.Changed && !stored.Replayed {
 		if effectErr := s.effects.Changed(ctx, accessPolicyChanged{InstitutionID: institution.ID,
@@ -310,7 +311,7 @@ func (s *accessPolicyService) requireStrongRecent(invocation Invocation) error {
 
 func (s *accessPolicyService) preflightInput(expected int64, settings model.AccessPolicySettings, revokeExistingSessions bool) (*store.AccessPolicyPreflight, error) {
 	if expected < 1 || settings.Validate() != nil {
-		return nil, NewError("access_policy.invalid")
+		return nil, apperror.New("access_policy.invalid")
 	}
 	capabilities := accessDeploymentCapabilities(s.capabilities.Snapshot())
 	return &store.AccessPolicyPreflight{ExpectedRevision: expected, Settings: settings,
@@ -406,18 +407,19 @@ func cloneAccessPolicyHistory(history []*model.AccessPolicyTransition) []*model.
 	return result
 }
 
-func blockedAccessPolicyError(blockers []store.AccessPolicyBlocker) error {
-	if len(blockers) == 0 {
-		return nil
+func blockedAccessPolicyError(blockers []store.AccessPolicyBlocker, cause error) error {
+	failure := apperror.New("access_policy.blocked").Wrap(cause)
+	if len(blockers) > 0 {
+		failure = failure.WithField("blocker", string(blockers[0].Code))
 	}
-	return NewError("access_policy.blocked").WithField("blocker", string(blockers[0].Code))
+	return failure
 }
 
 func accessPolicyModelError(err error) error {
 	if errors.Is(err, model.ErrAccessPolicyRevisionConflict) {
-		return NewError("access_policy.revision_conflict").Wrap(err)
+		return apperror.New("access_policy.revision_conflict").Wrap(err)
 	}
-	return NewError("access_policy.invalid").Wrap(err)
+	return apperror.New("access_policy.invalid").Wrap(err)
 }
 
 func accessPolicyError(err error) error {
@@ -425,12 +427,12 @@ func accessPolicyError(err error) error {
 	var blocked *store.ErrAccessPolicyBlocked
 	switch {
 	case errors.As(err, &revision):
-		return NewError("access_policy.revision_conflict").WithField("current_revision", strconv.FormatInt(revision.CurrentRevision, 10)).Wrap(err)
+		return apperror.New("access_policy.revision_conflict").WithField("current_revision", strconv.FormatInt(revision.CurrentRevision, 10)).Wrap(err)
 	case errors.As(err, &blocked):
-		return blockedAccessPolicyError(blocked.Blockers).(*Error).Wrap(err)
+		return blockedAccessPolicyError(blocked.Blockers, err)
 	case idempotencyError(err) != nil:
 		return idempotencyError(err)
 	default:
-		return NewError("access_policy.unavailable").Wrap(err)
+		return apperror.New("access_policy.unavailable").Wrap(err)
 	}
 }

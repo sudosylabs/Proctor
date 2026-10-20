@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -187,7 +188,7 @@ func (s *profilePictureService) Upload(ctx context.Context, invocation Invocatio
 func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
 	userID := strings.TrimSpace(command.UserID)
 	if !model.IsValidId(userID) || command.ExpectedRevision < 0 || command.Body == nil || command.Size == 0 || command.Size < -1 || command.Size > maximumProfilePictureBytes {
-		return nil, NewError("request.invalid").WithField("field", "profile_picture")
+		return nil, apperror.New("request.invalid").WithField("field", "profile_picture")
 	}
 	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
 		return nil, err
@@ -197,10 +198,10 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 		return nil, userProfileError(err)
 	}
 	if command.ExpectedRevision > 0 && current.Revision != command.ExpectedRevision {
-		return nil, NewError("user.conflict").WithField("resource", "user")
+		return nil, apperror.New("user.conflict").WithField("resource", "user")
 	}
 	if (!current.CustomProfilePictureFileID.IsZero() || !current.DefaultProfilePictureFileID.IsZero()) && strings.TrimSpace(command.ExpectedSHA256) == "" {
-		return nil, NewError("request.invalid").WithField("field", "if_match")
+		return nil, apperror.New("request.invalid").WithField("field", "if_match")
 	}
 	var currentState *store.ProfilePictureState
 	activeState, stateErr := s.files.GetProfilePictureState(ctx, current.ID)
@@ -211,10 +212,10 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 			expectedEntryID = current.CustomProfilePictureFileID
 		}
 		if strings.TrimSpace(command.ExpectedSHA256) == "" {
-			return nil, NewError("request.invalid").WithField("field", "if_match")
+			return nil, apperror.New("request.invalid").WithField("field", "if_match")
 		}
 		if activeState.EntryID != expectedEntryID || !profilePictureChecksumMatches(activeState, command.ExpectedSHA256) {
-			return nil, NewError("user.conflict").WithField("resource", "profile_picture")
+			return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
 		}
 	} else if !store.IsNotFound(stateErr) || !current.CustomProfilePictureFileID.IsZero() || !current.DefaultProfilePictureFileID.IsZero() {
 		return nil, profilePictureError(stateErr)
@@ -249,16 +250,16 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	if err != nil {
 		var capacity profilePictureWorkCapacity
 		if errors.As(err, &capacity) {
-			return nil, NewError("service.busy").Wrap(err)
+			return nil, apperror.New("service.busy").Wrap(err)
 		}
 		if errors.Is(err, ErrInvalidProfilePicture) {
-			return nil, NewError("profile_picture.invalid").Wrap(err)
+			return nil, apperror.New("profile_picture.invalid").Wrap(err)
 		}
-		return nil, NewError("profile_picture.unavailable").Wrap(err)
+		return nil, apperror.New("profile_picture.unavailable").Wrap(err)
 	}
 	if currentState != nil && sameNormalizedProfilePicture(currentState, renditions) {
 		if err = s.content.RemoveProfilePictureRenditions(ctx, revision.ID, renditions); err != nil {
-			return nil, NewError("profile_picture.unavailable").Wrap(err)
+			return nil, apperror.New("profile_picture.unavailable").Wrap(err)
 		}
 		err = s.files.DiscardProfilePictureUpload(ctx, &store.ProfilePictureUploadDiscard{ActorID: invocation.Principal().UserID, UserID: current.ID, ExpectedUserRevision: current.Revision, ExpectedActiveEntryID: currentState.EntryID, ExpectedCurrentRevisionID: currentState.RevisionID, UploadEntryID: entryID, RevisionID: revision.ID, LeaseID: lease.ID})
 		if err != nil {
@@ -379,7 +380,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 	userID := strings.TrimSpace(command.UserID)
 	expectedSHA256 := strings.TrimSpace(command.ExpectedSHA256)
 	if !model.IsValidId(userID) || expectedSHA256 == "" {
-		return nil, NewError("request.invalid").WithField("field", "if_match")
+		return nil, apperror.New("request.invalid").WithField("field", "if_match")
 	}
 	if err := s.authorization.AuthorizeProfilePictureWrite(ctx, invocation, userID); err != nil {
 		return nil, err
@@ -389,14 +390,14 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 		return nil, userProfileError(err)
 	}
 	if current.CustomProfilePictureFileID.IsZero() {
-		return nil, NewError("user.conflict").WithField("resource", "profile_picture")
+		return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
 	}
 	state, err := s.files.GetProfilePictureState(ctx, current.ID)
 	if err != nil {
 		return nil, profilePictureError(err)
 	}
 	if state.EntryID != current.CustomProfilePictureFileID || !profilePictureChecksumMatches(state, expectedSHA256) {
-		return nil, NewError("user.conflict").WithField("resource", "profile_picture")
+		return nil, apperror.New("user.conflict").WithField("resource", "profile_picture")
 	}
 	action := model.ActionUserManage
 	if invocation.Principal().UserID == current.ID {
@@ -445,7 +446,7 @@ func (s *profilePictureService) Get(ctx context.Context, invocation Invocation, 
 func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
 	id := strings.TrimSpace(query.UserID)
 	if !model.IsValidId(id) || (query.Size != 128 && query.Size != 256 && query.Size != 512) {
-		return nil, NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	if err := s.authorization.AuthorizeRead(ctx, invocation, id); err != nil {
 		return nil, err
@@ -461,9 +462,9 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocati
 			if renderErr != nil {
 				var capacity profilePictureWorkCapacity
 				if errors.As(renderErr, &capacity) {
-					return nil, NewError("service.busy").Wrap(renderErr)
+					return nil, apperror.New("service.busy").Wrap(renderErr)
 				}
-				return nil, NewError("profile_picture.unavailable").Wrap(renderErr)
+				return nil, apperror.New("profile_picture.unavailable").Wrap(renderErr)
 			}
 			if s.defaultJobs != nil {
 				if proposeErr := s.defaultJobs.ProposeDefaultProfilePicture(ctx, user.ID, model.TimeUTC(s.now())); proposeErr != nil {
@@ -476,7 +477,7 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocati
 	}
 	body, err := s.content.OpenProfilePictureRendition(ctx, rendition.RevisionID, rendition.ID)
 	if err != nil {
-		return nil, NewError("profile_picture.unavailable").Wrap(err)
+		return nil, apperror.New("profile_picture.unavailable").Wrap(err)
 	}
 	return &ProfilePictureContent{Body: body, MediaType: rendition.MediaType, Size: rendition.Size, ETag: `"` + rendition.SHA256 + `"`}, nil
 }
@@ -542,10 +543,10 @@ func (s *defaultProfilePictureService) Ensure(ctx context.Context, userID model.
 
 func profilePictureError(err error) error {
 	if store.IsNotFound(err) {
-		return NewError("resource.not_found").Wrap(err)
+		return apperror.New("resource.not_found").Wrap(err)
 	}
 	if store.IsConflict(err) {
-		return NewError("user.conflict").Wrap(err)
+		return apperror.New("user.conflict").Wrap(err)
 	}
-	return NewError("profile_picture.unavailable").Wrap(err)
+	return apperror.New("profile_picture.unavailable").Wrap(err)
 }

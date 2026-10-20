@@ -23,6 +23,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -1227,10 +1228,10 @@ func (fake *examAttemptHTTPFake) AppendNativeDelivery(context.Context, applicati
 }
 
 func (fake *examAttemptHTTPFake) BrowserSourceStatus(context.Context, application.Invocation, application.BrowserSourceQuery) (*model.BrowserSourceStatus, error) {
-	return nil, application.NewError("exam.attempt.unavailable")
+	return nil, apperror.New("exam.attempt.unavailable")
 }
 func (fake *examAttemptHTTPFake) BrowserSourceList(context.Context, application.Invocation, application.BrowserSourceQuery) ([]model.BrowserSourceStatus, error) {
-	return nil, application.NewError("exam.attempt.unavailable")
+	return nil, apperror.New("exam.attempt.unavailable")
 }
 
 func (fake *examAttemptHTTPFake) BrowserDeliveryReceipts(context.Context, application.Invocation, application.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error) {

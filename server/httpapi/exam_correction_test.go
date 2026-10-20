@@ -21,6 +21,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -279,7 +280,7 @@ func (fake *examSittingCorrectionHTTPFake) AuthenticateBearer(context.Context, s
 func (fake *examSittingCorrectionHTTPFake) StageExamSittingCorrectionResourceContent(_ context.Context, _ application.Invocation, command application.StageExamSittingCorrectionResourceContentCommand) (application.ExamSittingCorrectionResourceStage, error) {
 	raw, err := io.ReadAll(command.Body)
 	if err != nil {
-		return application.ExamSittingCorrectionResourceStage{}, application.NewError("exam.sitting.correction.invalid_content")
+		return application.ExamSittingCorrectionResourceStage{}, apperror.New("exam.sitting.correction.invalid_content")
 	}
 	fake.stage, fake.uploaded = command, raw
 	fake.stageCalls++

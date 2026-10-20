@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -69,7 +70,7 @@ type CurrentUserContextView struct {
 func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) (*CurrentUserContextView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return nil, NewError("authentication.invalid_token")
+		return nil, apperror.New("authentication.invalid_token")
 	}
 	value, err := a.userProfiles.users.GetCurrentContext(ctx, principal.UserID, 21)
 	if err != nil {
@@ -77,7 +78,7 @@ func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) 
 	}
 	if value == nil || value.UserID != principal.UserID || value.Username == "" || value.DisplayName == "" ||
 		len(value.AvailableProductAreas) < 2 || len(value.ManagementScopes) > 20 {
-		return nil, NewError("administration.unavailable").Wrap(errors.New("current User context projection is incomplete"))
+		return nil, apperror.New("administration.unavailable").Wrap(errors.New("current User context projection is incomplete"))
 	}
 	view := &CurrentUserContextView{UserID: value.UserID, Username: value.Username, DisplayName: value.DisplayName,
 		ProfilePictureReference: "/api/v1/users/" + value.UserID.String() + "/profile-picture",
@@ -145,7 +146,7 @@ func (a *App) GetUserProfile(ctx context.Context, invocation Invocation, query G
 func (s *userProfileService) Get(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	fullProfile, err := s.authorization.AuthorizeProfileRead(ctx, invocation, id)
 	if err != nil {
@@ -197,7 +198,7 @@ func (a *App) UpdateUserProfile(ctx context.Context, invocation Invocation, comm
 func (s *userProfileService) Update(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "user_id")
+		return nil, apperror.New("request.invalid").WithField("field", "user_id")
 	}
 	if err := s.authorization.AuthorizeManage(ctx, invocation, id); err != nil {
 		return nil, err
@@ -241,16 +242,16 @@ func (s *userProfileService) Update(ctx context.Context, invocation Invocation, 
 func userProfileError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "user").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "user").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("user.conflict").WithField("resource", "user").Wrap(err)
+		return apperror.New("user.conflict").WithField("resource", "user").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("user.invalid").WithField("resource", "user").Wrap(err)
+			return apperror.New("user.invalid").WithField("resource", "user").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "user").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "user").Wrap(err)
 	}
 }
 

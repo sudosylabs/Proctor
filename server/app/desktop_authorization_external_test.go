@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -78,7 +79,7 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 			result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: test.binding, State: test.state, Source: "192.0.2.10",
 			})
-			if result != nil || !Is(err, test.code) {
+			if result != nil || !apperror.Is(err, test.code) {
 				t.Fatalf("begin = %#v, %v; want %s", result, err, test.code)
 			}
 			if test.transactions.contextCalls != test.lookups || provider.beginCalls != 0 || service.loginStates.(*externalLoginStateStoreFake).saved != nil {

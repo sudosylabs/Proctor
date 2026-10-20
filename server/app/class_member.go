@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -211,29 +212,29 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	}
 	parsedClassID, err := model.ParseClassID(classID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "class_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
 	}
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "user_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "user_id").Wrap(err)
 	}
 	memberID, err := model.ParseClassMemberID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "class_member_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "class_member_id").Wrap(err)
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
 	var retainedPrevious *model.ClassMember
 	if command.batchRetainedOutcome && command.RequireTransfer {
 		previousID, parseErr := model.ParseClassMemberID(strings.TrimSpace(command.ExpectedPreviousID))
 		if parseErr != nil {
-			return nil, NewError("request.invalid").WithField("field", "expected_previous_id").Wrap(parseErr)
+			return nil, apperror.New("request.invalid").WithField("field", "expected_previous_id").Wrap(parseErr)
 		}
 		retainedPrevious, err = s.store.Get(ctx, previousID.String())
 		if err != nil {
 			return nil, classMemberError(err)
 		}
 		if retainedPrevious.UserID != userID {
-			return nil, NewError("resource.not_found").WithField("resource", "class_member")
+			return nil, apperror.New("resource.not_found").WithField("resource", "class_member")
 		}
 		if _, err = s.authorizeClass(ctx, invocation, retainedPrevious.ClassID.String(), model.ActionClassMembersManage); err != nil {
 			return nil, concealMembershipAuthorizationError(err, "class_member")
@@ -322,7 +323,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		for _, membership := range active {
 			if membership != nil && membership.AcademicPeriodID == candidate.AcademicPeriodID {
 				if previous != nil {
-					return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+					return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
 				}
 				previous = membership
 			}
@@ -331,9 +332,9 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			expectedPreviousID := strings.TrimSpace(command.ExpectedPreviousID)
 			switch {
 			case command.RequireTransfer && (previous == nil || (previous.ID.String() != expectedPreviousID && previous.ClassID != candidate.ClassID)):
-				return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+				return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
 			case !command.RequireTransfer && previous != nil && previous.ClassID != candidate.ClassID:
-				return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+				return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
 			}
 		}
 		possibleReplay = command.IdempotencyKey != "" && previous != nil && previous.ClassID == candidate.ClassID
@@ -344,7 +345,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	var previousClass *model.Class
 	if previous != nil {
 		if previous.ClassID == candidate.ClassID {
-			return nil, NewError("class.enrollment_conflict").WithField("resource", "class_member")
+			return nil, apperror.New("class.enrollment_conflict").WithField("resource", "class_member")
 		}
 		if _, err = s.authorizeClass(ctx, invocation, previous.ClassID.String(), model.ActionClassMembersManage); err != nil {
 			return nil, concealMembershipAuthorizationError(err, "class_member")
@@ -394,7 +395,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
 			Details: details, ActionAt: at})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	destinationAttempt := mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
@@ -468,7 +469,7 @@ func (a *App) EndClassMember(ctx context.Context, invocation Invocation, command
 func (s *classMemberService) End(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "class_member_id")
+		return nil, apperror.New("request.invalid").WithField("field", "class_member_id")
 	}
 	if err := s.authorization.AuthorizePreflight(
 		ctx, invocation, model.ActionClassMembersManage, model.ResourceClass,
@@ -517,7 +518,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		return nil, concealMembershipAuthorizationError(err, "class_member")
 	}
 	if command.BatchScopeID != "" && strings.TrimSpace(command.BatchScopeID) != current.ClassID.String() {
-		return nil, NewError("resource.not_found").WithField("resource", "class_member")
+		return nil, apperror.New("resource.not_found").WithField("resource", "class_member")
 	}
 	class, err := s.classes.Get(ctx, current.ClassID.String())
 	if err != nil {
@@ -545,7 +546,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 			TemplateKey:  model.MailTemplateAcademicClassEnrollmentEnded,
 			Details:      appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
 		if err != nil {
-			return nil, NewError("mail.unavailable").Wrap(err)
+			return nil, apperror.New("mail.unavailable").Wrap(err)
 		}
 	}
 	freshMutation := false
@@ -598,7 +599,7 @@ func (s *classMemberService) publishEnrollmentChanged(ctx context.Context, resul
 
 func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID string, action model.Action) (model.Resource, error) {
 	if !model.IsValidId(classID) {
-		return model.Resource{}, NewError("request.invalid").WithField("field", "class_id")
+		return model.Resource{}, apperror.New("request.invalid").WithField("field", "class_id")
 	}
 	resource := model.Resource{Type: model.ResourceClass, ID: classID}
 	if err := s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
@@ -612,25 +613,25 @@ func classMemberError(err error) error {
 		return mapped
 	}
 	if store.IsNotFound(err) {
-		return NewError("resource.not_found").WithField("resource", "class_member").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "class_member").Wrap(err)
 	}
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) {
 		switch conflict.Constraint {
 		case "class_member_student_affiliation_required":
-			return NewError("class_member.student_affiliation_required").Wrap(err)
+			return apperror.New("class_member.student_affiliation_required").Wrap(err)
 		case "class_member_end_time":
-			return NewError("resource.not_found").WithField("resource", "class_member").Wrap(err)
+			return apperror.New("resource.not_found").WithField("resource", "class_member").Wrap(err)
 		default:
-			return NewError("class.enrollment_conflict").WithField("resource", "class_member").Wrap(err)
+			return apperror.New("class.enrollment_conflict").WithField("resource", "class_member").Wrap(err)
 		}
 	}
 	var invalid *store.ErrInvalidInput
 	var reference *store.ErrReference
 	if errors.As(err, &invalid) || errors.As(err, &reference) {
-		return NewError("class_member.invalid").WithField("resource", "class_member").Wrap(err)
+		return apperror.New("class_member.invalid").WithField("resource", "class_member").Wrap(err)
 	}
-	return NewError("administration.unavailable").WithField("resource", "class_member").Wrap(err)
+	return apperror.New("administration.unavailable").WithField("resource", "class_member").Wrap(err)
 }
 
 // ListClassMembersPageQuery opts into bounded membership enumeration. Each page is
@@ -663,10 +664,10 @@ func (s *classMemberService) ListPage(ctx context.Context, invocation Invocation
 	}
 	scopeID, err := model.ParseClassID(resource.ID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "class_id")
+		return nil, apperror.New("request.invalid").WithField("field", "class_id")
 	}
 	if query.AfterID.IsZero() != query.AfterUserID.IsZero() || (!query.AfterID.IsZero() && (!query.AfterID.IsValid() || !query.AfterUserID.IsValid())) {
-		return nil, NewError("request.invalid").WithField("field", "cursor")
+		return nil, apperror.New("request.invalid").WithField("field", "cursor")
 	}
 	options := store.ClassMemberPageOptions{ClassID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
 

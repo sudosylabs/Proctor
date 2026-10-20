@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -64,7 +65,7 @@ func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthor
 func (p *Publication) Publish(ctx context.Context, call Call, command PublishRevisionCommand) (store.ExamRevisionSummary, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
-		return store.ExamRevisionSummary{}, invalid("publication")
+		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "publication")
 	}
 	idempotency, err := prepareIdempotency(call, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
 		ExamID                string `json:"exam_id"`
@@ -76,18 +77,18 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	at := model.TimeUTC(p.now())
 	revisionID := p.newID()
 	if !revisionID.IsValid() {
-		return store.ExamRevisionSummary{}, invalid("revision_id")
+		return store.ExamRevisionSummary{}, apperror.Invalid("exam.invalid", "revision_id")
 	}
 	access, err := p.access.Access(ctx, command.ExamID, principal.UserID)
 	if err != nil {
 		return store.ExamRevisionSummary{}, mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil {
-		return store.ExamRevisionSummary{}, unavailable(errors.New("Exam access projection is incomplete"))
+		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
 	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, at, model.ActionExamPublish, model.ActionExamPublishOverride)
 	if err != nil {
-		return store.ExamRevisionSummary{}, unavailable(err)
+		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	if err = p.authorizer.Authorize(ctx, call, action, resource); err != nil {
@@ -105,17 +106,13 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
-		var fault *Fault
-		if !errors.As(mapped, &fault) {
-			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
-		}
-		if auditErr := p.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+		if auditErr := p.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return store.ExamRevisionSummary{}, errors.Join(mapped, auditErr)
 		}
 		return store.ExamRevisionSummary{}, mapped
 	}
 	if result == nil || result.Revision == nil {
-		return store.ExamRevisionSummary{}, unavailable(errors.New("Exam Revision store returned no result"))
+		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam Revision store returned no result"))
 	}
 	if !result.Replayed {
 		if effectErr := p.effects.RevisionPublished(ctx, *result.Revision); effectErr != nil {
@@ -134,7 +131,7 @@ func (p *Publication) Get(ctx context.Context, call Call, examID model.ExamID, r
 		return store.ExamRevisionSummary{}, mapStoreError(err)
 	}
 	if revision == nil {
-		return store.ExamRevisionSummary{}, unavailable(errors.New("Exam Revision store returned no summary"))
+		return store.ExamRevisionSummary{}, apperror.New("exam.unavailable").Wrap(errors.New("Exam Revision store returned no summary"))
 	}
 	return *revision, nil
 }
@@ -144,7 +141,7 @@ func (p *Publication) List(ctx context.Context, call Call, query ListRevisionsQu
 		return RevisionPage{}, err
 	}
 	if query.Limit < 1 || query.Limit > 200 {
-		return RevisionPage{}, invalid("limit")
+		return RevisionPage{}, apperror.Invalid("exam.invalid", "limit")
 	}
 	items, err := p.store.List(ctx, store.ExamRevisionListOptions{ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit + 1})
 	if err != nil {
@@ -160,18 +157,18 @@ func (p *Publication) List(ctx context.Context, call Call, query ListRevisionsQu
 func (p *Publication) authorizeView(ctx context.Context, call Call, examID model.ExamID) error {
 	principal := call.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
-		return invalid("exam_id")
+		return apperror.Invalid("exam.invalid", "exam_id")
 	}
 	access, err := p.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil {
-		return unavailable(errors.New("Exam access projection is incomplete"))
+		return apperror.New("exam.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
 	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, model.TimeUTC(p.now()), model.ActionExamView, model.ActionExamViewOverride)
 	if err != nil {
-		return unavailable(err)
+		return apperror.New("exam.unavailable").Wrap(err)
 	}
 	return p.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }

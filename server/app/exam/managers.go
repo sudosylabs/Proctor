@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -48,7 +49,7 @@ type ManagerChange = store.ExamManagerCommandResult
 func (a *Authoring) ListManagers(ctx context.Context, call Call, query ListManagersQuery) (ManagerPage, error) {
 	if !query.ExamID.IsValid() || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeGrantedAt.IsZero() != query.BeforeUserID.IsZero()) {
-		return ManagerPage{}, invalid("manager_list")
+		return ManagerPage{}, apperror.Invalid("exam.invalid", "manager_list")
 	}
 	if _, _, err := a.authorizeManagement(ctx, call, query.ExamID, model.TimeUTC(a.now())); err != nil {
 		return ManagerPage{}, err
@@ -114,7 +115,7 @@ var (
 func (a *Authoring) changeManager(ctx context.Context, call Call, command AddManagerCommand, transition managerTransition, mutate managerMutation) (ManagerChange, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || !command.UserID.IsValid() || command.ExpectedExamRevision < 1 {
-		return ManagerChange{}, invalid("manager_command")
+		return ManagerChange{}, apperror.Invalid("exam.invalid", "manager_command")
 	}
 	idempotency, err := prepareIdempotency(call, transition.idempotencyOperation, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
@@ -141,7 +142,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		return ManagerChange{}, mapStoreError(err)
 	}
 	if snapshot == nil || snapshot.Draft == nil {
-		return ManagerChange{}, unavailable(errors.New("exam store returned no mail identity"))
+		return ManagerChange{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no mail identity"))
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	auditData := map[string]any{
@@ -160,8 +161,8 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	at := model.TimeFromMillis(model.MillisFromTime(decisionAt))
 	notices, err := a.prepareManagerNotices(ctx, access.Exam.OwnerUserID, command.UserID, snapshot.Draft.Title, at, transition)
 	if err != nil {
-		mapped := unavailable(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {
+		mapped := apperror.New("exam.unavailable").Wrap(err)
+		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return ManagerChange{}, errors.Join(mapped, auditErr)
 		}
 		return ManagerChange{}, mapped
@@ -173,13 +174,13 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
-		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {
+		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return ManagerChange{}, errors.Join(mapped, auditErr)
 		}
 		return ManagerChange{}, mapped
 	}
 	if result == nil || result.Exam == nil || result.Manager == nil {
-		return ManagerChange{}, unavailable(errors.New("exam store returned no manager result"))
+		return ManagerChange{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no manager result"))
 	}
 	if !result.Replayed {
 		effectErr := transition.publish(ctx, a.effects, result.Exam.ID, command.UserID, result.Exam.Revision, at)
@@ -228,7 +229,7 @@ func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID m
 		return nil, "", mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil {
-		return nil, "", unavailable(errors.New("exam store returned no access projection"))
+		return nil, "", apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
 	}
 	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
 	if err != nil {
@@ -246,22 +247,14 @@ func (a *Authoring) isEligibleManager(ctx context.Context, userID model.UserID, 
 		if store.IsNotFound(err) {
 			return false, nil
 		}
-		return false, unavailable(err)
+		return false, apperror.New("exam.unavailable").Wrap(err)
 	}
 	if user == nil || !user.IsActive() {
 		return false, nil
 	}
 	eligible, err := manageraccess.HasCurrentMembership(ctx, a.memberships, userID, unitID, at)
 	if err != nil {
-		return false, unavailable(err)
+		return false, apperror.New("exam.unavailable").Wrap(err)
 	}
 	return eligible, nil
-}
-
-func faultCodeForAudit(err error) string {
-	var fault *Fault
-	if errors.As(err, &fault) {
-		return fault.Code
-	}
-	return "exam.unavailable"
 }

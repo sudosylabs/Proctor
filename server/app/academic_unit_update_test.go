@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -139,7 +140,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		Name: "computing", DisplayName: "Computing", Revision: 1,
 	}
 	persistence := &academicUnitMutationStore{events: &events, current: current}
-	denied := NewError("authorization.denied")
+	denied := apperror.New("authorization.denied")
 	service := newAcademicUnitCommandService(
 		persistence,
 		academicUnitAuthorizerStub{authorize: func(_ context.Context, _ Invocation, action model.Action, resource model.Resource) error {
@@ -156,7 +157,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
 	)
 	emptyParent := ""
-	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: unitID, ParentID: &emptyParent}); !Is(err, "authorization.denied") {
+	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: unitID, ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Update() error = %v, want authorization.denied", err)
 	}
 	assertAcademicUnitCreateEvents(t, events,
@@ -195,7 +196,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 	_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
 		ID: unitID, ParentID: stringPointer(model.NewId()),
 	})
-	if !Is(err, "academic_unit.conflict") || auditor.failCode != "academic_unit.conflict" {
+	if !apperror.Is(err, "academic_unit.conflict") || auditor.failCode != "academic_unit.conflict" {
 		t.Fatalf("Update() error = %v, failure audit = %q", err, auditor.failCode)
 	}
 	assertAcademicUnitCreateEvents(

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -70,7 +71,7 @@ func TestSystemResourceReturnsHealthyStatusAndVersionThroughKernel(t *testing.T)
 func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	bootstrap := &recordingBootstrap{bootstrapErr: application.NewError("installation.unavailable")}
+	bootstrap := &recordingBootstrap{bootstrapErr: apperror.New("installation.unavailable")}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
 
 	invalid := httptest.NewRecorder()
@@ -117,7 +118,7 @@ func TestBootstrapStatusExposesOnlyInitializedFlag(t *testing.T) {
 func TestBootstrapDeniedDoesNotEchoSecretOrAccountDetail(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
-	bootstrap := &recordingBootstrap{bootstrapErr: application.NewError("installation.bootstrap_denied")}
+	bootstrap := &recordingBootstrap{bootstrapErr: apperror.New("installation.bootstrap_denied")}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
 	const secret = "wrong-secret-material-that-must-not-be-echoed"
 	response := httptest.NewRecorder()

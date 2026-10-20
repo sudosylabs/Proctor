@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -286,7 +287,7 @@ func (s *mfaApplicationService) Challenge(
 	proof, err := s.mechanics.verifySecondFactor(ctx, s.credentials, principal.UserID.String(), command.Code, now)
 	if err != nil {
 		code := "authentication.mfa.invalid_code"
-		if failure, ok := As(err); ok {
+		if failure, ok := apperror.As(err); ok {
 			code = failure.Code()
 		}
 		if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, code, nil); auditErr != nil {
@@ -442,10 +443,10 @@ func (s *mfaApplicationService) VerifyLogin(
 		return model.AuthenticationSingleFactor, 0, nil
 	}
 	if !s.mechanics.settings.Enabled {
-		return "", 0, NewError("authentication.mfa.unavailable")
+		return "", 0, apperror.New("authentication.mfa.unavailable")
 	}
 	if strings.TrimSpace(code) == "" {
-		return "", 0, NewError("authentication.mfa.required")
+		return "", 0, apperror.New("authentication.mfa.required")
 	}
 	if appErr := s.consumeSecondFactor(ctx, userID, code, at); appErr != nil {
 		return "", 0, appErr
@@ -466,7 +467,7 @@ func (s *mfaApplicationService) requireEnabled() error {
 	if s.mechanics.settings.Enabled {
 		return nil
 	}
-	return NewError("authentication.mfa.disabled")
+	return apperror.New("authentication.mfa.disabled")
 }
 
 func (s *mfaApplicationService) requireInteractiveSession(
@@ -474,10 +475,10 @@ func (s *mfaApplicationService) requireInteractiveSession(
 	recent bool,
 ) error {
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return NewError("authentication.session_required")
+		return apperror.New("authentication.session_required")
 	}
 	if recent && !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
-		return NewError("authentication.reauthentication_required")
+		return apperror.New("authentication.reauthentication_required")
 	}
 	return nil
 }
@@ -487,7 +488,7 @@ func (s *mfaApplicationService) requireStrongRecentSession(principal model.Princ
 		return err
 	}
 	if !principal.HasStrongAuthentication() {
-		return NewError("authentication.strong_authentication_required")
+		return apperror.New("authentication.strong_authentication_required")
 	}
 	return nil
 }
@@ -507,7 +508,7 @@ func (s *mfaApplicationService) failMutation(
 ) error {
 	mapped := mfaStoreError(err)
 	code := "authentication.mfa.unavailable"
-	if failure, ok := As(mapped); ok {
+	if failure, ok := apperror.As(mapped); ok {
 		code = failure.Code()
 	}
 	if auditErr := s.audit.Complete(
@@ -556,17 +557,17 @@ func (s *mfaApplicationService) RecoveryState(ctx context.Context, userID model.
 		return nil, authenticationUnavailable(err)
 	}
 	if state.ReenrollmentRequired && !s.mechanics.settings.Enabled {
-		return nil, NewError("authentication.mfa.unavailable")
+		return nil, apperror.New("authentication.mfa.unavailable")
 	}
 	return state, nil
 }
 
 func (s *mfaApplicationService) requireRecoverySession(principal model.Principal, recent bool) error {
 	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return NewError("authentication.session_required")
+		return apperror.New("authentication.session_required")
 	}
 	if recent && !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
-		return NewError("authentication.reauthentication_required")
+		return apperror.New("authentication.reauthentication_required")
 	}
 	return nil
 }
@@ -583,7 +584,7 @@ func (s *mfaApplicationService) limitFactorAttempt(ctx context.Context, invocati
 		return rateLimitUnavailableAppError(err)
 	}
 	if limited {
-		return NewError("authentication.rate_limited")
+		return apperror.New("authentication.rate_limited")
 	}
 	return nil
 }

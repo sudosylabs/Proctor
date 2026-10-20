@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -154,7 +155,7 @@ func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
 		t,
 		logger,
 		classRouteAuthenticator{principal: principal},
-		classResource(&classHTTPApplication{searchErr: application.NewError("class.invalid")}),
+		classResource(&classHTTPApplication{searchErr: apperror.New("class.invalid")}),
 	)
 
 	request := httptest.NewRequest(
@@ -184,7 +185,7 @@ func TestClassResourceFailsClosedForUndeclaredAuthenticationError(t *testing.T) 
 	httpAPI := newFocusedResourceAPI(
 		t,
 		logger,
-		classRouteAuthenticator{err: application.NewError("user.conflict")},
+		classRouteAuthenticator{err: apperror.New("user.conflict")},
 		classResource(&classHTTPApplication{}),
 	)
 	request := httptest.NewRequest(
@@ -252,7 +253,7 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 	t.Parallel()
 	logger, _ := newTestLogger(t)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
-	classes := &classHTTPApplication{searchErr: application.NewError("resource.not_found").WithField("resource", "academic_unit")}
+	classes := &classHTTPApplication{searchErr: apperror.New("resource.not_found").WithField("resource", "academic_unit")}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	options := validHTTPOptions(t)
 	options.Logger = logger

@@ -11,6 +11,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,11 +44,11 @@ func TestSubmitExamAttemptBuildsSemanticFingerprintAndReturnsOnlySafeReceipt(t *
 
 func TestSubmitExamAttemptRequiresIdempotencyBeforeChildCall(t *testing.T) {
 	t.Parallel()
-	fake := &examSubmissionFacadeFake{err: &examattempt.Fault{Code: "idempotency.key_required"}}
+	fake := &examSubmissionFacadeFake{err: apperror.New("idempotency.key_required")}
 	application := &App{examAttempts: fake}
 	_, err := application.SubmitExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}),
 		SubmitExamAttemptCommand{})
-	if !Is(err, "idempotency.key_required") || len(fake.submits) != 1 {
+	if !apperror.Is(err, "idempotency.key_required") || len(fake.submits) != 1 {
 		t.Fatalf("error=%v submits=%d", err, len(fake.submits))
 	}
 }

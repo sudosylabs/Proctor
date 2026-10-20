@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -22,7 +23,7 @@ type RetentionNoticePage struct {
 // It grants no underlying record access and has no read-acknowledgement effect.
 func (a *App) ListRetentionNotices(ctx context.Context, invocation Invocation, after model.RetentionRetirementID, limit int) (*RetentionNoticePage, error) {
 	if a == nil || a.retentionPolicy == nil || a.retentionPolicy.lifecycle == nil {
-		return nil, NewError("retention.unavailable")
+		return nil, apperror.New("retention.unavailable")
 	}
 	return a.retentionPolicy.ListNotices(ctx, invocation, after, limit)
 }
@@ -30,17 +31,17 @@ func (a *App) ListRetentionNotices(ctx context.Context, invocation Invocation, a
 func (s *retentionPolicyService) ListNotices(ctx context.Context, invocation Invocation, after model.RetentionRetirementID, limit int) (*RetentionNoticePage, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return nil, NewError("authentication.required")
+		return nil, apperror.New("authentication.required")
 	}
 	if limit < 1 || limit > model.RetentionMaximumPageSize || (!after.IsZero() && !after.IsValid()) {
-		return nil, NewError("retention.invalid")
+		return nil, apperror.New("retention.invalid")
 	}
 	items, err := s.lifecycle.ListNotices(ctx, principal.UserID, after, limit+1)
 	if err != nil {
 		return nil, retentionError(err)
 	}
 	if len(items) > limit+1 {
-		return nil, NewError("retention.unavailable")
+		return nil, apperror.New("retention.unavailable")
 	}
 	page := &RetentionNoticePage{Items: items, HasMore: len(items) > limit}
 	if page.HasMore {
@@ -48,7 +49,7 @@ func (s *retentionPolicyService) ListNotices(ctx context.Context, invocation Inv
 	}
 	for _, item := range page.Items {
 		if item.RecipientUserID != principal.UserID {
-			return nil, NewError("retention.unavailable")
+			return nil, apperror.New("retention.unavailable")
 		}
 	}
 	return page, nil

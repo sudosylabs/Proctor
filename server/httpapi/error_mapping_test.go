@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/httpapi"
 )
 
@@ -32,37 +32,37 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 	}{
 		{
 			name:       "academic unit member invalid",
-			err:        app.NewError("academic_unit_member.invalid"),
+			err:        apperror.New("academic_unit_member.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "academic_unit_member.invalid",
 		},
 		{
 			name:       "academic unit member conflict",
-			err:        app.NewError("academic_unit_member.conflict"),
+			err:        apperror.New("academic_unit_member.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "academic_unit_member.conflict",
 		},
 		{
 			name:       "affiliation invalid",
-			err:        app.NewError("affiliation.invalid"),
+			err:        apperror.New("affiliation.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "affiliation.invalid",
 		},
 		{
 			name:       "affiliation conflict",
-			err:        app.NewError("affiliation.conflict"),
+			err:        apperror.New("affiliation.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "affiliation.conflict",
 		},
 		{
 			name:       "student affiliation with active enrollment",
-			err:        app.NewError("affiliation.student_has_active_enrollment"),
+			err:        apperror.New("affiliation.student_has_active_enrollment"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "affiliation.student_has_active_enrollment",
 		},
 		{
 			name: "not found preserves safe fields",
-			err: app.NewError("academic_unit.not_found").
+			err: apperror.New("academic_unit.not_found").
 				WithField("academic_unit_id", "unit123").
 				Wrap(errors.New("sql: no rows")),
 			wantStatus: http.StatusNotFound,
@@ -72,13 +72,13 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		},
 		{
 			name:       "conflict",
-			err:        app.NewError("class.enrollment_conflict"),
+			err:        apperror.New("class.enrollment_conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "class.enrollment_conflict",
 		},
 		{
 			name:       "invalid request",
-			err:        app.NewError("academic_unit.invalid").WithField("field", "name"),
+			err:        apperror.New("academic_unit.invalid").WithField("field", "name"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "academic_unit.invalid",
 			wantField:  "field",
@@ -86,91 +86,91 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		},
 		{
 			name:       "authentication required",
-			err:        app.NewError("authentication.required"),
+			err:        apperror.New("authentication.required"),
 			wantStatus: http.StatusUnauthorized,
 			wantCode:   "authentication.required",
 		},
 		{
 			name:       "authorization denied",
-			err:        app.NewError("authorization.denied"),
+			err:        apperror.New("authorization.denied"),
 			wantStatus: http.StatusForbidden,
 			wantCode:   "authorization.denied",
 		},
 		{
 			name:       "invalid authentication token",
-			err:        app.NewError("authentication.invalid_token"),
+			err:        apperror.New("authentication.invalid_token"),
 			wantStatus: http.StatusUnauthorized,
 			wantCode:   "authentication.invalid_token",
 		},
 		{
 			name:       "invalid authorization request",
-			err:        app.NewError("authorization.request.invalid"),
+			err:        apperror.New("authorization.request.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "authorization.request.invalid",
 		},
 		{
 			name:       "fail closed audit unavailable",
-			err:        app.NewError("audit.unavailable"),
+			err:        apperror.New("audit.unavailable"),
 			wantStatus: http.StatusInternalServerError,
 			wantCode:   "audit.unavailable",
 		},
 		{
 			name:       "institution conflict",
-			err:        app.NewError("institution.conflict"),
+			err:        apperror.New("institution.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "institution.conflict",
 		},
 		{
 			name:       "institution invalid",
-			err:        app.NewError("institution.invalid"),
+			err:        apperror.New("institution.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "institution.invalid",
 		},
 		{
 			name:       "programme conflict",
-			err:        app.NewError("programme.conflict"),
+			err:        apperror.New("programme.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "programme.conflict",
 		},
 		{
 			name:       "programme invalid",
-			err:        app.NewError("programme.invalid"),
+			err:        apperror.New("programme.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "programme.invalid",
 		},
 		{
 			name:       "programme level conflict",
-			err:        app.NewError("programme_level.conflict"),
+			err:        apperror.New("programme_level.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "programme_level.conflict",
 		},
 		{
 			name:       "programme level invalid",
-			err:        app.NewError("programme_level.invalid"),
+			err:        apperror.New("programme_level.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "programme_level.invalid",
 		},
 		{
 			name:       "academic period conflict",
-			err:        app.NewError("academic_period.conflict"),
+			err:        apperror.New("academic_period.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "academic_period.conflict",
 		},
 		{
 			name:       "academic period invalid",
-			err:        app.NewError("academic_period.invalid"),
+			err:        apperror.New("academic_period.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "academic_period.invalid",
 		},
 		{
 			name:       "class conflict",
-			err:        app.NewError("class.conflict"),
+			err:        apperror.New("class.conflict"),
 			wantStatus: http.StatusConflict,
 			wantCode:   "class.conflict",
 		},
 		{
 			name:       "class invalid",
-			err:        app.NewError("class.invalid"),
+			err:        apperror.New("class.invalid"),
 			wantStatus: http.StatusBadRequest,
 			wantCode:   "class.invalid",
 		},
@@ -214,7 +214,7 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 func TestWriteErrorFailsSafeForUnmappedApplicationCodes(t *testing.T) {
 	t.Parallel()
 
-	response := writeErrorResponse(t, app.NewError("future.capability.unknown_code").
+	response := writeErrorResponse(t, apperror.New("future.capability.unknown_code").
 		WithField("secret", "should-not-matter").
 		Wrap(errors.New("sensitive operator detail")))
 	if response.Code != http.StatusInternalServerError {
@@ -239,7 +239,7 @@ func TestWriteErrorFailsSafeForUnmappedApplicationCodes(t *testing.T) {
 func TestWriteErrorMapsConflictWithoutLeakingCauses(t *testing.T) {
 	t.Parallel()
 
-	response := writeErrorResponse(t, app.NewError("installation.already_initialized").
+	response := writeErrorResponse(t, apperror.New("installation.already_initialized").
 		WithField("resource_id", "r1").
 		Wrap(errors.New("sensitive internal cause")))
 	if response.Code != http.StatusConflict {
@@ -270,7 +270,7 @@ func TestApplicationErrorMappingCoversEveryRegisteredCode(t *testing.T) {
 		if key := httpapi.LocalizationKey(code); key != code {
 			t.Fatalf("LocalizationKey(%q) = %q, want code default", code, key)
 		}
-		response := writeErrorResponse(t, app.NewError(code))
+		response := writeErrorResponse(t, apperror.New(apperror.Code(code)))
 		if response.Code != status {
 			t.Fatalf("code %q status = %d, want %d", code, response.Code, status)
 		}

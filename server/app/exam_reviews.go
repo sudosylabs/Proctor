@@ -10,8 +10,8 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -195,27 +195,7 @@ func (a *App) GetStudentExamResult(ctx context.Context, invocation Invocation,
 }
 
 func examReviewError(err error, conceal bool) error {
-	if err == nil {
-		return nil
-	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
-	}
-	var fault *examreview.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.integrity_review.unavailable").Wrap(err)
-	}
-	if conceal && fault.Code == "exam.integrity_review.not_found" {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return presentExamChildError(err, conceal, "exam.integrity_review.unavailable", "exam.integrity_review.not_found")
 }
 
 type examIntegrityReviewAuthorizationAdapter struct {
@@ -270,19 +250,19 @@ func (adapter examIntegrityReviewAuthorizationAdapter) resolve(ctx context.Conte
 	submissionID model.SubmissionID,
 ) (*store.ExamIntegrityReviewAuthorization, error) {
 	if adapter.reviews == nil || adapter.sittings == nil || adapter.audit == nil || !submissionID.IsValid() {
-		return nil, &examreview.Fault{Code: "exam.integrity_review.unavailable", Cause: errors.New("Review authorization dependencies are invalid")}
+		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("Review authorization dependencies are invalid"))
 	}
 	authorization, err := adapter.reviews.Resolve(ctx, submissionID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return nil, &examreview.Fault{Code: "exam.integrity_review.not_found", Cause: err}
+			return nil, apperror.New("exam.integrity_review.not_found").Wrap(err)
 		}
-		return nil, &examreview.Fault{Code: "exam.integrity_review.unavailable", Cause: err}
+		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(err)
 	}
 	if authorization == nil || authorization.SubmissionID != submissionID || !authorization.ExamID.IsValid() ||
 		!authorization.SittingID.IsValid() || !authorization.AttemptID.IsValid() || !authorization.CandidateUserID.IsValid() ||
 		!authorization.AcademicUnitID.IsValid() {
-		return nil, &examreview.Fault{Code: "exam.integrity_review.unavailable", Cause: errors.New("Review authorization projection is incomplete")}
+		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("Review authorization projection is incomplete"))
 	}
 	return authorization, nil
 }
@@ -296,7 +276,7 @@ func (adapter examIntegrityReviewAuthorizationAdapter) denySelf(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	return &examreview.Fault{Code: "exam.integrity_review.not_found"}
+	return apperror.New("exam.integrity_review.not_found")
 }
 
 type examIntegrityReviewAuditAdapter struct{ audit mutationAuditAdapter }

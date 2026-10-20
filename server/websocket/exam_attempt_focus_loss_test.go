@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -115,7 +115,7 @@ func TestExamAttemptFocusLossErrorPreservesOnlyStableCandidateSafeOutcomes(t *te
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			code, presentation := examAttemptFocusLossError(app.NewError(test.code))
+			code, presentation := examAttemptFocusLossError(apperror.New(apperror.Code(test.code)))
 			message := websocketErrorMessage(presentation).fallback
 			if code != test.wantCode || message != test.wantMessage {
 				t.Fatalf("got (%q, %q), want (%q, %q)", code, message, test.wantCode, test.wantMessage)

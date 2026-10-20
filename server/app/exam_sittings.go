@@ -10,9 +10,9 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -192,27 +192,7 @@ func (useCases examSittingLifecycleJobUseCases) ListExamSittingLifecycleDueFromJ
 }
 
 func examSittingError(err error, conceal bool) error {
-	if err == nil {
-		return nil
-	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
-	}
-	var fault *examsitting.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.sitting.unavailable").Wrap(err)
-	}
-	if conceal && fault.Code == "exam.sitting.not_found" {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return presentExamChildError(err, conceal, "exam.sitting.unavailable", "exam.sitting.not_found")
 }
 
 type examSittingAuthorizationAdapter struct{ authorization *accessControlService }
@@ -226,7 +206,7 @@ func (adapter examSittingAuthorizationAdapter) Deny(ctx context.Context, call ex
 		model.RoleScopeAcademicUnit, unitID.String(), call.RequestMetadata(), false); err != nil {
 		return err
 	}
-	return &examsitting.Fault{Code: "exam.sitting.not_found"}
+	return apperror.New("exam.sitting.not_found")
 }
 
 type examSittingAuditAdapter struct{ audit mutationAuditAdapter }

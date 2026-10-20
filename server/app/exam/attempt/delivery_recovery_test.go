@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -68,15 +69,22 @@ func TestBrowserDeliveryRefusalRequiresFreshOwnedRecovery(t *testing.T) {
 			}
 			f.service.deps.Persistence = p
 			_, err := f.service.BrowserDeliveryReceipts(context.Background(), f.call, BrowserSourceQuery{Access: CandidateAccess{AttemptID: f.attemptID}, SourceSessionID: source, ParticipationID: part}, 1, 32)
-			var fault *Fault
+			var fault *apperror.Error
 			if !errors.As(err, &fault) {
 				t.Fatalf("missing application fault: %v", err)
 			}
-			if (fault.Recovery != nil) != (name == "current") {
-				t.Fatalf("recovery disclosure for %s: %#v", name, fault.Recovery)
+			var carrier interface {
+				DeliveryRecovery() *model.DeliveryRecovery
+			}
+			var recovery *model.DeliveryRecovery
+			if errors.As(err, &carrier) {
+				recovery = carrier.DeliveryRecovery()
+			}
+			if (recovery != nil) != (name == "current") {
+				t.Fatalf("recovery disclosure for %s: %#v", name, recovery)
 			}
 			if name == "current" {
-				if fault.Recovery.Validate() != nil || p.reads != 2 || p.budgetSelector.ParticipationID != part || p.budgetSelector.Access != p.selector.Access || !errors.Is(err, p.refusal) {
+				if recovery.Validate() != nil || p.reads != 2 || p.budgetSelector.ParticipationID != part || p.budgetSelector.Access != p.selector.Access || !errors.Is(err, p.refusal) {
 					t.Fatal("recovery changed ownership, cause or bounds")
 				}
 			}

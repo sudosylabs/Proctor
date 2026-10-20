@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -244,7 +245,7 @@ func TestDesktopCompatibilityEvaluationRejectsMalformedSelectors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := catalog.evaluate(policy, test.query); !Is(err, "request.invalid") {
+			if _, err := catalog.evaluate(policy, test.query); !apperror.Is(err, "request.invalid") {
 				t.Fatalf("evaluate() error = %v", err)
 			}
 		})
@@ -377,7 +378,7 @@ func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBefor
 					IdempotencyKey:   "desktop-policy-assurance",
 				},
 			)
-			if !Is(err, test.wantCode) {
+			if !apperror.Is(err, test.wantCode) {
 				t.Fatalf("error = %v, want %s", err, test.wantCode)
 			}
 		})
@@ -390,7 +391,7 @@ func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBefor
 func TestDesktopCompatibilityPolicyReplacementFailsClosedWhenAuditBeginFails(t *testing.T) {
 	t.Parallel()
 	service, persistence, _, audit, invocation := desktopCompatibilityServiceFixture(t)
-	auditError := NewError("audit.unavailable")
+	auditError := apperror.New("audit.unavailable")
 	audit.beginErr = auditError
 
 	_, err := service.Replace(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
@@ -442,7 +443,7 @@ func TestDesktopCompatibilityPolicyReplacementMapsRevisionAndSystemAdministrator
 				Settings:         persistence.policy.Settings(),
 				IdempotencyKey:   "failed-" + test.name,
 			})
-			if !Is(err, test.wantCode) || audit.failCode != test.wantCode {
+			if !apperror.Is(err, test.wantCode) || audit.failCode != test.wantCode {
 				t.Fatalf("error=%v fail_code=%q", err, audit.failCode)
 			}
 		})
@@ -504,16 +505,16 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 	if err != nil || result.Availability != model.DesktopAvailabilityMaintenance {
 		t.Fatalf("maintenance ignored: %#v, %v", result, err)
 	}
-	if _, err := development.Evaluate(t.Context(), DesktopCompatibilityQuery{}); !Is(err, "request.invalid") {
+	if _, err := development.Evaluate(t.Context(), DesktopCompatibilityQuery{}); !apperror.Is(err, "request.invalid") {
 		t.Fatalf("malformed selectors accepted: %v", err)
 	}
 	persistence.getErr = errors.New("store offline")
-	if _, err := development.Evaluate(t.Context(), query); !Is(err, "desktop_compatibility_policy.unavailable") {
+	if _, err := development.Evaluate(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
 		t.Fatalf("policy outage ignored: %v", err)
 	}
 	persistence.getErr = nil
 	persistence.policy.Revision = 0
-	if _, err := development.Evaluate(t.Context(), query); !Is(err, "desktop_compatibility_policy.unavailable") {
+	if _, err := development.Evaluate(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
 		t.Fatalf("corrupt policy ignored: %v", err)
 	}
 }

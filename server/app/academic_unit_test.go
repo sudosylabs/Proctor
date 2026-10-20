@@ -11,6 +11,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -137,7 +138,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 		academicUnitAuthorizerFunc(func(
 			context.Context, Invocation, model.Action, model.Resource,
 		) error {
-			return NewError("authorization.denied")
+			return apperror.New("authorization.denied")
 		}),
 	)
 	_, err := service.Get(
@@ -145,7 +146,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 		NewInvocation(model.Principal{}, model.RequestMetadata{}),
 		GetAcademicUnitQuery{ID: model.NewId()},
 	)
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v, want authorization.denied", err)
 	}
 	if units.getCalls != 0 {
@@ -258,11 +259,11 @@ func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
 		authorizeInstallation: func(
 			context.Context, Invocation, model.Action,
 		) (model.Resource, error) {
-			return model.Resource{}, NewError("authorization.denied")
+			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
 	_, err := service.List(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("List() error = %v, want authorization.denied", err)
 	}
 	if units.listCalls != 0 {
@@ -281,11 +282,11 @@ func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
 		authorizeInstallation: func(
 			context.Context, Invocation, model.Action,
 		) (model.Resource, error) {
-			return model.Resource{}, NewError("authorization.denied")
+			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
 	_, err := service.Search(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Search() error = %v, want authorization.denied", err)
 	}
 	if units.searchCalls != 0 {

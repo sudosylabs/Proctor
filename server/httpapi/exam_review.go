@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -373,7 +374,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 		}
 		response.NextCursor, err = encodeExamIntegrityReviewCursor("flag", page.Items[len(page.Items)-1].Flag.ID.String())
 		if err != nil {
-			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.integrity_review.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -415,7 +416,7 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 		}
 		response.NextCursor, err = encodeExamIntegrityReviewCursor("evidence", page.Items[len(page.Items)-1].ID.String())
 		if err != nil {
-			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.integrity_review.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -461,7 +462,7 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 		}
 		response.NextCursor, err = encodeExamIntegrityReviewCursor("discrepancy", page.Items[len(page.Items)-1].ID.String())
 		if err != nil {
-			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.integrity_review.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
@@ -717,12 +718,12 @@ func (module examIntegrityReviewHTTPModule) listNativeConditions(request operati
 		return operationResult{}, err
 	}
 	if page == nil || page.Items == nil || len(page.Items) > query.Limit || page.HasMore && len(page.Items) != query.Limit {
-		return operationResult{}, application.NewError("exam.integrity_review.unavailable")
+		return operationResult{}, apperror.New("exam.integrity_review.unavailable")
 	}
 	response := nativeConditionListResponse{Items: page.Items}
 	for _, value := range response.Items {
 		if value.Validate() != nil {
-			return operationResult{}, application.NewError("exam.integrity_review.unavailable")
+			return operationResult{}, apperror.New("exam.integrity_review.unavailable")
 		}
 	}
 	if page.HasMore {

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -140,7 +141,7 @@ func TestAccountRecoveryAttemptAccountingUsesExactThresholdForEveryOperation(t *
 			}
 			if err := service.checkAccountRecoveryRateLimit(
 				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
-			); !Is(err, "authentication.rate_limited") {
+			); !apperror.Is(err, "authentication.rate_limited") {
 				t.Fatalf("attempt beyond maximum = %v", err)
 			}
 		})
@@ -168,7 +169,7 @@ func TestAccountRecoveryAttemptAccountingFailsClosedWithoutCounterRollback(t *te
 				context.Background(), accountRecoveryAttemptPasswordResetRequest,
 				"student@example.edu", "192.0.2.10:443",
 			)
-			if !Is(err, "authentication.rate_limit_unavailable") {
+			if !apperror.Is(err, "authentication.rate_limit_unavailable") {
 				t.Fatalf("cache failure = %v", err)
 			}
 			if len(cache.calls) != failAt {
@@ -270,7 +271,7 @@ func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(
 	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
 		Email: "student@example.edu", Source: "192.0.2.10",
 	})
-	if !Is(err, "authentication.account_recovery.unavailable") {
+	if !apperror.Is(err, "authentication.account_recovery.unavailable") {
 		t.Fatalf("enabled-local disabled-mail error = %v", err)
 	}
 }
@@ -416,7 +417,7 @@ func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t
 	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
 		Token: accountTokenTestRawToken, Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.8",
 	})
-	if result != nil || !Is(err, "authentication.account_token.invalid") {
+	if result != nil || !apperror.Is(err, "authentication.account_token.invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
@@ -438,7 +439,7 @@ func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
 				context.Background(), Invocation{},
 				CompleteEmailVerificationCommand{Token: accountTokenTestRawToken},
 			)
-			var appErr *Error
+			var appErr *apperror.Error
 			if !errors.As(err, &appErr) || appErr.Code() != "authentication.account_token.invalid" {
 				t.Fatalf("completion error = %v", err)
 			}
@@ -459,7 +460,7 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 		context.Background(), Invocation{},
 		CompleteEmailVerificationCommand{Token: "malformed"},
 	)
-	if !Is(err, "authentication.account_token.invalid") {
+	if !apperror.Is(err, "authentication.account_token.invalid") {
 		t.Fatalf("completion error = %v", err)
 	}
 }
@@ -786,7 +787,7 @@ func TestCompletePasswordResetUnknownTokenDoesNotSpendPasswordWork(t *testing.T)
 	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
 		Token: model.NewCredentialToken(), Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.9",
 	})
-	if result != nil || !Is(err, "authentication.account_token.invalid") {
+	if result != nil || !apperror.Is(err, "authentication.account_token.invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if hashes != 0 {

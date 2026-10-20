@@ -14,6 +14,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -196,7 +197,7 @@ func (m retentionHTTPModule) records(request operationRequest) (operationResult,
 		return operationResult{}, err
 	}
 	if page == nil || len(page.Items) > limit*2 || (page.HasMore && len(page.Items) == 0) {
-		return operationResult{}, application.NewError("retention.unavailable")
+		return operationResult{}, apperror.New("retention.unavailable")
 	}
 	response := retentionRecordsResponse{PolicyRevision: page.PolicyRevision, AsOf: retentionTime(page.AsOf), Items: make([]retentionRecordResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
@@ -214,7 +215,7 @@ func (m retentionHTTPModule) records(request operationRequest) (operationResult,
 	if page.HasMore {
 		response.NextCursor, err = encodeOpaqueCursor(retentionCursor{After: page.Items[len(page.Items)-1].Record.Scope.SubmissionID.String()}, retentionCursorSpec())
 		if err != nil {
-			return operationResult{}, application.NewError("retention.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("retention.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(privateNoStoreHeaders()), nil

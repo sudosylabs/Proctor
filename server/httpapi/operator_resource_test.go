@@ -18,6 +18,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -163,7 +164,7 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?cursor=not-a-cursor", "", true)
 	assertHTTPProblem(t, malformed, http.StatusBadRequest, "audit.query.invalid")
 
-	audits.err = application.NewError("audit.unavailable")
+	audits.err = apperror.New("audit.unavailable")
 	errorResponse := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits", "", true)
 	var problem Problem
 	if err := json.Unmarshal(errorResponse.Body.Bytes(), &problem); err != nil {

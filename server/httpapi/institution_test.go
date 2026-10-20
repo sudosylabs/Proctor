@@ -17,6 +17,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -46,7 +47,7 @@ func (a *institutionHTTPApplication) GetInstitution(
 	_ application.GetInstitutionQuery,
 ) (*model.Institution, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
-		return nil, application.NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	return a.result, nil
 }
@@ -57,7 +58,7 @@ func (a *institutionHTTPApplication) UpdateInstitution(
 	command application.UpdateInstitutionCommand,
 ) (*model.Institution, error) {
 	if invocation.Principal().UserID != a.principal.UserID {
-		return nil, application.NewError("request.invalid")
+		return nil, apperror.New("request.invalid")
 	}
 	a.command = command
 	return a.result, nil

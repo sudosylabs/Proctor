@@ -10,10 +10,10 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -429,7 +429,7 @@ func (a *App) OpenCandidateExamResource(ctx context.Context, invocation Invocati
 		return OpenedExamAttemptContent{}, examAttemptError(err, true)
 	}
 	if result == nil {
-		return OpenedExamAttemptContent{}, NewError("exam.attempt.unavailable")
+		return OpenedExamAttemptContent{}, apperror.New("exam.attempt.unavailable")
 	}
 	return *result, nil
 }
@@ -440,7 +440,7 @@ func (a *App) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation Inv
 		return OpenedExamAttemptContent{}, examAttemptError(err, true)
 	}
 	if result == nil {
-		return OpenedExamAttemptContent{}, NewError("exam.attempt.unavailable")
+		return OpenedExamAttemptContent{}, apperror.New("exam.attempt.unavailable")
 	}
 	return *result, nil
 }
@@ -451,7 +451,7 @@ func (a *App) GetExamAttempt(ctx context.Context, invocation Invocation, query G
 		return ExamAttemptManagerView{}, examAttemptError(err, true)
 	}
 	if result == nil {
-		return ExamAttemptManagerView{}, NewError("exam.attempt.unavailable")
+		return ExamAttemptManagerView{}, apperror.New("exam.attempt.unavailable")
 	}
 	return *result, nil
 }
@@ -494,27 +494,7 @@ func (a *App) ListSittingCandidateStatuses(ctx context.Context, invocation Invoc
 }
 
 func examAttemptError(err error, conceal bool) error {
-	if err == nil {
-		return nil
-	}
-	if existing, ok := As(err); ok {
-		if conceal && existing.Code() == "authorization.denied" {
-			return NewError("resource.not_found").Wrap(err)
-		}
-		return err
-	}
-	var fault *examattempt.Fault
-	if !errors.As(err, &fault) {
-		return NewError("exam.attempt.unavailable").Wrap(err)
-	}
-	if conceal && (fault.Code == "exam.attempt.not_found" || fault.Code == "exam.attempt.continuity_invalid") {
-		return NewError("resource.not_found").Wrap(err)
-	}
-	mapped := NewError(fault.Code)
-	for key, value := range fault.SafeFields {
-		mapped.WithField(key, fmt.Sprint(value))
-	}
-	return mapped.Wrap(err)
+	return presentExamChildError(err, conceal, "exam.attempt.unavailable", "exam.attempt.not_found", "exam.attempt.continuity_invalid")
 }
 
 type examAttemptManagerAuthorizationAdapter struct {
@@ -537,10 +517,6 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx
 	if err == nil {
 		return override, nil
 	}
-	var fault *examsitting.Fault
-	if errors.As(err, &fault) {
-		return false, &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
-	}
 	return false, err
 }
 
@@ -549,10 +525,6 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityVi
 	if err == nil {
 		return unitID, nil
 	}
-	var fault *examsitting.Fault
-	if errors.As(err, &fault) {
-		return "", &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
-	}
 	return "", err
 }
 
@@ -560,19 +532,19 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ct
 	submissionID model.SubmissionID,
 ) error {
 	if adapter.submissions == nil || adapter.audit == nil || !submissionID.IsValid() {
-		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization dependencies are invalid")}
+		return apperror.New("exam.attempt.unavailable").Wrap(errors.New("Submission authorization dependencies are invalid"))
 	}
 	authorization, err := adapter.submissions.Resolve(ctx, submissionID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return &examattempt.Fault{Code: "exam.attempt.not_found", Cause: err}
+			return apperror.New("exam.attempt.not_found").Wrap(err)
 		}
-		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: err}
+		return apperror.New("exam.attempt.unavailable").Wrap(err)
 	}
 	if authorization == nil || authorization.SubmissionID != submissionID || !authorization.ExamID.IsValid() ||
 		!authorization.SittingID.IsValid() || !authorization.AttemptID.IsValid() || !authorization.CandidateUserID.IsValid() ||
 		!authorization.AcademicUnitID.IsValid() {
-		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization projection is incomplete")}
+		return apperror.New("exam.attempt.unavailable").Wrap(errors.New("Submission authorization projection is incomplete"))
 	}
 	if authorization.CandidateUserID == call.Principal().UserID {
 		if err = adapter.audit.RecordAuthorizationDecision(ctx, call.Principal(), model.ActionSubmissionView,
@@ -580,7 +552,7 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ct
 			model.RoleScopeAcademicUnit, authorization.AcademicUnitID.String(), call.RequestMetadata(), false); err != nil {
 			return err
 		}
-		return &examattempt.Fault{Code: "exam.attempt.not_found"}
+		return apperror.New("exam.attempt.not_found")
 	}
 	return adapter.sittings.AuthorizeSubmissionView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()),
 		authorization.ExamID, submissionID)

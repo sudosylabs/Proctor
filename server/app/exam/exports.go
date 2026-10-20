@@ -14,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -85,18 +86,18 @@ func NewExports(persistence store.ExamExportStore, access store.ExamAuthoringSto
 
 func (s *Exports) authorize(ctx context.Context, call Call, scope model.RetentionHoldScope) (model.Action, model.AcademicUnitID, error) {
 	if scope.Validate() != nil || !scope.SittingID.IsValid() || call.Principal().Validate() != nil || call.Principal().CredentialType != model.CredentialSessionAccess {
-		return "", "", invalid("export_scope")
+		return "", "", apperror.Invalid("exam.invalid", "export_scope")
 	}
 	access, err := s.access.Access(ctx, scope.ExamID, call.Principal().UserID)
 	if err != nil {
 		return "", "", exportStoreError(err)
 	}
 	if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || !access.Exam.AcademicUnitID.IsValid() {
-		return "", "", exportUnavailable(err)
+		return "", "", apperror.New("exam.export.unavailable").Wrap(err)
 	}
 	action, err := manageraccess.SelectAction(ctx, s.memberships, call.Principal().UserID, access, model.TimeUTC(s.now()), model.ActionExamRecordsExport, model.ActionExamRecordsExportOverride)
 	if err != nil {
-		return "", "", exportUnavailable(err)
+		return "", "", apperror.New("exam.export.unavailable").Wrap(err)
 	}
 	if err = s.authorizer.Authorize(ctx, call, action, scope.Resource()); err != nil {
 		return "", "", err
@@ -106,7 +107,7 @@ func (s *Exports) authorize(ctx context.Context, call Call, scope model.Retentio
 
 func (s *Exports) authorizeSources(ctx context.Context, call Call, scope model.RetentionHoldScope, action model.Action, unit model.AcademicUnitID, categories []model.RetentionCategory, selected []store.ExamSubmissionAuthorization) error {
 	if len(selected) < 1 || len(selected) > model.ExamExportMaximumSubmissions {
-		return exportUnavailable(errors.New("invalid export source scope"))
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export source scope"))
 	}
 	view, sittingView := model.ActionSubmissionViewOverride, model.ActionExamSittingViewOverride
 	if action == model.ActionExamRecordsExport {
@@ -123,13 +124,13 @@ func (s *Exports) authorizeSources(ctx context.Context, call Call, scope model.R
 			return exportStoreError(err)
 		}
 		if access == nil || access.Exam == nil || access.Exam.ID != scope.ExamID || access.Exam.AcademicUnitID != unit {
-			return exportUnavailable(errors.New("invalid browser history access projection"))
+			return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid browser history access projection"))
 		}
 		if !access.ActorIsManager {
 			if err := s.authorizer.Deny(ctx, call, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}, unit); err != nil {
 				return err
 			}
-			return &Fault{Code: "exam.not_found"}
+			return apperror.New("exam.not_found")
 		}
 		if err := s.authorizer.Authorize(ctx, call, model.ActionExamAttemptBrowserActivityView, model.Resource{Type: model.ResourceExamSitting, ID: scope.SittingID.String()}); err != nil {
 			return err
@@ -138,7 +139,7 @@ func (s *Exports) authorizeSources(ctx context.Context, call Call, scope model.R
 	var previous model.SubmissionID
 	for _, a := range selected {
 		if !a.SubmissionID.IsValid() || a.SubmissionID <= previous || a.ExamID != scope.ExamID || a.SittingID != scope.SittingID || a.AcademicUnitID != unit || !a.CandidateUserID.IsValid() || !a.AttemptID.IsValid() || scope.SubmissionID.IsValid() && a.SubmissionID != scope.SubmissionID {
-			return exportUnavailable(errors.New("invalid export source scope"))
+			return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export source scope"))
 		}
 		resource := model.Resource{Type: model.ResourceSubmission, ID: a.SubmissionID.String()}
 		if a.CandidateUserID == call.Principal().UserID {
@@ -158,7 +159,7 @@ func (s *Exports) Create(ctx context.Context, call Call, command CreateExportCom
 		command.Categories[0], command.Categories[1] = command.Categories[1], command.Categories[0]
 	}
 	if !model.ValidExamExportCategories(command.Categories) {
-		return nil, invalid("export_categories")
+		return nil, apperror.Invalid("exam.invalid", "export_categories")
 	}
 	key := command.IdempotencyKey
 	command.IdempotencyKey = ""
@@ -179,7 +180,7 @@ func (s *Exports) Create(ctx context.Context, call Call, command CreateExportCom
 	}
 	exportID, jobID := s.newID(), s.newJobID()
 	if !exportID.IsValid() || !jobID.IsValid() {
-		return nil, exportUnavailable(errors.New("invalid export identities"))
+		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export identities"))
 	}
 	auditID, err := s.auditor.Begin(ctx, call, action, command.Scope.Resource(), model.RoleScopeAcademicUnit, unit.String(), "create_exam_export", map[string]any{"exam_export_id": exportID.String(), "submission_count": len(selected), "category_count": len(command.Categories)}, nil)
 	if err != nil {
@@ -192,25 +193,21 @@ func (s *Exports) Create(ctx context.Context, call Call, command CreateExportCom
 	result, err := s.persistence.Create(ctx, input, idempotency)
 	if err != nil {
 		mapped := exportStoreError(err)
-		var f *Fault
-		code := "exam.export.unavailable"
-		if errors.As(mapped, &f) {
-			code = f.Code
-		}
+		code := apperror.CodeOf(mapped, "exam.export.unavailable")
 		if auditErr := s.auditor.Fail(ctx, auditID, code); auditErr != nil {
 			return nil, errors.Join(mapped, auditErr)
 		}
 		return nil, mapped
 	}
 	if result.Validate() != nil || result.Scope != command.Scope || result.RequesterUserID != call.Principal().UserID || !slices.Equal(result.Categories, command.Categories) {
-		return nil, exportUnavailable(errors.New("invalid export creation result"))
+		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export creation result"))
 	}
 	return result, nil
 }
 
 func (s *Exports) get(ctx context.Context, call Call, q ExportQuery) (*store.ExamExportDownload, error) {
 	if !q.ExportID.IsValid() {
-		return nil, invalid("exam_export_id")
+		return nil, apperror.Invalid("exam.invalid", "exam_export_id")
 	}
 	action, unit, err := s.authorize(ctx, call, q.Scope)
 	if err != nil {
@@ -221,7 +218,7 @@ func (s *Exports) get(ctx context.Context, call Call, q ExportQuery) (*store.Exa
 		return nil, exportStoreError(err)
 	}
 	if result == nil || result.Export.Validate() != nil || result.Export.ID != q.ExportID || result.Export.Scope != q.Scope || result.Export.RequesterUserID != call.Principal().UserID {
-		return nil, exportUnavailable(errors.New("invalid export read result"))
+		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export read result"))
 	}
 	if err = s.authorizeSources(ctx, call, q.Scope, action, unit, result.Export.Categories, result.Submissions); err != nil {
 		return nil, err
@@ -247,10 +244,10 @@ func (s *Exports) Open(ctx context.Context, call Call, q ExportQuery) (*ExportDo
 	}
 	body, err := s.content.OpenExamExport(ctx, result.Artifact.ExportID, result.Artifact.AttemptID)
 	if err != nil {
-		return nil, exportUnavailable(err)
+		return nil, apperror.New("exam.export.unavailable").Wrap(err)
 	}
 	if body == nil {
-		return nil, exportUnavailable(errors.New("missing export body"))
+		return nil, apperror.New("exam.export.unavailable").Wrap(errors.New("missing export body"))
 	}
 	// Storage can block across expiry or an authority change. Re-read through
 	// the authoritative Store before exposing a body; node wall-clock time
@@ -260,7 +257,7 @@ func (s *Exports) Open(ctx context.Context, call Call, q ExportQuery) (*ExportDo
 		err = requireReadyExport(current)
 	}
 	if err == nil && current.Artifact != result.Artifact {
-		err = exportUnavailable(errors.New("export artifact changed during open"))
+		err = apperror.New("exam.export.unavailable").Wrap(errors.New("export artifact changed during open"))
 	}
 	if err != nil {
 		_ = body.Close()
@@ -271,13 +268,13 @@ func (s *Exports) Open(ctx context.Context, call Call, q ExportQuery) (*ExportDo
 
 func requireReadyExport(result *store.ExamExportDownload) error {
 	if result.Export.State == model.ExamExportExpired {
-		return &Fault{Code: "exam.export.expired"}
+		return apperror.New("exam.export.expired")
 	}
 	if result.Export.State != model.ExamExportReady {
-		return &Fault{Code: "exam.export.not_ready"}
+		return apperror.New("exam.export.not_ready")
 	}
 	if result.Artifact.ExportID != result.Export.ID || !result.Artifact.AttemptID.IsValid() {
-		return exportUnavailable(errors.New("invalid export artifact"))
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export artifact"))
 	}
 	return nil
 }
@@ -288,7 +285,7 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 		return exportStoreError(err)
 	}
 	if snapshot == nil || snapshot.Export.Validate() != nil || snapshot.Export.ID != input.ExportID {
-		return exportUnavailable(errors.New("invalid export build snapshot"))
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export build snapshot"))
 	}
 	if snapshot.Export.State == model.ExamExportReady {
 		return nil
@@ -303,11 +300,11 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if finishErr := s.persistence.FinishWriter(cleanup, input.ExamExportArtifact); finishErr != nil && err == nil {
-			err = exportUnavailable(finishErr)
+			err = apperror.New("exam.export.unavailable").Wrap(finishErr)
 		}
 	}()
 	if snapshot.Export.State != model.ExamExportQueued || len(snapshot.Records) < 1 || len(snapshot.Records) > model.ExamExportMaximumSnapshotBytes || len(snapshot.Files) != snapshot.Export.FileCount {
-		return exportUnavailable(errors.New("invalid export build input"))
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid export build input"))
 	}
 	buildCtx, cancel := context.WithDeadline(ctx, snapshot.Export.SourceExpiresAt)
 	defer cancel()
@@ -317,10 +314,10 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 	}
 	content, err := s.content.BuildExamExport(buildCtx, archive)
 	if err != nil {
-		return exportUnavailable(err)
+		return apperror.New("exam.export.unavailable").Wrap(err)
 	}
 	if content == nil || !model.ValidExamExportContent(content.SizeBytes, content.SHA256) {
-		return exportUnavailable(errors.New("invalid verified export content"))
+		return apperror.New("exam.export.unavailable").Wrap(errors.New("invalid verified export content"))
 	}
 	if err = s.persistence.Publish(buildCtx, &store.ExamExportPublication{ExamExportBuild: input, SizeBytes: content.SizeBytes, SHA256: content.SHA256}); err != nil {
 		return exportStoreError(err)
@@ -328,7 +325,6 @@ func (s *Exports) BuildFromJob(ctx context.Context, input store.ExamExportBuild)
 	return nil
 }
 
-func exportUnavailable(err error) error { return &Fault{Code: "exam.export.unavailable", Cause: err} }
 func exportStoreError(err error) error {
 	if err == nil {
 		return nil
@@ -336,26 +332,26 @@ func exportStoreError(err error) error {
 	var keyConflict *store.ErrIdempotencyConflict
 	var inProgress *store.ErrIdempotencyInProgress
 	if errors.As(err, &keyConflict) {
-		return &Fault{Code: "idempotency.conflict", Cause: err}
+		return apperror.New("idempotency.conflict").Wrap(err)
 	}
 	if errors.As(err, &inProgress) {
-		return &Fault{Code: "idempotency.in_progress", Cause: err}
+		return apperror.New("idempotency.in_progress").Wrap(err)
 	}
 	if store.IsNotFound(err) {
-		return &Fault{Code: "exam.export.not_found", Cause: err}
+		return apperror.New("exam.export.not_found").Wrap(err)
 	}
 	var conflict *store.ErrConflict
 	if errors.As(err, &conflict) && conflict.Resource == "authorization" {
-		return &Fault{Code: "exam.export.not_found", Cause: err}
+		return apperror.New("exam.export.not_found").Wrap(err)
 	}
 	if errors.As(err, &conflict) && conflict.Resource == "exam_export" {
 		switch conflict.Constraint {
 		case "policy_unconfigured", "limit", "source_retired", "scope_changed", "expired", "claim_lost":
-			return &Fault{Code: "exam.export." + conflict.Constraint, Cause: err}
+			return apperror.New(apperror.Code("exam.export." + conflict.Constraint)).Wrap(err)
 		}
 	}
 	if store.IsConflict(err) {
-		return &Fault{Code: "exam.export.conflict", Cause: err}
+		return apperror.New("exam.export.conflict").Wrap(err)
 	}
-	return exportUnavailable(err)
+	return apperror.New("exam.export.unavailable").Wrap(err)
 }

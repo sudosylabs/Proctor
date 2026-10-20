@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -65,7 +66,7 @@ func (s *desktopRegistrationService) List(
 	}
 	registrations, err := s.registrations.ListByUser(ctx, principal.UserID.String())
 	if err != nil {
-		return nil, NewError("desktop_registration.unavailable").Wrap(err)
+		return nil, apperror.New("desktop_registration.unavailable").Wrap(err)
 	}
 	return registrations, nil
 }
@@ -90,7 +91,7 @@ func (s *desktopRegistrationService) Revoke(
 	}
 	registrationID, err := model.ParseDesktopRegistrationID(strings.TrimSpace(command.RegistrationID))
 	if err != nil {
-		return NewError("request.invalid").WithField("field", "desktop_registration_id")
+		return apperror.New("request.invalid").WithField("field", "desktop_registration_id")
 	}
 	auditID, err := s.audit.Begin(
 		ctx, invocation, model.ActionDesktopRegistrationRevoke,
@@ -107,7 +108,7 @@ func (s *desktopRegistrationService) Revoke(
 	if err != nil {
 		failure := desktopRegistrationError(err)
 		if auditErr := s.audit.Fail(ctx, auditID, failure.Code()); auditErr != nil {
-			return NewError("audit.unavailable").Wrap(auditErr)
+			return apperror.New("audit.unavailable").Wrap(auditErr)
 		}
 		return failure
 	}
@@ -119,9 +120,9 @@ func (s *desktopRegistrationService) Revoke(
 	return nil
 }
 
-func desktopRegistrationError(err error) *Error {
+func desktopRegistrationError(err error) *apperror.Error {
 	if store.IsNotFound(err) {
-		return NewError("resource.not_found")
+		return apperror.New("resource.not_found")
 	}
-	return NewError("desktop_registration.unavailable").Wrap(err)
+	return apperror.New("desktop_registration.unavailable").Wrap(err)
 }

@@ -25,6 +25,7 @@ import (
 
 	server "github.com/sudosylabs/proctor/server"
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -186,7 +187,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	}
 	if _, _, bearerErr := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
-	}); !application.Is(bearerErr, "authentication.invalid_token") {
+	}); !apperror.Is(bearerErr, "authentication.invalid_token") {
 		t.Fatalf("Desktop refresh accepted as Bearer: %v", bearerErr)
 	}
 	refreshProof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
@@ -200,7 +201,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	})
 	// The two test nodes have independent disposable caches, so the secondary
 	// challenges the primary's nonce before the client retries with fresh proof.
-	if !application.Is(err, "authentication.dpop.use_nonce") {
+	if !apperror.Is(err, "authentication.dpop.use_nonce") {
 		t.Fatalf("cross-node refresh error = %v, want nonce challenge", err)
 	}
 	refreshNonce, ok := application.DPoPChallengeNonce(err)
@@ -223,7 +224,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		rotated.RefreshToken == exchanged.Tokens.RefreshToken {
 		t.Fatalf("desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
 	}
-	if _, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken); !application.Is(err, "authentication.invalid_token") {
+	if _, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("old desktop access after rotation error = %v", err)
 	}
 }

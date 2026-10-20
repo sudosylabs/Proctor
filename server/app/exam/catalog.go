@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -45,12 +46,12 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 		(query.BeforeUpdatedAt.IsZero() != query.BeforeExamID.IsZero()) ||
 		(query.EndsAfter.IsZero() != query.StartsBefore.IsZero()) || (!query.EndsAfter.IsZero() && !query.EndsAfter.Before(query.StartsBefore)) ||
 		(!query.AcademicUnitID.IsZero() && !query.AcademicUnitID.IsValid()) {
-		return CatalogPage{}, invalid("list_query")
+		return CatalogPage{}, apperror.Invalid("exam.invalid", "list_query")
 	}
 	switch query.ArchiveFilter {
 	case store.ExamArchiveActive, store.ExamArchiveArchived, store.ExamArchiveAll:
 	default:
-		return CatalogPage{}, invalid("archive_filter")
+		return CatalogPage{}, apperror.Invalid("exam.invalid", "archive_filter")
 	}
 	visibility, err := a.authorizer.AuthorizeList(ctx, call, query.AcademicUnitID)
 	if err != nil {
@@ -61,10 +62,10 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 	seenStates := make(map[model.ExamSittingState]struct{}, len(query.SittingStates))
 	for _, state := range query.SittingStates {
 		if !state.IsValid() {
-			return CatalogPage{}, invalid("sitting_state")
+			return CatalogPage{}, apperror.Invalid("exam.invalid", "sitting_state")
 		}
 		if _, exists := seenStates[state]; exists {
-			return CatalogPage{}, invalid("sitting_state")
+			return CatalogPage{}, apperror.Invalid("exam.invalid", "sitting_state")
 		}
 		seenStates[state] = struct{}{}
 		states = append(states, state)
@@ -85,7 +86,7 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveCommand) (model.Exam, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedExamRevision < 1 {
-		return model.Exam{}, invalid("exam_revision")
+		return model.Exam{}, apperror.Invalid("exam.invalid", "exam_revision")
 	}
 	idempotency, err := prepareIdempotency(call, idempotencyOperationArchive, command.IdempotencyKey, struct {
 		ExamID               string `json:"exam_id"`
@@ -100,7 +101,7 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 		return model.Exam{}, mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil {
-		return model.Exam{}, unavailable(errors.New("exam store returned no access projection"))
+		return model.Exam{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no access projection"))
 	}
 	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
 	if err != nil {
@@ -122,17 +123,13 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
-		var fault *Fault
-		if !errors.As(mapped, &fault) {
-			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
-		}
-		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+		if auditErr := a.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.unavailable")); auditErr != nil {
 			return model.Exam{}, errors.Join(mapped, auditErr)
 		}
 		return model.Exam{}, mapped
 	}
 	if result == nil || result.Value == nil {
-		return model.Exam{}, unavailable(errors.New("exam store returned no archive result"))
+		return model.Exam{}, apperror.New("exam.unavailable").Wrap(errors.New("exam store returned no archive result"))
 	}
 	if !result.Replayed {
 		if effectErr := a.effects.Archived(ctx, result.Value.ID, result.Value.Revision, result.Value.ArchivedAt.Time); effectErr != nil {

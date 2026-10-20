@@ -14,6 +14,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -36,26 +37,6 @@ func (call Call) Principal() model.Principal {
 }
 
 func (call Call) RequestMetadata() model.RequestMetadata { return call.metadata }
-
-type Fault struct {
-	Code       string
-	SafeFields map[string]any
-	Cause      error
-}
-
-func (fault *Fault) Error() string {
-	if fault == nil {
-		return "Starter Workspace fault"
-	}
-	return fault.Code
-}
-
-func (fault *Fault) Unwrap() error {
-	if fault == nil {
-		return nil
-	}
-	return fault.Cause
-}
 
 type CreateDirectoryCommand struct {
 	ExamID                model.ExamID
@@ -193,7 +174,7 @@ func (service *Service) List(ctx context.Context, call Call, examID model.ExamID
 
 func (service *Service) OpenFile(ctx context.Context, call Call, examID model.ExamID, entryID model.StarterWorkspaceEntryID) (*OpenedFile, error) {
 	if !entryID.IsValid() {
-		return nil, invalid("entry_id")
+		return nil, apperror.Invalid("exam.starter_workspace.invalid", "entry_id")
 	}
 	if _, err := service.authorize(ctx, call, examID, false); err != nil {
 		return nil, err
@@ -203,11 +184,11 @@ func (service *Service) OpenFile(ctx context.Context, call Call, examID model.Ex
 		return nil, mapStoreError(err)
 	}
 	if item == nil || item.Object == nil {
-		return nil, unavailable(errors.New("Starter Workspace Store returned incomplete file metadata"))
+		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete file metadata"))
 	}
 	body, err := service.content.OpenStarterWorkspaceObject(ctx, item.Object.ID)
 	if err != nil {
-		return nil, unavailable(err)
+		return nil, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	return &OpenedFile{Body: body, MediaType: item.Object.MediaType, SizeBytes: item.Object.SizeBytes,
 		SHA256: item.Object.SHA256, ContentVersion: item.Object.ContentVersion}, nil
@@ -230,7 +211,7 @@ func (service *Service) CreateDirectory(ctx context.Context, call Call, command 
 	at := model.TimeUTC(service.now())
 	entryID := service.newEntryID()
 	if !entryID.IsValid() {
-		return Result{}, invalid("entry_id")
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "entry_id")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
@@ -244,7 +225,7 @@ func (service *Service) CreateFile(ctx context.Context, call Call, command Creat
 		if err != nil {
 			return Result{}, err
 		}
-		return Result{}, invalid("content")
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "content")
 	}
 	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationCreateFile, command.IdempotencyKey,
 		command.ExamID, command.ExpectedDraftRevision, "", "", path, command.MediaType, command.Size, command.ExpectedSHA256)
@@ -285,7 +266,7 @@ func (service *Service) ReplaceFile(ctx context.Context, call Call, command Repl
 		return Result{}, err
 	}
 	if !command.ExpectedContentVersion.IsValid() || command.Body == nil || command.Size < -1 || command.Size > model.StarterWorkspaceMaximumFileBytes || command.MediaType == "" {
-		return Result{}, invalid("content")
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "content")
 	}
 	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationReplaceFile, command.IdempotencyKey,
 		command.ExamID, command.ExpectedDraftRevision, command.ExpectedContentVersion, command.EntryID.String(), "", command.MediaType, command.Size, command.ExpectedSHA256)
@@ -333,14 +314,14 @@ type authorization struct {
 func (service *Service) authorize(ctx context.Context, call Call, examID model.ExamID, mutation bool) (authorization, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || !examID.IsValid() {
-		return authorization{}, invalid("exam_id")
+		return authorization{}, apperror.Invalid("exam.starter_workspace.invalid", "exam_id")
 	}
 	access, err := service.access.Access(ctx, examID, principal.UserID)
 	if err != nil {
 		return authorization{}, mapStoreError(err)
 	}
 	if access == nil || access.Exam == nil {
-		return authorization{}, unavailable(errors.New("Exam access projection is incomplete"))
+		return authorization{}, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Exam access projection is incomplete"))
 	}
 	ordinaryAction, overrideAction := model.ActionExamView, model.ActionExamViewOverride
 	if mutation {
@@ -352,7 +333,7 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 	}
 	action, err := manageraccess.SelectAction(ctx, service.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
-		return authorization{}, unavailable(err)
+		return authorization{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: examID.String()}
 	if err := service.authorizer.Authorize(ctx, call, action, resource); err != nil {
@@ -376,13 +357,13 @@ func (service *Service) runMutation(ctx context.Context, call Call, authorizatio
 	result, err := run(ctx, mutation, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
-		if failErr := service.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); failErr != nil {
+		if failErr := service.auditor.Fail(ctx, auditID, apperror.CodeOf(mapped, "exam.starter_workspace.unavailable")); failErr != nil {
 			return Result{}, errors.Join(mapped, failErr)
 		}
 		return Result{}, mapped
 	}
 	if result == nil || result.Entry == nil || result.DraftRevision < 1 {
-		return Result{}, unavailable(errors.New("Starter Workspace Store returned incomplete mutation result"))
+		return Result{}, apperror.New("exam.starter_workspace.unavailable").Wrap(errors.New("Starter Workspace Store returned incomplete mutation result"))
 	}
 	if !result.Replayed {
 		if effectErr := service.effects.Changed(ctx, mutation.ExamID, result.Entry.ID, result.DraftRevision, effectOperation, mutation.ChangedAt); effectErr != nil {
@@ -401,11 +382,11 @@ func (service *Service) stageAndFinalize(ctx context.Context, call Call, authori
 	}
 	objectID, version := service.newObjectID(), service.newVersion()
 	if !entryID.IsValid() || !objectID.IsValid() || !version.IsValid() {
-		return Result{}, invalid("identity")
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "identity")
 	}
 	object, err := model.NewStagedStarterWorkspaceObject(objectID, examID, call.Principal().UserID, at, at.Add(model.StarterWorkspaceUploadLease))
 	if err != nil {
-		return Result{}, invalidCause("object", err)
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "object").Wrap(err)
 	}
 	_, err = service.persistence.ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: object})
 	if err != nil {
@@ -415,20 +396,20 @@ func (service *Service) stageAndFinalize(ctx context.Context, call Call, authori
 	if err != nil {
 		_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
 		if isInvalidContentError(err) {
-			return Result{}, invalidCause("content", err)
+			return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "content").Wrap(err)
 		}
-		return Result{}, unavailable(err)
+		return Result{}, apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
 	if !validSHA256(expectedSHA256) || staged.SHA256 != expectedSHA256 {
 		_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
-		return Result{}, invalid("sha256")
+		return Result{}, apperror.Invalid("exam.starter_workspace.invalid", "sha256")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override,
 		ExpectedDraftRevision: expectedRevision, ChangedAt: at, EntryID: entryID, Path: path, ObjectID: objectID,
 		ExpectedContentVersion: expectedContentVersion, ContentVersion: version, MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256}
 	result, err := service.runMutation(ctx, call, authorization, auditOperation, effectOperation, mutation, idempotency, run)
 	if err != nil {
-		if !isUnavailableFault(err) {
+		if !apperror.Is(err, "exam.starter_workspace.unavailable") {
 			_ = service.persistence.MarkObjectReclaimable(ctx, objectID, at)
 		}
 		return Result{}, err
@@ -453,14 +434,14 @@ func validateMutation(examID model.ExamID, entryID model.StarterWorkspaceEntryID
 	}
 	normalized, err := NormalizePath(path)
 	if err != nil || normalized != path {
-		return "", invalidCause("path", err)
+		return "", apperror.Invalid("exam.starter_workspace.invalid", "path").Wrap(err)
 	}
 	return normalized, nil
 }
 
 func validateMutationBase(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64) error {
 	if !examID.IsValid() || revision < 1 || !entryID.IsZero() && !entryID.IsValid() {
-		return invalid("command")
+		return apperror.Invalid("exam.starter_workspace.invalid", "command")
 	}
 	return nil
 }
@@ -472,13 +453,13 @@ func mapStoreError(err error) error {
 	var invalidInput *store.ErrInvalidInput
 	switch {
 	case errors.As(err, &idempotencyConflict):
-		return &Fault{Code: "idempotency.conflict", Cause: err}
+		return apperror.New("idempotency.conflict").Wrap(err)
 	case errors.As(err, &idempotencyInProgress):
-		return &Fault{Code: "idempotency.in_progress", Cause: err}
+		return apperror.New("idempotency.in_progress").Wrap(err)
 	case store.IsNotFound(err):
-		return &Fault{Code: "exam.starter_workspace.not_found", Cause: err}
+		return apperror.New("exam.starter_workspace.not_found").Wrap(err)
 	case errors.As(err, &conflict):
-		codes := map[string]string{
+		codes := map[string]apperror.Code{
 			"exam_archived": "exam.archived", "exam_draft_revision": "exam.draft.revision_conflict",
 			"workspace_path_collision": "exam.starter_workspace.path_conflict", "workspace_parent_missing": "exam.starter_workspace.parent_not_found",
 			"workspace_directory_not_empty": "exam.starter_workspace.directory_not_empty", "workspace_entry_limit": "exam.starter_workspace.entry_limit",
@@ -488,38 +469,17 @@ func mapStoreError(err error) error {
 			"workspace_entry_kind": "exam.starter_workspace.entry_kind", "workspace_content_version": "exam.starter_workspace.content_conflict",
 		}
 		if code := codes[conflict.Constraint]; code != "" {
-			return &Fault{Code: code, Cause: err}
+			return apperror.New(code).Wrap(err)
 		}
-		return &Fault{Code: "exam.starter_workspace.conflict", Cause: err}
+		return apperror.New("exam.starter_workspace.conflict").Wrap(err)
 	case errors.As(err, &invalidInput):
-		return &Fault{Code: "exam.starter_workspace.invalid", Cause: err}
+		return apperror.New("exam.starter_workspace.invalid").Wrap(err)
 	default:
-		return unavailable(err)
+		return apperror.New("exam.starter_workspace.unavailable").Wrap(err)
 	}
-}
-
-func invalid(field string) error {
-	return &Fault{Code: "exam.starter_workspace.invalid", SafeFields: map[string]any{"field": field}}
-}
-func invalidCause(field string, cause error) error {
-	return &Fault{Code: "exam.starter_workspace.invalid", SafeFields: map[string]any{"field": field}, Cause: cause}
-}
-func unavailable(cause error) error {
-	return &Fault{Code: "exam.starter_workspace.unavailable", Cause: cause}
-}
-func isUnavailableFault(err error) bool {
-	var fault *Fault
-	return errors.As(err, &fault) && fault.Code == "exam.starter_workspace.unavailable"
 }
 
 func isInvalidContentError(err error) bool {
 	var invalid interface{ InvalidStarterWorkspaceContent() bool }
 	return errors.As(err, &invalid) && invalid.InvalidStarterWorkspaceContent()
-}
-func faultCodeForAudit(err error) string {
-	var fault *Fault
-	if errors.As(err, &fault) {
-		return fault.Code
-	}
-	return "exam.starter_workspace.unavailable"
 }

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -66,7 +67,7 @@ func (s *accessControlService) authorizeAcademicPeriodPreflight(
 	resource model.Resource,
 ) error {
 	if resource.Type != model.ResourceAcademicPeriod || resource.Validate() != nil {
-		return NewError("authorization.request.invalid")
+		return apperror.New("authorization.request.invalid")
 	}
 	allowed, resolved, err := s.academicPeriodCoarseAuthority(ctx, invocation.Principal(), action)
 	if err != nil {
@@ -248,7 +249,7 @@ func (s *accessControlService) authorizeRoleBindingScope(
 
 func roleScopeResource(scopeType model.RoleScopeType, scopeID string) (model.Resource, error) {
 	if !model.IsValidId(scopeID) {
-		return model.Resource{}, NewError("request.invalid").WithField("field", "role_binding")
+		return model.Resource{}, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	var resourceType model.ResourceType
 	switch scopeType {
@@ -259,7 +260,7 @@ func roleScopeResource(scopeType model.RoleScopeType, scopeID string) (model.Res
 	case model.RoleScopeClass:
 		resourceType = model.ResourceClass
 	default:
-		return model.Resource{}, NewError("request.invalid").WithField("field", "role_binding")
+		return model.Resource{}, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	return model.Resource{Type: resourceType, ID: scopeID}, nil
 }
@@ -368,7 +369,7 @@ func (s *accessControlService) authorizedScopesAt(
 	}
 	definition, known := model.DefinitionForAction(action)
 	if !known || !definition.AcceptsResource(resourceType) {
-		return constraint, NewError("authorization.request.invalid")
+		return constraint, apperror.New("authorization.request.invalid")
 	}
 	if principal.CredentialType == model.CredentialPersonalAccessToken {
 		if definition.PersonalAccessTokenForbidden || !slices.Contains(principal.CredentialScopes, string(action)) {
@@ -512,7 +513,7 @@ func (r *accessScopeResolver) userClasses(ctx context.Context, userID string, at
 	for _, membership := range memberships {
 		resource := model.Resource{Type: model.ResourceClass, ID: membership.ClassID.String()}
 		if _, resolveErr := r.resolve(ctx, resource); resolveErr != nil {
-			if Is(resolveErr, "resource.not_found") {
+			if apperror.Is(resolveErr, "resource.not_found") {
 				continue
 			}
 			return nil, resolveErr
@@ -534,7 +535,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("institution", err)
 		}
 		if institution.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "institution")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "institution")
 		}
 		resolved.institutionID = institution.ID.String()
 	case model.ResourceAcademicUnit:
@@ -543,13 +544,13 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "academic_unit")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_unit")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = resource.ID
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "academic_unit")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_unit")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -559,7 +560,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("academic_period", err)
 		}
 		if period == nil || period.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "academic_period")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
 		}
 		if period.Owner.InstitutionID.IsValid() {
 			institution, err := r.institutions.Get(ctx, period.Owner.InstitutionID.String())
@@ -567,7 +568,7 @@ func (r *accessScopeResolver) resolve(
 				return resolved, authorizationResourceError("academic_period_institution", err)
 			}
 			if institution.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "academic_period")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
 			}
 			resolved.institutionID = institution.ID.String()
 			resolved.academicPeriodInstitutionOwned = true
@@ -578,13 +579,13 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("academic_period_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "academic_period")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = period.Owner.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "academic_period")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "academic_period")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -597,20 +598,20 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("programme", err)
 		}
 		if programme == nil || programme.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "programme")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
 		}
 		units, err := r.academicUnits.ListAncestors(ctx, programme.AcademicUnitID.String())
 		if err != nil {
 			return resolved, authorizationResourceError("programme_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "programme")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = programme.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "programme")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "programme")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -623,27 +624,27 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("programme_level", err)
 		}
 		if level == nil || level.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "programme_level")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
 		}
 		programme, err := r.programmes.Get(ctx, level.ProgrammeID.String())
 		if err != nil {
 			return resolved, authorizationResourceError("programme_level_programme", err)
 		}
 		if programme == nil || programme.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "programme_level")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
 		}
 		units, err := r.academicUnits.ListAncestors(ctx, programme.AcademicUnitID.String())
 		if err != nil {
 			return resolved, authorizationResourceError("programme_level_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "programme_level")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = programme.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "programme_level")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "programme_level")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -653,7 +654,7 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("class", err)
 		}
 		if class.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "class")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 		}
 		academicUnitID, err := r.classes.GetAcademicUnitId(ctx, resource.ID)
 		if err != nil {
@@ -664,30 +665,30 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("class_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "class")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 		}
 		resolved.classID = resource.ID
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = academicUnitID
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "class")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
 		periodScope, err := r.resolve(ctx, model.Resource{Type: model.ResourceAcademicPeriod, ID: class.AcademicPeriodID.String()})
 		if err != nil {
-			if Is(err, "resource.not_found") {
-				return resolved, NewError("resource.not_found").WithField("resource", "class")
+			if apperror.Is(err, "resource.not_found") {
+				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 			}
 			return resolved, err
 		}
 		if periodScope.institutionID != resolved.institutionID {
-			return resolved, NewError("resource.not_found").WithField("resource", "class")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 		}
 		if !periodScope.academicPeriodInstitutionOwned {
 			if _, applicable := resolved.academicUnitID[periodScope.targetAcademicUnitID]; !applicable {
-				return resolved, NewError("resource.not_found").WithField("resource", "class")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "class")
 			}
 		}
 	case model.ResourceExam:
@@ -703,13 +704,13 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("exam_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "exam")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "exam")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = exam.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "exam")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "exam")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -730,20 +731,20 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("exam_sitting_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "exam_sitting")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "exam_sitting")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = exam.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "exam_sitting")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "exam_sitting")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
 	case model.ResourceSubmission:
 		submissionID, err := model.ParseSubmissionID(resource.ID)
 		if err != nil {
-			return resolved, NewError("authorization.request.invalid").Wrap(err)
+			return resolved, apperror.New("authorization.request.invalid").Wrap(err)
 		}
 		ownership, err := r.submissions.Resolve(ctx, submissionID)
 		if err != nil {
@@ -758,13 +759,13 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("submission_academic_unit", err)
 		}
 		if len(units) == 0 {
-			return resolved, NewError("resource.not_found").WithField("resource", "submission")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "submission")
 		}
 		resolved.institutionID = units[0].InstitutionID.String()
 		resolved.targetAcademicUnitID = ownership.AcademicUnitID.String()
 		for _, unit := range units {
 			if unit == nil || unit.IsArchived() {
-				return resolved, NewError("resource.not_found").WithField("resource", "submission")
+				return resolved, apperror.New("resource.not_found").WithField("resource", "submission")
 			}
 			resolved.academicUnitID[unit.ID.String()] = struct{}{}
 		}
@@ -774,18 +775,18 @@ func (r *accessScopeResolver) resolve(
 			return resolved, authorizationResourceError("user", err)
 		}
 		if !user.IsActive() {
-			return resolved, NewError("resource.not_found").WithField("resource", "user")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "user")
 		}
 		institution, err := r.institutions.GetSingleton(ctx)
 		if err != nil {
 			return resolved, authorizationResourceError("institution", err)
 		}
 		if institution.IsArchived() {
-			return resolved, NewError("resource.not_found").WithField("resource", "institution")
+			return resolved, apperror.New("resource.not_found").WithField("resource", "institution")
 		}
 		resolved.institutionID = institution.ID.String()
 	default:
-		return resolved, NewError("authorization.request.invalid")
+		return resolved, apperror.New("authorization.request.invalid")
 	}
 	return resolved, nil
 }

@@ -10,6 +10,8 @@ package app
 import (
 	"errors"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
 func TestOperationalEventProjectsOnlyBoundedOutcome(t *testing.T) {
@@ -20,9 +22,9 @@ func TestOperationalEventProjectsOnlyBoundedOutcome(t *testing.T) {
 		err        error
 	}{
 		{name: "success", want: "success"},
-		{name: "denied", err: NewError("authorization.denied").Wrap(errors.New("private detail")), want: "denied"},
-		{name: "credentials", err: NewError("authentication.invalid_credentials"), want: "rejected"},
-		{name: "rate limit", err: NewError("authentication.rate_limited"), want: "rate_limited"},
+		{name: "denied", err: apperror.New("authorization.denied").Wrap(errors.New("private detail")), want: "denied"},
+		{name: "credentials", err: apperror.New("authentication.invalid_credentials"), want: "rejected"},
+		{name: "rate limit", err: apperror.New("authentication.rate_limited"), want: "rate_limited"},
 		{name: "unknown", err: errors.New("must-not-become-a-label"), want: "error"},
 	}
 	for _, test := range tests {

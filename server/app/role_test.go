@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -155,7 +156,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
 		_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
-		if !Is(err, "authorization.denied") {
+		if !apperror.Is(err, "authorization.denied") {
 			t.Fatalf("Create() error = %v", err)
 		}
 		if want := []string{"authorize-manage", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
@@ -173,7 +174,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
 		_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), Permissions: &permissions})
-		if !Is(err, "authorization.denied") {
+		if !apperror.Is(err, "authorization.denied") {
 			t.Fatalf("Update() error = %v", err)
 		}
 		if want := []string{"authorize-manage", "get-role", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
@@ -195,7 +196,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
-	if !Is(err, "role.permission.unknown") {
+	if !apperror.Is(err, "role.permission.unknown") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage"}
@@ -208,7 +209,7 @@ func TestRoleCreateRejectsRelationshipOnlyParticipationAction(t *testing.T) {
 	t.Parallel()
 
 	err := validateKnownPermissions([]string{string(model.ActionExamSittingParticipate)})
-	if err == nil || !Is(err, "role.permission.unknown") {
+	if err == nil || !apperror.Is(err, "role.permission.unknown") {
 		t.Fatalf("validateKnownPermissions() error = %v, want role.permission.unknown", err)
 	}
 }
@@ -254,7 +255,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
-	if !Is(err, "role.conflict") {
+	if !apperror.Is(err, "role.conflict") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage", "get-role", "audit-begin", "store-update", "audit-fail"}
@@ -276,7 +277,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID.String(), DisplayName: &displayName})
-	if !Is(err, "role.built_in.protected") {
+	if !apperror.Is(err, "role.built_in.protected") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage", "get-role"}
@@ -316,7 +317,7 @@ func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t 
 		t.Fatalf("preserved unknown permission rejected: %v", err)
 	}
 	introduced := []string{"another.future_permission"}
-	if err := validatePatchedPermissions(current, &introduced); err == nil || !Is(err, "role.permission.unknown") {
+	if err := validatePatchedPermissions(current, &introduced); err == nil || !apperror.Is(err, "role.permission.unknown") {
 		t.Fatalf("new unknown permission error = %v", err)
 	}
 }
@@ -324,7 +325,7 @@ func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t 
 func TestRoleMappersPreserveApplicationFailureWrappers(t *testing.T) {
 	t.Parallel()
 
-	applicationFailure := NewError("authorization.denied")
+	applicationFailure := apperror.New("authorization.denied")
 	wrapped := errors.Join(errors.New("persistence context"), applicationFailure)
 	for name, mapper := range map[string]func(error) error{
 		"role":         roleError,

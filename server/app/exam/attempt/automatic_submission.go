@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -24,7 +25,7 @@ func (service *Service) ListAutomaticSealTargets(ctx context.Context, sittingID 
 	after model.ExamAttemptID, limit int,
 ) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	if !sittingID.IsValid() || (!after.IsZero() && !after.IsValid()) || limit < 1 || limit > 200 {
-		return nil, invalid("automatic_seal_list")
+		return nil, apperror.Invalid("exam.attempt.invalid", "automatic_seal_list")
 	}
 	items, err := service.deps.Submissions.ListAutomaticSealTargets(ctx, store.ExamSubmissionAutomaticSealListOptions{
 		SittingID: sittingID, AfterAttemptID: after, Limit: limit,
@@ -35,7 +36,7 @@ func (service *Service) ListAutomaticSealTargets(ctx context.Context, sittingID 
 	previous := after
 	for _, item := range items {
 		if !validAutomaticSealTarget(item, sittingID) || (!previous.IsZero() && item.AttemptID.String() <= previous.String()) {
-			return nil, unavailable(errors.New("invalid automatic Submission target page"))
+			return nil, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid automatic Submission target page"))
 		}
 		previous = item.AttemptID
 	}
@@ -56,14 +57,14 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	target store.ExamSubmissionAutomaticSealTarget,
 ) (AutomaticSubmissionResult, error) {
 	if !call.valid() || !validAutomaticSealTarget(target, target.SittingID) {
-		return AutomaticSubmissionResult{}, invalid("automatic_seal")
+		return AutomaticSubmissionResult{}, apperror.Invalid("exam.attempt.invalid", "automatic_seal")
 	}
 	preparation, err := service.deps.Submissions.PrepareAutomaticSeal(ctx, target)
 	if err != nil {
 		return AutomaticSubmissionResult{}, mapStore(err)
 	}
 	if preparation == nil || preparation.SealAt.IsZero() {
-		return AutomaticSubmissionResult{}, unavailable(errors.New("invalid automatic Submission preparation"))
+		return AutomaticSubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("invalid automatic Submission preparation"))
 	}
 	auditID, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
@@ -78,7 +79,7 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	at := preparation.SealAt
 	proposed := service.deps.NewSubmission()
 	if !proposed.IsValid() {
-		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, invalid("submission_id"))
+		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, apperror.Invalid("exam.attempt.invalid", "submission_id"))
 	}
 	var notice *store.PreparedMail
 	var expectedRecipientRevision int64
@@ -91,7 +92,7 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 			if prepareErr == nil {
 				prepareErr = errors.New("invalid automatic Submission receipt mail preparation")
 			}
-			return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, unavailable(prepareErr))
+			return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, apperror.New("exam.attempt.unavailable").Wrap(prepareErr))
 		}
 		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
 	}
@@ -125,7 +126,7 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 		stored.CandidateUserID != target.CandidateUserID || stored.ParticipationID != target.ParticipationID ||
 		stored.Generation != target.Generation || stored.ConnectionID != target.ConnectionID ||
 		(!stored.Replayed && stored.Receipt.SubmissionID != proposed) || (stored.Replayed && stored.ConnectionClosed) {
-		return AutomaticSubmissionResult{}, unavailable(errors.New("inconsistent automatic Submission result"))
+		return AutomaticSubmissionResult{}, apperror.New("exam.attempt.unavailable").Wrap(errors.New("inconsistent automatic Submission result"))
 	}
 	return AutomaticSubmissionResult{SubmissionResult: SubmissionResult{Receipt: stored.Receipt, ExamID: stored.ExamID,
 		Provenance: model.ExamSubmissionSittingClosed,
@@ -135,11 +136,7 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 }
 
 func (service *Service) failSystemAudit(ctx context.Context, auditID string, err error) error {
-	code := "exam.attempt.unavailable"
-	var fault *Fault
-	if errors.As(err, &fault) {
-		code = fault.Code
-	}
+	code := apperror.CodeOf(err, "exam.attempt.unavailable")
 	if auditErr := service.deps.SystemAuditor.Fail(ctx, auditID, code); auditErr != nil {
 		return errors.Join(err, auditErr)
 	}

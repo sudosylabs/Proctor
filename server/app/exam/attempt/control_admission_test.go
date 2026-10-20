@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -41,17 +42,17 @@ func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing
 	p := &recoveryStoreFake{ExamAttemptStore: f.persistence}
 	f.service.deps.Persistence = p
 	_, err = f.service.BrowserDeliveryReceipts(ctx, other, BrowserSourceQuery{Access: CandidateAccess{AttemptID: f.attemptID}, ParticipationID: model.NewAttemptParticipationID(), SourceSessionID: "00000000-0000-4000-8000-000000000001"}, 1, 32)
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.delivery.control_rate_limited" || p.selector.SourceSessionID != "" || p.reads != 0 {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" || p.selector.SourceSessionID != "" || p.reads != 0 {
 		t.Fatal("control overload reached persistence or lost its code", err)
 	}
 	// Preflight work shares recovery capacity and cannot consume renewal capacity.
 	_, err = f.service.PrepareSecurityPreflight(ctx, other, PrepareSecurityPreflightCommand{})
-	if !errors.As(err, &fault) || fault.Code != "exam.delivery.control_rate_limited" {
+	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("preflight preparation bypassed admission", err)
 	}
 	_, err = f.service.ReportSecurityPreflight(ctx, other, ReportSecurityPreflightCommand{})
-	if !errors.As(err, &fault) || fault.Code != "exam.delivery.control_rate_limited" {
+	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("preflight report bypassed admission", err)
 	}
 }
@@ -194,12 +195,12 @@ func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	var fault *Fault
+	var fault *apperror.Error
 	if _, err = allowance.enter(context.Background(), model.NewUserID(), at); !errors.As(err, &fault) ||
-		fault.Code != "exam.delivery.control_rate_limited" {
+		fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("queue length is unbounded", err)
 	}
-	if err = <-waited; !errors.As(err, &fault) || fault.Code != "exam.delivery.control_rate_limited" {
+	if err = <-waited; !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
 		t.Fatal("queued work waited past its deadline", err)
 	}
 	allowance.mu.Lock()

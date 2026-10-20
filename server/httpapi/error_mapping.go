@@ -12,9 +12,9 @@ import (
 )
 
 // applicationFailure is the transport-facing view of a transport-neutral
-// application error such as *app.Error (Code + Fields). The interface keeps
-// HTTP mapping duck-typed even when the package also imports app for
-// constructing errors at the handler boundary.
+// application error such as *apperror.Error (Code + Fields). The interface keeps
+// HTTP mapping duck-typed over any error exposing a stable code and safe
+// fields.
 type applicationFailure interface {
 	error
 	Code() string

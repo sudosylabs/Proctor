@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -257,7 +258,7 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 			t.Fatalf("flow %d first attempt: %v", index, err)
 		}
 		err := flow()
-		if !Is(err, "authentication.rate_limited") {
+		if !apperror.Is(err, "authentication.rate_limited") {
 			t.Fatalf("flow %d second attempt = %v, want rate limited", index, err)
 		}
 		for _, sensitive := range sensitiveValues {
@@ -483,7 +484,7 @@ func TestLoginMapsEitherCounterFailureToUnavailableWithoutRollback(t *testing.T)
 				LoginID: "student@example.edu", Password: "wrong-password",
 				ClientType: model.SessionClientCLI, Source: "192.0.2.8:443",
 			})
-			if !Is(err, "authentication.rate_limit_unavailable") {
+			if !apperror.Is(err, "authentication.rate_limit_unavailable") {
 				t.Fatalf("login error = %v", err)
 			}
 			cache.mu.Lock()
@@ -555,20 +556,20 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 		_, err := service.login(context.Background(), Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
-		if !Is(err, "authentication.invalid_credentials") {
+		if !apperror.Is(err, "authentication.invalid_credentials") {
 			t.Fatalf("attempt %d from %s: err = %v", index, source, err)
 		}
 	}
 	_, err := service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
-	if !Is(err, "authentication.rate_limited") {
+	if !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("attempt from a fresh source after the account budget = %v, want rate limited", err)
 	}
 	_, err = service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
-	if !Is(err, "authentication.invalid_credentials") {
+	if !apperror.Is(err, "authentication.invalid_credentials") {
 		t.Fatalf("another account from the same source = %v, want an independent budget", err)
 	}
 }

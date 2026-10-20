@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -73,7 +74,7 @@ func (a *App) GetAcademicPeriod(ctx context.Context, invocation Invocation, quer
 func (s *academicPeriodService) Get(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "academic_period_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodView, model.Resource{Type: model.ResourceAcademicPeriod, ID: id}); err != nil {
 		return nil, err
@@ -113,7 +114,7 @@ func (a *App) CreateAcademicPeriod(ctx context.Context, invocation Invocation, c
 func (s *academicPeriodService) Create(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	periodID, err := model.ParseAcademicPeriodID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 	}
 	owner, err := parseAcademicPeriodOwner(command.OwnerType, command.OwnerID)
 	if err != nil {
@@ -195,7 +196,7 @@ func (a *App) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, c
 func (s *academicPeriodService) Update(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "academic_period_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodManage, resource); err != nil {
@@ -258,7 +259,7 @@ func (a *App) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, 
 func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return NewError("request.invalid").WithField("field", "academic_period_id")
+		return apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: id}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionAcademicPeriodManage, resource); err != nil {
@@ -302,17 +303,17 @@ func parseAcademicPeriodOwner(ownerType, ownerID string) (model.AcademicPeriodOw
 	case model.ResourceInstitution:
 		id, err := model.ParseInstitutionID(ownerID)
 		if err != nil {
-			return model.AcademicPeriodOwner{}, NewError("request.invalid").WithField("field", "owner_id").Wrap(err)
+			return model.AcademicPeriodOwner{}, apperror.New("request.invalid").WithField("field", "owner_id").Wrap(err)
 		}
 		return model.NewInstitutionAcademicPeriodOwner(id), nil
 	case model.ResourceAcademicUnit:
 		id, err := model.ParseAcademicUnitID(ownerID)
 		if err != nil {
-			return model.AcademicPeriodOwner{}, NewError("request.invalid").WithField("field", "owner_id").Wrap(err)
+			return model.AcademicPeriodOwner{}, apperror.New("request.invalid").WithField("field", "owner_id").Wrap(err)
 		}
 		return model.NewAcademicUnitAcademicPeriodOwner(id), nil
 	default:
-		return model.AcademicPeriodOwner{}, NewError("request.invalid").WithField("field", "owner_type")
+		return model.AcademicPeriodOwner{}, apperror.New("request.invalid").WithField("field", "owner_type")
 	}
 }
 
@@ -326,7 +327,7 @@ func academicPeriodOwnerScopeType(owner model.AcademicPeriodOwner) model.RoleSco
 func (s *academicPeriodService) get(ctx context.Context, id string) (*model.AcademicPeriod, error) {
 	id = strings.TrimSpace(id)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "academic_period_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
 	}
 	period, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -338,15 +339,15 @@ func (s *academicPeriodService) get(ctx context.Context, id string) (*model.Acad
 func academicPeriodError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "academic_period").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "academic_period").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("academic_period.conflict").WithField("resource", "academic_period").Wrap(err)
+		return apperror.New("academic_period.conflict").WithField("resource", "academic_period").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("academic_period.invalid").WithField("resource", "academic_period").Wrap(err)
+			return apperror.New("academic_period.invalid").WithField("resource", "academic_period").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "academic_period").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "academic_period").Wrap(err)
 	}
 }

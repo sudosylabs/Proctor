@@ -16,6 +16,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -87,7 +88,7 @@ func TestControlledMailUsesRealApplicationGraphAndDurableWorker(t *testing.T) {
 	if err != nil || len(durableCanceled.EncryptedPayload) != 0 {
 		t.Fatalf("canceled durable delivery = %#v, %v", durableCanceled, err)
 	}
-	if _, appErr = helper.App.RetryMailDelivery(ctx, invocation, queued.ID); !application.Is(appErr, "mail.conflict") {
+	if _, appErr = helper.App.RetryMailDelivery(ctx, invocation, queued.ID); !apperror.Is(appErr, "mail.conflict") {
 		t.Fatalf("RetryMailDelivery(canceled) error = %v", appErr)
 	}
 	queued, appErr = helper.App.SendTestMail(ctx, invocation)

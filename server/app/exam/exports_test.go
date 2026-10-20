@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -40,7 +41,7 @@ func (a *exportAuthorizerFake) Deny(context.Context, Call, model.Action, model.R
 	if a.denyErr != nil {
 		return a.denyErr
 	}
-	return &Fault{Code: "exam.not_found"}
+	return apperror.New("exam.not_found")
 }
 
 func TestBrowserHistoryExportRejectsOverrideAndRechecksBeforeOpeningBytes(t *testing.T) {
@@ -303,8 +304,8 @@ func TestExamExportDownloadExpiresDuringStorageOpen(t *testing.T) {
 	content.body = body
 	content.opened = func() { now = s.value.ExpiresAt }
 	_, err := service.Open(context.Background(), f.call, ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.export.expired" || !body.closed {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.export.expired" || !body.closed {
 		t.Fatalf("late storage Open escaped expiry: %v, closed=%v", err, body.closed)
 	}
 }

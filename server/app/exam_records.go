@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -82,7 +83,7 @@ func (adapter examRecordsAuthorizationAdapter) Deny(ctx context.Context, call ex
 		model.RoleScopeAcademicUnit, unitID.String(), call.RequestMetadata(), false); err != nil {
 		return err
 	}
-	return &examengine.Fault{Code: "exam.not_found"}
+	return apperror.New("exam.not_found")
 }
 
 var _ examengine.RecordsAuthorizer = examRecordsAuthorizationAdapter{}

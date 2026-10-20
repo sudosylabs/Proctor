@@ -11,6 +11,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -28,7 +29,7 @@ type retentionNoticeDispatcher struct {
 func (d retentionNoticeDispatcher) DispatchRetentionNotice(ctx context.Context, notice model.RetentionNotice) error {
 	input := &store.RetentionNoticeMail{RetirementID: notice.RetirementID, RecipientUserID: notice.RecipientUserID}
 	if d.records == nil {
-		return NewError("retention.unavailable")
+		return apperror.New("retention.unavailable")
 	}
 	if d.users == nil || d.now == nil {
 		input.FailureCode = "mail.preparation_unavailable"
@@ -53,7 +54,7 @@ func (d retentionNoticeDispatcher) DispatchRetentionNotice(ctx context.Context, 
 
 func (a retentionJobAudit) BeginRetention(ctx context.Context, institutionID model.InstitutionID, submissionID model.SubmissionID) (string, error) {
 	if a.audit == nil {
-		return "", NewError("audit.unavailable")
+		return "", apperror.New("audit.unavailable")
 	}
 	event, err := a.audit.BeginSystemCriticalActionAtScope(ctx, model.ActionRetentionCleanupManage,
 		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.RoleScopeInstitution, institutionID.String(),
@@ -66,7 +67,7 @@ func (a retentionJobAudit) BeginRetention(ctx context.Context, institutionID mod
 
 func (a retentionJobAudit) FailRetention(ctx context.Context, id string) error {
 	if a.audit == nil {
-		return NewError("audit.unavailable")
+		return apperror.New("audit.unavailable")
 	}
 	_, err := a.audit.CompleteCriticalAction(ctx, id, model.AuditStatusFail, "retention.unavailable", nil)
 	return err
@@ -74,7 +75,7 @@ func (a retentionJobAudit) FailRetention(ctx context.Context, id string) error {
 
 func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institutionID model.InstitutionID, kind model.RetentionExpiryKind, id string) (string, error) {
 	if a.audit == nil || !kind.IsValid() || !model.IsValidId(id) {
-		return "", NewError("audit.unavailable")
+		return "", apperror.New("audit.unavailable")
 	}
 	event, err := a.audit.BeginSystemCriticalActionAtScope(ctx, model.ActionRetentionCleanupManage,
 		model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, model.RoleScopeInstitution, institutionID.String(),
@@ -87,11 +88,11 @@ func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institution
 
 func (a retentionJobAudit) PrepareRetentionCleanupAudit(_ context.Context, institutionID model.InstitutionID) (*model.AuditEvent, error) {
 	if a.audit == nil || a.audit.nodeID == "" || !institutionID.IsValid() {
-		return nil, NewError("audit.unavailable")
+		return nil, apperror.New("audit.unavailable")
 	}
 	parameters, err := model.EncodeAuditData(map[string]string{"operation": "retention.expire_cleanup_history"})
 	if err != nil {
-		return nil, NewError("audit.unavailable")
+		return nil, apperror.New("audit.unavailable")
 	}
 	return &model.AuditEvent{Action: string(model.ActionRetentionCleanupManage), Resource: model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String(), Status: model.AuditStatusAttempt, NodeID: a.audit.nodeID, ClientType: "system", Parameters: parameters}, nil
 }

@@ -59,7 +59,7 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 }
 
 // WriteError maps a failure to RFC 9457 Problem Details. Transport-neutral
-// application failures (*app.Error) use the centralized code table through the
+// application failures (*apperror.Error) use the centralized code table through the
 // applicationFailure interface. Unexpected errors become a generic correlated
 // internal response with no internal detail.
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {

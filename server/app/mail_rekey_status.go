@@ -13,6 +13,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -56,7 +57,7 @@ type mailRekeyJobReader interface {
 
 func (a *App) GetMailRekeyStatus(ctx context.Context, invocation Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
 	if a == nil || a.mail == nil {
-		return MailRekeyStatusView{}, NewError("mail.unavailable")
+		return MailRekeyStatusView{}, apperror.New("mail.unavailable")
 	}
 	return a.mail.RekeyStatus(ctx, invocation, jobID)
 }
@@ -69,26 +70,26 @@ func (s *mailService) RekeyStatus(ctx context.Context, invocation Invocation, jo
 		return MailRekeyStatusView{}, err
 	}
 	if s.rekeyJobs == nil || !jobID.IsValid() {
-		return MailRekeyStatusView{}, NewError("mail.unavailable")
+		return MailRekeyStatusView{}, apperror.New("mail.unavailable")
 	}
 	job, err := s.rekeyJobs.Get(ctx, jobID)
 	if err != nil {
 		if store.IsNotFound(err) {
-			return MailRekeyStatusView{}, NewError("resource.not_found")
+			return MailRekeyStatusView{}, apperror.New("resource.not_found")
 		}
-		return MailRekeyStatusView{}, NewError("mail.unavailable").Wrap(err)
+		return MailRekeyStatusView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	// Job identities are shared across domains. A caller with mail.rekey must
 	// not learn whether a valid identifier belongs to some unrelated Job type.
 	if job == nil {
-		return MailRekeyStatusView{}, NewError("mail.unavailable").Wrap(errors.New("mail rekey persistence returned no Job"))
+		return MailRekeyStatusView{}, apperror.New("mail.unavailable").Wrap(errors.New("mail rekey persistence returned no Job"))
 	}
 	if job.Type != model.JobTypeMailRekey {
-		return MailRekeyStatusView{}, NewError("resource.not_found")
+		return MailRekeyStatusView{}, apperror.New("resource.not_found")
 	}
 	view, err := projectMailRekeyStatus(job)
 	if err != nil {
-		return MailRekeyStatusView{}, NewError("mail.unavailable").Wrap(err)
+		return MailRekeyStatusView{}, apperror.New("mail.unavailable").Wrap(err)
 	}
 	return view, nil
 }

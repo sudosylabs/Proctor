@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -19,8 +20,8 @@ import (
 // refusal without disclosing a cached or client-selected owner's state.
 func (service *Service) nativeDeliveryFailure(ctx context.Context, access store.NativeDeliveryAccess, err error) error {
 	mapped := mapNativeDeliveryError(err)
-	var fault *Fault
-	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code) {
+	var fault *apperror.Error
+	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code()) {
 		return mapped
 	}
 	target, readErr := service.deps.Persistence.ResolveNativeDeliveryTarget(ctx, access)
@@ -41,8 +42,8 @@ func (service *Service) nativeDeliveryFailure(ctx context.Context, access store.
 
 func (service *Service) browserDeliveryFailure(ctx context.Context, access store.BrowserDeliveryAccess, err error) error {
 	mapped := mapBrowserDeliveryError(err)
-	var fault *Fault
-	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code) {
+	var fault *apperror.Error
+	if errors.Is(err, store.ErrDeliveryAdmissionFull) || !errors.As(mapped, &fault) || !SupportsDeliveryRecovery(fault.Code()) {
 		return mapped
 	}
 	status, readErr := service.deps.Persistence.BrowserSourceStatus(ctx, access)
@@ -56,13 +57,34 @@ func (service *Service) browserDeliveryFailure(ctx context.Context, access store
 	return withDeliveryRecovery(fault, model.DeliveryRecovery{Family: "browser", Budget: *budget, Browser: status})
 }
 
-func withDeliveryRecovery(fault *Fault, recovery model.DeliveryRecovery) error {
+func withDeliveryRecovery(fault *apperror.Error, recovery model.DeliveryRecovery) error {
 	if recovery.Validate() != nil {
 		return fault
 	}
-	result := *fault
-	result.Recovery = &recovery
-	return &result
+	return fault.Wrap(deliveryRecoveryCause{recovery: recovery, cause: fault.Unwrap()})
+}
+
+// deliveryRecoveryCause carries validated, freshly authorized progress in the
+// application error's cause chain. Transports find it with errors.As and
+// attach it only to the failure codes that SupportsDeliveryRecovery admits.
+type deliveryRecoveryCause struct {
+	recovery model.DeliveryRecovery
+	cause    error
+}
+
+func (c deliveryRecoveryCause) Error() string {
+	if c.cause == nil {
+		return "delivery recovery available"
+	}
+	return c.cause.Error()
+}
+
+func (c deliveryRecoveryCause) Unwrap() error { return c.cause }
+
+// DeliveryRecovery exposes only validated, freshly authorized progress.
+func (c deliveryRecoveryCause) DeliveryRecovery() *model.DeliveryRecovery {
+	recovery := c.recovery
+	return &recovery
 }
 
 // SupportsDeliveryRecovery identifies the application failures with bounded repair context.

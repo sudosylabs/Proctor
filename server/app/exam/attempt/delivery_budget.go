@@ -9,6 +9,7 @@ package attempt
 import (
 	"context"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -30,7 +31,7 @@ func (service *Service) DeliveryBudget(ctx context.Context, call Call, query Del
 	}
 	defer release()
 	if !query.ParticipationID.IsValid() {
-		return nil, invalid("participation_id")
+		return nil, apperror.Invalid("exam.attempt.invalid", "participation_id")
 	}
 	access, err := nativeDeliverySelector(call, NativeDeliveryQuery{Access: query.Access, StreamID: query.ParticipationID.String()})
 	if err != nil {
@@ -41,7 +42,7 @@ func (service *Service) DeliveryBudget(ctx context.Context, call Call, query Del
 		return nil, mapNativeDeliveryError(err)
 	}
 	if value == nil || value.Validate() != nil || value.ParticipationID != query.ParticipationID {
-		return nil, unavailable(model.ErrDeliveryInvalid)
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }
@@ -56,7 +57,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 		return nil, err
 	}
 	if command.Request.Validate() != nil {
-		return nil, invalid("stop_delivery_details")
+		return nil, apperror.Invalid("exam.attempt.invalid", "stop_delivery_details")
 	}
 	idempotency, err := prepareIdempotency(call, store.DeliveryStopDetailsOperation, command.IdempotencyKey, struct {
 		Attempt model.ExamAttemptID
@@ -70,7 +71,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 		return nil, mapStore(err)
 	}
 	if target == nil || !target.SittingID.IsValid() || !target.ClassID.IsValid() {
-		return nil, unavailable(model.ErrDeliveryInvalid)
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	audit, err := service.deps.Auditor.Begin(ctx, call, model.ActionExamSittingParticipate, model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass, target.ClassID.String(), store.DeliveryStopDetailsOperation, map[string]any{"family": command.Request.Family})
 	if err != nil {
@@ -81,7 +82,7 @@ func (service *Service) StopDeliveryDetails(ctx context.Context, call Call, comm
 		return nil, service.failAudit(ctx, audit, mapNativeDeliveryError(err))
 	}
 	if value == nil || value.Validate(command.Request.Family) != nil {
-		return nil, unavailable(model.ErrDeliveryInvalid)
+		return nil, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	return value, nil
 }

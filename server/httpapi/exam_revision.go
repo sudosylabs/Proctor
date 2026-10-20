@@ -15,6 +15,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -147,13 +148,13 @@ func (module examRevisionHTTPModule) list(request operationRequest) (operationRe
 		response.Items = append(response.Items, examRevisionResponseFromSummary(item))
 	}
 	if page.HasMore && len(page.Items) == 0 {
-		return operationResult{}, application.NewError("exam.unavailable").Wrap(errors.New("revision page made no progress"))
+		return operationResult{}, apperror.New("exam.unavailable").Wrap(errors.New("revision page made no progress"))
 	}
 	if page.HasMore {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeExamRevisionCursor(examRevisionCursor{Number: last.Number, RevisionID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("exam.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil

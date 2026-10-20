@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -66,7 +67,7 @@ func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 	persistence := &affiliationStoreFake{events: &events, current: current, endErr: store.NewErrConflict("affiliation", "affiliation_end_time", nil)}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID.String()})
-	failure, ok := As(err)
+	failure, ok := apperror.As(err)
 	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "affiliation" {
 		t.Fatalf("End() error = %#v", err)
 	}
@@ -133,7 +134,7 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 		model.NewId,
 	)
 	_, err := service.End(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID.String()})
-	if !Is(err, "affiliation.student_has_active_enrollment") {
+	if !apperror.Is(err, "affiliation.student_has_active_enrollment") {
 		t.Fatalf("End() error = %v", err)
 	}
 	want := []string{"get-affiliation", "authorize", "list-enrollments"}

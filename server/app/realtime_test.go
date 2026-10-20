@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -28,7 +29,7 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 		Name:   "user.notification",
 		UserID: model.NewId(),
 	})
-	if err == nil || !Is(err, "websocket.internal") {
+	if err == nil || !apperror.Is(err, "websocket.internal") {
 		t.Fatalf("Publish() error = %v, want websocket.internal", err)
 	}
 }
@@ -38,7 +39,7 @@ func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	err := service.Publish(context.Background(), apprealtime.RealtimeEvent{Name: "missing.target"})
-	if err == nil || !Is(err, "websocket.request.invalid") {
+	if err == nil || !apperror.Is(err, "websocket.request.invalid") {
 		t.Fatalf("Publish() error = %v, want websocket.request.invalid", err)
 	}
 }

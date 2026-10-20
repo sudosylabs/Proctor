@@ -11,6 +11,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -26,9 +27,9 @@ func newCommandIdempotency(invocation Invocation, operation, key string, semanti
 	var semanticError *applicationidempotency.SemanticEncodingError
 	switch {
 	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, NewError("idempotency.invalid_key").Wrap(err)
+		return nil, apperror.New("idempotency.invalid_key").Wrap(err)
 	case errors.As(err, &semanticError):
-		return nil, NewError("request.invalid").Wrap(err)
+		return nil, apperror.New("request.invalid").Wrap(err)
 	default:
 		return prepared, err
 	}
@@ -39,9 +40,9 @@ func idempotencyError(err error) error {
 	var inProgress *store.ErrIdempotencyInProgress
 	switch {
 	case errors.As(err, &conflict):
-		return NewError("idempotency.conflict").Wrap(err)
+		return apperror.New("idempotency.conflict").Wrap(err)
 	case errors.As(err, &inProgress):
-		return NewError("idempotency.in_progress").Wrap(err)
+		return apperror.New("idempotency.in_progress").Wrap(err)
 	default:
 		return nil
 	}

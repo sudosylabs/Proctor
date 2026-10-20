@@ -24,6 +24,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -117,7 +118,7 @@ func (s *dpopSecurity) IssueNonce(ctx context.Context, binding dpopBinding) (str
 		return "", err
 	}
 	if err = s.cache.SetAlways(ctx, dpopNonceCachePrefix+model.HashToken(nonce), encoded, s.policy.NonceLifetime); err != nil {
-		return "", NewError("authentication.dpop.unavailable").Wrap(err)
+		return "", apperror.New("authentication.dpop.unavailable").Wrap(err)
 	}
 	return nonce, nil
 }
@@ -136,27 +137,27 @@ func (s *dpopSecurity) Verify(
 	}
 	parsed, err := parseAndVerifyDPoPProof(proof)
 	if err != nil {
-		return nil, NewError("authentication.dpop.invalid").Wrap(err)
+		return nil, apperror.New("authentication.dpop.invalid").Wrap(err)
 	}
 	if expectedJWK != nil {
 		expectedThumbprint, thumbErr := expectedJWK.Thumbprint()
 		if thumbErr != nil || expectedThumbprint != parsed.KeyThumbprint {
-			return nil, NewError("authentication.dpop.invalid")
+			return nil, apperror.New("authentication.dpop.invalid")
 		}
 	}
 	if binding.KeyThumbprint != parsed.KeyThumbprint || s.validateBinding(binding) != nil {
-		return nil, NewError("authentication.dpop.invalid")
+		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	canonicalTarget, err := canonicalDPoPTarget(targetURI)
 	if err != nil || parsed.HTM != method || parsed.HTU != canonicalTarget {
-		return nil, NewError("authentication.dpop.invalid")
+		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	if accessToken != "" {
 		if parsed.ATH != dpopAccessTokenHash(accessToken) {
-			return nil, NewError("authentication.dpop.invalid")
+			return nil, apperror.New("authentication.dpop.invalid")
 		}
 	} else if parsed.ATH != "" {
-		return nil, NewError("authentication.dpop.invalid")
+		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	if parsed.Nonce == "" {
 		return nil, s.challenge(ctx, binding, errors.New("DPoP nonce is missing"))
@@ -170,14 +171,14 @@ func (s *dpopSecurity) Verify(
 	proofAt := time.Unix(parsed.IAT, 0).UTC()
 	if proofAt.Before(issuedAt.Add(-s.policy.ClockSkew)) || proofAt.After(now.Add(s.policy.ClockSkew)) ||
 		now.Sub(issuedAt) > s.policy.NonceLifetime+s.policy.ClockSkew {
-		return nil, NewError("authentication.dpop.invalid")
+		return nil, apperror.New("authentication.dpop.invalid")
 	}
 	replayKey := dpopReplayCachePrefix + model.HashToken(parsed.KeyThumbprint+"\x00"+parsed.JTI)
 	if err = s.cache.SetIfAbsent(ctx, replayKey, []byte{1}, s.policy.ProofLifetime); err != nil {
 		if errors.Is(err, ErrAuthenticationCacheNotStored) {
-			return nil, NewError("authentication.dpop.replayed")
+			return nil, apperror.New("authentication.dpop.replayed")
 		}
-		return nil, NewError("authentication.dpop.unavailable").Wrap(err)
+		return nil, apperror.New("authentication.dpop.unavailable").Wrap(err)
 	}
 	return &verifiedDPoPProof{PublicJWK: parsed.PublicJWK, KeyThumbprint: parsed.KeyThumbprint,
 		JTI: parsed.JTI, IssuedAt: proofAt}, nil
@@ -190,7 +191,7 @@ func (s *dpopSecurity) challenge(ctx context.Context, binding dpopBinding, cause
 	}
 	return &dpopChallengeError{
 		nonce: nonce,
-		cause: NewError("authentication.dpop.use_nonce").Wrap(cause),
+		cause: apperror.New("authentication.dpop.use_nonce").Wrap(cause),
 	}
 }
 

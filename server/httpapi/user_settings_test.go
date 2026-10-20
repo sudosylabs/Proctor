@@ -18,6 +18,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -260,7 +261,7 @@ func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
 	patAPI := newFocusedResourceAPI(
 		t,
 		logger,
-		classRouteAuthenticator{err: application.NewError("authentication.invalid_token")},
+		classRouteAuthenticator{err: apperror.New("authentication.invalid_token")},
 		userSettingsResource(applicationFake),
 	)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/settings", nil)

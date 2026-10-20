@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -165,10 +166,10 @@ func (module bootstrapResourceModule) status(request operationRequest) (operatio
 func (module bootstrapResourceModule) install(request operationRequest) (operationResult, error) {
 	var input bootstrapRequest
 	if err := request.decodeJSON(&input); err != nil {
-		return operationResult{}, application.NewError("request.invalid").WithField("field", "body").Wrap(err)
+		return operationResult{}, apperror.New("request.invalid").WithField("field", "body").Wrap(err)
 	}
 	if input.Institution == nil || input.Administrator == nil {
-		return operationResult{}, application.NewError("request.invalid").WithField("field", "bootstrap")
+		return operationResult{}, apperror.New("request.invalid").WithField("field", "bootstrap")
 	}
 	result, err := module.bootstrap.BootstrapInstallation(
 		request.context,

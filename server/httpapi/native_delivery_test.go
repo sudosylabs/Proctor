@@ -19,6 +19,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -35,7 +36,7 @@ func (f *nativeDeliveryHTTPFake) NativeDeliveryStatus(_ context.Context, _ appli
 }
 func (f *nativeDeliveryHTTPFake) UpdateNativeDeliverySummary(context.Context, application.Invocation, application.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error) {
 	f.calls++
-	return nil, application.NewError("exam.delivery.summary_rate_limited")
+	return nil, apperror.New("exam.delivery.summary_rate_limited")
 }
 
 func TestNativeDeliveryHTTPPreservesOptionalHistoricalFences(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -85,7 +86,7 @@ func (a *App) GetClass(ctx context.Context, invocation Invocation, query GetClas
 func (s *classService) Get(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
 	id := strings.TrimSpace(query.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "class_id")
+		return nil, apperror.New("request.invalid").WithField("field", "class_id")
 	}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, model.Resource{Type: model.ResourceClass, ID: id}); err != nil {
 		return nil, err
@@ -103,7 +104,7 @@ func (a *App) ListClasses(ctx context.Context, invocation Invocation, query List
 func (s *classService) List(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
 	levelID := strings.TrimSpace(query.ProgrammeLevelID)
 	if !model.IsValidId(levelID) {
-		return nil, NewError("request.invalid").WithField("field", "programme_level_id")
+		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
@@ -125,7 +126,7 @@ func (a *App) SearchClasses(ctx context.Context, invocation Invocation, query Se
 func (s *classService) Search(ctx context.Context, invocation Invocation, query SearchClassesQuery) ([]*model.Class, error) {
 	unitID := strings.TrimSpace(query.AcademicUnitID)
 	if !model.IsValidId(unitID) {
-		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
 	}
 	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassView, resource); err != nil {
@@ -147,7 +148,7 @@ func (a *App) CreateClass(ctx context.Context, invocation Invocation, command Cr
 func (s *classService) Create(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
 	levelID := strings.TrimSpace(command.ProgrammeLevelID)
 	if !model.IsValidId(levelID) {
-		return nil, NewError("request.invalid").WithField("field", "programme_level_id")
+		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
 	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: levelID}
 	scopeType, scopeID, err := s.authorization.AuthorizeWithScope(ctx, invocation, model.ActionClassManage, resource)
@@ -156,15 +157,15 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 	}
 	classID, err := model.ParseClassID(s.newID())
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "class_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "class_id").Wrap(err)
 	}
 	programmeLevelID, err := model.ParseProgrammeLevelID(levelID)
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "programme_level_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id").Wrap(err)
 	}
 	academicPeriodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(command.AcademicPeriodID))
 	if err != nil {
-		return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 	}
 	candidate := &model.Class{
 		ProgrammeLevelID: programmeLevelID,
@@ -205,7 +206,7 @@ func (a *App) UpdateClass(ctx context.Context, invocation Invocation, command Up
 func (s *classService) Update(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return nil, NewError("request.invalid").WithField("field", "class_id")
+		return nil, apperror.New("request.invalid").WithField("field", "class_id")
 	}
 	resource := model.Resource{Type: model.ResourceClass, ID: id}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassManage, resource); err != nil {
@@ -226,14 +227,14 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if command.ProgrammeLevelID != nil {
 		levelID, err := model.ParseProgrammeLevelID(strings.TrimSpace(*command.ProgrammeLevelID))
 		if err != nil {
-			return nil, NewError("request.invalid").WithField("field", "programme_level_id").Wrap(err)
+			return nil, apperror.New("request.invalid").WithField("field", "programme_level_id").Wrap(err)
 		}
 		candidate.ProgrammeLevelID = levelID
 	}
 	if command.AcademicPeriodID != nil {
 		periodID, err := model.ParseAcademicPeriodID(strings.TrimSpace(*command.AcademicPeriodID))
 		if err != nil {
-			return nil, NewError("request.invalid").WithField("field", "academic_period_id").Wrap(err)
+			return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
 		}
 		candidate.AcademicPeriodID = periodID
 	}
@@ -291,7 +292,7 @@ func (a *App) ArchiveClass(ctx context.Context, invocation Invocation, command A
 func (s *classService) Archive(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
 	id := strings.TrimSpace(command.ID)
 	if !model.IsValidId(id) {
-		return NewError("request.invalid").WithField("field", "class_id")
+		return apperror.New("request.invalid").WithField("field", "class_id")
 	}
 	resource := model.Resource{Type: model.ResourceClass, ID: id}
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionClassManage, resource); err != nil {
@@ -343,15 +344,15 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 func classError(err error) error {
 	switch {
 	case store.IsNotFound(err):
-		return NewError("resource.not_found").WithField("resource", "class").Wrap(err)
+		return apperror.New("resource.not_found").WithField("resource", "class").Wrap(err)
 	case store.IsConflict(err):
-		return NewError("class.conflict").WithField("resource", "class").Wrap(err)
+		return apperror.New("class.conflict").WithField("resource", "class").Wrap(err)
 	default:
 		var invalid *store.ErrInvalidInput
 		var reference *store.ErrReference
 		if errors.As(err, &invalid) || errors.As(err, &reference) {
-			return NewError("class.invalid").WithField("resource", "class").Wrap(err)
+			return apperror.New("class.invalid").WithField("resource", "class").Wrap(err)
 		}
-		return NewError("administration.unavailable").WithField("resource", "class").Wrap(err)
+		return apperror.New("administration.unavailable").WithField("resource", "class").Wrap(err)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
@@ -393,7 +394,7 @@ func TestReplaceProfilePictureRequiresCurrentETag(t *testing.T) {
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, time.Now)
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
-	if !Is(err, "request.invalid") {
+	if !apperror.Is(err, "request.invalid") {
 		t.Fatalf("Upload() error = %v, want request.invalid", err)
 	}
 	if persistence.created {
@@ -410,7 +411,7 @@ func TestReplaceProfilePictureRejectsAStaleETagBeforeCreatingUploadState(t *test
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, &userProfileAuthorizerFake{events: &events}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, time.Now)
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), ExpectedSHA256: strings.Repeat("b", 64), Body: strings.NewReader("image"), Size: 5})
-	if !Is(err, "user.conflict") {
+	if !apperror.Is(err, "user.conflict") {
 		t.Fatalf("Upload() error = %v, want user.conflict", err)
 	}
 	if persistence.created {
@@ -515,11 +516,11 @@ func TestProfilePictureAuditFailurePreventsVisibleMutationAndEvent(t *testing.T)
 	events := []string{}
 	persistence := &pictureStoreFake{user: user, events: &events}
 	effects := &profilePictureEffectsFake{events: &events}
-	auditor := &profilePictureAuditorFake{events: &events, beginErr: NewError("audit.unavailable")}
+	auditor := &profilePictureAuditorFake{events: &events, beginErr: apperror.New("audit.unavailable")}
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, nil, time.Now)
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
-	if !Is(err, "audit.unavailable") || persistence.publication != nil || !effects.change.UserID.IsZero() {
+	if !apperror.Is(err, "audit.unavailable") || persistence.publication != nil || !effects.change.UserID.IsZero() {
 		t.Fatalf("audit failure result: err=%v publication=%#v effect=%#v", err, persistence.publication, effects.change)
 	}
 	want := []string{"authorize-profile-picture-write", "create-upload", "normalize", "audit-begin"}
@@ -538,7 +539,7 @@ func TestProfilePictureCommitFailureFailsAuditAndPublishesNoEvent(t *testing.T) 
 	service := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{events: &events}, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{events: &events}, nil, time.Now)
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
-	if !Is(err, "user.conflict") || auditor.failCode != "user.conflict" || !effects.change.UserID.IsZero() {
+	if !apperror.Is(err, "user.conflict") || auditor.failCode != "user.conflict" || !effects.change.UserID.IsZero() {
 		t.Fatalf("commit failure result: err=%v audit=%#v effect=%#v", err, auditor, effects.change)
 	}
 	want := []string{"authorize-profile-picture-write", "create-upload", "normalize", "audit-begin", "publish", "audit-fail"}
@@ -589,10 +590,10 @@ func TestUploadProfilePictureAuthorizationDenialHasNoSideEffects(t *testing.T) {
 	events := []string{}
 	persistence := &pictureStoreFake{user: user, events: &events}
 	content := &pictureContentFake{events: &events}
-	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events, writeErr: NewError("authorization.denied")}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, func() time.Time { return at })
+	service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events, writeErr: apperror.New("authorization.denied")}, &profilePictureAuditorFake{}, &profilePictureEffectsFake{}, &profilePictureEffectFailuresFake{}, nil, func() time.Time { return at })
 
 	_, err := service.Upload(context.Background(), NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{}), UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
-	if !Is(err, "authorization.denied") {
+	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Upload() error = %v", err)
 	}
 	if persistence.created || content.normalized || fmt.Sprint(events) != fmt.Sprint([]string{"authorize-profile-picture-write"}) {
@@ -687,7 +688,7 @@ func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing
 				}
 				err = outcome.Err
 			}
-			if !errors.Is(err, capacity) || operation != "default generation" && !Is(err, "service.busy") {
+			if !errors.Is(err, capacity) || operation != "default generation" && !apperror.Is(err, "service.busy") {
 				t.Fatalf("capacity outcome=%v", err)
 			}
 			if persistence.publication != nil || persistence.defaultPublication != nil || jobs.count != 0 || !effects.change.UserID.IsZero() || auditor.operation != "" {

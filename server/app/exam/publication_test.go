@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -78,8 +79,8 @@ func TestPublicationMapsCapacityConflict(t *testing.T) {
 	}
 	_, err = service.Publish(context.Background(), f.call,
 		PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"})
-	var fault *Fault
-	if !errors.As(err, &fault) || fault.Code != "exam.revision.capacity_exceeded" {
+	var fault *apperror.Error
+	if !errors.As(err, &fault) || fault.Code() != "exam.revision.capacity_exceeded" {
 		t.Fatalf("Publish() error = %v", err)
 	}
 }

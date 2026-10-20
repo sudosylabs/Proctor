@@ -15,6 +15,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -216,46 +217,46 @@ type invitationResourceModule struct{ invitations InvitationApplication }
 type unavailableInvitationApplication struct{}
 
 func (unavailableInvitationApplication) IssueStudentClassInvitation(context.Context, application.Invocation, application.IssueStudentClassInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) AcceptStudentClassInvitation(context.Context, application.Invocation, application.AcceptStudentClassInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) IssueTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.IssueTeacherAcademicUnitInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) AcceptTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.AcceptTeacherAcademicUnitInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) IssueAcademicUnitRoleInvitation(context.Context, application.Invocation, application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) AcceptAcademicUnitRoleInvitation(context.Context, application.Invocation, application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) IssueInstitutionRoleInvitation(context.Context, application.Invocation, application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error) {
-	return application.InvitationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) AcceptInstitutionRoleInvitation(context.Context, application.Invocation, application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
-	return nil, application.NewError("invitation.unavailable")
+	return nil, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) ListInvitations(context.Context, application.Invocation, application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
-	return application.InvitationAdministrationPage{}, application.NewError("invitation.unavailable")
+	return application.InvitationAdministrationPage{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) GetInvitation(context.Context, application.Invocation, string) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) ResendInvitation(context.Context, application.Invocation, application.ResendInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) RevokeInvitation(context.Context, application.Invocation, application.RevokeInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) ReplaceInvitation(context.Context, application.Invocation, application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error) {
-	return application.InvitationAdministrationView{}, application.NewError("invitation.unavailable")
+	return application.InvitationAdministrationView{}, apperror.New("invitation.unavailable")
 }
 func (unavailableInvitationApplication) RunInvitationBatch(context.Context, application.Invocation, application.RunInvitationBatchCommand) (application.InvitationBatchResult, error) {
-	return application.InvitationBatchResult{}, application.NewError("invitation.unavailable")
+	return application.InvitationBatchResult{}, apperror.New("invitation.unavailable")
 }
 
 func invitationResource(invitations InvitationApplication) resource {
@@ -327,7 +328,7 @@ func (m invitationResourceModule) batch(request operationRequest) (operationResu
 func (m invitationResourceModule) list(request operationRequest) (operationResult, error) {
 	query, err := invitationListQuery(request.request)
 	if err != nil {
-		return operationResult{}, application.NewError("invitation.query.invalid").Wrap(err)
+		return operationResult{}, apperror.New("invitation.query.invalid").Wrap(err)
 	}
 	page, err := m.invitations.ListInvitations(request.context, request.invocation(), query)
 	if err != nil {
@@ -338,14 +339,14 @@ func (m invitationResourceModule) list(request operationRequest) (operationResul
 		response.Items = append(response.Items, invitationAdministrationResponseFromView(item))
 	}
 	if page.More && len(page.Items) == 0 {
-		return operationResult{}, application.NewError("invitation.unavailable").Wrap(errors.New("invitation page made no progress"))
+		return operationResult{}, apperror.New("invitation.unavailable").Wrap(errors.New("invitation page made no progress"))
 	}
 	if page.More {
 		last := page.Items[len(page.Items)-1]
 		response.NextCursor, err = encodeInvitationCursor(invitationCursor{
 			CreatedAt: model.TimeUTC(last.CreatedAt).Format(time.RFC3339Nano), ID: last.ID.String()})
 		if err != nil {
-			return operationResult{}, application.NewError("invitation.unavailable").Wrap(err)
+			return operationResult{}, apperror.New("invitation.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -178,7 +179,7 @@ func TestUserSettingsReadOwnRequiresInteractiveSession(t *testing.T) {
 		"system invocation":     {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := service.ReadOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !Is(err, "authentication.invalid_token") {
+			if _, err := service.ReadOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.invalid_token") {
 				t.Fatalf("ReadOwn() error = %v", err)
 			}
 		})
@@ -208,7 +209,7 @@ func TestUserSettingsReadOwnFailsClosedWithoutExposingSource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := newUserSettingsServiceForTest(t, test.store, &userSettingsAuditFake{}, time.Now)
 			_, err := service.ReadOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-			if !Is(err, "user_settings.unavailable") {
+			if !apperror.Is(err, "user_settings.unavailable") {
 				t.Fatalf("ReadOwn() error = %v", err)
 			}
 			if err != nil && containsSensitiveText(err.Error(), secret) {
@@ -273,10 +274,10 @@ func TestUserSettingsReplaceOwnRejectsInvalidSourceWithoutLeakOrMutation(t *test
 		Source: "{\"" + secret + "\": }", FormatVersion: 1,
 		ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "invalid-save",
 	})
-	if !Is(err, "user_settings.invalid") {
+	if !apperror.Is(err, "user_settings.invalid") {
 		t.Fatalf("ReplaceOwn() error = %v", err)
 	}
-	failure, ok := As(err)
+	failure, ok := apperror.As(err)
 	if !ok || failure.Fields()["diagnostics"] == "" || containsSensitiveText(err.Error(), secret) {
 		t.Fatalf("invalid-source error = %#v", err)
 	}
@@ -311,7 +312,7 @@ func TestUserSettingsReplaceOwnRejectsUnsupportedFormatsWithoutEffects(t *testin
 				Source: "{}\n", FormatVersion: test.targetVersion,
 				ExpectedRevision: test.persisted.Revision, IdempotencyKey: "unsupported-format-save",
 			})
-			if !Is(err, "user_settings.format_unsupported") {
+			if !apperror.Is(err, "user_settings.format_unsupported") {
 				t.Fatalf("ReplaceOwn() error = %v", err)
 			}
 			if persistence.reads != test.wantReads || persistence.replaceInput != nil ||
@@ -355,11 +356,11 @@ func TestUserSettingsReplaceOwnMapsRevisionAndIdempotencyConflictsSafely(t *test
 			if name == "idempotency" {
 				want = "idempotency.conflict"
 			}
-			if !Is(err, want) {
+			if !apperror.Is(err, want) {
 				t.Fatalf("ReplaceOwn() error = %v, want %s", err, want)
 			}
 			if name == "revision" {
-				failure, _ := As(err)
+				failure, _ := apperror.As(err)
 				if failure.Fields()["current_revision"] != current.Revision.String() {
 					t.Fatalf("revision hint = %#v", failure.Fields())
 				}
@@ -389,7 +390,7 @@ func TestUserSettingsReplaceOwnUnknownOutcomeIsResolvedByAuthoritativeRead(t *te
 		Source: source, FormatVersion: 1, ExpectedRevision: previous.Revision,
 		IdempotencyKey: "unknown-outcome",
 	})
-	if !Is(err, "user_settings.unavailable") {
+	if !apperror.Is(err, "user_settings.unavailable") {
 		t.Fatalf("ReplaceOwn() error = %v", err)
 	}
 	committed := *previous
@@ -520,7 +521,7 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 	_, err = service.ReplaceOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{}\n", FormatVersion: 1, ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "rejected",
 	})
-	if !Is(err, "authentication.invalid_token") || persistence.reads != 0 || persistence.replaceInput != nil || len(effects.changes) != 0 {
+	if !apperror.Is(err, "authentication.invalid_token") || persistence.reads != 0 || persistence.replaceInput != nil || len(effects.changes) != 0 {
 		t.Fatalf("error=%v reads=%d replace=%#v changes=%#v", err, persistence.reads, persistence.replaceInput, effects.changes)
 	}
 }

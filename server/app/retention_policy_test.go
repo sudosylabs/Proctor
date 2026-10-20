@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,10 +35,10 @@ func TestRetentionPolicyReadAuthorizesExactInstitutionAndReturnsCopy(t *testing.
 	if fixture.policies.policy.SubmissionRetentionDays != 0 {
 		t.Fatal("read result shares mutable Store policy")
 	}
-	fixture.authorization.err = NewError("authorization.denied")
+	fixture.authorization.err = apperror.New("authorization.denied")
 	fixture.policies.getCalls = 0
 	result, err = application.GetRetentionPolicy(t.Context(), fixture.invocation)
-	if result != nil || !Is(err, "authorization.denied") || fixture.policies.getCalls != 0 {
+	if result != nil || !apperror.Is(err, "authorization.denied") || fixture.policies.getCalls != 0 {
 		t.Fatalf("denied read = %#v, %v; Store calls = %d", result, err, fixture.policies.getCalls)
 	}
 }
@@ -58,7 +59,7 @@ func TestRetentionPolicyReadRejectsUnavailableOrForeignFacts(t *testing.T) {
 			fixture := newRetentionPolicyFixture(t)
 			test.alter(&fixture)
 			result, err := fixture.service.Read(t.Context(), fixture.invocation)
-			if result != nil || !Is(err, "retention_policy.unavailable") {
+			if result != nil || !apperror.Is(err, "retention_policy.unavailable") {
 				t.Fatalf("read = %#v, %v", result, err)
 			}
 		})
@@ -85,7 +86,7 @@ func TestRetentionPolicyReplacementRequiresStrongRecentSessionBeforeWork(t *test
 			principal := fixture.invocation.Principal()
 			test.alter(&principal)
 			result, err := fixture.service.Replace(t.Context(), NewInvocation(principal, model.RequestMetadata{}), retentionPolicyCommand())
-			if result != nil || !Is(err, test.code) || fixture.authorization.calls != 0 || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
+			if result != nil || !apperror.Is(err, test.code) || fixture.authorization.calls != 0 || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
 				t.Fatalf("unassured replacement = %#v, %v; authorization calls = %d", result, err, fixture.authorization.calls)
 			}
 		})
@@ -100,7 +101,7 @@ func TestRetentionPolicyReplacementRejectsInvalidIntentBeforeAuditAndStore(t *te
 		code  string
 	}{
 		{"authorization denied", func(f *retentionPolicyFixture, _ *ReplaceRetentionPolicyCommand) {
-			f.authorization.err = NewError("authorization.denied")
+			f.authorization.err = apperror.New("authorization.denied")
 		}, "authorization.denied"},
 		{"missing revision", func(_ *retentionPolicyFixture, c *ReplaceRetentionPolicyCommand) { c.ExpectedRevision = 0 }, "retention_policy.invalid"},
 		{"negative period", func(_ *retentionPolicyFixture, c *ReplaceRetentionPolicyCommand) {
@@ -117,7 +118,7 @@ func TestRetentionPolicyReplacementRejectsInvalidIntentBeforeAuditAndStore(t *te
 			command := retentionPolicyCommand()
 			test.alter(&fixture, &command)
 			result, err := fixture.service.Replace(t.Context(), fixture.invocation, command)
-			if result != nil || !Is(err, test.code) || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
+			if result != nil || !apperror.Is(err, test.code) || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
 				t.Fatalf("invalid replacement = %#v, %v", result, err)
 			}
 		})
@@ -231,11 +232,11 @@ func TestRetentionPolicyReplacementMapsFailuresAndTerminalizesAudit(t *testing.T
 			fixture := newRetentionPolicyFixture(t)
 			fixture.policies.replaceErr = test.err
 			result, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand())
-			if result != nil || !Is(err, test.code) || fixture.audit.failID != fixture.audit.beginID || fixture.audit.failCode != test.code {
+			if result != nil || !apperror.Is(err, test.code) || fixture.audit.failID != fixture.audit.beginID || fixture.audit.failCode != test.code {
 				t.Fatalf("failure = %#v, %v; audit = %s/%s", result, err, fixture.audit.failID, fixture.audit.failCode)
 			}
 			if test.name == "revision" {
-				failure, ok := As(err)
+				failure, ok := apperror.As(err)
 				if !ok || failure.Fields()["current_revision"] != "7" {
 					t.Fatalf("revision conflict omitted current revision: %v", err)
 				}
@@ -247,7 +248,7 @@ func TestRetentionPolicyReplacementMapsFailuresAndTerminalizesAudit(t *testing.T
 func TestRetentionPolicyReplacementFailsClosedWhenAuditFails(t *testing.T) {
 	t.Parallel()
 	fixture := newRetentionPolicyFixture(t)
-	auditFailure := NewError("audit.unavailable")
+	auditFailure := apperror.New("audit.unavailable")
 	fixture.audit.beginErr = auditFailure
 	if result, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); result != nil ||
 		!errors.Is(err, auditFailure) || fixture.policies.replaceInput != nil {
@@ -268,7 +269,7 @@ func TestRetentionPolicyReplacementRejectsMalformedOrForeignOutcome(t *testing.T
 	} {
 		fixture := newRetentionPolicyFixture(t)
 		fixture.policies.result = result
-		if returned, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); returned != nil || !Is(err, "retention_policy.unavailable") {
+		if returned, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); returned != nil || !apperror.Is(err, "retention_policy.unavailable") {
 			t.Fatalf("malformed Store outcome returned %#v, %v", returned, err)
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/storetest"
@@ -217,7 +218,7 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Keep permission results on a distinct error variable from CreateLocalUser
-	// / AuthenticateAccess so typed-nil *app.Error values cannot poison later
+	// / AuthenticateAccess so typed-nil *apperror.Error values cannot poison later
 	// nil checks through a shared interface variable.
 	allowed, permErr := helper.App.Can(
 		ctx, *principal, model.ActionClassView,
@@ -360,12 +361,12 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	if authErr := helper.App.Authorize(
 		ctx, *principal, model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: target.ID.String()}, metadata,
-	); !application.Is(authErr, "authorization.denied") {
+	); !apperror.Is(authErr, "authorization.denied") {
 		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
-	); !application.Is(err, "authorization.denied") {
+	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("unbound cross-user read error = %v", err)
 	}
 
@@ -403,7 +404,7 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	}
 	if _, err := helper.App.GetUserProfile(
 		ctx, application.NewInvocation(*principal, metadata), application.GetUserProfileQuery{ID: target.ID.String()},
-	); !application.Is(err, "authorization.denied") {
+	); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("ended binding cross-user read error = %v", err)
 	}
 

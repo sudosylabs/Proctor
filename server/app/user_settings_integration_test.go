@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -120,7 +121,7 @@ func TestUserSettingsReadOwnIntegrationPreservesExactSource(t *testing.T) {
 			ExpectedRevision: view.Revision, IdempotencyKey: "settings-integration-conflict",
 		},
 	)
-	if !application.Is(err, "user_settings.revision_conflict") {
+	if !apperror.Is(err, "user_settings.revision_conflict") {
 		t.Fatalf("stale replacement error = %v", err)
 	}
 	after, err := helper.App.ReadOwnUserSettings(

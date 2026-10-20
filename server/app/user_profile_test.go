@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -122,7 +123,7 @@ func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
 		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionUserView)},
 	}
-	if _, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !Is(err, "authentication.invalid_token") {
+	if _, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("GetCurrentUserContext() error = %v", err)
 	}
 	if persistence.currentContextLimit != 0 {

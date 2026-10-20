@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -19,7 +20,7 @@ type NativeConditionListQuery = store.NativeConditionListOptions
 
 func (service *Service) ListNativeConditions(ctx context.Context, call Call, query NativeConditionListQuery) (*store.NativeConditionPage, error) {
 	if !query.SubmissionID.IsValid() || query.Limit < 1 || query.Limit > 100 || query.AfterID != "" && !query.AfterID.IsValid() {
-		return nil, invalid("native_condition_list")
+		return nil, apperror.Invalid("exam.integrity_review.invalid", "native_condition_list")
 	}
 	if err := service.deps.Authorizer.AuthorizeView(ctx, call, query.SubmissionID); err != nil {
 		return nil, err
@@ -29,13 +30,13 @@ func (service *Service) ListNativeConditions(ctx context.Context, call Call, que
 		return nil, mapStore(err)
 	}
 	if page == nil || page.Items == nil || len(page.Items) > query.Limit || page.HasMore && len(page.Items) != query.Limit {
-		return nil, unavailable(errors.New("invalid native condition page"))
+		return nil, apperror.New("exam.integrity_review.unavailable").Wrap(errors.New("invalid native condition page"))
 	}
 	result := &store.NativeConditionPage{Items: make([]model.NativeConditionEvidence, len(page.Items)), HasMore: page.HasMore}
 	previous := query.AfterID.String()
 	for i, value := range page.Items {
 		if value.Validate() != nil || value.ID.String() <= previous {
-			return nil, unavailable(model.ErrNativeDeliveryInvalid)
+			return nil, apperror.New("exam.integrity_review.unavailable").Wrap(model.ErrNativeDeliveryInvalid)
 		}
 		previous = value.ID.String()
 		result.Items[i] = value.Clone()

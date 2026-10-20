@@ -22,6 +22,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
@@ -87,7 +88,7 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Logout() error = %v, want committed success", err)
 	}
-	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !application.Is(err, "authentication.invalid_token") {
+	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("AuthenticateAccess() after logout error = %v, want invalid token", err)
 	}
 	if !strings.Contains(helper.Logs.String(), "session revocation broadcast failed") ||
@@ -179,7 +180,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 		t.Fatal(err)
 	}
 	expire(websocketSession.ID, websocketTokens.AccessToken)
-	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !application.Is(err, "authentication.invalid_token") {
+	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("expired WebSocket principal error = %v", err)
 	}
 	assertExpired(websocketSession.ID)

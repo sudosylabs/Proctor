@@ -10,13 +10,14 @@ import (
 	"context"
 	"errors"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (ExpiryScanResult, error) {
 	if limit < 1 || limit > 200 {
-		return ExpiryScanResult{}, invalid("delivery_expiry_limit")
+		return ExpiryScanResult{}, apperror.Invalid("exam.attempt.invalid", "delivery_expiry_limit")
 	}
 	due, err := service.deps.Persistence.ListExpiredDeliveries(ctx, limit)
 	if err != nil {
@@ -24,11 +25,11 @@ func (service *Service) ScanExpiredDeliveries(ctx context.Context, limit int) (E
 	}
 	result := ExpiryScanResult{Due: len(due)}
 	if len(due) > limit {
-		return result, unavailable(model.ErrDeliveryInvalid)
+		return result, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 	}
 	for _, d := range due {
 		if !d.Valid() {
-			return result, unavailable(model.ErrDeliveryInvalid)
+			return result, apperror.New("exam.attempt.unavailable").Wrap(model.ErrDeliveryInvalid)
 		}
 		audit, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage, model.Resource{Type: model.ResourceExamSitting, ID: d.SittingID.String()}, model.RoleScopeClass, d.ClassID.String(), store.DeliveryExpireOperation, map[string]any{"family": d.Family, "source_id": d.SourceID})
 		if err != nil {

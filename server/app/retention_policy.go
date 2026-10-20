@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -65,7 +66,7 @@ func (a *App) GetRetentionPolicy(
 	invocation Invocation,
 ) (*model.RetentionPolicy, error) {
 	if a == nil || a.retentionPolicy == nil {
-		return nil, NewError("retention_policy.unavailable")
+		return nil, apperror.New("retention_policy.unavailable")
 	}
 	return a.retentionPolicy.Read(ctx, invocation)
 }
@@ -77,7 +78,7 @@ func (a *App) ReplaceRetentionPolicy(
 	command ReplaceRetentionPolicyCommand,
 ) (*model.RetentionPolicy, error) {
 	if a == nil || a.retentionPolicy == nil {
-		return nil, NewError("retention_policy.unavailable")
+		return nil, apperror.New("retention_policy.unavailable")
 	}
 	return a.retentionPolicy.Replace(ctx, invocation, command)
 }
@@ -118,10 +119,10 @@ func (s *retentionPolicyService) Replace(
 		return nil, err
 	}
 	if command.ExpectedRevision < 1 || command.Settings.Validate() != nil {
-		return nil, NewError("retention_policy.invalid")
+		return nil, apperror.New("retention_policy.invalid")
 	}
 	if command.IdempotencyKey == "" {
-		return nil, NewError("idempotency.key_required")
+		return nil, apperror.New("idempotency.key_required")
 	}
 	idempotency, err := newCommandIdempotency(
 		invocation,
@@ -186,7 +187,7 @@ func (s *retentionPolicyService) Replace(
 		return nil, err
 	}
 	if stored == nil || stored.Policy == nil || stored.Policy.Validate() != nil || stored.Policy.InstitutionID != institution.ID {
-		return nil, NewError("retention_policy.unavailable")
+		return nil, apperror.New("retention_policy.unavailable")
 	}
 	return stored.Policy.Clone(), nil
 }
@@ -212,15 +213,15 @@ func retentionPolicyError(err error) error {
 	var conflict *store.ErrConflict
 	switch {
 	case errors.As(err, &revision):
-		return NewError("retention_policy.revision_conflict").WithField(
+		return apperror.New("retention_policy.revision_conflict").WithField(
 			"current_revision",
 			strconv.FormatInt(revision.CurrentRevision, 10),
 		).Wrap(err)
 	case errors.As(err, &conflict) && conflict.Resource == "authorization":
-		return NewError("authorization.denied").Wrap(err)
+		return apperror.New("authorization.denied").Wrap(err)
 	case idempotencyError(err) != nil:
 		return idempotencyError(err)
 	default:
-		return NewError("retention_policy.unavailable").Wrap(err)
+		return apperror.New("retention_policy.unavailable").Wrap(err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -124,15 +125,15 @@ func TestExamResourceFacadePreservesErrorConcealmentAndSafeFields(t *testing.T) 
 		code   string
 		fields map[string]string
 	}{
-		{"denied", NewError("authorization.denied"), "resource.not_found", nil},
-		{"missing", &examresource.Fault{Code: "exam.resource.not_found"}, "resource.not_found", nil},
-		{"safe conflict", &examresource.Fault{Code: "exam.draft.conflict", SafeFields: map[string]any{"current_revision": 8}}, "exam.draft.conflict", map[string]string{"current_revision": "8"}},
+		{"denied", apperror.New("authorization.denied"), "resource.not_found", nil},
+		{"missing", apperror.New("exam.resource.not_found"), "resource.not_found", nil},
+		{"safe conflict", apperror.New("exam.draft.conflict").WithField("current_revision", "8"), "exam.draft.conflict", map[string]string{"current_revision": "8"}},
 		{"unknown", errors.New("private adapter detail"), "exam.resource.unavailable", nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &examResourceFacadeFake{result: store.ExamResourceRecord{DraftRevision: 8}, err: test.cause}
 			got, err := (&App{examResources: fake}).RemoveExamResource(context.Background(), Invocation{}, RemoveExamResourceCommand{})
-			mapped, ok := As(err)
+			mapped, ok := apperror.As(err)
 			if !ok || mapped.Code() != test.code || !reflect.DeepEqual(mapped.Fields(), test.fields) || !errors.Is(err, test.cause) || got != (ExamResourceRecord{}) {
 				t.Fatalf("result = %#v, error = %#v; want %s, fields %v", got, mapped, test.code, test.fields)
 			}

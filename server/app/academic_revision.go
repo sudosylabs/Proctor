@@ -7,18 +7,20 @@
 
 package app
 
+import "github.com/sudosylabs/proctor/server/app/apperror"
+
 // checkAcademicRevision compares a client's optional snapshot only after the
 // application has authorized and loaded the resource. Store CAS still protects
 // changes between this comparison and commit.
-func checkAcademicRevision(expected *int64, current int64, conflictCode string) error {
+func checkAcademicRevision(expected *int64, current int64, conflictCode apperror.Code) error {
 	if expected == nil {
 		return nil
 	}
 	if *expected <= 0 {
-		return NewError("request.invalid").WithField("field", "expected_revision")
+		return apperror.New("request.invalid").WithField("field", "expected_revision")
 	}
 	if *expected != current {
-		return NewError(conflictCode)
+		return apperror.New(conflictCode)
 	}
 	return nil
 }

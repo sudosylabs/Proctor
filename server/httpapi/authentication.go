@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -630,7 +631,7 @@ func decodeRequestJSON(request *http.Request, target any) error {
 }
 
 func invalidRequestError(err error) error {
-	out := application.NewError("request.invalid")
+	out := apperror.New("request.invalid")
 	if err != nil {
 		out = out.Wrap(err)
 	}
@@ -638,11 +639,11 @@ func invalidRequestError(err error) error {
 }
 
 func authenticationRequiredError() error {
-	return application.NewError("authentication.required")
+	return apperror.New("authentication.required")
 }
 
 func ambiguousCredentialError() error {
-	return application.NewError("authentication.credential_ambiguous").WithField("field", "credential")
+	return apperror.New("authentication.credential_ambiguous").WithField("field", "credential")
 }
 
 func writeApplicationError(

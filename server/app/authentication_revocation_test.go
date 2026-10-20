@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -89,7 +90,7 @@ func TestSessionAuthenticationUsesCurrentStoreStateWithWarmCache(t *testing.T) {
 
 					test.change(persistence, user, credential, session, at)
 					principal, err := service.authenticateAccess(context.Background(), rawAccess)
-					if principal != nil || !Is(err, test.wantCode) {
+					if principal != nil || !apperror.Is(err, test.wantCode) {
 						t.Fatalf("authentication after durable change = %#v, %v; want %s", principal, err, test.wantCode)
 					}
 				})
@@ -108,7 +109,7 @@ func TestSessionAuthenticationFailsClosedWhenCredentialStoreUnavailableWithWarmC
 	cacheLegacyAuthentication(t, cache, persistence.accessByHash[hash], persistence.sessionByCredential[hash], user)
 	service.sessionCredentials = unavailableAuthenticationCredentialStore{SessionCredentialStore: persistence.SessionCredential()}
 	principal, err := service.authenticateAccess(context.Background(), rawAccess)
-	if principal != nil || !Is(err, "authentication.internal") {
+	if principal != nil || !apperror.Is(err, "authentication.internal") {
 		t.Fatalf("authentication with unavailable Store = %#v, %v", principal, err)
 	}
 }
@@ -145,7 +146,7 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 	if _, err := cache.Get(context.Background(), authenticationCachePrefix+hash); err != nil {
 		t.Fatalf("failed delete must retain the positive cache: %v", err)
 	}
-	if principal, err := service.authenticateAccess(context.Background(), rawAccess); principal != nil || !Is(err, "authentication.invalid_token") {
+	if principal, err := service.authenticateAccess(context.Background(), rawAccess); principal != nil || !apperror.Is(err, "authentication.invalid_token") {
 		t.Fatalf("authentication after committed logout = %#v, %v", principal, err)
 	}
 }
