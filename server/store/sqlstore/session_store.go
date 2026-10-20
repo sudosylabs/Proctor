@@ -433,7 +433,8 @@ func (s SQLSessionStore) EnforceExpiry(ctx context.Context, id model.SessionID, 
 		if session.UpdatedAt.Before(at) {
 			session.UpdatedAt = at
 		}
-		session.RevokedAt = model.OptionalTimeFrom(at)
+		// Revocation SQL clamps PostgreSQL time to the node-clock creation.
+		session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, at))
 		session.RevocationReason = model.SessionRevocationExpired
 		return &store.SessionExpiryEnforcementResult{
 			Session: session, TokenHashes: hashes, Expired: true,
@@ -721,7 +722,7 @@ func revokeOneUserSessionAt(
 	result, err := tx.Exec(ctx, `
 		UPDATE sessions
 		   SET updated_at = GREATEST(updated_at, ?),
-		       revoked_at = ?,
+		       revoked_at = GREATEST(created_at, ?),
 		       revocation_reason = ?
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		at,
@@ -738,7 +739,7 @@ func revokeOneUserSessionAt(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
-		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = GREATEST(created_at, ?)
 		 WHERE session_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		at,
 		at,
@@ -800,7 +801,7 @@ func revokeAllUserSessionsAt(
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE session_credentials credential
-		   SET updated_at = GREATEST(credential.updated_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(credential.updated_at, ?), revoked_at = GREATEST(credential.created_at, ?)
 		  FROM sessions session
 		 WHERE session.id = credential.session_id
 		   AND session.user_id = ?
@@ -817,7 +818,7 @@ func revokeAllUserSessionsAt(
 	if _, err := executor.Exec(ctx, `
 		UPDATE sessions
 		   SET updated_at = GREATEST(updated_at, ?),
-		       revoked_at = ?,
+		       revoked_at = GREATEST(created_at, ?),
 		       revocation_reason = ?
 		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		at,
@@ -853,7 +854,8 @@ func revokedSessionModelsAt(
 		if session.UpdatedAt.Before(at) {
 			session.UpdatedAt = at
 		}
-		session.RevokedAt = model.OptionalTimeFrom(at)
+		// Revocation SQL clamps PostgreSQL time to the node-clock creation.
+		session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, at))
 		session.RevocationReason = reason
 		sessions = append(sessions, session)
 	}

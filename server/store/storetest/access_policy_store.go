@@ -23,6 +23,9 @@ import (
 type AccessPolicySQLProbe struct {
 	HoldAuthenticationPathFence func(*testing.T, context.Context) (int, func())
 	WaitForBlockedTransactions  func(*testing.T, context.Context, int, int)
+	// LeadDatabaseClock moves one Session's node-clock instants after the
+	// database clock, as a creating node whose clock leads PostgreSQL does.
+	LeadDatabaseClock func(*testing.T, context.Context, model.SessionID)
 }
 
 func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicySQLProbe) {
@@ -158,6 +161,9 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	campusCandidate.ExternalIdentityID = campusIdentity.ID
 	campusSession, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, campusCandidate, campusCredentials, 10))
 	requireNoError(t, err)
+	if len(probes) > 0 && probes[0].LeadDatabaseClock != nil {
+		probes[0].LeadDatabaseClock(t, ctx, campusSession.ID)
+	}
 
 	reenabled := settings
 	reenabled.LocalLoginEnabled = true
@@ -206,7 +212,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 	requireNoError(t, err)
 	revokedCampus, err := ss.Session().Get(ctx, campusSession.ID)
 	requireNoError(t, err)
-	if revokedPassword.RevokedAt.Valid || !revokedCampus.RevokedAt.Valid {
+	if revokedPassword.RevokedAt.Valid || !revokedCampus.RevokedAt.Valid || revokedCampus.RevokedAt.Time.Before(revokedCampus.CreatedAt) {
 		t.Fatalf("password=%#v campus=%#v", revokedPassword, revokedCampus)
 	}
 

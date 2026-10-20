@@ -1522,11 +1522,13 @@ func revokeOtherInteractiveSessionsForAttempt(ctx context.Context, tx *sqlxTxWra
 		WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL ORDER BY id FOR UPDATE`, pq.Array(sessionIDs)); err != nil {
 		return nil, nil, fmt.Errorf("lock other interactive Session credentials for Exam Attempt: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at,?),revoked_at=?
+	// at is PostgreSQL time while Sessions carry the creating node's clock; a
+	// revocation never precedes the revoked row's creation.
+	if _, err := tx.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at,?),revoked_at=GREATEST(created_at,?)
 		WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, pq.Array(sessionIDs)); err != nil {
 		return nil, nil, fmt.Errorf("revoke other interactive Session credentials for Exam Attempt: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at,?),revoked_at=?,revocation_reason=?
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at,?),revoked_at=GREATEST(created_at,?),revocation_reason=?
 		WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at,
 		string(model.SessionRevocationAttemptSessionLock), pq.Array(sessionIDs)); err != nil {
 		return nil, nil, fmt.Errorf("revoke other interactive Sessions for Exam Attempt: %w", err)

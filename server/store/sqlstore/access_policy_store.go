@@ -303,7 +303,10 @@ func revokeSessionsForDisabledAccessMethods(ctx context.Context, tx *sqlxTxWrapp
 		ORDER BY s.user_id, s.id`, at, at, localDisabled, providerArray); err != nil {
 		return nil, fmt.Errorf("select access-policy session credentials for revocation: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE session_credentials c SET updated_at=GREATEST(c.updated_at, ?), revoked_at=?
+	// Sessions and credentials carry the creating node's clock while this
+	// revocation uses PostgreSQL time. A node clock that leads the database
+	// must not produce a revocation that precedes the row's creation.
+	if _, err := tx.Exec(ctx, `UPDATE session_credentials c SET updated_at=GREATEST(c.updated_at, ?), revoked_at=GREATEST(c.created_at, ?)
 		FROM sessions s WHERE s.id=c.session_id AND s.archived_at IS NULL AND s.revoked_at IS NULL
 		AND s.expires_at>? AND s.idle_expires_at>?
 		AND ((? AND s.authentication_method='password' AND s.authentication_provider_id='')
@@ -311,7 +314,7 @@ func revokeSessionsForDisabledAccessMethods(ctx context.Context, tx *sqlxTxWrapp
 		AND c.archived_at IS NULL AND c.revoked_at IS NULL`, at, at, at, at, localDisabled, providerArray); err != nil {
 		return nil, fmt.Errorf("revoke access-policy session credentials: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=?, revocation_reason=?
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=GREATEST(created_at, ?), revocation_reason=?
 		WHERE archived_at IS NULL AND revoked_at IS NULL AND expires_at>? AND idle_expires_at>?
 		AND ((? AND authentication_method='password' AND authentication_provider_id='')
 			OR authentication_provider_id=ANY(?))`,

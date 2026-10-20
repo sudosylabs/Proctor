@@ -28,6 +28,9 @@ type ExamAttemptSQLProbe struct {
 	FocusLossPersistence         func(*testing.T, context.Context, model.ExamAttemptID, int64) FocusLossPersistenceProbe
 	ConcurrentExamAttempt        store.ExamAttemptStore
 	AssertFocusLossSchema        func(*testing.T, context.Context)
+	// LeadDatabaseClock moves one Session's node-clock instants after the
+	// database clock, as a creating node whose clock leads PostgreSQL does.
+	LeadDatabaseClock func(*testing.T, context.Context, model.SessionID)
 }
 
 type DesktopCompatibilityPolicySerializationProbe func(
@@ -90,6 +93,9 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	ctx := context.Background()
 	fixture := newExamAttemptFixture(t, ctx, ss)
 	alternateSession := saveRegisteredDesktopSession(t, ctx, ss, fixture.candidate.ID, fixture.institutionID)
+	if len(probes) > 0 && probes[0].LeadDatabaseClock != nil {
+		probes[0].LeadDatabaseClock(t, ctx, alternateSession.ID)
+	}
 	ineligible := saveUser(t, ctx, ss)
 	ineligibleSession := saveRegisteredDesktopSession(t, ctx, ss, ineligible.ID, fixture.institutionID)
 	ineligibleFixture := fixture
@@ -291,6 +297,11 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-open-other-session", "attempt-open-other-session"))
 	if !store.IsNotFound(err) {
 		t.Fatalf("Connect(from Session revoked at active-entry) error = %v", err)
+	}
+	revokedAlternate, err := ss.Session().Get(ctx, alternateSession.ID)
+	requireNoError(t, err)
+	if !revokedAlternate.RevokedAt.Valid || revokedAlternate.RevokedAt.Time.Before(revokedAlternate.CreatedAt) {
+		t.Fatalf("Session revoked at active-entry = %#v", revokedAlternate)
 	}
 	wrongSession := access
 	wrongSession.SessionID = model.NewSessionID()

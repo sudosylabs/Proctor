@@ -288,10 +288,10 @@ func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sql
 	if err := executor.Select(ctx, &hashes, `SELECT token_hash FROM session_credentials WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL FOR UPDATE`, pq.Array(ids)); err != nil {
 		return nil, nil, err
 	}
-	if _, err := executor.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at, ?), revoked_at=? WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, pq.Array(ids)); err != nil {
+	if _, err := executor.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at, ?), revoked_at=GREATEST(created_at, ?) WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, pq.Array(ids)); err != nil {
 		return nil, nil, err
 	}
-	if _, err := executor.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=?, revocation_reason=? WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, string(reason), pq.Array(ids)); err != nil {
+	if _, err := executor.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=GREATEST(created_at, ?), revocation_reason=? WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, string(reason), pq.Array(ids)); err != nil {
 		return nil, nil, err
 	}
 	return rows, hashes, nil
