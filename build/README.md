@@ -321,6 +321,41 @@ signing is a separate policy choice. The pinned
 [Cosign signing and verification interfaces](https://docs.sigstore.dev/cosign/signing/signing_with_blobs/)
 are used to sign and verify a Sigstore bundle for the checksum manifest.
 
+## Versioning policy
+
+Each product module carries its own [Semantic Versioning](https://semver.org/)
+version, published through the module tag forms in the next section. A server
+release never implies a cache, mail, or VFS release, or the reverse.
+[`CHANGELOG.md`](../CHANGELOG.md) collects changes under `Unreleased`; cutting
+a tag moves the entries for that module under its new version heading.
+
+While a module's major version is 0, a breaking change increments the minor
+version and every compatible change increments the patch version. SemVer gives
+0.y releases no stability guarantee; Proctor still records each break with `!`
+in the commit subject, a `BREAKING CHANGE:` footer that states the transition,
+and a changelog entry. Major version 1 begins the compatibility promise:
+breaking changes then require a new major version and, for a Go module, a
+`/vN` module path.
+
+For the server, a change is breaking when an existing client, operator, or
+database must change to keep working:
+
+- HTTP and WebSocket wire: removing or renaming a route, member, message, or
+  query parameter; changing a member's type or format; making an optional
+  input required; or newly rejecting input that was accepted.
+- Error contract: renaming or removing an error code, changing its HTTP status,
+  or changing its Problem Details `type` URI.
+- Configuration and operation: removing or renaming a configuration key,
+  environment variable, command, flag, or build tag; rejecting configuration
+  that was valid; or changing a default with operator-visible effect.
+- SQL schema: any change that needs a database reset or cannot be applied as a
+  forward migration. Until the first server release the pre-release baseline
+  may change in place, and each such change is breaking.
+
+For the reusable modules, a change is breaking when it breaks compilation or
+documented behavior for code using the exported Go API, under the
+[Go module compatibility rules](https://go.dev/doc/modules/release-workflow).
+
 ## Cutting and consuming a release
 
 Release only a reviewed commit reachable from `main`, using one explicit,
