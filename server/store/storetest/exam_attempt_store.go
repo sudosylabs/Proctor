@@ -1117,16 +1117,30 @@ func newExamAttemptFixtureWithCapacity(t *testing.T, ctx context.Context, ss sto
 	publication := examRevisionPublication(t, ctx, ss, created.Value.Exam.ID, manager.ID, programme.AcademicUnitID, draftRevision, now.Add(3*time.Millisecond))
 	published, err := ss.ExamRevision().Publish(ctx, publication, examCommand(manager.ID, "exam.revision.publish.v1", "attempt-revision", "attempt-revision"))
 	requireNoError(t, err)
-	start, end := model.NowUTC().Add(time.Second), model.NowUTC().Add(time.Hour)
-	sitting, err := model.NewExamSitting(model.NewExamSittingID(), created.Value.Exam.ID, published.Revision.ID, class.ID, start, end, now)
-	requireNoError(t, err)
-	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
-	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: manager.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis(),
-		Mail: newExamSittingMailFanout(t, manager.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
-		examCommand(manager.ID, "exam.sitting.schedule.v1", "attempt-sitting", "attempt-sitting"))
-	requireNoError(t, err)
-	time.Sleep(1100 * time.Millisecond)
+	// PostgreSQL decides that a new start is strictly future. A loaded host
+	// can spend the one-second lead before the statement runs, so a refused
+	// fresh schedule is retried with a new start rather than failing the fixture.
+	var sitting *model.ExamSitting
+	var start time.Time
+	for scheduleAttempt := 1; ; scheduleAttempt++ {
+		var end time.Time
+		start, end = model.NowUTC().Add(time.Second), model.NowUTC().Add(time.Hour)
+		sitting, err = model.NewExamSitting(model.NewExamSittingID(), created.Value.Exam.ID, published.Revision.ID, class.ID, start, end, now)
+		requireNoError(t, err)
+		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+		key := "attempt-sitting-" + string(rune('0'+scheduleAttempt))
+		_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: manager.ID,
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis(),
+			Mail: newExamSittingMailFanout(t, manager.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
+			examCommand(manager.ID, "exam.sitting.schedule.v1", key, key))
+		var conflict *store.ErrConflict
+		if scheduleAttempt < 5 && errors.As(err, &conflict) && conflict.Constraint == "exam_sitting_not_future" {
+			continue
+		}
+		requireNoError(t, err)
+		break
+	}
+	time.Sleep(time.Until(start) + 100*time.Millisecond)
 	opened, err := ss.ExamSitting().AdvanceDue(ctx, &store.ExamSittingDueAdvance{SittingID: sitting.ID, AuditEventID: saveExamSittingSystemAudit(t, ctx, ss, sitting.ID, programme.AcademicUnitID).ID, AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	if opened.Value.Sitting.State != model.ExamSittingOpen {

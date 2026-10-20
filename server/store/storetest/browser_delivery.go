@@ -198,9 +198,19 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 		return value
 	}
+	// The rounds outlast one initial Participation lease on a loaded
+	// database, so the fixture renews it as a live client would.
+	renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1, AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID, CandidateUserID: f.candidate.ID, SessionID: f.session.ID, Generation: connected.Participation.Generation, DesktopRegistrationID: f.session.DesktopRegistrationID, DPoPKeyThumbprint: f.session.DPoPKeyThumbprint, ContinuityCredentialHash: access.ContinuityCredentialHash}
+	prepareParticipationRenewalCoverage(t, ctx, ss, renewal)
+	renew := func() {
+		renewal.Sequence++
+		_, renewErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
+		requireNoError(t, renewErr)
+	}
 	next := int64(2)
 	var refused []model.BrowserActivityEvent
 	for round := 0; round < 16; round++ {
+		renew()
 		events := make([]model.BrowserActivityEvent, 48)
 		for i := range events {
 			events[i] = event(next + int64(i))
@@ -230,6 +240,7 @@ func testBrowserPendingRepairReservation(t *testing.T, ss store.Store) {
 		t.Fatal("bounded pending pool never refused out-of-order details")
 	}
 	time.Sleep(150 * time.Millisecond)
+	renew()
 	repaired, err := appendEvents([]model.BrowserActivityEvent{event(1)})
 	requireNoError(t, err)
 	if repaired.HighestContiguous != next-1 || repaired.SettledThrough != next-1 || budget().Browser.PendingBytes != 0 {

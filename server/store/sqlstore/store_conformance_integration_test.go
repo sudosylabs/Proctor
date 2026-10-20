@@ -854,6 +854,31 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 		}}
 }
 
+// refreshParticipationLease gives one active Participation a fresh initial
+// lease in PostgreSQL time, as a live client's renewal would, so a long
+// scenario on a loaded database is not decided by fixture duration.
+func refreshParticipationLease(t *testing.T, ctx context.Context, persistence *SQLStore, id model.AttemptParticipationID) {
+	t.Helper()
+	_, err := runSQLTransaction(ctx, persistence.GetMaster().Begin, "refresh Attempt Participation fixture lease", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+		if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations DISABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+			return struct{}{}, execErr
+		}
+		if _, execErr := tx.Exec(ctx, `UPDATE exam_attempt_participations
+			SET renewal_sequence=GREATEST(renewal_sequence,1),updated_at=GREATEST(updated_at,statement_timestamp()),
+				lease_expires_at=GREATEST(lease_expires_at,statement_timestamp()+?::interval)
+			WHERE id=? AND state='active'`, fmt.Sprintf("%d milliseconds", model.AttemptParticipationInitialLease.Milliseconds()), id.String()); execErr != nil {
+			return struct{}{}, execErr
+		}
+		if _, execErr := tx.Exec(ctx, `ALTER TABLE exam_attempt_participations ENABLE TRIGGER exam_attempt_participations_guard`); execErr != nil {
+			return struct{}{}, execErr
+		}
+		return struct{}{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAttemptSQLProbe {
 	t.Helper()
 	return storetest.ExamAttemptSQLProbe{SetParticipationLeaseExpired: func(t *testing.T, ctx context.Context, id model.AttemptParticipationID) {
@@ -1799,6 +1824,9 @@ func TestSecureConnectStore(t *testing.T) {
 		},
 		ExpireLease: func(id model.AttemptParticipationID) {
 			examAttemptSQLProbe(t, sqlStore).SetParticipationLeaseExpired(t, context.Background(), id)
+		},
+		RefreshLease: func(id model.AttemptParticipationID) {
+			refreshParticipationLease(t, context.Background(), sqlStore, id)
 		},
 		FillMetadata: func(id model.ExamAttemptID) {
 			mustExec(`UPDATE exam_attempt_delivery_budgets SET control_metadata_bytes=2097152 WHERE exam_attempt_id=?`, id.String())

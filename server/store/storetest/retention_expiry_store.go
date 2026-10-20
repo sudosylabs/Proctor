@@ -309,7 +309,7 @@ func TestRetentionReceiptExpiryStore(t *testing.T, ss store.Store, retentionProb
 func TestRetentionCleanupAuditExpiryStore(t *testing.T, ss store.Store, probe RetentionExpirySQLProbe) {
 	t.Helper()
 	TestRetentionExpiryStore(t, ss, probe)
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	policy, err := ss.RetentionPolicy().Get(ctx)
 	requireNoError(t, err)

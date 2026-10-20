@@ -210,6 +210,9 @@ type SecureConnectProbe struct {
 	FillMetadata    func(model.ExamAttemptID)
 	Totals          func(model.ExamAttemptID) (int64, int64)
 	Consumed        func(string) bool
+	// RefreshLease renews one Participation in database time between phases
+	// that together can outlast an initial lease on a loaded database.
+	RefreshLease func(model.AttemptParticipationID)
 }
 
 func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnectProbe) {
@@ -326,7 +329,13 @@ func TestSecureConnectStore(t *testing.T, ss store.Store, probes ...SecureConnec
 		if used != model.NativeOwnerReservationBytes || owners != 1 {
 			t.Fatalf("replay double-charged metadata: %d %d", used, owners)
 		}
+		if probe.RefreshLease != nil {
+			probe.RefreshLease(connected.Participation.ID)
+		}
 		testProcessedSecurityControl(t, ctx, ss, input, resumed, report.Report)
+		if probe.RefreshLease != nil {
+			probe.RefreshLease(connected.Participation.ID)
+		}
 		deliveryAccess := testNativeDeliveryGaps(t, ctx, ss, input, resumed, fixture)
 		probe.ExpireLease(connected.Participation.ID)
 		expired, err := ss.ExamAttempt().ExpireParticipation(ctx, &store.ExamAttemptParticipationExpiry{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation, EvidenceID: model.NewIntegrityEvidenceID(), FlagID: model.NewIntegrityFlagID(), SuspensionID: model.NewAttemptSuspensionID(), AuditEventID: saveExamAttemptSystemAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis()})

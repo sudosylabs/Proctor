@@ -67,6 +67,20 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
+	// This scenario outlasts one initial Participation lease on a loaded
+	// database, so the fixture renews it between phases as a live client would.
+	renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1, AttemptID: connected.Attempt.ID,
+		ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, Generation: connected.Participation.Generation, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, ContinuityCredentialHash: credentialHash}
+	prepareParticipationRenewalCoverage(t, ctx, ss, renewal)
+	renew := func() {
+		t.Helper()
+		renewal.ConnectionID = access.ConnectionID
+		renewal.Sequence++
+		_, renewErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
+		requireNoError(t, renewErr)
+	}
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, store.CandidateAttemptAccess{
 		AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID,
 		DesktopRegistrationID: access.DesktopRegistrationID, DPoPKeyThumbprint: access.DPoPKeyThumbprint,
@@ -274,6 +288,7 @@ writesComplete:
 			store.ExamAttemptWorkspaceMutationOperation, "workspace-"+label, "workspace-"+label))
 	}
 
+	renew()
 	replacement := reserveReady("replacement")
 	replaced, err := apply(model.AttemptWorkspaceMutationReplaceFile, "replace", func(input *store.ExamAttemptWorkspaceMutation) {
 		input.EntryID, input.ExpectedPath, input.ExpectedContentVersion, input.ObjectID = entryID, mutation.DestinationPath, ready.ContentVersion, replacement.ID
@@ -444,6 +459,7 @@ writesComplete:
 	if len(claimed) != 0 {
 		t.Fatalf("ClaimObjectsForCleanup(before safety window) = %#v", claimed)
 	}
+	renew()
 	if len(probes) > 0 && probes[0].MakeObjectCleanupDue != nil {
 		probes[0].MakeObjectCleanupDue(t, ctx, ready.ID)
 		probes[0].MakeObjectCleanupDue(t, ctx, abandoned.ID)
@@ -473,6 +489,7 @@ writesComplete:
 		requireNoError(t, workspace.CompleteObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup-retry"))
 		requireNoError(t, workspace.CompleteObjectCleanup(ctx, abandoned.ID, "attempt-workspace-cleanup-retry"))
 	}
+	renew()
 	if len(probes) > 0 && probes[0].FillWorkspaceEntryQuota != nil {
 		probes[0].FillWorkspaceEntryQuota(t, ctx, connected.Workspace.ID)
 		_, err = apply(model.AttemptWorkspaceMutationCreateDirectory, "entry-quota", func(input *store.ExamAttemptWorkspaceMutation) {

@@ -72,7 +72,7 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 	}
 	firstToken := clusteredMailRekeyClaimToken(t)
 	first, err := nodeA.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailRekey},
-		NodeID: "mail-rekey-node-a", ClaimToken: firstToken, LeaseDuration: 20 * time.Millisecond})
+		NodeID: "mail-rekey-node-a", ClaimToken: firstToken, LeaseDuration: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,12 @@ func TestClusteredMailRekeyRecoversCheckpointAndRotatesFanoutBundle(t *testing.T
 		CheckpointVersion: 1, Checkpoint: checkpoint}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	// Node A dies after its checkpoint. Expire its lease in PostgreSQL time
+	// rather than racing a short wall-clock lease against statement latency.
+	if _, err = nodeA.GetMaster().Exec(ctx, `UPDATE job_attempts SET lease_expires_at=heartbeat_at+INTERVAL '1 microsecond' WHERE id=?`,
+		first.Attempt.ID.String()); err != nil {
+		t.Fatal(err)
+	}
 	secondToken := clusteredMailRekeyClaimToken(t)
 	second, err := nodeB.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailRekey},
 		NodeID: "mail-rekey-node-b", ClaimToken: secondToken, LeaseDuration: time.Minute})
