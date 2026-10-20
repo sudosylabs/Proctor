@@ -83,7 +83,6 @@ type EffectFailures interface {
 }
 
 type CommandOutcomes interface {
-	Has(context.Context, *store.CommandIdempotency) (bool, error)
 }
 
 type users interface {

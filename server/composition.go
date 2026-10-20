@@ -43,7 +43,7 @@ type compositionInput struct {
 var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is unavailable")
 
 type composedWebSocket interface {
-	runtimeWebSocket
+	runtimeComponent
 	httpapi.WebSocketTransport
 	apprealtime.Sink
 }
@@ -89,7 +89,7 @@ type consumerConstructors struct {
 	attachSink     func(*app.App, apprealtime.Sink) error
 	http           func(httpapi.Options) (runtimeTransport, http.Handler, error)
 	webapp         func(webui.Options) (http.Handler, error)
-	jobs           func(*app.App) runtimeJobs
+	jobs           func(*app.App) runtimeComponent
 }
 
 func defaultConsumerConstructors(
@@ -158,7 +158,7 @@ func defaultConsumerConstructors(
 		webapp: func(options webui.Options) (http.Handler, error) {
 			return webui.New(webappFiles, options)
 		},
-		jobs: func(application *app.App) runtimeJobs {
+		jobs: func(application *app.App) runtimeComponent {
 			if runner := application.Jobs(); runner != nil {
 				return runner
 			}
@@ -221,7 +221,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 
 func composeConsumers(
 	ctx context.Context,
-	applicationPlatform runtimePlatform,
+	applicationPlatform runtimeComponent,
 	snapshot config.Config,
 	capabilities constructionCapabilities,
 	input compositionInput,
@@ -409,7 +409,7 @@ func composeConsumers(
 	}, nil
 }
 
-func closeAcceptedRuntime(applicationPlatform runtimePlatform, metrics runtimeMetrics) error {
+func closeAcceptedRuntime(applicationPlatform runtimeComponent, metrics runtimeMetrics) error {
 	var metricsErr error
 	if metrics != nil {
 		metricsErr = metrics.Close()

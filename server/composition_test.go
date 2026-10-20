@@ -108,7 +108,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 					return transport, transport, nil
 				},
 				webapp: func(webui.Options) (http.Handler, error) { return http.NotFoundHandler(), nil },
-				jobs:   func(*app.App) runtimeJobs { return compositionJobs{} },
+				jobs:   func(*app.App) runtimeComponent { return compositionJobs{} },
 			}
 			switch phase {
 			case "file-content":
@@ -132,7 +132,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			case "webapp":
 				constructors.webapp = func(webui.Options) (http.Handler, error) { return nil, primaryErr }
 			case "jobs":
-				constructors.jobs = func(*app.App) runtimeJobs { return nil }
+				constructors.jobs = func(*app.App) runtimeComponent { return nil }
 				primaryErr = errDurableJobRuntimeUnavailable
 			}
 

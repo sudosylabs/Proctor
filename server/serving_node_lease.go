@@ -26,11 +26,6 @@ const (
 	servingNodeLeaseStopMargin      = 5 * time.Second
 )
 
-type servingNodeLeasePersistence interface {
-	Upsert(context.Context, *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error)
-	Delete(context.Context, string, string) error
-}
-
 // servingNodeLeaseRuntime owns one process incarnation's installation-wide
 // serving proof. A transient renewal failure is retried while the last proven
 // lease still leaves room for one bounded attempt plus the stop margin. A
@@ -38,7 +33,7 @@ type servingNodeLeasePersistence interface {
 // terminal: Server observes Failures and force-stops HTTP serving before the
 // already-committed lease can expire.
 type servingNodeLeaseRuntime struct {
-	store           servingNodeLeasePersistence
+	store           store.ServingNodeLeaseStore
 	claim           store.ServingNodeLeaseClaim
 	failure         chan error
 	renewalInterval time.Duration
@@ -54,7 +49,7 @@ type servingNodeLeaseRuntime struct {
 	closed  bool
 }
 
-func newServingNodeLeaseRuntime(persistence servingNodeLeasePersistence, nodeID string) (*servingNodeLeaseRuntime, error) {
+func newServingNodeLeaseRuntime(persistence store.ServingNodeLeaseStore, nodeID string) (*servingNodeLeaseRuntime, error) {
 	if persistence == nil || nodeID == "" {
 		return nil, errors.New("serving node lease dependencies are invalid")
 	}

@@ -21,10 +21,6 @@ type accountTokenPasswordHasher interface {
 	Hash(context.Context, string) (string, error)
 }
 
-type accountTokenAudit interface {
-	Success(string, model.Resource, string, Invocation, *model.Principal, string) *model.AuditEvent
-}
-
 type accountTokenEffects interface {
 	SessionsRevoked(context.Context, string, []string, []string)
 }
@@ -53,7 +49,7 @@ type accountTokenService struct {
 	mail         accountTokenMailPreparer
 	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
-	audit        accountTokenAudit
+	audit        accountTokenAuditRecorder
 	effects      accountTokenEffects
 	diagnostics  recoveryDiagnostics
 	policy       AccountRecoveryPolicy
@@ -71,7 +67,7 @@ func newAccountTokenService(
 	mail accountTokenMailPreparer,
 	attempts *authenticationAttemptAccounting,
 	hasher accountTokenPasswordHasher,
-	audit accountTokenAudit,
+	audit accountTokenAuditRecorder,
 	effects accountTokenEffects,
 	diagnostics recoveryDiagnostics,
 	policy AccountRecoveryPolicy,
@@ -91,7 +87,7 @@ func newAccountTokenService(
 		{mail == nil, "account mail preparer"},
 		{attempts == nil, "authentication attempt accounting"},
 		{hasher == nil, "password hasher"},
-		{audit == nil, "account recovery audit"},
+		{audit.nodeID == "", "account recovery audit"},
 		{effects == nil, "account recovery effects"},
 		{diagnostics == nil, "account recovery diagnostics"},
 		{newToken == nil, "account token generator"},
@@ -128,6 +124,5 @@ func (r accountTokenAuditRecorder) Success(
 
 var (
 	_ accountTokenPasswordHasher = (*passwordHasher)(nil)
-	_ accountTokenAudit          = accountTokenAuditRecorder{}
 	_ accountTokenEffects        = (*realtimeService)(nil)
 )

@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -112,7 +113,7 @@ type externalAuthenticationService struct {
 	accessPolicy            authenticationAccessPolicy
 	attempts                *authenticationAttemptAccounting
 	authentication          authenticationSessionIssuer
-	invalidator             authenticationInvalidator
+	invalidator             apprealtime.AuthenticationInvalidator
 	audit                   externalAuthenticationAudit
 	mutationAudit           mutationAuditor
 	capabilities            accessPolicyCapabilitySource
@@ -134,7 +135,7 @@ func newExternalAuthenticationService(
 	accessPolicy authenticationAccessPolicy,
 	attempts *authenticationAttemptAccounting,
 	authentication authenticationSessionIssuer,
-	invalidator authenticationInvalidator,
+	invalidator apprealtime.AuthenticationInvalidator,
 	audit externalAuthenticationAudit,
 	mutationAudit mutationAuditor,
 	capabilities accessPolicyCapabilitySource,

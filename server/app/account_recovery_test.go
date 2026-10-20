@@ -47,7 +47,7 @@ func TestAccountTokenServiceRequiresDependencies(t *testing.T) {
 		{"mailer", func(a *accountTokenConstructorArgs) { a.mailer = nil }},
 		{"attempt accounting", func(a *accountTokenConstructorArgs) { a.attempts = nil }},
 		{"hasher", func(a *accountTokenConstructorArgs) { a.hasher = nil }},
-		{"audit", func(a *accountTokenConstructorArgs) { a.audit = nil }},
+		{"audit", func(a *accountTokenConstructorArgs) { a.audit = accountTokenAuditRecorder{} }},
 		{"effects", func(a *accountTokenConstructorArgs) { a.effects = nil }},
 		{"diagnostics", func(a *accountTokenConstructorArgs) { a.diagnostics = nil }},
 		{"generator", func(a *accountTokenConstructorArgs) { a.newToken = nil }},
@@ -737,7 +737,7 @@ type accountTokenConstructorArgs struct {
 	mailer       accountTokenMailPreparer
 	attempts     *authenticationAttemptAccounting
 	hasher       accountTokenPasswordHasher
-	audit        accountTokenAudit
+	audit        accountTokenAuditRecorder
 	effects      accountTokenEffects
 	diagnostics  recoveryDiagnostics
 	newToken     func() string

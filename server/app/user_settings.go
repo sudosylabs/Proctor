@@ -30,11 +30,6 @@ type UserSettingsView struct {
 	UpdatedAt     time.Time
 }
 
-type userSettingsStore interface {
-	Get(context.Context, model.UserID) (*model.UserSettingsDocument, error)
-	Replace(context.Context, *store.UserSettingsReplacement, *store.CommandIdempotency) (*store.UserSettingsReplacementResult, error)
-}
-
 type UserSettingsReplacementResult struct {
 	Revision      model.UserSettingsRevision
 	FormatVersion int
@@ -85,7 +80,7 @@ type userSettingsEffectFailures interface {
 }
 
 type userSettingsService struct {
-	settings       userSettingsStore
+	settings       store.UserSettingsStore
 	audit          userSettingsAuditPreparer
 	effects        userSettingsEffects
 	effectFailures userSettingsEffectFailures
@@ -93,7 +88,7 @@ type userSettingsService struct {
 }
 
 func newUserSettingsService(
-	settings userSettingsStore,
+	settings store.UserSettingsStore,
 	audit userSettingsAuditPreparer,
 	effects userSettingsEffects,
 	effectFailures userSettingsEffectFailures,
@@ -301,5 +296,3 @@ func prepareInitialUserSettingsDocument(user *model.User) (*model.UserSettingsDo
 	}
 	return model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), user.CreatedAt)
 }
-
-var _ userSettingsStore = (store.UserSettingsStore)(nil)

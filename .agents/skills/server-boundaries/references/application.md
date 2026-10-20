@@ -178,6 +178,24 @@ time, proof destruction, and atomic terminal transitions.
 
 Interfaces normally live beside their consumer and expose only what it needs. Broad aggregates may exist at composition but are not daily dependencies. Prefer concrete types during construction and narrow interfaces at consumption.
 
+An interface exists only where something substitutes behind it: a second
+production implementation, a fake that the consumer's tests pass in, a
+type-assertion or `errors.As` capability probe, or a consumer-owned port across
+a module or dependency boundary that the consumer cannot name concretely, such
+as a child-module port the parent implements, a transport port the application
+implements, or a File Content capability. Otherwise the consumer holds the
+concrete type. A local port that would repeat a Store contract or a child
+module's owned contract uses that contract directly, and identical ports in
+one package are declared once. Each port carries only the methods its
+consumer calls or must pass on.
+
+An adapter translates one concrete service, Store, or infrastructure value at
+one seam. It never holds, embeds, or delegates to another adapter: when two
+ports need the same translation, one adapter satisfies both, and port method
+names converge so that it can. Authorization ports share the single
+`Authorize(ctx, Invocation, Action, Resource)` shape that the Access Control
+service satisfies directly.
+
 Persistence is the exception: the bounded root `store.Store` and complete per-model or aggregate contracts live together in `store` for shared conformance testing.
 
 Do not prefix interfaces with `I`. Add compile-time assertions where an adapter intentionally implements an important cross-package contract. Every substantive package has a package comment explaining what it owns, excludes, and may depend on.

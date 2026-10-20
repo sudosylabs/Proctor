@@ -10,17 +10,14 @@ package app
 import (
 	"context"
 	"errors"
+
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 )
 
 // Access-key deletion retains the peer invalidation contract and clears
 // snapshots left by an older process. Current authentication never reads or
 // writes positive entries in this namespace.
 const authenticationCachePrefix = "authentication/access/"
-
-type authenticationInvalidator interface {
-	InvalidateAccessCredentials(context.Context, []string)
-	InvalidateSessionActivity(context.Context, []string)
-}
 
 type authenticationSecurityEffects interface {
 	AuthenticationCacheInvalidated(context.Context, string, []string)
@@ -79,4 +76,4 @@ func (i *authenticationCacheInvalidator) InvalidateSessionActivity(
 	}
 }
 
-var _ authenticationInvalidator = (*authenticationCacheInvalidator)(nil)
+var _ apprealtime.AuthenticationInvalidator = (*authenticationCacheInvalidator)(nil)

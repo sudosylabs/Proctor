@@ -89,7 +89,7 @@ func (r *userSettingsEffectFailuresFake) Report(_ context.Context, operation str
 
 func newUserSettingsServiceForTest(
 	t *testing.T,
-	settings userSettingsStore,
+	settings store.UserSettingsStore,
 	audit userSettingsAuditPreparer,
 	now func() time.Time,
 ) *userSettingsService {

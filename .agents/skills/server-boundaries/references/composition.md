@@ -16,7 +16,7 @@ VFS with immutable processing limits and a narrow work recorder, and projects
 only the application's bounded content capabilities.
 File Content neither selects a backend nor participates in lifecycle shutdown.
 
-Constructors are inert. They validate required dependencies but do not normally start listeners or goroutines. Explicit `Start` methods begin work; `Close` or `Shutdown` is idempotent and bounded. Partial failure unwinds resources already acquired.
+Constructors are inert. They validate required dependencies but do not normally start listeners or goroutines. Explicit `Start` methods begin work; `Close` or `Shutdown` is idempotent and bounded. Partial failure unwinds resources already acquired. The root `Server` drives every runtime owner through one Start/Close component shape; an owner that reports asynchronous failures adds only a failure channel.
 
 Dependency injection is manual. Reflection containers, generated DI containers, global registries, and global mutable state are prohibited.
 

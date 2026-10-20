@@ -137,7 +137,6 @@ type borrowedMailer interface {
 }
 
 type borrowedCluster interface {
-	NodeID() string
 	RegisterHandler(cluster.Event, cluster.Handler) error
 	Broadcast(context.Context, *cluster.Message) error
 }

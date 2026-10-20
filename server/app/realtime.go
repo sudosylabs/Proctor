@@ -35,10 +35,10 @@ type realtimeService struct {
 }
 
 func newRealtimeService(
-	authenticationInvalidator authenticationInvalidator,
+	invalidator apprealtime.AuthenticationInvalidator,
 	diagnostics realtimeDiagnostics,
 ) (*realtimeService, error) {
-	delivery, err := apprealtime.New(authenticationInvalidator, diagnostics)
+	delivery, err := apprealtime.New(invalidator, diagnostics)
 	if err != nil {
 		return nil, err
 	}

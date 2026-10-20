@@ -19,7 +19,7 @@ import (
 )
 
 type builtInRoleReconciliationStoreFake struct {
-	installationStore
+	store.InstallationStore
 	input  *store.SystemAdministratorRoleReconciliation
 	result *store.SystemAdministratorRoleReconciliationResult
 	err    error

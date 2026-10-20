@@ -63,7 +63,7 @@ type Dependencies struct {
 	MailTemplateRenderer appmail.Renderer
 	MailDeliveryRecorder MailDeliveryRecorder
 	MailMetricsReader    MailMetricsReader
-	JobRecorder          jobRecorder
+	JobRecorder          jobengine.Recorder
 	OperationalRecorder  OperationalRecorder
 	// MFASecretSealer is the concrete in-process cryptographic module for TOTP
 	// secrets. It is nil until the independent MFA ring is configured.
@@ -100,12 +100,6 @@ type Dependencies struct {
 	AuthenticationDiagnostics authenticationDiagnostics
 	RealtimeDiagnostics       realtimeDiagnostics
 	RecoveryDiagnostics       recoveryDiagnostics
-}
-
-type jobRecorder interface {
-	Started(model.JobType)
-	Finished(model.JobType, jobengine.ExecutionOutcome, time.Duration)
-	Record(jobengine.Activity)
 }
 
 // PasswordPolicy is the immutable password-hashing projection composition

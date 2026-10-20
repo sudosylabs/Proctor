@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -527,7 +528,7 @@ type externalAuthenticationConstructorArgs struct {
 	sessions      store.SessionStore
 	attempts      *authenticationAttemptAccounting
 	issuer        authenticationSessionIssuer
-	invalidator   authenticationInvalidator
+	invalidator   apprealtime.AuthenticationInvalidator
 	audit         externalAuthenticationAudit
 	diagnostics   authenticationDiagnostics
 	acceptor      externalInvitationAcceptor

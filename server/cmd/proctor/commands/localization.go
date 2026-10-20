@@ -21,7 +21,6 @@ const commandLocalizationOrigin = "cmd/proctor/commands"
 
 type commandLocalizer interface {
 	Translate(locale, id string, args any) (string, error)
-	SupportedLocales() []string
 }
 
 type commandText struct {

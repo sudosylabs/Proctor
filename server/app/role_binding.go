@@ -56,7 +56,6 @@ type EndRoleBindingCommand struct {
 
 type roleBindingStore interface {
 	Get(context.Context, model.RoleBindingID) (*model.RoleBinding, error)
-	ListByUser(context.Context, model.UserID) ([]*model.RoleBinding, error)
 	ListVisibleByUser(context.Context, model.UserID, store.UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
 	SaveWithAudit(context.Context, *store.RoleBindingCreation) (*model.RoleBinding, error)

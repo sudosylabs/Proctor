@@ -80,14 +80,27 @@ func WithReadyNotifier(notify ReadyNotifier) Option {
 	}
 }
 
-type runtimePlatform interface {
+// runtimeComponent is the one lifecycle shape the Server drives: the
+// infrastructure Platform, durable Jobs, and the WebSocket transport.
+// Construction is inert; Start enters runtime work and Close drains it. Jobs
+// start only after the authoritative store is ready and drain before
+// transports and infrastructure close, so handlers never outlive their VFS or
+// persistence dependencies.
+type runtimeComponent interface {
 	Start(context.Context) error
 	Close() error
 }
 
+// monitoredRuntimeComponent additionally reports asynchronous runtime
+// failures that stop the node, such as a lost serving lease.
+type monitoredRuntimeComponent interface {
+	runtimeComponent
+	Failures() <-chan error
+}
+
 // runtimeLogger is a borrowed operational view. Lifecycle operations such as
 // Flush and Shutdown remain available only to Platform, the infrastructure
-// owner.
+// owner; the architecture tests hold this contract free of lifecycle methods.
 type runtimeLogger interface {
 	Info(message string, fields ...logging.Field)
 	InfoContext(ctx context.Context, message string, fields ...logging.Field)
@@ -101,32 +114,9 @@ type runtimeTransport interface {
 	Close() error
 }
 
-// runtimeWebSocket is the sibling WebSocket transport lifecycle. Construction
-// is inert; Start owns background reaping and Close drains connections.
-type runtimeWebSocket interface {
-	Start(context.Context) error
-	Close() error
-}
-
-// runtimeJobs owns finite durable work execution. It starts only after the
-// authoritative store is ready and drains before transports and infrastructure
-// close, so handlers never outlive their VFS or persistence dependencies.
-type runtimeJobs interface {
-	Start(context.Context) error
-	Close() error
-}
-
-type runtimeServingNodeLease interface {
-	Start(context.Context) error
-	Failures() <-chan error
-	Close() error
-}
-
 type runtimeMetrics interface {
-	Start(context.Context) error
-	Failures() <-chan error
+	monitoredRuntimeComponent
 	SetReady(bool)
-	Close() error
 }
 
 // runtimeReconciler owns bounded durable startup convergence that must complete
@@ -265,16 +255,16 @@ func canonicalPublicURLAuthority(publicURL *url.URL) string {
 }
 
 type runtimeComponents struct {
-	platform              runtimePlatform
+	platform              runtimeComponent
 	reconciler            runtimeReconciler
 	administratorRecovery runtimeAdministratorRecovery
 	settings              runtimeSettings
 	logger                runtimeLogger
-	jobs                  runtimeJobs
-	servingLease          runtimeServingNodeLease
+	jobs                  runtimeComponent
+	servingLease          monitoredRuntimeComponent
 	metrics               runtimeMetrics
 	transport             runtimeTransport
-	websocket             runtimeWebSocket
+	websocket             runtimeComponent
 	readiness             runtimeReadiness
 	listen                func(string, string) (net.Listener, error)
 	newHTTP               func(httpServerSettings) httpRuntime

@@ -66,15 +66,6 @@ type BootstrapProtectionPolicy struct {
 	Secret string
 }
 
-type installationStore interface {
-	Get(context.Context) (*model.InstallationState, error)
-	Bootstrap(context.Context, *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error)
-	ReconcileSystemAdministratorRole(context.Context, *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error)
-	RecoverAdministratorAccess(context.Context, *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error)
-	ResetAdministratorMFA(context.Context, *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error)
-	ReconcileAdministratorRecovery(context.Context, *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error)
-}
-
 // RecoverAdministratorAccess is intentionally absent from every network
 // application interface. The module root borrows this method only for the
 // explicit offline host command.
@@ -137,7 +128,7 @@ type passwordHash interface {
 }
 
 type bootstrapService struct {
-	installations         installationStore
+	installations         store.InstallationStore
 	hasher                passwordHash
 	attempts              *authenticationAttemptAccounting
 	rateLimitWindow       time.Duration
@@ -150,7 +141,7 @@ type bootstrapService struct {
 }
 
 func newBootstrapService(
-	installations installationStore,
+	installations store.InstallationStore,
 	hasher passwordHash,
 	attempts *authenticationAttemptAccounting,
 	rateLimit LoginRateLimitPolicy,
