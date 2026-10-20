@@ -68,15 +68,7 @@ func newAcademicUnitQueryService(
 
 // GetAcademicUnit returns one academic unit after authorizing
 // academic_unit.view on that unit.
-func (a *App) GetAcademicUnit(
-	ctx context.Context,
-	invocation Invocation,
-	query GetAcademicUnitQuery,
-) (*model.AcademicUnit, error) {
-	return a.academicUnits.Get(ctx, invocation, query)
-}
-
-func (s *academicUnitQueryService) Get(
+func (s *academicUnitQueryService) GetAcademicUnit(
 	ctx context.Context,
 	invocation Invocation,
 	query GetAcademicUnitQuery,
@@ -100,15 +92,7 @@ func (s *academicUnitQueryService) Get(
 
 // ListAcademicUnits lists direct children under ParentID, or root units when
 // ParentID is empty.
-func (a *App) ListAcademicUnits(
-	ctx context.Context,
-	invocation Invocation,
-	query ListAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
-	return a.academicUnits.List(ctx, invocation, query)
-}
-
-func (s *academicUnitQueryService) List(
+func (s *academicUnitQueryService) ListAcademicUnits(
 	ctx context.Context,
 	invocation Invocation,
 	query ListAcademicUnitsQuery,
@@ -151,15 +135,7 @@ func (s *academicUnitQueryService) List(
 
 // SearchAcademicUnits searches units by name through institution-scoped
 // academic_unit.view.
-func (a *App) SearchAcademicUnits(
-	ctx context.Context,
-	invocation Invocation,
-	query SearchAcademicUnitsQuery,
-) ([]*model.AcademicUnit, error) {
-	return a.academicUnits.Search(ctx, invocation, query)
-}
-
-func (s *academicUnitQueryService) Search(
+func (s *academicUnitQueryService) SearchAcademicUnits(
 	ctx context.Context,
 	invocation Invocation,
 	query SearchAcademicUnitsQuery,

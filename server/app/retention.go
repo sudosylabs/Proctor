@@ -44,14 +44,7 @@ type RetentionRecordView struct {
 	Retirement  *model.RetentionRetirement
 }
 
-func (a *App) GetRetentionControl(ctx context.Context, invocation Invocation) (*model.RetentionControl, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention.unavailable")
-	}
-	return a.retentionPolicy.ReadControl(ctx, invocation)
-}
-
-func (s *retentionPolicyService) ReadControl(ctx context.Context, invocation Invocation) (*model.RetentionControl, error) {
+func (s *retentionPolicyService) GetRetentionControl(ctx context.Context, invocation Invocation) (*model.RetentionControl, error) {
 	inst, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -66,14 +59,7 @@ func (s *retentionPolicyService) ReadControl(ctx context.Context, invocation Inv
 	return control, nil
 }
 
-func (a *App) GetRetentionPreview(ctx context.Context, invocation Invocation, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention.unavailable")
-	}
-	return a.retentionPolicy.ReadPreview(ctx, invocation, id)
-}
-
-func (s *retentionPolicyService) ReadPreview(ctx context.Context, invocation Invocation, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
+func (s *retentionPolicyService) GetRetentionPreview(ctx context.Context, invocation Invocation, id model.RetentionPreviewID) (*model.RetentionPreview, error) {
 	inst, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -91,14 +77,7 @@ func (s *retentionPolicyService) ReadPreview(ctx context.Context, invocation Inv
 	return preview, nil
 }
 
-func (a *App) CreateRetentionPreview(ctx context.Context, invocation Invocation, command CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention.unavailable")
-	}
-	return a.retentionPolicy.CreatePreview(ctx, invocation, command)
-}
-
-func (s *retentionPolicyService) CreatePreview(ctx context.Context, invocation Invocation, command CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
+func (s *retentionPolicyService) CreateRetentionPreview(ctx context.Context, invocation Invocation, command CreateRetentionPreviewCommand) (*model.RetentionPreview, error) {
 	inst, resource, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView)
 	if err != nil {
 		return nil, err
@@ -134,14 +113,7 @@ func (s *retentionPolicyService) CreatePreview(ctx context.Context, invocation I
 	return preview, nil
 }
 
-func (a *App) ChangeRetentionControl(ctx context.Context, invocation Invocation, command ChangeRetentionControlCommand) (*model.RetentionControl, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention.unavailable")
-	}
-	return a.retentionPolicy.ChangeControl(ctx, invocation, command)
-}
-
-func (s *retentionPolicyService) ChangeControl(ctx context.Context, invocation Invocation, command ChangeRetentionControlCommand) (*model.RetentionControl, error) {
+func (s *retentionPolicyService) ChangeRetentionControl(ctx context.Context, invocation Invocation, command ChangeRetentionControlCommand) (*model.RetentionControl, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
@@ -188,14 +160,7 @@ func (s *retentionPolicyService) ChangeControl(ctx context.Context, invocation I
 	return result.Control, nil
 }
 
-func (a *App) ListRetentionRecords(ctx context.Context, invocation Invocation, after model.SubmissionID, limit int) (*RetentionRecordPage, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention.unavailable")
-	}
-	return a.retentionPolicy.ListRecords(ctx, invocation, after, limit)
-}
-
-func (s *retentionPolicyService) ListRecords(ctx context.Context, invocation Invocation, after model.SubmissionID, limit int) (*RetentionRecordPage, error) {
+func (s *retentionPolicyService) ListRetentionRecords(ctx context.Context, invocation Invocation, after model.SubmissionID, limit int) (*RetentionRecordPage, error) {
 	if _, _, err := s.authorize(ctx, invocation, model.ActionRetentionPolicyView); err != nil {
 		return nil, err
 	}

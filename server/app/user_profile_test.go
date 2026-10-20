@@ -83,7 +83,7 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 		UnresolvedAttempt: attempt,
 	}
 	persistence := &userProfileStoreFake{events: &[]string{}, currentContext: persisted}
-	application := &App{userProfiles: &userProfileService{users: persistence}}
+	application := &App{userProfileService: &userProfileService{users: persistence}}
 	principal := userSettingsSessionPrincipal(time.Now())
 	principal.UserID = userID
 	principal.ClientType = model.SessionClientDesktop
@@ -117,7 +117,7 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.T) {
 	t.Parallel()
 	persistence := &userProfileStoreFake{events: &[]string{}}
-	application := &App{userProfiles: &userProfileService{users: persistence}}
+	application := &App{userProfileService: &userProfileService{users: persistence}}
 	principal := model.Principal{
 		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
@@ -170,7 +170,7 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Updated Student"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
+	updated, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	events := []string{}
 	persistence := &userProfileStoreFake{events: &events}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
-	users, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{})
+	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 				&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
 				&institutionAuditorFake{events: &events}, time.Now,
 			)
-			if _, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{
+			if _, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
 				Limit: 10, IncludeDisabled: includeDisabled,
 			}); err != nil {
 				t.Fatal(err)
@@ -239,7 +239,7 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	if _, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{
+	if _, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
 		Limit: 10, IncludeDisabled: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -264,7 +264,7 @@ func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
 		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{AcademicUnitRootIDs: []model.AcademicUnitID{model.NewAcademicUnitID()}, ActiveAt: model.TimeFromMillis(100)}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	users, err := service.Search(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})
+	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

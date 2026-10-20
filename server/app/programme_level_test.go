@@ -69,7 +69,7 @@ func TestProgrammeLevelCreatePreservesMissingProgrammeErrorContract(t *testing.T
 		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 	)
 
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: model.ProgrammeID(programmeID)})
+	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: model.ProgrammeID(programmeID)})
 	failure, ok := apperror.As(err)
 	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "programme" {
 		t.Fatalf("Create() error = %#v", err)
@@ -92,7 +92,7 @@ func TestProgrammeLevelCreatePreservesProgrammeOwnershipAndAtomicAudit(t *testin
 		authorizer, auditor,
 		func() time.Time { return time.UnixMilli(500) }, func() string { return levelID },
 	)
-	got, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{
+	got, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{
 		ProgrammeID: model.ProgrammeID(programmeID), Name: "year-1", DisplayName: "Year 1",
 	})
 	if err != nil || got != created {
@@ -136,7 +136,7 @@ func TestProgrammeLevelUpdateCannotMoveProgramme(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
 	name := "foundation"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID, Name: &name})
+	updated, err := service.UpdateProgrammeLevel(context.Background(), Invocation{}, UpdateProgrammeLevelCommand{ID: current.ID, Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestProgrammeLevelCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -176,7 +176,7 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 		&programmeAuthorizerFake{events: &events},
 		auditor, time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
+	_, err := service.CreateProgrammeLevel(context.Background(), Invocation{}, CreateProgrammeLevelCommand{ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1"})
 	if !apperror.Is(err, "programme_level.conflict") || auditor.failCode != "programme_level.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}
@@ -200,7 +200,7 @@ func TestProgrammeLevelListPreservesLimitWithoutSearch(t *testing.T) {
 				persistence, &programmeAuthorizerFake{events: &events},
 				&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 			)
-			got, err := service.List(context.Background(), Invocation{}, ListProgrammeLevelsQuery{
+			got, err := service.ListProgrammeLevels(context.Background(), Invocation{}, ListProgrammeLevelsQuery{
 				ProgrammeID: model.NewProgrammeID(), Query: term, Limit: 1,
 			})
 			if err != nil {

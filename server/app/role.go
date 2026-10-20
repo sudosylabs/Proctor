@@ -75,11 +75,7 @@ func newRoleService(
 	return &roleService{roles: roles, authorization: authorization, audit: audit, effects: effects, now: now}
 }
 
-func (a *App) ListRoles(ctx context.Context, invocation Invocation, _ ListRolesQuery) ([]*model.Role, error) {
-	return a.roles.List(ctx, invocation)
-}
-
-func (s *roleService) List(ctx context.Context, invocation Invocation) ([]*model.Role, error) {
+func (s *roleService) ListRoles(ctx context.Context, invocation Invocation, _ ListRolesQuery) ([]*model.Role, error) {
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleView); err != nil {
 		return nil, err
 	}
@@ -93,11 +89,7 @@ func (s *roleService) List(ctx context.Context, invocation Invocation) ([]*model
 	return roles, nil
 }
 
-func (a *App) GetRole(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
-	return a.roles.Get(ctx, invocation, query)
-}
-
-func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
+func (s *roleService) GetRole(ctx context.Context, invocation Invocation, query GetRoleQuery) (*model.Role, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
@@ -112,11 +104,7 @@ func (s *roleService) Get(ctx context.Context, invocation Invocation, query GetR
 	return role, nil
 }
 
-func (a *App) CreateRole(ctx context.Context, invocation Invocation, command CreateRoleCommand) (*model.Role, error) {
-	return a.roles.Create(ctx, invocation, command)
-}
-
-func (s *roleService) Create(ctx context.Context, invocation Invocation, command CreateRoleCommand) (*model.Role, error) {
+func (s *roleService) CreateRole(ctx context.Context, invocation Invocation, command CreateRoleCommand) (*model.Role, error) {
 	resource, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionRoleManage)
 	if err != nil {
 		return nil, err
@@ -154,11 +142,7 @@ func (s *roleService) Create(ctx context.Context, invocation Invocation, command
 	)
 }
 
-func (a *App) UpdateRole(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
-	return a.roles.Update(ctx, invocation, command)
-}
-
-func (s *roleService) Update(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
+func (s *roleService) UpdateRole(ctx context.Context, invocation Invocation, command UpdateRoleCommand) (*model.Role, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
@@ -234,11 +218,7 @@ func addedRolePermissions(current, candidate []string) []string {
 	return added
 }
 
-func (a *App) ArchiveRole(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
-	return a.roles.Archive(ctx, invocation, command)
-}
-
-func (s *roleService) Archive(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
+func (s *roleService) ArchiveRole(ctx context.Context, invocation Invocation, command ArchiveRoleCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "role_id")

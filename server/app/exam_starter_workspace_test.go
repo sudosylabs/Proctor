@@ -142,10 +142,10 @@ func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *tes
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(cluster); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID()

@@ -145,42 +145,7 @@ func newOnboardingImportService(deps Dependencies, invitations *invitationServic
 		affiliations: deps.Store.Affiliation(), unitMembers: deps.Store.AcademicUnitMember(), classMembers: deps.Store.ClassMember(), roleBindings: deps.Store.RoleBinding(), now: time.Now}, nil
 }
 
-func (a *App) UploadOnboardingImport(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
-	}
-	return a.onboardingImports.Upload(ctx, invocation, command)
-}
-
-func (a *App) GetOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, nil, apperror.New("onboarding_import.unavailable")
-	}
-	return a.onboardingImports.Get(ctx, invocation, id)
-}
-
-func (a *App) CommitOnboardingImport(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
-	}
-	return a.onboardingImports.Commit(ctx, invocation, command)
-}
-
-func (a *App) CancelOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("onboarding_import.unavailable")
-	}
-	return a.onboardingImports.Cancel(ctx, invocation, id)
-}
-
-func (a *App) OnboardingImportReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
-	if a == nil || a.onboardingImports == nil {
-		return apperror.New("onboarding_import.unavailable")
-	}
-	return a.onboardingImports.Report(ctx, invocation, id, output)
-}
-
-func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) UploadOnboardingImport(ctx context.Context, invocation Invocation, command UploadOnboardingImportCommand) (OnboardingImportView, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	command.RoleID = strings.TrimSpace(command.RoleID)
 	if command.Body == nil || command.Mode == model.OnboardingImportStudentProgression || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
@@ -244,7 +209,7 @@ func newOnboardingImportJob(kind model.JobType, id model.OnboardingImportID, at 
 	return model.NewJob(model.NewJobID(), kind, 1, command, string(kind)+":"+id.String(), at, at, 8)
 }
 
-func (s *onboardingImportService) Get(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
+func (s *onboardingImportService) GetOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
 	return s.get(ctx, invocation, id, "")
 }
 
@@ -276,7 +241,7 @@ func (s *onboardingImportService) get(ctx context.Context, invocation Invocation
 	return onboardingImportView(value), rows, nil
 }
 
-func (s *onboardingImportService) Commit(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) CommitOnboardingImport(ctx context.Context, invocation Invocation, command CommitOnboardingImportCommand) (OnboardingImportView, error) {
 	return s.commit(ctx, invocation, command, "")
 }
 
@@ -343,7 +308,7 @@ func (s *onboardingImportService) commit(ctx context.Context, invocation Invocat
 	return onboardingImportView(committed), nil
 }
 
-func (s *onboardingImportService) Cancel(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
+func (s *onboardingImportService) CancelOnboardingImport(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
 	return s.cancel(ctx, invocation, id, "")
 }
 
@@ -392,7 +357,7 @@ func (s *onboardingImportService) cancel(ctx context.Context, invocation Invocat
 	return onboardingImportView(canceled), nil
 }
 
-func (s *onboardingImportService) Report(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
+func (s *onboardingImportService) OnboardingImportReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
 	return s.report(ctx, invocation, id, output, "")
 }
 
@@ -1321,7 +1286,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 					return AcademicAdministrationBatchResult{}, err
 				}
 			}
-			return s.administrationBatches.Run(ctx, invocation, RunAcademicAdministrationBatchCommand{Operation: operation,
+			return s.administrationBatches.RunAcademicAdministrationBatch(ctx, invocation, RunAcademicAdministrationBatchCommand{Operation: operation,
 				ScopeType: row.ScopeType, ScopeID: row.ScopeID, IdempotencyKey: row.ImportID.String(), onboardingImportID: row.ImportID,
 				onboardingImportRowNumber: row.RowNumber, progression: progression, progressionSourceAuditID: sourceAuditID,
 				progressionDestinationAuditID: destinationAuditID, Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber),
@@ -1357,7 +1322,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 		}
 		return model.OnboardingImportRowFailed, "", "", item.ErrorCode, nil
 	}
-	result, err := s.invitations.RunBatch(ctx, invocation, RunInvitationBatchCommand{Operation: InvitationBatchOperation(row.Operation), ScopeType: row.ScopeType, ScopeID: row.ScopeID,
+	result, err := s.invitations.RunInvitationBatch(ctx, invocation, RunInvitationBatchCommand{Operation: InvitationBatchOperation(row.Operation), ScopeType: row.ScopeType, ScopeID: row.ScopeID,
 		onboardingImportID: row.ImportID, onboardingImportRowNumber: row.RowNumber,
 		IdempotencyKey: row.ImportID.String(), Items: []InvitationBatchItemCommand{{IdempotencyKey: strconv.Itoa(row.RowNumber), TargetEmail: row.Email, RoleID: row.RoleID.String(),
 			IntendedStartsAt: row.StartsAt, IntendedEndsAt: row.EndsAt, SuggestedUsername: row.Username, SuggestedDisplayName: row.DisplayName, SuggestedFirstName: row.FirstName, SuggestedLastName: row.LastName, SuggestedLocale: row.Locale, SuggestedTimezone: row.Timezone}}})

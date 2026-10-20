@@ -480,7 +480,7 @@ func TestLoginMapsEitherCounterFailureToUnavailableWithoutRollback(t *testing.T)
 			service := newTestAuthenticationServiceWithCache(
 				t, newAuthenticationStoreFake(), cache,
 			)
-			_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+			_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 				LoginID: "student@example.edu", Password: "wrong-password",
 				ClientType: model.SessionClientCLI, Source: "192.0.2.8:443",
 			})
@@ -511,7 +511,7 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 	service := newTestAuthenticationServiceWithCache(t, persistence, cache)
 	diagnostics := &securityEffectsDiagnosticsFake{}
 	service.diagnostics = diagnostics
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{
 			Username: "reset-user", Email: "reset-user@example.edu",
 		},
@@ -520,7 +520,7 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Username, Password: "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI, Source: "192.0.2.9:443",
 	})
@@ -545,7 +545,7 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 	service.loginRateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 2, MaximumIdentityAttempts: 3, MaximumSourceAttempts: 100}
-	if _, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	if _, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "spread-user", Email: "spread-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	}); err != nil {
 		t.Fatal(err)
@@ -553,20 +553,20 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 	// Each source stays under its per-account-and-source budget, but the
 	// account-wide budget is shared by every source.
 	for index, source := range []string{"198.51.100.1:1", "198.51.100.2:1", "198.51.100.3:1"} {
-		_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
 		if !apperror.Is(err, "authentication.credentials_invalid") {
 			t.Fatalf("attempt %d from %s: err = %v", index, source, err)
 		}
 	}
-	_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
 	if !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("attempt from a fresh source after the account budget = %v, want rate limited", err)
 	}
-	_, err = service.login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
 	if !apperror.Is(err, "authentication.credentials_invalid") {

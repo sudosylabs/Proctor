@@ -120,7 +120,7 @@ func (effects classMemberRealtimeEffects) MembershipChanged(
 	if err != nil {
 		return err
 	}
-	errs := []error{effects.realtime.Publish(ctx, candidateEvent),
+	errs := []error{effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 		effects.realtime.InvalidateCurrentUserContext(ctx, candidateID)}
 	seen := make(map[model.ClassID]struct{}, len(classIDs))
 	for _, classID := range classIDs {
@@ -145,7 +145,7 @@ func (effects classMemberRealtimeEffects) MembershipChanged(
 					errs = append(errs, eventErr)
 					continue
 				}
-				errs = append(errs, effects.realtime.Publish(ctx, event))
+				errs = append(errs, effects.realtime.PublishRealtimeEvent(ctx, event))
 			}
 			if len(targets) < 200 {
 				break
@@ -177,11 +177,7 @@ func (s *classMemberService) publishMembershipChanged(
 	}
 }
 
-func (a *App) ListClassMembers(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
-	return a.classMembers.List(ctx, invocation, query)
-}
-
-func (s *classMemberService) List(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
+func (s *classMemberService) ListClassMembers(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
 	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
 	if err != nil {
 		return nil, err
@@ -196,11 +192,7 @@ func (s *classMemberService) List(ctx context.Context, invocation Invocation, qu
 	return members, nil
 }
 
-func (a *App) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
-	return a.classMembers.Enroll(ctx, invocation, command)
-}
-
-func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
+func (s *classMemberService) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
 	classID := command.ClassID
 	resource, err := s.authorizeClass(ctx, invocation, classID, model.ActionClassMembersManage)
 	if err != nil {
@@ -455,11 +447,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
 }
 
-func (a *App) EndClassMember(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
-	return a.classMembers.End(ctx, invocation, command)
-}
-
-func (s *classMemberService) End(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
+func (s *classMemberService) EndClassMember(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_member_id")
@@ -621,11 +609,7 @@ type ClassMemberPage struct {
 	ActiveAt int64
 }
 
-func (a *App) ListClassMembersPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
-	return a.classMembers.ListPage(ctx, invocation, query)
-}
-
-func (s *classMemberService) ListPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
+func (s *classMemberService) ListClassMembersPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
 	resource, err := s.authorizeClass(ctx, invocation, query.ClassID, model.ActionClassMembersView)
 	if err != nil {
 		return nil, err

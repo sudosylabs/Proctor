@@ -105,7 +105,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Minute))
 
-	view, appErr := service.StartRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+	view, appErr := service.StartMailRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -123,7 +123,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	if len(events) != 2 || events[0] != "audit" || events[1] != "store" {
 		t.Fatalf("mail rekey durable order = %#v", events)
 	}
-	state, appErr := service.KeyState(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	state, appErr := service.GetMailKeyState(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
 	if appErr != nil || state.PrimaryKeyID != sealer.PrimaryKeyID() || len(state.Active) != 1 ||
 		state.Active[0].KeyID != oldSealerKeyID(t, oldKey) || state.Active[0].ActiveReferences != 4 {
 		t.Fatalf("KeyState() = %#v, %v", state, appErr)
@@ -138,26 +138,26 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	pat.MFACompletedAt = model.OptionalTime{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, appErr = service.StartRekey(context.Background(), NewInvocation(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.token_invalid") {
+	if _, appErr = service.StartMailRekey(context.Background(), NewInvocation(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.token_invalid") {
 		t.Fatalf("PAT error = %v", appErr)
 	}
-	if _, appErr = service.KeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.token_invalid") {
+	if _, appErr = service.GetMailKeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.token_invalid") {
 		t.Fatalf("PAT key state error = %v", appErr)
 	}
 	weak := mailTestPrincipal(model.TimeUTC(now))
-	if _, appErr = service.StartRekey(context.Background(), NewInvocation(weak, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.strong_required") {
+	if _, appErr = service.StartMailRekey(context.Background(), NewInvocation(weak, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.strong_required") {
 		t.Fatalf("weak Session error = %v", appErr)
 	}
-	if _, appErr = service.KeyState(context.Background(), NewInvocation(weak, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.strong_required") {
+	if _, appErr = service.GetMailKeyState(context.Background(), NewInvocation(weak, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.strong_required") {
 		t.Fatalf("weak Session key state error = %v", appErr)
 	}
 	stale := principal
 	stale.AuthenticatedAt = model.TimeUTC(now.Add(-time.Hour))
 	stale.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Hour))
-	if _, appErr = service.StartRekey(context.Background(), NewInvocation(stale, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.reauthentication_required") {
+	if _, appErr = service.StartMailRekey(context.Background(), NewInvocation(stale, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.reauthentication_required") {
 		t.Fatalf("stale Session error = %v", appErr)
 	}
-	if _, appErr = service.KeyState(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.reauthentication_required") {
+	if _, appErr = service.GetMailKeyState(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.reauthentication_required") {
 		t.Fatalf("stale Session key state error = %v", appErr)
 	}
 }
@@ -195,7 +195,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 			principal.AuthenticationStrength = model.AuthenticationMultiFactor
 			principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-			_, appErr := service.StartRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
+			_, appErr := service.StartMailRekey(context.Background(), NewInvocation(principal, model.RequestMetadata{}), oldSealerKeyID(t, oldKey))
 			if !apperror.Is(appErr, test.wantCode) || persistence.input == nil || persistence.input.AuditEventID != model.AuditEventID(auditor.beginID) ||
 				auditor.failID != auditor.beginID || auditor.failCode != test.failCode {
 				t.Fatalf("StartRekey() error=%v input=%#v audit=%#v", appErr, persistence.input, auditor)
@@ -237,7 +237,7 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-	view, appErr := service.RekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), succeeded.ID)
+	view, appErr := service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), succeeded.ID)
 
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -267,7 +267,7 @@ func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
-	_, appErr := service.RekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), other.ID)
+	_, appErr := service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), other.ID)
 	if !apperror.Is(appErr, "resource.not_found") {
 		t.Fatalf("RekeyStatus(other Job) error = %v", appErr)
 	}
@@ -279,7 +279,7 @@ func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistence.job = corrupt
-	_, appErr = service.RekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), corrupt.ID)
+	_, appErr = service.GetMailRekeyStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), corrupt.ID)
 	if !apperror.Is(appErr, "mail.unavailable") {
 		t.Fatalf("RekeyStatus(corrupt rekey Job) error = %v", appErr)
 	}

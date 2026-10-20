@@ -49,15 +49,15 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	first, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	first, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "email-transition-first", Email: "first-old@example.edu", DisplayName: "First User",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	second, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	second, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "email-transition-second", Email: "second-old@example.edu", DisplayName: "Second User",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

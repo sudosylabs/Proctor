@@ -117,7 +117,7 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
+	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if !apperror.Is(err, "authorization.denied") {
@@ -137,7 +137,7 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 		&programmeAuthorizerFake{events: &events}, auditor,
 		time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
+	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if !apperror.Is(err, "programme.conflict") || auditor.failCode != "programme.conflict" {
@@ -163,7 +163,7 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	authorizer := &programmeAuthorizerFake{events: &events}
 	auditor := &institutionAuditorFake{events: &events, beginID: auditID}
 	service := newProgrammeService(persistence, authorizer, auditor, func() time.Time { return time.UnixMilli(500) }, func() string { return programmeID })
-	got, err := service.Create(context.Background(), Invocation{}, CreateProgrammeCommand{
+	got, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.AcademicUnitID(unitID), Name: "computer-science", DisplayName: "Computer Science",
 	})
 	if err != nil || got != created {
@@ -195,7 +195,7 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "computing"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
+	updated, err := service.UpdateProgramme(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewId()
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	if err := service.Archive(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}); err != nil {
+	if err := service.ArchiveProgramme(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID || persistence.archiveInput.AuditEventID != model.AuditEventID(auditID) {
@@ -237,7 +237,7 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 				persistence, &programmeAuthorizerFake{events: &events},
 				&institutionAuditorFake{events: &events}, time.Now, model.NewId,
 			)
-			got, err := service.List(context.Background(), Invocation{}, ListProgrammesQuery{
+			got, err := service.ListProgrammes(context.Background(), Invocation{}, ListProgrammesQuery{
 				AcademicUnitID: model.NewAcademicUnitID(), Query: term, Limit: 1,
 			})
 			if err != nil {

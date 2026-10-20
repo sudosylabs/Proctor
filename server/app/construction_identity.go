@@ -72,6 +72,7 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	authentication.operational = deps.OperationalRecorder
 	desktopAuthorization, err := newDesktopAuthorizationService(
 		deps.Store.BrowserAuthentication(), deps.Store.Institution(), authenticationAccess,
 		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
@@ -115,6 +116,10 @@ func constructIdentity(
 	)
 	if err != nil {
 		return identityConstruction{}, err
+	}
+	accountTokens.administration = userEmailAdministration{
+		authorization: authorization, audit: mutationAuditAdapter{audit: foundation.audit},
+		recentAuthenticationTTL: deps.RecentAuthenticationTTL,
 	}
 	publicRegistration, err := newPublicRegistrationService(publicRegistrationDependencies{
 		registrations: deps.Store.User(),

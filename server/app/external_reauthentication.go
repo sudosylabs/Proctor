@@ -22,11 +22,7 @@ type BeginExternalReauthenticationCommand struct {
 	Source string
 }
 
-func (a *App) BeginExternalReauthentication(ctx context.Context, invocation Invocation, command BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
-	return a.externalAuthentication.beginReauthentication(ctx, invocation, command)
-}
-
-func (s *externalAuthenticationService) beginReauthentication(ctx context.Context, invocation Invocation, command BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (s *externalAuthenticationService) BeginExternalReauthentication(ctx context.Context, invocation Invocation, command BeginExternalReauthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess || principal.ClientType != model.SessionClientWeb {
 		return nil, invalidTokenAppError()

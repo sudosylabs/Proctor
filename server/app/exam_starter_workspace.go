@@ -109,7 +109,7 @@ func (effects examStarterWorkspaceRealtimeEffects) Changed(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return effects.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (effects examStarterWorkspaceRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	effects.realtime.reportTransientFailure(ctx, operation, err)

@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -82,11 +84,10 @@ func TestMFAIntegration(t *testing.T) {
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(
 		context.Background(),
-		&model.User{
+		app.CreateLocalUserCommand{User: &model.User{
 			Username: "mfa-user", Email: "mfa-user@example.edu",
 			DisplayName: "MFA User",
-		},
-		password,
+		}, Password: password},
 	)
 	if appErr != nil {
 		t.Fatal(appErr)

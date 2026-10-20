@@ -48,17 +48,10 @@ func newDesktopRegistrationService(
 	}, nil
 }
 
-func (a *App) ListDesktopRegistrations(
+func (s *desktopRegistrationService) ListDesktopRegistrations(
 	ctx context.Context,
 	invocation Invocation,
 	_ ListDesktopRegistrationsQuery,
-) ([]*model.DesktopRegistration, error) {
-	return a.desktopRegistrations.List(ctx, invocation)
-}
-
-func (s *desktopRegistrationService) List(
-	ctx context.Context,
-	invocation Invocation,
 ) ([]*model.DesktopRegistration, error) {
 	principal := invocation.Principal()
 	if err := requireInteractiveSession(principal, false, s.now(), s.recentAuthenticationTTL); err != nil {
@@ -71,15 +64,7 @@ func (s *desktopRegistrationService) List(
 	return registrations, nil
 }
 
-func (a *App) RevokeDesktopRegistration(
-	ctx context.Context,
-	invocation Invocation,
-	command RevokeDesktopRegistrationCommand,
-) error {
-	return a.desktopRegistrations.Revoke(ctx, invocation, command)
-}
-
-func (s *desktopRegistrationService) Revoke(
+func (s *desktopRegistrationService) RevokeDesktopRegistration(
 	ctx context.Context,
 	invocation Invocation,
 	command RevokeDesktopRegistrationCommand,

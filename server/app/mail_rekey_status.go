@@ -55,14 +55,10 @@ type mailRekeyJobReader interface {
 	Get(context.Context, model.JobID) (*model.Job, error)
 }
 
-func (a *App) GetMailRekeyStatus(ctx context.Context, invocation Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
-	if a == nil || a.mail == nil {
+func (s *mailService) GetMailRekeyStatus(ctx context.Context, invocation Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
+	if s == nil {
 		return MailRekeyStatusView{}, apperror.New("mail.unavailable")
 	}
-	return a.mail.RekeyStatus(ctx, invocation, jobID)
-}
-
-func (s *mailService) RekeyStatus(ctx context.Context, invocation Invocation, jobID model.JobID) (MailRekeyStatusView, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailRekeyStatusView{}, err
 	}

@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -692,11 +694,11 @@ func createIntegrationUser(
 	password string,
 ) *model.User {
 	t.Helper()
-	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+	user, appErr := helper.App.CreateLocalUser(context.Background(), app.CreateLocalUserCommand{User: &model.User{
 		Username:    username,
 		Email:       username + "@example.edu",
 		DisplayName: username,
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

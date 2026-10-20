@@ -36,49 +36,30 @@ type CommitStudentProgressionCommand struct {
 	IdempotencyKey   string
 }
 
-func (a *App) DryRunStudentProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
-	}
-	return a.onboardingImports.dryRunProgression(ctx, invocation, command)
-}
-
-func (a *App) GetStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, nil, apperror.New("student_progression.unavailable")
-	}
-	view, rows, err := a.onboardingImports.get(ctx, invocation, id, model.OnboardingImportStudentProgression)
+func (s *onboardingImportService) GetStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, []OnboardingImportRowView, error) {
+	view, rows, err := s.get(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	if err != nil {
 		return OnboardingImportView{}, nil, studentProgressionError(err)
 	}
 	return view, rows, nil
 }
 
-func (a *App) CommitStudentProgression(ctx context.Context, invocation Invocation, command CommitStudentProgressionCommand) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
-	}
-	view, err := a.onboardingImports.commit(ctx, invocation, CommitOnboardingImportCommand{ID: command.ID, ExpectedRevision: command.ExpectedRevision,
+func (s *onboardingImportService) CommitStudentProgression(ctx context.Context, invocation Invocation, command CommitStudentProgressionCommand) (OnboardingImportView, error) {
+	view, err := s.commit(ctx, invocation, CommitOnboardingImportCommand{ID: command.ID, ExpectedRevision: command.ExpectedRevision,
 		PreviewDigest: command.PreviewDigest, Policy: model.OnboardingImportValidRowsOnly, IdempotencyKey: command.IdempotencyKey}, model.OnboardingImportStudentProgression)
 	return view, studentProgressionError(err)
 }
 
-func (a *App) CancelStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
-	if a == nil || a.onboardingImports == nil {
-		return OnboardingImportView{}, apperror.New("student_progression.unavailable")
-	}
-	view, err := a.onboardingImports.cancel(ctx, invocation, id, model.OnboardingImportStudentProgression)
+func (s *onboardingImportService) CancelStudentProgression(ctx context.Context, invocation Invocation, id model.OnboardingImportID) (OnboardingImportView, error) {
+	view, err := s.cancel(ctx, invocation, id, model.OnboardingImportStudentProgression)
 	return view, studentProgressionError(err)
 }
 
-func (a *App) StudentProgressionReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
-	if a == nil || a.onboardingImports == nil {
-		return apperror.New("student_progression.unavailable")
-	}
-	return studentProgressionError(a.onboardingImports.report(ctx, invocation, id, output, model.OnboardingImportStudentProgression))
+func (s *onboardingImportService) StudentProgressionReport(ctx context.Context, invocation Invocation, id model.OnboardingImportID, output io.Writer) error {
+	return studentProgressionError(s.report(ctx, invocation, id, output, model.OnboardingImportStudentProgression))
 }
 
-func (s *onboardingImportService) dryRunProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
+func (s *onboardingImportService) DryRunStudentProgression(ctx context.Context, invocation Invocation, command DryRunStudentProgressionCommand) (OnboardingImportView, error) {
 	sourcePeriodID, sourceClassID := model.AcademicPeriodID(strings.TrimSpace(command.SourcePeriodID)), model.ClassID(strings.TrimSpace(command.SourceClassID))
 	destinationPeriodID, destinationClassID := model.AcademicPeriodID(strings.TrimSpace(command.DestinationPeriodID)), model.ClassID(strings.TrimSpace(command.DestinationClassID))
 	if !sourcePeriodID.IsValid() || !sourceClassID.IsValid() || !destinationPeriodID.IsValid() || !destinationClassID.IsValid() ||

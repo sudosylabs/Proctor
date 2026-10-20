@@ -196,7 +196,7 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 		func() string { return createdID },
 	)
 
-	got, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering", Description: "Faculty",
 	})
 	if err != nil {
@@ -233,7 +233,7 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	got, err := service.Create(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
+	got, err := service.CreateAcademicUnit(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 		time.Now,
 		model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
+	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v, want authorization.denied", err)
 	}
@@ -308,7 +308,7 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 		time.Now,
 		model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
 	})
 	if !apperror.Is(err, "academic_unit.conflict") {
@@ -343,7 +343,7 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 		time.Now,
 		model.NewId,
 	)
-	got, err := service.Create(context.Background(), Invocation{}, CreateAcademicUnitCommand{
+	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering",
 	})
 	if err != nil || got != saved {

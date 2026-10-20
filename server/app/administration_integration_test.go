@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -261,11 +263,10 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 
 	secondAdministrator, appErr := helper.App.CreateLocalUser(
 		context.Background(),
-		&model.User{
+		app.CreateLocalUserCommand{User: &model.User{
 			Username: "second-administrator", Email: "second-administrator@example.edu",
 			DisplayName: "Second Administrator",
-		},
-		password,
+		}, Password: password},
 	)
 	if appErr != nil {
 		t.Fatal(appErr)

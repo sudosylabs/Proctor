@@ -137,7 +137,7 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache.fail = true
-	if err := service.logout(context.Background(), NewInvocation(*principal, model.RequestMetadata{})); err != nil {
+	if err := service.Logout(context.Background(), NewInvocation(*principal, model.RequestMetadata{}), LogoutCommand{}); err != nil {
 		t.Fatalf("logout after cache failure: %v", err)
 	}
 	if cache.failures == 0 {

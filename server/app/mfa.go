@@ -119,54 +119,6 @@ type MFAStatus struct {
 	RecoveryCodesRemaining   int
 }
 
-func (a *App) GetMFAStatus(
-	ctx context.Context,
-	invocation Invocation,
-	_ GetMFAStatusQuery,
-) (*MFAStatus, error) {
-	return a.mfaApplication.GetStatus(ctx, invocation)
-}
-
-func (a *App) SetupMFA(
-	ctx context.Context,
-	invocation Invocation,
-	command SetupMFACommand,
-) (*MFASetup, error) {
-	return a.mfaApplication.Setup(ctx, invocation, command)
-}
-
-func (a *App) ActivateMFA(
-	ctx context.Context,
-	invocation Invocation,
-	command ActivateMFACommand,
-) (*MFAActivation, error) {
-	return a.mfaApplication.Activate(ctx, invocation, command)
-}
-
-func (a *App) ChallengeMFA(
-	ctx context.Context,
-	invocation Invocation,
-	command ChallengeMFACommand,
-) (*model.Session, error) {
-	return a.mfaApplication.Challenge(ctx, invocation, command)
-}
-
-func (a *App) RegenerateMFARecoveryCodes(
-	ctx context.Context,
-	invocation Invocation,
-	_ RegenerateMFARecoveryCodesCommand,
-) ([]string, error) {
-	return a.mfaApplication.RegenerateRecoveryCodes(ctx, invocation)
-}
-
-func (a *App) DisableMFA(
-	ctx context.Context,
-	invocation Invocation,
-	_ DisableMFACommand,
-) error {
-	return a.mfaApplication.Disable(ctx, invocation)
-}
-
 func (s *mfaMechanics) consumeSecondFactor(
 	ctx context.Context,
 	mfaPersistence store.MFAStore,

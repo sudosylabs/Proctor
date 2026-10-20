@@ -82,17 +82,10 @@ func newSelfSessionService(
 	return &selfSessionService{sessions: sessions, audit: audit, effects: effects, now: now}, nil
 }
 
-func (a *App) ListSessions(
+func (s *selfSessionService) ListSessions(
 	ctx context.Context,
 	invocation Invocation,
 	_ ListSessionsQuery,
-) ([]*model.Session, error) {
-	return a.selfSessions.List(ctx, invocation)
-}
-
-func (s *selfSessionService) List(
-	ctx context.Context,
-	invocation Invocation,
 ) ([]*model.Session, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil {
@@ -109,15 +102,7 @@ func (s *selfSessionService) List(
 	return sessions, nil
 }
 
-func (a *App) RevokeSession(
-	ctx context.Context,
-	invocation Invocation,
-	command RevokeSessionCommand,
-) error {
-	return a.selfSessions.RevokeOne(ctx, invocation, command)
-}
-
-func (s *selfSessionService) RevokeOne(
+func (s *selfSessionService) RevokeSession(
 	ctx context.Context,
 	invocation Invocation,
 	command RevokeSessionCommand,
@@ -157,17 +142,10 @@ func (s *selfSessionService) RevokeOne(
 	)
 }
 
-func (a *App) RevokeAllSessions(
+func (s *selfSessionService) RevokeAllSessions(
 	ctx context.Context,
 	invocation Invocation,
 	_ RevokeAllSessionsCommand,
-) error {
-	return a.selfSessions.RevokeAll(ctx, invocation)
-}
-
-func (s *selfSessionService) RevokeAll(
-	ctx context.Context,
-	invocation Invocation,
 ) error {
 	principal := invocation.Principal()
 	if principal.Validate() != nil {

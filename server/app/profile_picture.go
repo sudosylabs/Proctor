@@ -177,11 +177,7 @@ func newProfilePictureService(users profilePictureUserStore, files profilePictur
 	}
 }
 
-func (a *App) UploadProfilePicture(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
-	return a.profilePictures.Upload(ctx, invocation, command)
-}
-
-func (s *profilePictureService) Upload(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureService) UploadProfilePicture(ctx context.Context, invocation Invocation, command UploadProfilePictureCommand) (*model.User, error) {
 	return s.uploads.Upload(ctx, invocation, command)
 }
 
@@ -320,7 +316,7 @@ func (e profilePictureRealtimeEffects) Changed(ctx context.Context, change profi
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
+	return e.realtime.PublishRealtimeEvent(ctx, apprealtime.RealtimeEvent{Name: "user_profile_picture_changed", UserID: change.UserID.String(), Data: data})
 }
 
 type profilePictureEffectReporter struct{ realtime *realtimeService }
@@ -364,15 +360,7 @@ func sameNormalizedProfilePicture(state *store.ProfilePictureState, renditions [
 	return len(currentByName) == 0
 }
 
-func (a *App) GetProfilePicture(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
-	return a.profilePictures.Get(ctx, invocation, query)
-}
-
-func (a *App) RemoveProfilePicture(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
-	return a.profilePictures.Remove(ctx, invocation, command)
-}
-
-func (s *profilePictureService) Remove(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
+func (s *profilePictureService) RemoveProfilePicture(ctx context.Context, invocation Invocation, command RemoveProfilePictureCommand) (*model.User, error) {
 	return s.removals.Remove(ctx, invocation, command)
 }
 
@@ -439,7 +427,7 @@ func (s *profilePictureRemovalService) Remove(ctx context.Context, invocation In
 	return updated, nil
 }
 
-func (s *profilePictureService) Get(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
+func (s *profilePictureService) GetProfilePicture(ctx context.Context, invocation Invocation, query GetProfilePictureQuery) (*ProfilePictureContent, error) {
 	return s.reads.Get(ctx, invocation, query)
 }
 

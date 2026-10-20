@@ -157,7 +157,7 @@ func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing
 	service.loginStates, service.mutationAudit = states, auditor
 	service.capabilities = &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}}
 	service.recentAuthenticationTTL, service.now = 15*time.Minute, func() time.Time { return now }
-	application := &App{externalAuthentication: service}
+	application := &App{externalAuthenticationService: service}
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
@@ -469,7 +469,7 @@ func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t
 		registry:     externalProviderSourceSet{descriptors: configured},
 		accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus-b": true}},
 	}
-	providers, err := service.providers(context.Background())
+	providers, err := service.ExternalAuthenticationProviders(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -831,7 +831,7 @@ type externalInvitationAcceptorFake struct {
 	err        error
 }
 
-func (s *externalInvitationAcceptorFake) AcceptExternalIdentity(_ context.Context, state *model.ExternalLoginState,
+func (s *externalInvitationAcceptorFake) acceptExternalIdentity(_ context.Context, state *model.ExternalLoginState,
 	assertion *model.ExternalAuthenticationAssertion, capability store.AccessDeploymentCapabilities,
 	metadata model.RequestMetadata, method string,
 ) (*store.ExternalIdentityInvitationAcceptanceResult, error) {

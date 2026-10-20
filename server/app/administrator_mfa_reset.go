@@ -37,13 +37,6 @@ type administratorRecoveryPolicy struct {
 // ResetAdministratorMFA is absent from every network application capability.
 // The module root borrows it only while its Server is inert, and the Store
 // serializes it against all serving nodes and unreconciled host recovery.
-func (a *App) ResetAdministratorMFA(ctx context.Context, command AdministratorMFAResetCommand) (*AdministratorMFAResetResult, error) {
-	if a == nil || a.bootstrap == nil {
-		return nil, errors.New("administrator MFA reset is unavailable")
-	}
-	return a.bootstrap.ResetAdministratorMFA(ctx, command)
-}
-
 func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command AdministratorMFAResetCommand) (*AdministratorMFAResetResult, error) {
 	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
 	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))

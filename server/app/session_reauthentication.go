@@ -23,10 +23,6 @@ type ReauthenticatePasswordCommand struct {
 	Source   string
 }
 
-func (a *App) ReauthenticatePassword(ctx context.Context, invocation Invocation, command ReauthenticatePasswordCommand) (*model.Session, error) {
-	return a.authentication.ReauthenticatePassword(ctx, invocation, command)
-}
-
 func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invocation Invocation, command ReauthenticatePasswordCommand) (*model.Session, error) {
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess {

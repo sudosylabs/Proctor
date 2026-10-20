@@ -76,10 +76,7 @@ func newClassService(persistence classStore, authorization scopedAcademicResourc
 	return &classService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
-func (a *App) GetClass(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
-	return a.classes.Get(ctx, invocation, query)
-}
-func (s *classService) Get(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
+func (s *classService) GetClass(ctx context.Context, invocation Invocation, query GetClassQuery) (*model.Class, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_id")
@@ -94,10 +91,7 @@ func (s *classService) Get(ctx context.Context, invocation Invocation, query Get
 	return class, nil
 }
 
-func (a *App) ListClasses(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
-	return a.classes.List(ctx, invocation, query)
-}
-func (s *classService) List(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
+func (s *classService) ListClasses(ctx context.Context, invocation Invocation, query ListClassesQuery) ([]*model.Class, error) {
 	levelID := query.ProgrammeLevelID
 	if !levelID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
@@ -116,10 +110,7 @@ func (s *classService) List(ctx context.Context, invocation Invocation, query Li
 	return classes, nil
 }
 
-func (a *App) SearchClasses(ctx context.Context, invocation Invocation, query SearchClassesQuery) ([]*model.Class, error) {
-	return a.classes.Search(ctx, invocation, query)
-}
-func (s *classService) Search(ctx context.Context, invocation Invocation, query SearchClassesQuery) ([]*model.Class, error) {
+func (s *classService) SearchClasses(ctx context.Context, invocation Invocation, query SearchClassesQuery) ([]*model.Class, error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -138,10 +129,7 @@ func (s *classService) Search(ctx context.Context, invocation Invocation, query 
 	return classes, nil
 }
 
-func (a *App) CreateClass(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
-	return a.classes.Create(ctx, invocation, command)
-}
-func (s *classService) Create(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
+func (s *classService) CreateClass(ctx context.Context, invocation Invocation, command CreateClassCommand) (*model.Class, error) {
 	levelID := command.ProgrammeLevelID
 	if !levelID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_level_id")
@@ -193,10 +181,7 @@ func (s *classService) Create(ctx context.Context, invocation Invocation, comman
 	)
 }
 
-func (a *App) UpdateClass(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
-	return a.classes.Update(ctx, invocation, command)
-}
-func (s *classService) Update(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
+func (s *classService) UpdateClass(ctx context.Context, invocation Invocation, command UpdateClassCommand) (*model.Class, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "class_id")
@@ -279,10 +264,7 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	)
 }
 
-func (a *App) ArchiveClass(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
-	return a.classes.Archive(ctx, invocation, command)
-}
-func (s *classService) Archive(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
+func (s *classService) ArchiveClass(ctx context.Context, invocation Invocation, command ArchiveClassCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "class_id")

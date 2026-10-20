@@ -218,7 +218,7 @@ func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID 
 		return err
 	}
 	return errors.Join(
-		effects.realtime.Publish(ctx, event),
+		effects.realtime.PublishRealtimeEvent(ctx, event),
 		effects.publishBoardInvalidation(ctx, examID, sittingID),
 		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
@@ -232,7 +232,7 @@ func (effects examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, e
 		return err
 	}
 	return errors.Join(
-		effects.realtime.Publish(ctx, event),
+		effects.realtime.PublishRealtimeEvent(ctx, event),
 		effects.publishBoardInvalidation(ctx, examID, sittingID),
 		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
@@ -246,7 +246,7 @@ func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID m
 		return err
 	}
 	return errors.Join(
-		effects.realtime.Publish(ctx, event),
+		effects.realtime.PublishRealtimeEvent(ctx, event),
 		effects.publishBoardInvalidation(ctx, examID, sittingID),
 		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)
@@ -265,8 +265,8 @@ func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, 
 		return err
 	}
 	return errors.Join(
-		effects.realtime.Publish(ctx, managerEvent),
-		effects.realtime.Publish(ctx, candidateEvent),
+		effects.realtime.PublishRealtimeEvent(ctx, managerEvent),
+		effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 		effects.publishBoardInvalidation(ctx, examID, sittingID),
 		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 	)

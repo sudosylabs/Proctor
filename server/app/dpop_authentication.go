@@ -17,21 +17,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-// AuthenticateDPoP resolves a Desktop access credential and establishes the
-// request-scoped registered_desktop_key assurance only after proof, nonce,
-// replay, Session, User, and Registration validation.
-func (a *App) AuthenticateDPoP(
-	ctx context.Context,
-	rawToken string,
-	proof string,
-	method string,
-	path string,
-) (*model.Principal, error) {
-	principal, err := a.authentication.authenticateDPoP(ctx, rawToken, proof, method, path)
-	a.recordOperational("authentication", "dpop", err)
-	return principal, err
-}
-
 // DPoPChallengeNonce exposes only the standard replacement nonce carried by a
 // nonce challenge. Other application errors do not reveal internal state.
 func DPoPChallengeNonce(err error) (string, bool) {
@@ -42,13 +27,17 @@ func DPoPChallengeNonce(err error) (string, bool) {
 	return challenge.Nonce(), challenge.Nonce() != ""
 }
 
-func (s *authenticationService) authenticateDPoP(
+// AuthenticateDPoP resolves a Desktop access credential and establishes the
+// request-scoped registered_desktop_key assurance only after proof, nonce,
+// replay, Session, User, and Registration validation.
+func (s *authenticationService) AuthenticateDPoP(
 	ctx context.Context,
 	rawToken string,
 	proof string,
 	method string,
 	path string,
-) (*model.Principal, error) {
+) (_ *model.Principal, resultErr error) {
+	defer func() { recordOperational(s.operational, "authentication", "dpop", resultErr) }()
 	resolved, err := s.resolveDesktopCredential(ctx, rawToken, model.SessionCredentialAccess)
 	if err != nil {
 		return nil, err

@@ -131,15 +131,7 @@ func newPersonalAccessTokenAdministrationService(
 	}, nil
 }
 
-func (a *App) CreatePersonalAccessToken(
-	ctx context.Context,
-	invocation Invocation,
-	command CreatePersonalAccessTokenCommand,
-) (*model.PersonalAccessTokenCreation, error) {
-	return a.personalAccessTokenAdministration.Create(ctx, invocation, command)
-}
-
-func (s *personalAccessTokenAdministrationService) Create(
+func (s *personalAccessTokenAdministrationService) CreatePersonalAccessToken(
 	ctx context.Context,
 	invocation Invocation,
 	command CreatePersonalAccessTokenCommand,
@@ -237,15 +229,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 	}, nil
 }
 
-func (a *App) ListPersonalAccessTokens(
-	ctx context.Context,
-	invocation Invocation,
-	query ListPersonalAccessTokensQuery,
-) ([]*model.PersonalAccessToken, error) {
-	return a.personalAccessTokenAdministration.List(ctx, invocation, query)
-}
-
-func (s *personalAccessTokenAdministrationService) List(
+func (s *personalAccessTokenAdministrationService) ListPersonalAccessTokens(
 	ctx context.Context,
 	invocation Invocation,
 	_ ListPersonalAccessTokensQuery,
@@ -261,15 +245,7 @@ func (s *personalAccessTokenAdministrationService) List(
 	return tokens, nil
 }
 
-func (a *App) RevokePersonalAccessToken(
-	ctx context.Context,
-	invocation Invocation,
-	command RevokePersonalAccessTokenCommand,
-) (*model.PersonalAccessToken, error) {
-	return a.personalAccessTokenAdministration.Revoke(ctx, invocation, command)
-}
-
-func (s *personalAccessTokenAdministrationService) Revoke(
+func (s *personalAccessTokenAdministrationService) RevokePersonalAccessToken(
 	ctx context.Context,
 	invocation Invocation,
 	command RevokePersonalAccessTokenCommand,
@@ -323,15 +299,7 @@ func (s *personalAccessTokenAdministrationService) Revoke(
 	return result.Token, nil
 }
 
-func (a *App) SetPersonalAccessTokenDisabled(
-	ctx context.Context,
-	invocation Invocation,
-	command SetPersonalAccessTokenDisabledCommand,
-) (*model.PersonalAccessToken, error) {
-	return a.personalAccessTokenAdministration.SetDisabled(ctx, invocation, command)
-}
-
-func (s *personalAccessTokenAdministrationService) SetDisabled(
+func (s *personalAccessTokenAdministrationService) SetPersonalAccessTokenDisabled(
 	ctx context.Context,
 	invocation Invocation,
 	command SetPersonalAccessTokenDisabledCommand,
@@ -427,12 +395,6 @@ func (s *personalAccessTokenAdministrationService) prepareSecurityNotice(
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job,
 		ExpiresAt: token.ExpiresAt,
 	}, nil
-}
-
-func (a *App) requireInteractiveSession(principal model.Principal, recent bool) error {
-	return requireInteractiveSession(
-		principal, recent, time.Now(), a.recentAuthenticationTTL,
-	)
 }
 
 func requireInteractiveSession(

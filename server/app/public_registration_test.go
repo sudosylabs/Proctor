@@ -29,7 +29,7 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 	rawToken := model.NewCredentialToken()
 	service.newToken = func() string { return rawToken }
 
-	err := service.Register(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{
+	err := service.RegisterLocalUser(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{
 		RequestID: "register-1", IPAddress: "192.0.2.10",
 	}), RegisterLocalUserCommand{
 		Username: "New.Student", Email: " New.Student@Example.EDU ",
@@ -86,7 +86,7 @@ func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDi
 			mail := &publicRegistrationMailFake{enabled: test.mail}
 			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 			service.policies = test.policy
-			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.20",
 			})
@@ -109,7 +109,7 @@ func TestPublicRegistrationConcealsDuplicateIdentity(t *testing.T) {
 			t.Parallel()
 			persistence := &publicRegistrationStoreFake{err: store.NewErrConflict("user", constraint, nil)}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
-			if err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			if err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			}); err != nil {
@@ -133,7 +133,7 @@ func TestPublicRegistrationDoesNotConcealUnrelatedPersistenceConflicts(t *testin
 			t.Parallel()
 			persistence := &publicRegistrationStoreFake{err: conflict}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
-			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			})
@@ -155,7 +155,7 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "correct horse battery staple", Source: "192.0.2.31",
 	}
-	if err := mailFailure.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
+	if err := mailFailure.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
 		t.Fatalf("mail preparation failure = %v", err)
 	}
 	if mailFailureStore.input != nil {
@@ -163,7 +163,7 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 	}
 
 	persistenceFailure := newTestPublicRegistrationService(t, &publicRegistrationStoreFake{err: errors.New("database unavailable")}, &publicRegistrationMailFake{enabled: true}, time.Now())
-	if err := persistenceFailure.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
+	if err := persistenceFailure.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
 		t.Fatalf("persistence failure = %v", err)
 	}
 }
@@ -174,7 +174,7 @@ func TestPublicRegistrationPasswordWorkFailuresStopBeforeMailAndPersistence(t *t
 		mail := &publicRegistrationMailFake{enabled: true}
 		service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 		service.hasher = hasher
-		err := service.Register(ctx, Invocation{}, RegisterLocalUserCommand{
+		err := service.RegisterLocalUser(ctx, Invocation{}, RegisterLocalUserCommand{
 			Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 			Password: "correct horse battery staple", Source: "192.0.2.33",
 		})
@@ -191,7 +191,7 @@ func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *te
 	persistence := &publicRegistrationStoreFake{}
 	mail := &publicRegistrationMailFake{enabled: true}
 	service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
-	err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+	err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "", Source: "192.0.2.32",
 	})
@@ -221,7 +221,7 @@ func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(
 			persistence := &publicRegistrationStoreFake{}
 			mail := &publicRegistrationMailFake{enabled: true}
 			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
-			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: test.firstName,
 				LastName: test.lastName, Password: "correct horse battery staple", Source: "192.0.2.33",
 			})
@@ -243,11 +243,11 @@ func TestPublicRegistrationUsesPrivateSharedAttemptAccounting(t *testing.T) {
 	service.attempts = mustAuthenticationAttemptAccounting(t, cache)
 	service.rateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 10}
 	command := RegisterLocalUserCommand{Username: "student", Email: " Student@Example.EDU ", FirstName: "New", LastName: "Student", Password: "correct horse battery staple", Source: "192.0.2.40:443"}
-	if err := service.Register(context.Background(), Invocation{}, command); err != nil {
+	if err := service.RegisterLocalUser(context.Background(), Invocation{}, command); err != nil {
 		t.Fatal(err)
 	}
 	command.Email = "student@example.edu"
-	if err := service.Register(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
+	if err := service.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("second registration = %v", err)
 	}
 	for key := range cache.snapshot() {

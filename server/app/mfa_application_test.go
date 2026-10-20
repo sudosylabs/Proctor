@@ -46,7 +46,7 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 	audit := &mfaApplicationAuditFake{events: &events}
 	effects := &mfaApplicationEffectsFake{events: &events}
 	service := newTestMFAApplicationService(t, persistence, audit, effects, now)
-	application := &App{mfaApplication: service}
+	application := &App{mfaApplicationService: service}
 	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "request-a"})
 	command := ChallengeMFACommand{Code: "aaaa-aaaa-aaaa-aaaa-aaaa-aaaa"}
 
@@ -88,7 +88,7 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 	)
 	const secret = "JBSWY3DPEHPK3PXP"
 	service.mechanics.newSecret = func() (string, error) { return secret, nil }
-	application := &App{mfaApplication: service}
+	application := &App{mfaApplicationService: service}
 
 	setup, err := application.SetupMFA(
 		context.Background(),
@@ -181,7 +181,7 @@ func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			_, _, err := service.VerifyLogin(
+			_, _, err := service.verifyLogin(
 				context.Background(), userID.String(),
 				"aaaa-aaaa-aaaa-aaaa-aaaa-aaaa", now,
 			)
@@ -218,7 +218,7 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 	mailer := &mfaSecurityNoticeMailPreparerFake{}
 	service := newTestMFAApplicationService(t, persistence, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.mail = mailer
-	application := &App{mfaApplication: service}
+	application := &App{mfaApplicationService: service}
 	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "mfa-notices"})
 	const secret = "JBSWY3DPEHPK3PXP"
 	sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)

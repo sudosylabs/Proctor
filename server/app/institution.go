@@ -48,17 +48,10 @@ func newInstitutionService(
 	}
 }
 
-func (a *App) GetInstitution(
+func (s *institutionService) GetInstitution(
 	ctx context.Context,
 	invocation Invocation,
 	_ GetInstitutionQuery,
-) (*model.Institution, error) {
-	return a.institutions.Get(ctx, invocation)
-}
-
-func (s *institutionService) Get(
-	ctx context.Context,
-	invocation Invocation,
 ) (*model.Institution, error) {
 	institution, err := s.store.GetSingleton(ctx)
 	if err != nil {
@@ -73,15 +66,7 @@ func (s *institutionService) Get(
 	return institution, nil
 }
 
-func (a *App) UpdateInstitution(
-	ctx context.Context,
-	invocation Invocation,
-	command UpdateInstitutionCommand,
-) (*model.Institution, error) {
-	return a.institutions.Update(ctx, invocation, command)
-}
-
-func (s *institutionService) Update(
+func (s *institutionService) UpdateInstitution(
 	ctx context.Context,
 	invocation Invocation,
 	command UpdateInstitutionCommand,

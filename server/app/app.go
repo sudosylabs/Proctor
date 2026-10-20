@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 	"errors"
-	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -18,71 +17,66 @@ import (
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/secretseal"
 )
 
-// App is the long-lived application facade. Construction receives only the
-// explicit Dependencies bundle; infrastructure getters and platform location
-// are not part of the public surface.
+// App is the long-lived application surface. It embeds each focused service
+// that owns public use cases, so its method set is their exported methods and
+// it declares no use case of its own. Construction receives only the explicit
+// Dependencies bundle; infrastructure getters and platform location are not
+// part of the public surface.
 type App struct {
-	authentication                    *authenticationService
-	desktopAuthorization              *desktopAuthorizationService
-	desktopRegistrations              *desktopRegistrationService
-	browserInvitations                *browserInvitationService
-	selfSessions                      *selfSessionService
-	externalAuthentication            *externalAuthenticationService
-	authenticationMethods             *authenticationMethodService
-	mfaApplication                    *mfaApplicationService
-	accountTokens                     *accountTokenService
-	publicRegistration                *publicRegistrationService
-	personalAccessTokenAdministration *personalAccessTokenAdministrationService
-	authorization                     *accessControlService
-	accessPolicies                    *accessPolicyService
-	retentionPolicy                   *retentionPolicyService
-	desktopCompatibility              *desktopCompatibilityService
-	academicUnits                     *academicUnitQueryService
-	academicUnitCommands              *academicUnitCommandService
-	institutions                      *institutionService
-	programmes                        *programmeService
-	programmeLevels                   *programmeLevelService
-	academicPeriods                   *academicPeriodService
-	classes                           *classService
-	affiliations                      *affiliationService
-	academicUnitMembers               *academicUnitMemberService
-	classMembers                      *classMemberService
-	invitations                       *invitationService
-	onboardingImports                 *onboardingImportService
-	exams                             examUseCases
-	examRevisions                     *examengine.Publication
-	examSittings                      examSittingUseCases
-	examRecords                       *examengine.Records
-	examExports                       *examengine.Exports
-	examAttempts                      *examattempt.Service
-	examReviews                       *examreview.Service
-	examResources                     examResourceUseCases
-	examCorrections                   examCorrectionUseCases
-	examStarterWorkspace              examStarterWorkspaceUseCases
-	userProfiles                      *userProfileService
-	userSettings                      *userSettingsService
-	profilePictures                   *profilePictureService
-	accountStates                     *accountStateService
-	sessionAdministrations            *sessionAdministrationService
-	roles                             *roleService
-	roleBindings                      *roleBindingService
-	auditListings                     *auditListingService
-	bootstrap                         *bootstrapService
-	academicAdministrationBatches     *academicAdministrationBatchService
-	audit                             *auditService
-	realtime                          *realtimeService
-	jobs                              *jobengine.Engine
-	jobOperations                     *jobOperationsService
-	mail                              *mailService
-	mailSecretSealer                  *secretseal.Sealer
-	operational                       OperationalRecorder
-
-	// Cross-cutting policy and ports still used by App-method facades that
-	// have not yet been extracted into focused services.
-	recentAuthenticationTTL time.Duration
+	*authenticationService
+	*desktopAuthorizationService
+	*desktopRegistrationService
+	*browserInvitationService
+	*selfSessionService
+	*externalAuthenticationService
+	*authenticationMethodService
+	*mfaApplicationService
+	*accountTokenService
+	*publicRegistrationService
+	*personalAccessTokenAdministrationService
+	accessControlService *accessControlService
+	*accessPolicyService
+	*retentionPolicyService
+	*desktopCompatibilityService
+	*academicUnitQueryService
+	*academicUnitCommandService
+	*institutionService
+	*programmeService
+	*programmeLevelService
+	*academicPeriodService
+	*classService
+	*affiliationService
+	*academicUnitMemberService
+	*classMemberService
+	*invitationService
+	*onboardingImportService
+	exams                examUseCases
+	examRevisions        *examengine.Publication
+	examSittings         examSittingUseCases
+	examRecords          *examengine.Records
+	examExports          *examengine.Exports
+	examAttempts         *examattempt.Service
+	examReviews          *examreview.Service
+	examResources        examResourceUseCases
+	examCorrections      examCorrectionUseCases
+	examStarterWorkspace examStarterWorkspaceUseCases
+	*userProfileService
+	*userSettingsService
+	*profilePictureService
+	*accountStateService
+	*sessionAdministrationService
+	*roleService
+	*roleBindingService
+	*auditListingService
+	*bootstrapService
+	*academicAdministrationBatchService
+	*realtimeService
+	jobs *jobengine.Engine
+	*jobOperationsService
+	*mailService
+	operational OperationalRecorder
 }
 
 // Jobs returns the root-owned durable Job runtime, or nil for lifecycle-only
@@ -138,15 +132,6 @@ func New(deps Dependencies) (*App, error) {
 	return assembleApplication(deps, foundation, identity, access, examinations, profiles, jobs, administration), nil
 }
 
-func (a *App) Can(
-	ctx context.Context,
-	principal model.Principal,
-	action model.Action,
-	resource model.Resource,
-) (bool, error) {
-	return a.authorization.Can(ctx, principal, action, resource)
-}
-
 // Authorize records the current allow or deny decision durably and fails
 // closed if either policy resolution or decision audit fails.
 func (a *App) Authorize(
@@ -155,7 +140,7 @@ func (a *App) Authorize(
 	action model.Action,
 	resource model.Resource,
 ) error {
-	err := a.authorization.Authorize(ctx, invocation, action, resource)
+	err := a.accessControlService.Authorize(ctx, invocation, action, resource)
 	a.recordOperational("authorization", "decision", err)
 	return err
 }

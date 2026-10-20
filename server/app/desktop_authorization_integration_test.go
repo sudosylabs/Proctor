@@ -98,9 +98,9 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		}
 	}
 
-	user, err := primary.App.CreateLocalUser(ctx, &model.User{
+	user, err := primary.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "desktop-user", Email: "desktop-user@example.edu",
-	}, "correct horse battery staple")
+	}, Password: "correct horse battery staple"})
 	if err != nil {
 		t.Fatal(err)
 	}

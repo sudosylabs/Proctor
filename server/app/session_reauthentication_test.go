@@ -58,7 +58,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			ctx := context.Background()
 			persistence := newAuthenticationStoreFake()
 			service := newTestAuthenticationService(t, persistence)
-			user, err := service.createLocalUser(ctx, CreateLocalUserCommand{User: &model.User{Username: "reauthentication", Email: "reauthentication@example.edu"}, Password: "CorrectHorseBatteryStaple1!"})
+			user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{User: &model.User{Username: "reauthentication", Email: "reauthentication@example.edu"}, Password: "CorrectHorseBatteryStaple1!"})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -24,8 +24,8 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 	t.Parallel()
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
-	_ = service.SetSink(&recordingRealtimeSink{})
-	err := service.Publish(context.Background(), apprealtime.RealtimeEvent{
+	_ = service.AttachRealtimeSink(&recordingRealtimeSink{})
+	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{
 		Name:   "user.notification",
 		UserID: model.NewId(),
 	})
@@ -38,7 +38,7 @@ func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
 	t.Parallel()
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
-	err := service.Publish(context.Background(), apprealtime.RealtimeEvent{Name: "missing.target"})
+	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{Name: "missing.target"})
 	if err == nil || !apperror.Is(err, "websocket.request.invalid") {
 		t.Fatalf("Publish() error = %v, want websocket.request.invalid", err)
 	}
@@ -57,10 +57,10 @@ func TestSessionRevocationPublishesAttemptProjectionInvalidations(t *testing.T) 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	service.attempts = attempts
 	sink := &recordingRealtimeSink{}
-	if err := service.SetSink(sink); err != nil {
+	if err := service.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 

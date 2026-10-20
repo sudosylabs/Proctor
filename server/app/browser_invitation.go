@@ -74,28 +74,7 @@ func newBrowserInvitationService(
 	}, nil
 }
 
-func (a *App) StartBrowserInvitation(ctx context.Context, invocation Invocation, command StartBrowserInvitationCommand) (*BrowserInvitationStart, error) {
-	if a == nil || a.browserInvitations == nil {
-		return nil, apperror.New("invitation.unavailable")
-	}
-	return a.browserInvitations.Start(ctx, invocation, command)
-}
-
-func (a *App) AcceptBrowserInvitation(ctx context.Context, invocation Invocation, command BrowserInvitationAcceptanceCommand) (*InvitationAcceptanceView, error) {
-	if a == nil || a.browserInvitations == nil {
-		return nil, apperror.New("invitation.unavailable")
-	}
-	return a.browserInvitations.AcceptLocal(ctx, invocation, command)
-}
-
-func (a *App) AcceptBrowserInvitationWithSession(ctx context.Context, invocation Invocation, command BrowserInvitationSessionAcceptanceCommand) (*InvitationAcceptanceView, error) {
-	if a == nil || a.browserInvitations == nil {
-		return nil, apperror.New("invitation.unavailable")
-	}
-	return a.browserInvitations.AcceptSession(ctx, invocation, command)
-}
-
-func (s *browserInvitationService) Start(ctx context.Context, _ Invocation, command StartBrowserInvitationCommand) (*BrowserInvitationStart, error) {
+func (s *browserInvitationService) StartBrowserInvitation(ctx context.Context, _ Invocation, command StartBrowserInvitationCommand) (*BrowserInvitationStart, error) {
 	if !model.IsValidCredentialToken(command.Claim) {
 		return nil, apperror.New("invitation.invalid")
 	}
@@ -146,7 +125,7 @@ func (s *browserInvitationService) Start(ctx context.Context, _ Invocation, comm
 	}, nil
 }
 
-func (s *browserInvitationService) AcceptLocal(ctx context.Context, invocation Invocation, command BrowserInvitationAcceptanceCommand) (*InvitationAcceptanceView, error) {
+func (s *browserInvitationService) AcceptBrowserInvitation(ctx context.Context, invocation Invocation, command BrowserInvitationAcceptanceCommand) (*InvitationAcceptanceView, error) {
 	resolution, invitation, err := s.resolve(ctx, command.Handle, command.BrowserProof)
 	if err != nil {
 		return nil, err
@@ -175,7 +154,7 @@ func (s *browserInvitationService) AcceptLocal(ctx context.Context, invocation I
 	return accepted, nil
 }
 
-func (s *browserInvitationService) AcceptSession(ctx context.Context, invocation Invocation, command BrowserInvitationSessionAcceptanceCommand) (*InvitationAcceptanceView, error) {
+func (s *browserInvitationService) AcceptBrowserInvitationWithSession(ctx context.Context, invocation Invocation, command BrowserInvitationSessionAcceptanceCommand) (*InvitationAcceptanceView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess ||
 		principal.ClientType != model.SessionClientWeb {

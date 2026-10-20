@@ -18,8 +18,8 @@ import (
 )
 
 type authenticationMFAVerifier interface {
-	RecoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
-	VerifyLogin(
+	recoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
+	verifyLogin(
 		context.Context,
 		string,
 		string,

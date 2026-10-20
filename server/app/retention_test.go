@@ -55,7 +55,7 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 			case "missing_key":
 				command.IdempotencyKey = ""
 			}
-			application := &App{retentionPolicy: fixture.service}
+			application := &App{retentionPolicyService: fixture.service}
 			value, err := application.ChangeRetentionControl(t.Context(), invocation, command)
 			if err == nil || value != nil || lifecycle.change != nil {
 				t.Fatalf("%s did not stop approval: %+v, %v, %+v", gate, value, err, lifecycle.change)
@@ -70,7 +70,7 @@ func TestRetentionApprovalPassesExactReviewedPolicyAndCredential(t *testing.T) {
 		ApprovedPolicyRevision: 7, ApprovedPreviewID: model.NewRetentionPreviewID(), ChangedByUserID: fixture.invocation.Principal().UserID, UpdatedAt: fixture.service.now()}
 	lifecycle := &retentionLifecycleFake{result: &store.RetentionControlResult{Control: control}}
 	fixture.service.lifecycle = lifecycle
-	application := &App{retentionPolicy: fixture.service}
+	application := &App{retentionPolicyService: fixture.service}
 	value, err := application.ChangeRetentionControl(t.Context(), fixture.invocation, ChangeRetentionControlCommand{
 		ExpectedRevision: 1, ExpectedPolicyRevision: 7, PreviewID: control.ApprovedPreviewID, State: model.RetentionControlEnabled, IdempotencyKey: "approve-cleanup"})
 	if err != nil || value != control {

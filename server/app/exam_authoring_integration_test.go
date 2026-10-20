@@ -48,7 +48,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	teacher, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, password)
+	teacher, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -144,7 +144,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if len(active.Items) != 1 || active.Items[0].ID != created.Exam.ID || active.Items[0].Title != editedTitle || active.Items[0].ArchivedAt.Valid || active.Items[0].ManagerCount != 1 {
 		t.Fatalf("active catalog = %#v", active)
 	}
-	managerUser, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-manager", Email: "exam-manager@example.edu", DisplayName: "Exam Manager"}, password)
+	managerUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-manager", Email: "exam-manager@example.edu", DisplayName: "Exam Manager"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -272,7 +272,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	outsider, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, password)
+	outsider, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

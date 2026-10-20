@@ -85,10 +85,10 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	realtime := newTestRealtimeService(t, cache)
-	if err := realtime.SetClusterFanout(cluster); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
 
@@ -254,10 +254,10 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
-	if err := service.SetClusterFanout(cluster); err != nil {
+	if err := service.AttachRealtimeClusterFanout(cluster); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.SetSink(sink); err != nil {
+	if err := service.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,7 +270,7 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 			ID:   unitID,
 		},
 	}
-	if err := service.Publish(context.Background(), event); err != nil {
+	if err := service.PublishRealtimeEvent(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	if len(cluster.broadcasts) != 1 {
@@ -305,7 +305,7 @@ func seedAuthenticatedSession(
 	t.Helper()
 	password := "CorrectHorseBatteryStaple1!"
 	suffix := model.NewId()
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{
 			Username: "cluster-user-" + suffix,
 			Email:    "cluster-user-" + suffix + "@example.edu",
@@ -315,7 +315,7 @@ func seedAuthenticatedSession(
 	if err != nil {
 		t.Fatalf("createLocalUser() error = %v", err)
 	}
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,

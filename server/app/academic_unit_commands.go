@@ -89,7 +89,7 @@ func (e academicUnitRealtimeEffects) publish(
 	event string,
 	unitID string,
 ) error {
-	return e.realtime.Publish(ctx, apprealtime.RealtimeEvent{
+	return e.realtime.PublishRealtimeEvent(ctx, apprealtime.RealtimeEvent{
 		Name:   event,
 		Action: model.ActionAcademicUnitView,
 		Resource: model.Resource{
@@ -136,15 +136,7 @@ func newAcademicUnitCommandService(
 
 // CreateAcademicUnit creates a root or child Academic Unit through one
 // application-owned authorization and one atomic durable mutation.
-func (a *App) CreateAcademicUnit(
-	ctx context.Context,
-	invocation Invocation,
-	command CreateAcademicUnitCommand,
-) (*model.AcademicUnit, error) {
-	return a.academicUnitCommands.Create(ctx, invocation, command)
-}
-
-func (s *academicUnitCommandService) Create(
+func (s *academicUnitCommandService) CreateAcademicUnit(
 	ctx context.Context,
 	invocation Invocation,
 	command CreateAcademicUnitCommand,
@@ -245,15 +237,7 @@ func (s *academicUnitCommandService) Create(
 	return saved.Value, nil
 }
 
-func (a *App) UpdateAcademicUnit(
-	ctx context.Context,
-	invocation Invocation,
-	command UpdateAcademicUnitCommand,
-) (*model.AcademicUnit, error) {
-	return a.academicUnitCommands.Update(ctx, invocation, command)
-}
-
-func (s *academicUnitCommandService) Update(
+func (s *academicUnitCommandService) UpdateAcademicUnit(
 	ctx context.Context,
 	invocation Invocation,
 	command UpdateAcademicUnitCommand,
@@ -339,15 +323,7 @@ func (s *academicUnitCommandService) Update(
 	return updated, nil
 }
 
-func (a *App) ArchiveAcademicUnit(
-	ctx context.Context,
-	invocation Invocation,
-	command ArchiveAcademicUnitCommand,
-) error {
-	return a.academicUnitCommands.Archive(ctx, invocation, command)
-}
-
-func (s *academicUnitCommandService) Archive(
+func (s *academicUnitCommandService) ArchiveAcademicUnit(
 	ctx context.Context,
 	invocation Invocation,
 	command ArchiveAcademicUnitCommand,

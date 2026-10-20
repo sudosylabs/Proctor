@@ -73,7 +73,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	if err = service.enrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple"); err != nil {
+	if err = service.EnrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple"); err != nil {
 		t.Fatal(err)
 	}
 	if passwords.enroll == nil || passwords.enroll.Credential.UserID != principal.UserID || passwords.enroll.Credential.PasswordHash == "" || passwords.enroll.Credential.PasswordHash == "correct horse battery staple" || passwords.enroll.AuditEventID != model.AuditEventID(audit.beginID) {
@@ -83,7 +83,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	passwords.enroll = nil
-	if err = service.enrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple"); !apperror.Is(err, "authentication.strong_required") {
+	if err = service.EnrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple"); !apperror.Is(err, "authentication.strong_required") {
 		t.Fatalf("weak enrollment error = %v", err)
 	}
 	if passwords.enroll != nil {
@@ -110,12 +110,12 @@ func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	saturatePasswordWork(t, hasher)
-	if err := service.enrollPassword(context.Background(), invocation, "correct horse battery staple"); !apperror.Is(err, "service.busy") {
+	if err := service.EnrollPassword(context.Background(), invocation, "correct horse battery staple"); !apperror.Is(err, "service.busy") {
 		t.Fatalf("saturated enrollment = %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := service.enrollPassword(ctx, invocation, "correct horse battery staple"); !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+	if err := service.EnrollPassword(ctx, invocation, "correct horse battery staple"); !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled enrollment = %v", err)
 	}
 	if passwords.enroll != nil || audit.attempt.Operation != "" {
@@ -138,7 +138,7 @@ func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testin
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	id := model.NewExternalIdentityID()
-	if err = service.unlink(context.Background(), NewInvocation(principal, model.RequestMetadata{}), id); err != nil {
+	if err = service.UnlinkExternalIdentity(context.Background(), NewInvocation(principal, model.RequestMetadata{}), id); err != nil {
 		t.Fatal(err)
 	}
 	if identities.unlink == nil || identities.unlink.ID != id || identities.unlink.UserID != principal.UserID {

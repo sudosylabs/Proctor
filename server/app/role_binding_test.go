@@ -106,7 +106,7 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Create(context.Background(), Invocation{}, CreateRoleBindingCommand{
+	got, err := service.CreateRoleBinding(context.Background(), Invocation{}, CreateRoleBindingCommand{
 		UserID: userID, RoleID: created.RoleID.String(), ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewId(), StartAt: 100,
 	})
@@ -141,7 +141,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateRoleBindingCommand{
+	_, err := service.CreateRoleBinding(context.Background(), Invocation{}, CreateRoleBindingCommand{
 		UserID: model.NewId(), RoleID: roleID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewId(), StartAt: 100,
 	})
@@ -168,7 +168,7 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &relationshipMailPreparerTestFake{},
 		&roleBindingEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
-	result, err := service.Create(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	result, err := service.CreateRoleBinding(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
 			ScopeID: scopeID, StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
 	if err != nil || result == nil || persistence.createInput == nil {
@@ -201,7 +201,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.End(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID})
+	_, err := service.EndRoleBinding(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID})
 	if !apperror.Is(err, "role_binding.last_system_admin") {
 		t.Fatalf("error = %v", err)
 	}
@@ -233,7 +233,7 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
-	got, err := service.List(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: userID})
+	got, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: userID})
 	if err != nil || len(got) != 1 {
 		t.Fatalf("list = %#v err=%v", got, err)
 	}
@@ -255,7 +255,7 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &roleBindingEffectsFake{events: &events}, time.Now,
 	)
-	if _, err := service.List(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
+	if _, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(persistence.visibility.AcademicUnitRootIDs, []model.AcademicUnitID{model.AcademicUnitID(rootID)}) || persistence.visibility.InstitutionWide {

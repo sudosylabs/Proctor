@@ -135,7 +135,7 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 			return apperror.New("authorization.denied")
 		}),
 	)
-	_, err := service.Get(
+	_, err := service.GetAcademicUnit(
 		context.Background(),
 		NewInvocation(model.Principal{}, model.RequestMetadata{}),
 		GetAcademicUnitQuery{ID: model.NewAcademicUnitID()},
@@ -164,7 +164,7 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 			return nil
 		}),
 	)
-	got, err := service.Get(
+	got, err := service.GetAcademicUnit(
 		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID},
 	)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmpt
 			return gotResource, nil
 		},
 	})
-	got, err := service.List(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	got, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 			return model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, nil
 		},
 	})
-	got, err := service.Search(
+	got, err := service.SearchAcademicUnits(
 		context.Background(), Invocation{},
 		SearchAcademicUnitsQuery{Query: "  computing  ", Limit: 0},
 	)
@@ -256,7 +256,7 @@ func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
 			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
-	_, err := service.List(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
+	_, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("List() error = %v, want authorization.denied", err)
 	}
@@ -279,7 +279,7 @@ func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
 			return model.Resource{}, apperror.New("authorization.denied")
 		},
 	})
-	_, err := service.Search(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
+	_, err := service.SearchAcademicUnits(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Search() error = %v, want authorization.denied", err)
 	}

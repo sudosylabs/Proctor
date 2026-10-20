@@ -97,11 +97,7 @@ func (effects affiliationRealtimeEffects) Report(ctx context.Context, operation 
 	effects.realtime.reportTransientFailure(ctx, operation, err)
 }
 
-func (a *App) ListAffiliations(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
-	return a.affiliations.List(ctx, invocation, query)
-}
-
-func (s *affiliationService) List(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
+func (s *affiliationService) ListAffiliations(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
 	userID := query.UserID
 	if !userID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -119,11 +115,7 @@ func (s *affiliationService) List(ctx context.Context, invocation Invocation, qu
 	return affiliations, nil
 }
 
-func (a *App) CreateAffiliation(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
-	return a.affiliations.Create(ctx, invocation, command)
-}
-
-func (s *affiliationService) Create(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
+func (s *affiliationService) CreateAffiliation(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
 	resource, err := s.authorizeUser(ctx, invocation, command.UserID)
 	if err != nil {
 		return nil, err
@@ -194,11 +186,7 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	return result, nil
 }
 
-func (a *App) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
-	return a.affiliations.End(ctx, invocation, command)
-}
-
-func (s *affiliationService) End(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
+func (s *affiliationService) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "affiliation_id")

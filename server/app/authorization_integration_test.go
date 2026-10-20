@@ -44,10 +44,10 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	user, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	user, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "security-auditor", Email: "security-auditor@example.edu",
 		DisplayName: "Security Auditor",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -196,10 +196,10 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "hierarchy-teacher", Email: "hierarchy-teacher@example.edu",
 		DisplayName: "Hierarchy Teacher",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,17 +309,17 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := "correct horse battery staple"
-	viewer, err := helper.App.CreateLocalUser(ctx, &model.User{
+	viewer, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-viewer", Email: "directory-viewer@example.edu",
 		DisplayName: "Directory Viewer",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := helper.App.CreateLocalUser(ctx, &model.User{
+	target, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-target", Email: "directory-target@example.edu",
 		DisplayName: "Directory Target",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,10 +512,10 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	password := "correct horse battery staple"
 	createUser := func(username string) *model.User {
 		t.Helper()
-		user, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		user, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 			Username: username, Email: username + "@example.edu", DisplayName: username,
 			EmailVerified: true, Locale: "fr", Timezone: "Europe/Paris",
-		}, password)
+		}, Password: password})
 		if appErr != nil {
 			t.Fatal(appErr)
 		}

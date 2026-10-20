@@ -68,11 +68,7 @@ func newAcademicPeriodService(persistence academicPeriodStore, authorization aca
 	return &academicPeriodService{store: persistence, authorization: authorization, audit: audit, now: now, newID: newID}
 }
 
-func (a *App) GetAcademicPeriod(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
-	return a.academicPeriods.Get(ctx, invocation, query)
-}
-
-func (s *academicPeriodService) Get(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) GetAcademicPeriod(ctx context.Context, invocation Invocation, query GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
@@ -87,11 +83,7 @@ func (s *academicPeriodService) Get(ctx context.Context, invocation Invocation, 
 	return period, nil
 }
 
-func (a *App) ListAcademicPeriods(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) ([]*model.AcademicPeriod, error) {
-	return a.academicPeriods.List(ctx, invocation, query)
-}
-
-func (s *academicPeriodService) List(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) ([]*model.AcademicPeriod, error) {
+func (s *academicPeriodService) ListAcademicPeriods(ctx context.Context, invocation Invocation, query ListAcademicPeriodsQuery) ([]*model.AcademicPeriod, error) {
 	visibility, err := s.authorization.AuthorizeAcademicPeriodList(ctx, invocation)
 	if err != nil {
 		return nil, err
@@ -108,11 +100,7 @@ func (s *academicPeriodService) List(ctx context.Context, invocation Invocation,
 	return periods, nil
 }
 
-func (a *App) CreateAcademicPeriod(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
-	return a.academicPeriods.Create(ctx, invocation, command)
-}
-
-func (s *academicPeriodService) Create(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) CreateAcademicPeriod(ctx context.Context, invocation Invocation, command CreateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	periodID, err := model.ParseAcademicPeriodID(s.newID())
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id").Wrap(err)
@@ -185,11 +173,7 @@ func (s *academicPeriodService) Create(ctx context.Context, invocation Invocatio
 	return result.Value, nil
 }
 
-func (a *App) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
-	return a.academicPeriods.Update(ctx, invocation, command)
-}
-
-func (s *academicPeriodService) Update(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+func (s *academicPeriodService) UpdateAcademicPeriod(ctx context.Context, invocation Invocation, command UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_period_id")
@@ -248,11 +232,7 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 	)
 }
 
-func (a *App) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
-	return a.academicPeriods.Archive(ctx, invocation, command)
-}
-
-func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
+func (s *academicPeriodService) ArchiveAcademicPeriod(ctx context.Context, invocation Invocation, command ArchiveAcademicPeriodCommand) error {
 	id := command.ID
 	if !id.IsValid() {
 		return apperror.New("request.invalid").WithField("field", "academic_period_id")

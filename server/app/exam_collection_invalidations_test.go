@@ -21,10 +21,10 @@ func TestExamArchiveInvalidatesEveryAffectedCollection(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	examID, sittingID, candidateID := model.NewExamID(), model.NewExamSittingID(), model.NewUserID()

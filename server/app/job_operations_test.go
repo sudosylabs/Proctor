@@ -104,7 +104,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, appErr := service.List(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
+	page, appErr := service.ListJobs(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -114,7 +114,7 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 
 	events = events[:0]
 	authorizer.err = errors.New("denied")
-	if _, appErr = service.Get(context.Background(), Invocation{}, GetJobQuery{ID: view.ID}); appErr == nil {
+	if _, appErr = service.GetJob(context.Background(), Invocation{}, GetJobQuery{ID: view.ID}); appErr == nil {
 		t.Fatal("Get() ignored authorization failure")
 	}
 	if !reflect.DeepEqual(events, []string{"authorize"}) {
@@ -134,7 +134,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID}); appErr != nil {
+	if _, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID}); appErr != nil {
 		t.Fatal(appErr)
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "prepare-cancel", "audit", "cancel"}) || auditor.operation != "cancel" || engine.applyCalls != 1 {
@@ -146,7 +146,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 
 	events = events[:0]
 	auditor.err = errors.New("audit unavailable")
-	if _, appErr := service.Retry(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
+	if _, appErr := service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
 		t.Fatal("Retry() ignored audit failure")
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit"}) || engine.applyCalls != 1 {
@@ -156,7 +156,7 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	events = events[:0]
 	auditor.err = nil
 	engine.applyErr = errors.New("transition unavailable")
-	if _, appErr := service.Retry(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
+	if _, appErr := service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
 		t.Fatal("Retry() ignored transition failure")
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit", "retry", "audit-fail"}) || auditor.failCalls != 1 {
@@ -172,7 +172,7 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.Cancel(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !apperror.Is(appErr, "job.cancel.unsupported") {
+	if _, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !apperror.Is(appErr, "job.cancel.unsupported") {
 		t.Fatalf("Cancel() error=%#v", appErr)
 	}
 }

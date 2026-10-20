@@ -39,9 +39,9 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	target, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	target, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "mail11-target", Email: "mail11-target@example.edu", DisplayName: "Mail 11 Target", Locale: "en", Timezone: "UTC",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

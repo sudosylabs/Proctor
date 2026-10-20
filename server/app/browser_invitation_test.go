@@ -111,7 +111,7 @@ func TestBrowserInvitationPreservesPasswordWorkFailures(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				result, err := service.AcceptLocal(ctx, Invocation{}, BrowserInvitationAcceptanceCommand{
+				result, err := service.AcceptBrowserInvitation(ctx, Invocation{}, BrowserInvitationAcceptanceCommand{
 					Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Username: "invited",
 					Password: "correct horse battery staple", Source: "192.0.2.38",
 				})
@@ -155,7 +155,7 @@ func TestBrowserInvitationStartReplacesRawClaimWithTwoHashedProofs(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+	started, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
 	}
 	// An explicit nil result from an otherwise successful dependency must not
 	// become a successful application response or a later nil dereference.
-	_, err = service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+	_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 	if !apperror.Is(err, "invitation.unavailable") {
 		t.Fatalf("Start error = %v, want invitation.unavailable", err)
 	}
@@ -240,7 +240,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 			if !apperror.Is(err, "invitation.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
@@ -274,7 +274,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 					created.ExpiresAt = result.ExpiresAt
 				}
 			}
-			_, err := service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			_, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
 			if !apperror.Is(err, "invitation.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
@@ -321,7 +321,7 @@ func TestBrowserInvitationSessionAcceptanceRequiresWebSession(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientDesktop, AuthenticatedAt: now,
 	}
-	_, err = service.AcceptSession(
+	_, err = service.AcceptBrowserInvitationWithSession(
 		context.Background(),
 		NewInvocation(principal, model.RequestMetadata{}),
 		BrowserInvitationSessionAcceptanceCommand{

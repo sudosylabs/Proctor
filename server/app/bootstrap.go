@@ -69,13 +69,6 @@ type BootstrapProtectionPolicy struct {
 // RecoverAdministratorAccess is intentionally absent from every network
 // application interface. The module root borrows this method only for the
 // explicit offline host command.
-func (a *App) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
-	if a == nil || a.bootstrap == nil {
-		return nil, errors.New("administrator recovery is unavailable")
-	}
-	return a.bootstrap.RecoverAdministratorAccess(ctx, command)
-}
-
 func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
 	institutionID, institutionErr := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
 	userID, userErr := model.ParseUserID(strings.TrimSpace(command.UserID))
@@ -108,13 +101,6 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 
 // ReconcileAdministratorRecovery records every completed offline recovery in
 // ordinary audit before this node starts workers or network transports.
-func (a *App) ReconcileAdministratorRecovery(ctx context.Context) error {
-	if a == nil || a.bootstrap == nil {
-		return errors.New("administrator recovery reconciliation is unavailable")
-	}
-	return a.bootstrap.ReconcileAdministratorRecovery(ctx)
-}
-
 func (s *bootstrapService) ReconcileAdministratorRecovery(ctx context.Context) error {
 	_, err := s.installations.ReconcileAdministratorRecovery(ctx, &store.AdministratorRecoveryReconciliation{NodeID: s.nodeID})
 	if err != nil {
@@ -162,13 +148,6 @@ func newBootstrapService(
 
 // ReconcileSystemAdministratorRole adds newly registered grantable actions to
 // the protected built-in Role before this node serves application traffic.
-func (a *App) ReconcileSystemAdministratorRole(ctx context.Context) error {
-	if a == nil || a.bootstrap == nil {
-		return errors.New("system-administrator Role reconciliation is unavailable")
-	}
-	return a.bootstrap.ReconcileSystemAdministratorRole(ctx)
-}
-
 func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context) error {
 	_, err := s.installations.ReconcileSystemAdministratorRole(ctx, &store.SystemAdministratorRoleReconciliation{
 		RequiredPermissions: model.AllActions(),
@@ -184,11 +163,7 @@ func (s *bootstrapService) ReconcileSystemAdministratorRole(ctx context.Context)
 	return nil
 }
 
-func (a *App) GetInstallationStatus(ctx context.Context, _ GetInstallationStatusQuery) (*model.InstallationStatus, error) {
-	return a.bootstrap.GetStatus(ctx)
-}
-
-func (s *bootstrapService) GetStatus(ctx context.Context) (*model.InstallationStatus, error) {
+func (s *bootstrapService) GetInstallationStatus(ctx context.Context, _ GetInstallationStatusQuery) (*model.InstallationStatus, error) {
 	state, err := s.installations.Get(ctx)
 	if err != nil {
 		if store.IsNotFound(err) {
@@ -202,11 +177,7 @@ func (s *bootstrapService) GetStatus(ctx context.Context) (*model.InstallationSt
 	return &model.InstallationStatus{Initialized: true}, nil
 }
 
-func (a *App) BootstrapInstallation(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
-	return a.bootstrap.Bootstrap(ctx, invocation, command)
-}
-
-func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
+func (s *bootstrapService) BootstrapInstallation(ctx context.Context, invocation Invocation, command BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error) {
 	if strings.TrimSpace(command.InstitutionName) == "" || strings.TrimSpace(command.AdministratorUsername) == "" ||
 		strings.TrimSpace(command.AdministratorEmail) == "" || command.Password == "" {
 		return nil, apperror.New("request.invalid").WithField("field", "bootstrap")

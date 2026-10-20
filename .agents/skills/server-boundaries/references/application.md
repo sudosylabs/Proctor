@@ -202,10 +202,40 @@ Do not prefix interfaces with `I`. Add compile-time assertions where an adapter 
 
 Migrations are by vertical slice. A package or capability is introduced only when working code has a stable responsibility to inhabit it; bulk moves are prohibited.
 
-`app.App` is the public application facade, not a persistence locator. Focused
-services receive exact Store contracts during composition and App methods
-delegate to them. The facade retains neither the root Store nor a Store
-accessor; architecture tests reject restoration of either that locator or
+## One application surface
+
+Every use case is declared once, as an exported method on the focused service
+that owns its policy, under its public use-case name (`CreateClass`, not
+`Create`). `app.App` embeds each such service, so the App method set is the
+union of their exported methods and the transports' consumer-owned ports are
+satisfied through promotion. App declares no use-case method of its own:
+neither a forwarder nor a wrapper that adds logic around a service call.
+
+Work a wrapper used to add belongs in the owning service method: operational
+outcome recording, error concealment, input normalization, defensive copies,
+and result narrowing. A service whose construction is optional, such as Mail
+or Job operations when the graph has no Job Store, answers its own
+unavailability with a nil-receiver guard. A use case that needs several
+services lives on the service that owns its policy and receives the others as
+collaborators; it never reads another service's fields.
+
+Every exported method of an embedded service joins the public surface. A
+service therefore exports only its use cases and the methods that a
+child-module port requires; ports inside `app` use unexported methods. Two
+embedded services never export the same name, because Go silently drops an
+ambiguous promoted method. App keeps a named field only for a runtime handle
+that composition borrows, such as the Job engine, or a collaborator whose
+methods must not join the surface.
+
+This shape was chosen over inlining every service into App methods. The
+transports already consume narrow ports that `*app.App` satisfies, and the
+Exam children are separate services. Embedding removes the doubled
+declaration while keeping those ports, each service's focused dependency set,
+and the fakes its unit tests use.
+
+`app.App` is not a persistence locator. Focused services receive exact Store
+contracts during composition. App retains neither the root Store nor a Store
+accessor; architecture tests reject restoring either that locator or
 production `App.Store()` traversal.
 
 `app.New` remains the sole application constructor and exposes its fail-fast

@@ -141,35 +141,7 @@ type ReplaceAccessPolicyCommand struct {
 	IdempotencyKey         string
 }
 
-func (a *App) GetAccessPolicy(ctx context.Context, invocation Invocation) (AccessPolicyView, error) {
-	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
-	}
-	return a.accessPolicies.Read(ctx, invocation)
-}
-
-func (a *App) PreflightAccessPolicy(ctx context.Context, invocation Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
-	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyPreflightResult{}, apperror.New("access_policy.unavailable")
-	}
-	return a.accessPolicies.Preflight(ctx, invocation, command)
-}
-
-func (a *App) ReplaceAccessPolicy(ctx context.Context, invocation Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
-	if a == nil || a.accessPolicies == nil {
-		return AccessPolicyView{}, apperror.New("access_policy.unavailable")
-	}
-	return a.accessPolicies.Replace(ctx, invocation, command)
-}
-
-func (a *App) DiscoverAccess(ctx context.Context) (PublicAccessDiscovery, error) {
-	if a == nil || a.accessPolicies == nil {
-		return PublicAccessDiscovery{}, apperror.New("access_policy.unavailable")
-	}
-	return a.accessPolicies.Discover(ctx)
-}
-
-func (s *accessPolicyService) Read(ctx context.Context, invocation Invocation) (AccessPolicyView, error) {
+func (s *accessPolicyService) GetAccessPolicy(ctx context.Context, invocation Invocation) (AccessPolicyView, error) {
 	institution, resource, err := s.authorize(ctx, invocation, model.ActionAccessPolicyView)
 	_ = institution
 	_ = resource
@@ -183,7 +155,7 @@ func (s *accessPolicyService) Read(ctx context.Context, invocation Invocation) (
 	return s.view(snapshot), nil
 }
 
-func (s *accessPolicyService) Preflight(ctx context.Context, invocation Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
+func (s *accessPolicyService) PreflightAccessPolicy(ctx context.Context, invocation Invocation, command PreflightAccessPolicyCommand) (AccessPolicyPreflightResult, error) {
 	if err := s.requireStrongRecent(invocation); err != nil {
 		return AccessPolicyPreflightResult{}, err
 	}
@@ -201,7 +173,7 @@ func (s *accessPolicyService) Preflight(ctx context.Context, invocation Invocati
 	return AccessPolicyPreflightResult{Blockers: append([]store.AccessPolicyBlocker(nil), blockers...)}, nil
 }
 
-func (s *accessPolicyService) Replace(ctx context.Context, invocation Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
+func (s *accessPolicyService) ReplaceAccessPolicy(ctx context.Context, invocation Invocation, command ReplaceAccessPolicyCommand) (AccessPolicyView, error) {
 	if err := s.requireStrongRecent(invocation); err != nil {
 		return AccessPolicyView{}, err
 	}
@@ -273,7 +245,7 @@ func (e accessPolicyRealtimeEffects) Changed(ctx context.Context, change accessP
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func sessionIDStrings(ids []model.SessionID) []string {
@@ -363,7 +335,7 @@ type PublicAccessDiscovery struct {
 	DesktopAuthorization DesktopAuthorizationCompatibility
 }
 
-func (s *accessPolicyService) Discover(ctx context.Context) (PublicAccessDiscovery, error) {
+func (s *accessPolicyService) DiscoverAccess(ctx context.Context) (PublicAccessDiscovery, error) {
 	result := PublicAccessDiscovery{DiscoveryVersion: accessDiscoveryVersion, CanonicalOrigin: s.canonicalOrigin,
 		DesktopAuthorization: DesktopAuthorizationCompatibility{Protocol: "proctor-desktop-authorization", MinimumVersion: desktopAuthorizationProtocolMin, MaximumVersion: desktopAuthorizationProtocolMax}}
 	institution, err := s.institutions.GetSingleton(ctx)

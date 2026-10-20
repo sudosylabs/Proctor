@@ -123,7 +123,7 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
+	got, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)},
 	})
 	if err != nil {
@@ -149,7 +149,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, delegationErr: denied},
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
-		_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
+		_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
 		if !apperror.Is(err, "authorization.denied") {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -167,7 +167,7 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}, delegationErr: denied},
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
-		_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
+		_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
 		if !apperror.Is(err, "authorization.denied") {
 			t.Fatalf("Update() error = %v", err)
 		}
@@ -187,7 +187,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
+	_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
 	if !apperror.Is(err, "role.permission.invalid") {
@@ -223,7 +223,7 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	got, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	got, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if !apperror.Is(err, "role.conflict") {
 		t.Fatalf("error = %v", err)
 	}
@@ -270,7 +270,7 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		time.Now,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
+	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
 	if !apperror.Is(err, "role.built_in.protected") {
 		t.Fatalf("error = %v", err)
 	}
@@ -291,7 +291,7 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.Archive(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}); err != nil {
+	if err := service.ArchiveRole(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}

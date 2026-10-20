@@ -151,40 +151,7 @@ func newDesktopCompatibilityService(
 
 // EvaluateDesktopCompatibility checks untrusted build declarations against
 // the current authoritative Institution policy and immutable server catalog.
-func (a *App) EvaluateDesktopCompatibility(
-	ctx context.Context,
-	query DesktopCompatibilityQuery,
-) (DesktopCompatibilityResult, error) {
-	if a == nil || a.desktopCompatibility == nil {
-		return DesktopCompatibilityResult{}, apperror.New("desktop_compatibility_policy.unavailable")
-	}
-	return a.desktopCompatibility.Evaluate(ctx, query)
-}
-
-// GetDesktopCompatibilityPolicy returns the current administrative policy.
-func (a *App) GetDesktopCompatibilityPolicy(
-	ctx context.Context,
-	invocation Invocation,
-) (*model.DesktopCompatibilityPolicy, error) {
-	if a == nil || a.desktopCompatibility == nil {
-		return nil, apperror.New("desktop_compatibility_policy.unavailable")
-	}
-	return a.desktopCompatibility.Read(ctx, invocation)
-}
-
-// ReplaceDesktopCompatibilityPolicy replaces the current policy.
-func (a *App) ReplaceDesktopCompatibilityPolicy(
-	ctx context.Context,
-	invocation Invocation,
-	command ReplaceDesktopCompatibilityPolicyCommand,
-) (*model.DesktopCompatibilityPolicy, error) {
-	if a == nil || a.desktopCompatibility == nil {
-		return nil, apperror.New("desktop_compatibility_policy.unavailable")
-	}
-	return a.desktopCompatibility.Replace(ctx, invocation, command)
-}
-
-func (s *desktopCompatibilityService) Evaluate(
+func (s *desktopCompatibilityService) EvaluateDesktopCompatibility(
 	ctx context.Context,
 	query DesktopCompatibilityQuery,
 ) (DesktopCompatibilityResult, error) {
@@ -257,7 +224,8 @@ func (s *desktopCompatibilityService) ResolveAttemptDesktopBuild(
 	return examattempt.DesktopBuildResolution{}, errors.New("Desktop build is missing from the verified catalog")
 }
 
-func (s *desktopCompatibilityService) Read(
+// GetDesktopCompatibilityPolicy returns the current administrative policy.
+func (s *desktopCompatibilityService) GetDesktopCompatibilityPolicy(
 	ctx context.Context,
 	invocation Invocation,
 ) (*model.DesktopCompatibilityPolicy, error) {
@@ -271,7 +239,8 @@ func (s *desktopCompatibilityService) Read(
 	return policy.Clone(), nil
 }
 
-func (s *desktopCompatibilityService) Replace(
+// ReplaceDesktopCompatibilityPolicy replaces the current policy.
+func (s *desktopCompatibilityService) ReplaceDesktopCompatibilityPolicy(
 	ctx context.Context,
 	invocation Invocation,
 	command ReplaceDesktopCompatibilityPolicyCommand,

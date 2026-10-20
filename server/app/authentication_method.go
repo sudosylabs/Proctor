@@ -55,27 +55,11 @@ func newAuthenticationMethodService(passwords store.PasswordCredentialStore,
 		recentTTL: recentTTL, now: now}, nil
 }
 
-func (a *App) AuthenticationMethods(ctx context.Context, invocation Invocation) (AuthenticationMethodView, error) {
-	return a.authenticationMethods.list(ctx, invocation)
-}
-
-func (a *App) EnrollPassword(ctx context.Context, invocation Invocation, password string) error {
-	return a.authenticationMethods.enrollPassword(ctx, invocation, password)
-}
-
-func (a *App) RemovePassword(ctx context.Context, invocation Invocation) error {
-	return a.authenticationMethods.removePassword(ctx, invocation)
-}
-
-func (a *App) UnlinkExternalIdentity(ctx context.Context, invocation Invocation, id model.ExternalIdentityID) error {
-	return a.authenticationMethods.unlink(ctx, invocation, id)
-}
-
 func (s *authenticationMethodService) require(invocation Invocation) error {
 	return requireStrongRecentSession(invocation.Principal(), s.now(), s.recentTTL)
 }
 
-func (s *authenticationMethodService) list(ctx context.Context, invocation Invocation) (AuthenticationMethodView, error) {
+func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context, invocation Invocation) (AuthenticationMethodView, error) {
 	if invocation.Principal().Validate() != nil {
 		return AuthenticationMethodView{}, invalidTokenAppError()
 	}
@@ -108,7 +92,7 @@ func (s *authenticationMethodService) list(ctx context.Context, invocation Invoc
 	return view, nil
 }
 
-func (s *authenticationMethodService) enrollPassword(ctx context.Context, invocation Invocation, password string) error {
+func (s *authenticationMethodService) EnrollPassword(ctx context.Context, invocation Invocation, password string) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}
@@ -128,7 +112,7 @@ func (s *authenticationMethodService) enrollPassword(ctx context.Context, invoca
 	return appErr
 }
 
-func (s *authenticationMethodService) removePassword(ctx context.Context, invocation Invocation) error {
+func (s *authenticationMethodService) RemovePassword(ctx context.Context, invocation Invocation) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}
@@ -147,7 +131,7 @@ func (s *authenticationMethodService) removePassword(ctx context.Context, invoca
 	return appErr
 }
 
-func (s *authenticationMethodService) unlink(ctx context.Context, invocation Invocation, id model.ExternalIdentityID) error {
+func (s *authenticationMethodService) UnlinkExternalIdentity(ctx context.Context, invocation Invocation, id model.ExternalIdentityID) error {
 	if err := s.require(invocation); err != nil {
 		return err
 	}

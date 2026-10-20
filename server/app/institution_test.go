@@ -104,7 +104,7 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 		&institutionStoreFake{events: &events, current: institution}, authorizer,
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	got, err := service.Get(context.Background(), Invocation{})
+	got, err := service.GetInstitution(context.Background(), Invocation{}, GetInstitutionQuery{})
 	if err != nil || got != institution {
 		t.Fatalf("Get() = %#v, %v", got, err)
 	}
@@ -139,7 +139,7 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	displayName := "Northbridge"
-	got, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{
+	got, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{
 		DisplayName: &displayName, ExamCapacity: &capacity,
 	})
 	if err != nil || got != &updated {
@@ -174,7 +174,7 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 		persistence, &institutionAuthorizerFake{events: &events}, auditor, time.Now,
 	)
 	name := "duplicate"
-	_, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{Name: &name})
+	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{Name: &name})
 	if !apperror.Is(err, "institution.conflict") || auditor.failCode != "institution.conflict" {
 		t.Fatalf("Update() error = %v, audit code = %q", err, auditor.failCode)
 	}
@@ -198,7 +198,7 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 		&institutionAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now,
 	)
 
-	_, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
+	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
 	if !apperror.Is(err, "institution.invalid") {
 		t.Fatalf("Update() error = %v", err)
 	}

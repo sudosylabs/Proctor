@@ -51,10 +51,10 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 	institution := bootstrap.Institution
 	const oldPassword = "correct horse battery staple"
 	const newPassword = "new correct horse battery staple"
-	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+	user, appErr := helper.App.CreateLocalUser(context.Background(), application.CreateLocalUserCommand{User: &model.User{
 		Username: "recovery-user", Email: "recovery-user@example.edu",
 		DisplayName: "Recovery User",
-	}, oldPassword)
+	}, Password: oldPassword})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -291,9 +291,9 @@ func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testi
 		t.Fatalf("bootstrap = %#v, %v", bootstrap, appErr)
 	}
 	const password = "correct horse battery staple"
-	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
+	user, appErr := helper.App.CreateLocalUser(context.Background(), application.CreateLocalUserCommand{User: &model.User{
 		Username: "policy-recovery-user", Email: "policy-recovery-user@example.edu",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

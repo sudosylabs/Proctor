@@ -70,11 +70,7 @@ func newProgrammeService(
 	}
 }
 
-func (a *App) GetProgramme(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
-	return a.programmes.Get(ctx, invocation, query)
-}
-
-func (s *programmeService) Get(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
+func (s *programmeService) GetProgramme(ctx context.Context, invocation Invocation, query GetProgrammeQuery) (*model.Programme, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "programme_id")
@@ -90,11 +86,7 @@ func (s *programmeService) Get(ctx context.Context, invocation Invocation, query
 	return programme, nil
 }
 
-func (a *App) ListProgrammes(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
-	return a.programmes.List(ctx, invocation, query)
-}
-
-func (s *programmeService) List(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
+func (s *programmeService) ListProgrammes(ctx context.Context, invocation Invocation, query ListProgrammesQuery) ([]*model.Programme, error) {
 	unitID := query.AcademicUnitID
 	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -114,11 +106,7 @@ func (s *programmeService) List(ctx context.Context, invocation Invocation, quer
 	return programmes, nil
 }
 
-func (a *App) CreateProgramme(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
-	return a.programmes.Create(ctx, invocation, command)
-}
-
-func (s *programmeService) Create(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
+func (s *programmeService) CreateProgramme(ctx context.Context, invocation Invocation, command CreateProgrammeCommand) (*model.Programme, error) {
 	unitID := command.AcademicUnitID
 	if !unitID.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_id")
@@ -165,11 +153,7 @@ func (s *programmeService) Create(ctx context.Context, invocation Invocation, co
 	)
 }
 
-func (a *App) UpdateProgramme(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
-	return a.programmes.Update(ctx, invocation, command)
-}
-
-func (s *programmeService) Update(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
+func (s *programmeService) UpdateProgramme(ctx context.Context, invocation Invocation, command UpdateProgrammeCommand) (*model.Programme, error) {
 	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return nil, err
@@ -215,11 +199,7 @@ func (s *programmeService) Update(ctx context.Context, invocation Invocation, co
 	)
 }
 
-func (a *App) ArchiveProgramme(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
-	return a.programmes.Archive(ctx, invocation, command)
-}
-
-func (s *programmeService) Archive(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
+func (s *programmeService) ArchiveProgramme(ctx context.Context, invocation Invocation, command ArchiveProgrammeCommand) error {
 	current, scopeType, scopeID, err := s.getForMutation(ctx, invocation, command.ID)
 	if err != nil {
 		return err

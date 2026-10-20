@@ -100,7 +100,11 @@ func newMFAApplicationService(
 	}, nil
 }
 
-func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invocation) (*MFAStatus, error) {
+func (s *mfaApplicationService) GetMFAStatus(
+	ctx context.Context,
+	invocation Invocation,
+	_ GetMFAStatusQuery,
+) (*MFAStatus, error) {
 	principal := invocation.Principal()
 	if err := s.requireRecoverySession(principal, false); err != nil {
 		return nil, err
@@ -127,7 +131,7 @@ func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invoca
 	return status, nil
 }
 
-func (s *mfaApplicationService) Setup(
+func (s *mfaApplicationService) SetupMFA(
 	ctx context.Context,
 	invocation Invocation,
 	command SetupMFACommand,
@@ -185,7 +189,7 @@ func (s *mfaApplicationService) Setup(
 	}, nil
 }
 
-func (s *mfaApplicationService) Activate(
+func (s *mfaApplicationService) ActivateMFA(
 	ctx context.Context,
 	invocation Invocation,
 	command ActivateMFACommand,
@@ -256,7 +260,7 @@ func (s *mfaApplicationService) Activate(
 	return &MFAActivation{RecoveryCodes: rawCodes}, nil
 }
 
-func (s *mfaApplicationService) Challenge(
+func (s *mfaApplicationService) ChallengeMFA(
 	ctx context.Context,
 	invocation Invocation,
 	command ChallengeMFACommand,
@@ -308,9 +312,10 @@ func (s *mfaApplicationService) Challenge(
 	return result.Session, nil
 }
 
-func (s *mfaApplicationService) RegenerateRecoveryCodes(
+func (s *mfaApplicationService) RegenerateMFARecoveryCodes(
 	ctx context.Context,
 	invocation Invocation,
+	_ RegenerateMFARecoveryCodesCommand,
 ) ([]string, error) {
 	principal := invocation.Principal()
 	if err := s.requireStrongRecentSession(principal); err != nil {
@@ -354,9 +359,10 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 	return rawCodes, nil
 }
 
-func (s *mfaApplicationService) Disable(
+func (s *mfaApplicationService) DisableMFA(
 	ctx context.Context,
 	invocation Invocation,
+	_ DisableMFACommand,
 ) error {
 	principal := invocation.Principal()
 	if err := s.requireStrongRecentSession(principal); err != nil {
@@ -420,9 +426,9 @@ func mfaSecurityNotice(prepared *preparedDirectMail) store.MFASecurityNotice {
 	}
 }
 
-// VerifyLogin is the narrow behavior Authentication consumes. Authentication
+// verifyLogin is the narrow behavior Authentication consumes. Authentication
 // does not retain or query the MFA application implementation.
-func (s *mfaApplicationService) VerifyLogin(
+func (s *mfaApplicationService) verifyLogin(
 	ctx context.Context,
 	userID string,
 	code string,
@@ -541,7 +547,7 @@ func (a mfaAuditAdapter) Complete(
 
 var _ authenticationMFAVerifier = (*mfaApplicationService)(nil)
 
-func (s *mfaApplicationService) RecoveryState(ctx context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+func (s *mfaApplicationService) recoveryState(ctx context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	state, err := s.credentials.GetRecoveryState(ctx, userID)
 	if err != nil {
 		return nil, authenticationUnavailable(err)

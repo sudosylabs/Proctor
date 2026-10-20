@@ -168,6 +168,7 @@ type authenticationService struct {
 	diagnostics        authenticationDiagnostics
 	registrations      authenticationDesktopRegistrationStore
 	dpop               *dpopSecurity
+	operational        OperationalRecorder
 	newCredential      func() string
 	now                func() time.Time
 }
@@ -204,7 +205,7 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 	if session.UserID != principal.UserID {
 		return invalidTokenAppError()
 	}
-	recovery, recoveryErr := s.mfa.RecoveryState(ctx, principal.UserID)
+	recovery, recoveryErr := s.mfa.recoveryState(ctx, principal.UserID)
 	if recoveryErr != nil {
 		return recoveryErr
 	}
@@ -323,18 +324,7 @@ func newAuthenticationService(
 	}, nil
 }
 
-func (a *App) CreateLocalUser(
-	ctx context.Context,
-	user *model.User,
-	password string,
-) (*model.User, error) {
-	return a.authentication.createLocalUser(ctx, CreateLocalUserCommand{
-		User:     user,
-		Password: password,
-	})
-}
-
-func (s *authenticationService) createLocalUser(
+func (s *authenticationService) CreateLocalUser(
 	ctx context.Context,
 	command CreateLocalUserCommand,
 ) (*model.User, error) {
@@ -365,21 +355,12 @@ func (s *authenticationService) createLocalUser(
 	return result.User, nil
 }
 
-func (a *App) Login(
+func (s *authenticationService) Login(
 	ctx context.Context,
 	invocation Invocation,
 	command LoginCommand,
-) (*LoginResult, error) {
-	result, err := a.authentication.login(ctx, invocation, command)
-	a.recordOperational("authentication", "login", err)
-	return result, err
-}
-
-func (s *authenticationService) login(
-	ctx context.Context,
-	invocation Invocation,
-	command LoginCommand,
-) (*LoginResult, error) {
+) (_ *LoginResult, resultErr error) {
+	defer func() { recordOperational(s.operational, "authentication", "login", resultErr) }()
 	if command.ClientType == model.SessionClientDesktop || !command.ClientType.IsValid() {
 		return nil, apperror.New("authentication.client_type.invalid").WithField("field", "client_type")
 	}
@@ -523,7 +504,7 @@ func (s *authenticationService) proveLocalSubject(
 		}
 		return nil, invalidCredentialsAppError()
 	}
-	recovery, err := s.mfa.RecoveryState(ctx, user.ID)
+	recovery, err := s.mfa.recoveryState(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +528,7 @@ func (s *authenticationService) proveLocalSubject(
 		}
 	}
 	now := s.now()
-	authenticationStrength, mfaCompletedAt, err := s.mfa.VerifyLogin(
+	authenticationStrength, mfaCompletedAt, err := s.mfa.verifyLogin(
 		ctx, user.ID.String(), command.MFACode, now,
 	)
 	if err != nil {
@@ -735,33 +716,34 @@ func (s *authenticationService) findLoginUser(ctx context.Context, loginID strin
 	return s.users.GetByUsername(ctx, loginID)
 }
 
-func (a *App) AuthenticateAccess(
+// AuthenticateAccess resolves a session access token into its Principal.
+func (s *authenticationService) AuthenticateAccess(
 	ctx context.Context,
 	rawToken string,
 ) (*model.Principal, error) {
-	principal, err := a.authentication.authenticateAccess(ctx, rawToken)
-	a.recordOperational("authentication", "access_token", err)
+	principal, err := s.authenticateAccess(ctx, rawToken)
+	recordOperational(s.operational, "authentication", "access_token", err)
 	return principal, err
 }
 
 // AuthenticateBearer accepts the two Authorization-header credential classes:
 // a CLI session access credential or a personal access token. Cookie
 // authentication remains session-only and therefore calls AuthenticateAccess.
-func (a *App) AuthenticateBearer(
+func (s *authenticationService) AuthenticateBearer(
 	ctx context.Context,
 	rawToken string,
 ) (*model.Principal, error) {
-	principal, err := a.authentication.authenticateAccess(ctx, rawToken)
+	principal, err := s.authenticateAccess(ctx, rawToken)
 	if err == nil {
-		a.recordOperational("authentication", "bearer", nil)
+		recordOperational(s.operational, "authentication", "bearer", nil)
 		return principal, nil
 	}
 	if failure, ok := apperror.As(err); !ok || failure.Code() != "authentication.token_invalid" {
-		a.recordOperational("authentication", "bearer", err)
+		recordOperational(s.operational, "authentication", "bearer", err)
 		return nil, err
 	}
-	principal, err = a.authentication.personalTokens.ResolveBearer(ctx, rawToken, a.authentication.now())
-	a.recordOperational("authentication", "bearer", err)
+	principal, err = s.personalTokens.ResolveBearer(ctx, rawToken, s.now())
+	recordOperational(s.operational, "authentication", "bearer", err)
 	return principal, err
 }
 
@@ -875,20 +857,12 @@ func (s *authenticationService) updateActivity(
 	return nil
 }
 
-func (a *App) RefreshSession(
+func (s *authenticationService) RefreshSession(
 	ctx context.Context,
 	_ Invocation,
 	command RefreshSessionCommand,
-) (*model.Session, *model.AuthenticationTokens, error) {
-	session, tokens, err := a.authentication.refresh(ctx, command)
-	a.recordOperational("authentication", "refresh", err)
-	return session, tokens, err
-}
-
-func (s *authenticationService) refresh(
-	ctx context.Context,
-	command RefreshSessionCommand,
-) (*model.Session, *model.AuthenticationTokens, error) {
+) (_ *model.Session, _ *model.AuthenticationTokens, resultErr error) {
+	defer func() { recordOperational(s.operational, "authentication", "refresh", resultErr) }()
 	rawRefreshToken := command.RefreshToken
 	if !validRawCredential(rawRefreshToken) {
 		return nil, nil, invalidTokenAppError()
@@ -994,13 +968,8 @@ func tokenTypeForSession(session *model.Session) string {
 	return "Bearer"
 }
 
-func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
-	err := a.authentication.logout(ctx, invocation)
-	a.recordOperational("authentication", "logout", err)
-	return err
-}
-
-func (s *authenticationService) logout(ctx context.Context, invocation Invocation) error {
+func (s *authenticationService) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) (resultErr error) {
+	defer func() { recordOperational(s.operational, "authentication", "logout", resultErr) }()
 	principal := invocation.Principal()
 	if principal.ValidateMFARecovery() != nil {
 		return invalidTokenAppError()
@@ -1104,5 +1073,5 @@ func rateLimitUnavailableAppError(err error) error {
 }
 
 func (s *authenticationService) recoveryState(ctx context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
-	return s.mfa.RecoveryState(ctx, userID)
+	return s.mfa.recoveryState(ctx, userID)
 }

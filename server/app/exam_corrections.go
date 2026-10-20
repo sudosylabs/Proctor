@@ -91,8 +91,8 @@ func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result exa
 		return err
 	}
 	return errors.Join(
-		e.realtime.Publish(ctx, managerEvent),
-		e.realtime.Publish(ctx, candidateEvent),
+		e.realtime.PublishRealtimeEvent(ctx, managerEvent),
+		e.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 		e.collections.SittingBoardChanged(ctx, result.ExamID, result.SittingID),
 		e.collections.CandidateActivityChangedForSitting(ctx, result.SittingID),
 	)

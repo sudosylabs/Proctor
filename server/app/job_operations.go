@@ -74,53 +74,6 @@ func (a jobOperationsAuthorization) AuthorizeInstitution(ctx context.Context, in
 	return resource, nil
 }
 
-func (a *App) jobOperationsService() (*jobOperationsService, error) {
-	if a == nil || a.jobOperations == nil {
-		return nil, apperror.New("job.unavailable")
-	}
-	return a.jobOperations, nil
-}
-
-func (a *App) ListJobs(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
-	service, err := a.jobOperationsService()
-	if err != nil {
-		return JobPage{}, err
-	}
-	return service.List(ctx, invocation, query)
-}
-
-func (a *App) GetJob(ctx context.Context, invocation Invocation, query GetJobQuery) (JobView, error) {
-	service, err := a.jobOperationsService()
-	if err != nil {
-		return JobView{}, err
-	}
-	return service.Get(ctx, invocation, query)
-}
-
-func (a *App) ListJobAttempts(ctx context.Context, invocation Invocation, query ListJobAttemptsQuery) (JobAttemptPage, error) {
-	service, err := a.jobOperationsService()
-	if err != nil {
-		return JobAttemptPage{}, err
-	}
-	return service.Attempts(ctx, invocation, query)
-}
-
-func (a *App) CancelJob(ctx context.Context, invocation Invocation, command CancelJobCommand) (JobView, error) {
-	service, err := a.jobOperationsService()
-	if err != nil {
-		return JobView{}, err
-	}
-	return service.Cancel(ctx, invocation, command)
-}
-
-func (a *App) RetryJob(ctx context.Context, invocation Invocation, command RetryJobCommand) (JobView, error) {
-	service, err := a.jobOperationsService()
-	if err != nil {
-		return JobView{}, err
-	}
-	return service.Retry(ctx, invocation, command)
-}
-
 func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAuthorizer, audit mutationAuditor, now func() time.Time) (*jobOperationsService, error) {
 	if jobs == nil {
 		return nil, errors.New("job operations engine is required")
@@ -137,7 +90,10 @@ func newJobOperationsService(jobs jobOperatorEngine, authorization institutionAu
 	return &jobOperationsService{jobs: jobs, authorization: authorization, audit: audit, now: now}, nil
 }
 
-func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
+func (s *jobOperationsService) ListJobs(ctx context.Context, invocation Invocation, query ListJobsQuery) (JobPage, error) {
+	if s == nil {
+		return JobPage{}, apperror.New("job.unavailable")
+	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobPage{}, err
 	}
@@ -151,7 +107,10 @@ func (s *jobOperationsService) List(ctx context.Context, invocation Invocation, 
 	return page, nil
 }
 
-func (s *jobOperationsService) Get(ctx context.Context, invocation Invocation, query GetJobQuery) (JobView, error) {
+func (s *jobOperationsService) GetJob(ctx context.Context, invocation Invocation, query GetJobQuery) (JobView, error) {
+	if s == nil {
+		return JobView{}, apperror.New("job.unavailable")
+	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobView{}, err
 	}
@@ -162,7 +121,10 @@ func (s *jobOperationsService) Get(ctx context.Context, invocation Invocation, q
 	return view, nil
 }
 
-func (s *jobOperationsService) Attempts(ctx context.Context, invocation Invocation, query ListJobAttemptsQuery) (JobAttemptPage, error) {
+func (s *jobOperationsService) ListJobAttempts(ctx context.Context, invocation Invocation, query ListJobAttemptsQuery) (JobAttemptPage, error) {
+	if s == nil {
+		return JobAttemptPage{}, apperror.New("job.unavailable")
+	}
 	if _, err := s.authorization.AuthorizeInstitution(ctx, invocation, model.ActionJobView); err != nil {
 		return JobAttemptPage{}, err
 	}
@@ -175,11 +137,17 @@ func (s *jobOperationsService) Attempts(ctx context.Context, invocation Invocati
 	return page, nil
 }
 
-func (s *jobOperationsService) Cancel(ctx context.Context, invocation Invocation, command CancelJobCommand) (JobView, error) {
+func (s *jobOperationsService) CancelJob(ctx context.Context, invocation Invocation, command CancelJobCommand) (JobView, error) {
+	if s == nil {
+		return JobView{}, apperror.New("job.unavailable")
+	}
 	return s.mutate(ctx, invocation, "cancel", command.ID, s.jobs.PrepareCancellation, s.jobs.Cancel)
 }
 
-func (s *jobOperationsService) Retry(ctx context.Context, invocation Invocation, command RetryJobCommand) (JobView, error) {
+func (s *jobOperationsService) RetryJob(ctx context.Context, invocation Invocation, command RetryJobCommand) (JobView, error) {
+	if s == nil {
+		return JobView{}, apperror.New("job.unavailable")
+	}
 	return s.mutate(ctx, invocation, "retry", command.ID, s.jobs.PrepareRetry, s.jobs.Retry)
 }
 

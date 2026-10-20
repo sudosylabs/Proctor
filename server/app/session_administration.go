@@ -75,15 +75,7 @@ func newSessionAdministrationService(
 	}
 }
 
-func (a *App) ListUserSessions(
-	ctx context.Context,
-	invocation Invocation,
-	query ListUserSessionsQuery,
-) ([]*model.Session, error) {
-	return a.sessionAdministrations.List(ctx, invocation, query)
-}
-
-func (s *sessionAdministrationService) List(
+func (s *sessionAdministrationService) ListUserSessions(
 	ctx context.Context,
 	invocation Invocation,
 	query ListUserSessionsQuery,
@@ -113,15 +105,7 @@ func (s *sessionAdministrationService) List(
 	return sessions, nil
 }
 
-func (a *App) RevokeUserSession(
-	ctx context.Context,
-	invocation Invocation,
-	command RevokeUserSessionCommand,
-) error {
-	return a.sessionAdministrations.RevokeOne(ctx, invocation, command)
-}
-
-func (s *sessionAdministrationService) RevokeOne(
+func (s *sessionAdministrationService) RevokeUserSession(
 	ctx context.Context,
 	invocation Invocation,
 	command RevokeUserSessionCommand,
@@ -174,15 +158,7 @@ func (s *sessionAdministrationService) RevokeOne(
 	)
 }
 
-func (a *App) RevokeUserSessions(
-	ctx context.Context,
-	invocation Invocation,
-	command RevokeUserSessionsCommand,
-) error {
-	return a.sessionAdministrations.RevokeAll(ctx, invocation, command)
-}
-
-func (s *sessionAdministrationService) RevokeAll(
+func (s *sessionAdministrationService) RevokeUserSessions(
 	ctx context.Context,
 	invocation Invocation,
 	command RevokeUserSessionsCommand,

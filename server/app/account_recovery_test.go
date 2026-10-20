@@ -553,7 +553,7 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &App{accountTokens: service}
+	return &App{accountTokenService: service}
 }
 
 type accountTokenUserStoreFake struct {

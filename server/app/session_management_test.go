@@ -38,7 +38,7 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	}
 
 	invocation := NewInvocation(principal, model.RequestMetadata{})
-	if err = service.RevokeOne(
+	if err = service.RevokeSession(
 		context.Background(),
 		invocation,
 		RevokeSessionCommand{SessionID: session.ID.String()},
@@ -78,7 +78,7 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = service.RevokeOne(
+	err = service.RevokeSession(
 		context.Background(),
 		NewInvocation(principal, model.RequestMetadata{}),
 		RevokeSessionCommand{SessionID: persistence.session.ID.String()},
@@ -100,7 +100,7 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.List(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
+	if _, err := service.ListSessions(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListSessionsQuery{}); err != nil {
 		t.Fatal(err)
 	}
 	if !persistence.listedAt.Equal(model.TimeUTC(at)) || persistence.listedAt.Location() != time.UTC {
@@ -150,12 +150,12 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 				invocation := NewInvocation(principal, model.RequestMetadata{})
 				switch operation {
 				case "revoke_own_session":
-					err = self.RevokeOne(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
+					err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
 				case "revoke_own_sessions":
-					err = self.RevokeAll(context.Background(), invocation)
+					err = self.RevokeAllSessions(context.Background(), invocation, RevokeAllSessionsCommand{})
 				case "logout":
 					authentication := &authenticationService{sessions: persistence, audit: audit, securityEffects: effects, now: self.now}
-					err = authentication.logout(context.Background(), invocation)
+					err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
 				}
 				if outcome != "success" {
 					if err == nil || persistence.session.RevokedAt.Valid || effects.userID != "" {
@@ -215,18 +215,18 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			invocation := NewInvocation(principal, model.RequestMetadata{})
 			switch operation {
 			case "revoke_own_session":
-				err = self.RevokeOne(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
+				err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
 				if !apperror.Is(err, "session.not_found") || audit.failCode != "session.not_found" {
 					t.Fatalf("repeat = %v audit=%#v", err, audit)
 				}
 			case "revoke_own_sessions":
-				err = self.RevokeAll(context.Background(), invocation)
+				err = self.RevokeAllSessions(context.Background(), invocation, RevokeAllSessionsCommand{})
 				if err != nil || !persistence.allRevocation.NoOp {
 					t.Fatalf("repeat = %v", err)
 				}
 			case "logout":
 				authentication := &authenticationService{sessions: persistence, audit: audit, securityEffects: effects, now: self.now}
-				err = authentication.logout(context.Background(), invocation)
+				err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
 				if err != nil {
 					t.Fatal(err)
 				}

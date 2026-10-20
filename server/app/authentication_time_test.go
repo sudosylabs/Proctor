@@ -166,7 +166,7 @@ func TestSessionRefreshUsesOneNativeDecisionInstant(t *testing.T) {
 	service.sessionPolicy.IdleTTL += 700 * time.Microsecond
 	clockReads := 0
 	service.now = func() time.Time { clockReads++; return clock.Add(time.Duration(clockReads-1) * time.Hour) }
-	_, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{RefreshToken: model.NewCredentialToken()})
+	_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: model.NewCredentialToken()})
 	if err != nil {
 		t.Fatal(err)
 	}

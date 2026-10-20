@@ -141,48 +141,41 @@ type academicAdministrationCommandServices struct {
 }
 
 func (s academicAdministrationCommandServices) CreateAffiliation(ctx context.Context, invocation Invocation, command CreateAffiliationCommand) (*model.Affiliation, error) {
-	return s.affiliations.Create(ctx, invocation, command)
+	return s.affiliations.CreateAffiliation(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
-	return s.affiliations.End(ctx, invocation, command)
+	return s.affiliations.EndAffiliation(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	return s.academicUnitMembers.Create(ctx, invocation, command)
+	return s.academicUnitMembers.CreateAcademicUnitMember(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	return s.academicUnitMembers.End(ctx, invocation, command)
+	return s.academicUnitMembers.EndAcademicUnitMember(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) EnrollClassMember(ctx context.Context, invocation Invocation, command EnrollClassMemberCommand) (*model.ClassEnrollment, error) {
-	return s.classMembers.Enroll(ctx, invocation, command)
+	return s.classMembers.EnrollClassMember(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) EndClassMember(ctx context.Context, invocation Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
-	return s.classMembers.End(ctx, invocation, command)
+	return s.classMembers.EndClassMember(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) CreateRoleBinding(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
-	return s.roleBindings.Create(ctx, invocation, command)
+	return s.roleBindings.CreateRoleBinding(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) EndRoleBinding(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
-	return s.roleBindings.End(ctx, invocation, command)
+	return s.roleBindings.EndRoleBinding(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) SetUserEnabled(ctx context.Context, invocation Invocation, command SetUserEnabledCommand) (*model.User, error) {
-	return s.accountStates.SetEnabled(ctx, invocation, command)
+	return s.accountStates.SetUserEnabled(ctx, invocation, command)
 }
 func (s academicAdministrationCommandServices) RevokeUserSessions(ctx context.Context, invocation Invocation, command RevokeUserSessionsCommand) error {
-	return s.sessions.RevokeAll(ctx, invocation, command)
-}
-
-func (a *App) RunAcademicAdministrationBatch(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
-	if a == nil || a.academicAdministrationBatches == nil {
-		return AcademicAdministrationBatchResult{}, apperror.New("administration.unavailable")
-	}
-	return a.academicAdministrationBatches.Run(ctx, invocation, command)
+	return s.sessions.RevokeUserSessions(ctx, invocation, command)
 }
 
 func newAcademicAdministrationBatchService(commands academicAdministrationBatchCommands, authorization resourceAuthorizer, outcomes academicAdministrationOutcomeLookup, now func() time.Time, recentTTL time.Duration) *academicAdministrationBatchService {
 	return &academicAdministrationBatchService{commands: commands, authorization: authorization, outcomes: outcomes, now: now, recentTTL: recentTTL}
 }
 
-func (s *academicAdministrationBatchService) Run(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
+func (s *academicAdministrationBatchService) RunAcademicAdministrationBatch(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	if s == nil || s.commands == nil || s.authorization == nil || s.now == nil || !command.Operation.IsValid() ||
 		!model.IsValidOpaqueID(command.ScopeID) || command.IdempotencyKey == "" || len(command.Items) < 1 ||

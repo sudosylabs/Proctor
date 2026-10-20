@@ -34,7 +34,7 @@ func TestRetentionNoticesUseExactSessionRecipientAndRejectForeignProjection(t *t
 	user := fixture.invocation.Principal().UserID
 	persistence := &ownRetentionNoticesFake{items: []model.RetentionNotice{{RecipientUserID: user}, {RecipientUserID: user}}}
 	fixture.service.lifecycle = persistence
-	app := &App{retentionPolicy: fixture.service}
+	app := &App{retentionPolicyService: fixture.service}
 	page, err := app.ListRetentionNotices(t.Context(), fixture.invocation, "", 1)
 	if err != nil || !page.HasMore || len(page.Items) != 1 || persistence.requestedUser != user || persistence.limit != 2 {
 		t.Fatalf("page=%#v err=%v", page, err)

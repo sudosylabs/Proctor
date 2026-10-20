@@ -410,7 +410,7 @@ func (effects examAttemptRealtimeEffects) publishCandidateActivityInvalidation(c
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return effects.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func (effects examAttemptRealtimeEffects) publishSittingBoardInvalidation(ctx context.Context,
@@ -420,7 +420,7 @@ func (effects examAttemptRealtimeEffects) publishSittingBoardInvalidation(ctx co
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return effects.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func (effects examAttemptRealtimeEffects) publishOperationalInvalidations(ctx context.Context,
@@ -442,7 +442,7 @@ func (effects examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, event), effects.publishOperationalInvalidations(ctx,
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event), effects.publishOperationalInvalidations(ctx,
 		result.Attempt.ExamID, result.Attempt.SittingID, result.Attempt.CandidateUserID))
 }
 
@@ -452,7 +452,7 @@ func (effects examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, event),
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event),
 		effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
 }
 
@@ -478,7 +478,7 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 		return err
 	}
 	if !result.ConnectionClosed {
-		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+		return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, managerEvent), effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 	}
 	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
@@ -486,8 +486,8 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
-		effects.realtime.Publish(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, connectionEvent), effects.realtime.PublishRealtimeEvent(ctx, managerEvent),
+		effects.realtime.PublishRealtimeEvent(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
 			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
@@ -502,7 +502,7 @@ func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, managerEvent), effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 		effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 }
 
@@ -525,7 +525,7 @@ func (effects examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.
 		return err
 	}
 	if !result.ConnectionClosed || result.Connection == nil {
-		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+		return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, managerEvent), effects.realtime.PublishRealtimeEvent(ctx, candidateEvent),
 			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 	}
 	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
@@ -533,8 +533,8 @@ func (effects examAttemptRealtimeEffects) AttemptSuspendedByManager(ctx context.
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
-		effects.realtime.Publish(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, connectionEvent), effects.realtime.PublishRealtimeEvent(ctx, managerEvent),
+		effects.realtime.PublishRealtimeEvent(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
 			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
 }
 
@@ -544,7 +544,7 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, event))
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event))
 }
 
 func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
@@ -554,7 +554,7 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 		if err != nil {
 			return err
 		}
-		return errors.Join(effects.realtime.Publish(ctx, event),
+		return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event),
 			effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
 	}
 	events := make([]apprealtime.RealtimeEvent, 0, 5)
@@ -599,7 +599,7 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 	}
 	var joined error
 	for _, event := range events {
-		joined = errors.Join(joined, effects.realtime.Publish(ctx, event))
+		joined = errors.Join(joined, effects.realtime.PublishRealtimeEvent(ctx, event))
 	}
 	if result.GapDetected || result.FlagCreated || result.SuspensionCreated {
 		joined = errors.Join(joined, effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
@@ -637,7 +637,7 @@ func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx c
 	if err != nil {
 		return nil, err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent)), nil
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, managerEvent), effects.realtime.PublishRealtimeEvent(ctx, candidateEvent)), nil
 }
 
 func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx context.Context, result examattempt.AutomaticSubmissionResult) error {
@@ -652,7 +652,7 @@ func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx conte
 		if eventErr != nil {
 			return eventErr
 		}
-		publishErr = errors.Join(publishErr, effects.realtime.Publish(ctx, connectionEvent))
+		publishErr = errors.Join(publishErr, effects.realtime.PublishRealtimeEvent(ctx, connectionEvent))
 	}
 	return errors.Join(publishErr, effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID,
 		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))

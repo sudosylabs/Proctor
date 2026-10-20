@@ -104,7 +104,7 @@ func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{disabled: true}, now)
 	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
 	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(24 * time.Hour)}}
-	view, err := service.IssueStudentClass(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	view, err := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
 			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
 	if err != nil || !view.NoOp || persistence.issued == nil || persistence.issued.Occurrence != nil || persistence.issued.Delivery != nil || persistence.issued.DeliveryJob != nil {
@@ -265,7 +265,7 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 		Username: "provider-name", Email: " Provider.Mailbox@Example.EDU ", EmailVerified: true,
 		DisplayName: "Provider Person"}
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}}
-	result, err := service.AcceptExternalIdentity(context.Background(), state, assertion, capabilities,
+	result, err := service.acceptExternalIdentity(context.Background(), state, assertion, capabilities,
 		model.RequestMetadata{RequestID: "request-1", IPAddress: "192.0.2.10"}, "oidc")
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 	}
 	mail.directErr = fmt.Errorf("mail preparation unavailable")
 	assertion.Username = strings.Repeat("x", 1_000)
-	result, err = service.AcceptExternalIdentity(context.Background(), state, assertion, capabilities,
+	result, err = service.acceptExternalIdentity(context.Background(), state, assertion, capabilities,
 		model.RequestMetadata{RequestID: "request-2"}, "oidc")
 	if err != nil || result == nil {
 		t.Fatalf("existing-User candidate fallback result=%#v error=%v", result, err)
@@ -327,7 +327,7 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 	mail := &invitationMailPreparerFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: role}, authorizer, mail, now)
-	view, err := service.IssueTeacherAcademicUnit(context.Background(),
+	view, err := service.IssueTeacherAcademicUnitInvitation(context.Background(),
 		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
@@ -369,7 +369,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 			{IdempotencyKey: "row-3", TargetEmail: " FIRST@example.edu "},
 		}}
 	invocation := NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
-	first, err := service.RunBatch(context.Background(), invocation, command)
+	first, err := service.RunInvitationBatch(context.Background(), invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 
 	command.Items = []InvitationBatchItemCommand{command.Items[2], command.Items[1], command.Items[0]}
 	mail.disabled = true
-	second, err := service.RunBatch(context.Background(), invocation, command)
+	second, err := service.RunInvitationBatch(context.Background(), invocation, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 		authorizer, &invitationMailPreparerFake{}, now)
 	command := RunInvitationBatchCommand{Operation: InvitationBatchTeacherAcademicUnitCreate, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unitID.String(), IdempotencyKey: "authorize-first", Items: []InvitationBatchItemCommand{{IdempotencyKey: "row-1", RoleID: "not-an-id"}}}
-	_, err := service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err := service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if !apperror.Is(err, "authorization.denied") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
 		t.Fatalf("batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
 	}
@@ -414,7 +414,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	authorizer.actions = nil
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
 	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
-	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if !apperror.Is(err, "authentication.token_invalid") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
 		t.Fatalf("Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 	}
@@ -422,7 +422,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	authorizer.actions = nil
 	command.Operation = InvitationBatchTeacherAcademicUnitCreate
 	command.Items = make([]InvitationBatchItemCommand, MaximumInvitationBatchItems+1)
-	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if !apperror.Is(err, "request.invalid") || len(authorizer.actions) != 0 {
 		t.Fatalf("oversized batch error/actions = %v / %v", err, authorizer.actions)
 	}
@@ -452,7 +452,7 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 			{IdempotencyKey: "duplicate", TargetEmail: " SAME@example.edu "},
 		}}
 
-	result, err := service.RunBatch(context.Background(),
+	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if err != nil {
 		t.Fatal(err)
@@ -500,7 +500,7 @@ func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
 			{IdempotencyKey: "duplicate", TargetEmail: " SAME@example.edu ", IntendedEndsAt: model.MillisFromTime(now)},
 		}}
 
-	result, err := service.RunBatch(context.Background(),
+	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if err != nil {
 		t.Fatal(err)
@@ -526,7 +526,7 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 	mail := &invitationMailPreparerFake{disabled: true}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, mail, now.Add(time.Minute))
-	_, err = service.Resend(context.Background(),
+	_, err = service.ResendInvitation(context.Background(),
 		NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{}),
 		ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
@@ -552,7 +552,7 @@ func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
 			{IdempotencyKey: "unique-key", TargetEmail: " FIRST@example.edu "},
 		}}
 
-	result, err := service.RunBatch(context.Background(),
+	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
 	if err != nil {
 		t.Fatal(err)
@@ -573,7 +573,7 @@ func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
 	authorizer := &invitationAuthorizerFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
-	view, err := service.IssueAcademicUnitRole(context.Background(),
+	view, err := service.IssueAcademicUnitRoleInvitation(context.Background(),
 		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
@@ -619,7 +619,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
-	result, err := service.AcceptAcademicUnitRole(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
+	result, err := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
 	if err != nil {
 		t.Fatalf("AcceptAcademicUnitRole() error = %v", err)
@@ -672,7 +672,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
-	_, appErr := service.AcceptAcademicUnitRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, appErr := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
 	if !apperror.Is(appErr, "invitation.invalid") || auditor.failID != auditID || auditor.failCode != "invitation.invalid" ||
 		!slices.Equal(events, []string{"resolve", "begin-at-scope", "accept", "fail"}) {
@@ -693,12 +693,12 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
-	if _, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !apperror.Is(err, "authentication.strong_required") {
+	if _, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !apperror.Is(err, "authentication.strong_required") {
 		t.Fatalf("weak IssueInstitutionRole() error = %v", err)
 	}
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	view, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+	view, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
 	if err != nil {
 		t.Fatalf("strong IssueInstitutionRole() error = %v", err)
 	}
@@ -720,7 +720,7 @@ func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
 		invitationRoleStoreFake{role: &model.Role{ID: roleID, Name: "inert", DisplayName: "Inert", Permissions: []string{string(model.ActionRoleManage)}}},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
-	_, err := service.IssueTeacherAcademicUnit(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	_, err := service.IssueTeacherAcademicUnitInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
 	if !apperror.Is(err, "invitation.role_not_delegable") || persistence.teacherIssued != nil {
 		t.Fatalf("IssueTeacherAcademicUnit() = %v / %#v", err, persistence.teacherIssued)
@@ -743,7 +743,7 @@ func TestInvitationServiceAcceptsTeacherPackageArtifacts(t *testing.T) {
 	persistence := &invitationStoreFake{invitation: invitation}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now.Add(time.Minute))
-	result, err := service.AcceptTeacherAcademicUnit(context.Background(), Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+	result, err := service.AcceptTeacherAcademicUnitInvitation(context.Background(), Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "teacher-one", Source: "127.0.0.1",
 	})
 	if err != nil {
@@ -843,7 +843,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, now.Add(time.Hour))
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 
-	page, err := service.List(context.Background(), invocation, ListInvitationsQuery{TargetEmail: "STUDENT@example.edu", Limit: 25})
+	page, err := service.ListInvitations(context.Background(), invocation, ListInvitationsQuery{TargetEmail: "STUDENT@example.edu", Limit: 25})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -852,7 +852,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 		t.Fatalf("Invitation list = %#v / %#v", page, persistence.listOptions)
 	}
 
-	resent, err := service.Resend(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
+	resent, err := service.ResendInvitation(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +861,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 		t.Fatalf("Invitation resend = %#v / %#v / %q", resent, persistence.resent, mail.issueURL)
 	}
 
-	revoked, err := service.Revoke(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
+	revoked, err := service.RevokeInvitation(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -900,7 +900,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 		t.Fatal(err)
 	}
 	actor := model.NewUserID()
-	result, err := service.Replace(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
+	result, err := service.ReplaceInvitation(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		ReplaceInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
 			SuggestedUsername: "new-student"})
@@ -940,7 +940,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, appErr := service.IssueStudentClass(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+	_, appErr := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
 	if !apperror.Is(appErr, "authorization.denied") || len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionInvitationCreate {
 		t.Fatalf("IssueStudentClass() error/actions = %v / %v", appErr, authorizer.actions)
@@ -965,7 +965,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.AcceptStudentClass(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
+	if _, appErr := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
 		Password: "correct horse battery staple", Username: "student-one", Source: "127.0.0.1"}); appErr != nil {
 		t.Fatalf("AcceptStudentClass() error = %v", appErr)
 	}
@@ -990,11 +990,11 @@ func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
 				var result *InvitationAcceptanceView
 				var err error
 				if purpose == model.InvitationPurposeStudentClass {
-					result, err = service.AcceptStudentClass(ctx, Invocation{}, AcceptStudentClassInvitationCommand{
+					result, err = service.AcceptStudentClassInvitation(ctx, Invocation{}, AcceptStudentClassInvitationCommand{
 						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
 					})
 				} else {
-					result, err = service.AcceptTeacherAcademicUnit(ctx, Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+					result, err = service.AcceptTeacherAcademicUnitInvitation(ctx, Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
 						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
 					})
 				}
@@ -1034,7 +1034,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 		t.Fatalf("newInvitationService() error = %v", err)
 	}
 	invocation := NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{})
-	view, err := service.IssueStudentClass(context.Background(), invocation, IssueStudentClassInvitationCommand{
+	view, err := service.IssueStudentClassInvitation(context.Background(), invocation, IssueStudentClassInvitationCommand{
 		TargetEmail: " Student@Example.edu ", ClassID: classID.String(), IntendedStartsAt: model.MillisFromTime(period.StartsAt),
 		IntendedEndsAt: model.MillisFromTime(period.EndsAt), SuggestedUsername: "student-one", SuggestedDisplayName: "Student One", SuggestedLocale: "en",
 	})
@@ -1048,7 +1048,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	if len(authorizer.actions) != 2 || authorizer.actions[0] != model.ActionInvitationCreate || authorizer.actions[1] != model.ActionClassMembersManage {
 		t.Fatalf("authorization actions = %v", authorizer.actions)
 	}
-	result, err := service.AcceptStudentClass(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{
+	result, err := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "student-one", DisplayName: "Student One", Locale: "en",
 	})
 	if err != nil {

@@ -71,7 +71,7 @@ func TestExternalReauthenticationBindsOriginalSessionAndClosedTask(t *testing.T)
 			events := []string{}
 			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 			service.loginStates, service.mutationAudit = states, audit
-			result, err := service.beginReauthentication(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginExternalReauthenticationCommand{Task: test.task, Source: "192.0.2.30"})
+			result, err := service.BeginExternalReauthentication(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginExternalReauthenticationCommand{Task: test.task, Source: "192.0.2.30"})
 			if test.want == "" {
 				if err == nil || result != nil || states.saved != nil || provider.beginRequest.FreshAuthentication {
 					t.Fatal("unbounded continuation reached provider or Store")

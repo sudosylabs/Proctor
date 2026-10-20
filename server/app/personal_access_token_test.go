@@ -69,7 +69,7 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Create(
+	_, err = service.CreatePersonalAccessToken(
 		context.Background(),
 		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
 		CreatePersonalAccessTokenCommand{
@@ -116,7 +116,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 		t.Fatal(err)
 	}
 
-	created, err := service.Create(
+	created, err := service.CreatePersonalAccessToken(
 		context.Background(),
 		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{RequestID: "request-a"}),
 		CreatePersonalAccessTokenCommand{
@@ -181,7 +181,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 		t.Fatal(err)
 	}
 
-	got, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	got, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if appErr != nil || got != token {
 		t.Fatalf("SetDisabled(replay) = %#v, %v", got, appErr)
 	}
@@ -190,7 +190,7 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 	}
 
 	token.RevokedAt = model.OptionalTimeFrom(now)
-	got, appErr = service.Revoke(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
+	got, appErr = service.RevokePersonalAccessToken(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
 	if appErr != nil || got != token {
 		t.Fatalf("Revoke(replay) = %#v, %v", got, appErr)
 	}
@@ -212,7 +212,7 @@ func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T
 		&personalAccessTokenInstitutionStoreFake{}, audit, now,
 	)
 
-	_, err := service.Revoke(
+	_, err := service.RevokePersonalAccessToken(
 		context.Background(),
 		NewInvocation(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
 		RevokePersonalAccessTokenCommand{TokenID: token.ID},
@@ -245,7 +245,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 	}
 	invocation := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
 
-	if _, err := service.SetDisabled(
+	if _, err := service.SetPersonalAccessTokenDisabled(
 		context.Background(), invocation,
 		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true},
 	); err != nil {
@@ -254,7 +254,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 	if tokens.stateAt != now.UnixMilli() || tokens.stateMaximum != 3 {
 		t.Fatalf("state change at=%d maximum=%d", tokens.stateAt, tokens.stateMaximum)
 	}
-	if _, err := service.SetDisabled(
+	if _, err := service.SetPersonalAccessTokenDisabled(
 		context.Background(), invocation,
 		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: false},
 	); err != nil {
@@ -262,7 +262,7 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 	}
 
 	tokens.current = token
-	if _, err := service.Revoke(
+	if _, err := service.RevokePersonalAccessToken(
 		context.Background(), invocation,
 		RevokePersonalAccessTokenCommand{TokenID: token.ID},
 	); err != nil {
@@ -299,11 +299,11 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 	stale := personalAccessTokenSessionPrincipal(userID, now.Add(-15*time.Minute-time.Microsecond))
 	invocation := NewInvocation(stale, model.RequestMetadata{})
 
-	_, err := service.Create(context.Background(), invocation, CreatePersonalAccessTokenCommand{})
+	_, err := service.CreatePersonalAccessToken(context.Background(), invocation, CreatePersonalAccessTokenCommand{})
 	if !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("create error = %v", err)
 	}
-	_, err = service.SetDisabled(context.Background(), invocation, SetPersonalAccessTokenDisabledCommand{
+	_, err = service.SetPersonalAccessTokenDisabled(context.Background(), invocation, SetPersonalAccessTokenDisabledCommand{
 		TokenID: model.NewPersonalAccessTokenID(), Disabled: false,
 	})
 	if !apperror.Is(err, "authentication.reauthentication_required") {
@@ -311,6 +311,30 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 	}
 	if tokens.saveCalls != 0 || tokens.stateCalls != 0 {
 		t.Fatalf("store calls: save=%d state=%d", tokens.saveCalls, tokens.stateCalls)
+	}
+}
+
+func TestPersonalAccessTokenAdministrationJudgesRecencyByInjectedClock(t *testing.T) {
+	t.Parallel()
+
+	// The injected clock is decades away from wall time, so a recency decision
+	// made against time.Now would reject the fresh principal and accept the
+	// stale one.
+	now := time.Date(2001, 2, 3, 4, 5, 6, 0, time.UTC)
+	userID := model.NewUserID()
+	service := mustPersonalAccessTokenAdministrationService(
+		t, &personalAccessTokenStoreFake{events: &[]string{}}, &personalAccessTokenAcademicUnitStoreFake{},
+		&personalAccessTokenInstitutionStoreFake{}, &personalAccessTokenAuditorFake{}, now,
+	)
+	fresh := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
+	_, err := service.CreatePersonalAccessToken(context.Background(), fresh, CreatePersonalAccessTokenCommand{})
+	if !apperror.Is(err, "personal_access_token.invalid") {
+		t.Fatalf("fresh create error = %v, want the expires_at validation after the recency check", err)
+	}
+	stale := NewInvocation(personalAccessTokenSessionPrincipal(userID, now.Add(-16*time.Minute)), model.RequestMetadata{})
+	_, err = service.CreatePersonalAccessToken(context.Background(), stale, CreatePersonalAccessTokenCommand{})
+	if !apperror.Is(err, "authentication.reauthentication_required") {
+		t.Fatalf("stale create error = %v", err)
 	}
 }
 
@@ -444,7 +468,7 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -482,7 +506,7 @@ func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.
 	service := mustPersonalAccessTokenAdministrationService(t, tokens, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 		&personalAccessTokenAuditorFake{}, now)
-	got, err := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	got, err := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
 	if err != nil || got != token {
 		t.Fatalf("SetDisabled(concurrent replay) = %#v, %v", got, err)
 	}
@@ -504,7 +528,7 @@ func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFa
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, appErr := service.SetDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
+	if _, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
 		t.Fatalf("SetDisabled(render failure) error = %v", appErr)
 	}
 	if tokens.failCalls != 1 || tokens.stateCalls != 0 {

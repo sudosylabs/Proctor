@@ -274,7 +274,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		Dependencies{}, applicationFoundation{}, identityConstruction{}, accessAcademicConstruction{},
 		examinationConstruction{}, profiles, jobs, administrationConstruction{},
 	)
-	if application.jobs != jobs.runtime || application.jobOperations != jobs.operations {
+	if application.jobs != jobs.runtime || application.jobOperationsService != jobs.operations {
 		t.Fatal("assembled application did not retain the constructed Job runtime and operations")
 	}
 }
@@ -449,6 +449,24 @@ func TestApplicationAssemblyNamesEveryFacadeField(t *testing.T) {
 	}
 }
 
+// embeddedFieldName returns the implicit field name of an embedded field,
+// which Go derives from the unqualified type name.
+func embeddedFieldName(t *testing.T, expression ast.Expr) string {
+	t.Helper()
+	if pointer, ok := expression.(*ast.StarExpr); ok {
+		expression = pointer.X
+	}
+	switch typeName := expression.(type) {
+	case *ast.Ident:
+		return typeName.Name
+	case *ast.SelectorExpr:
+		return typeName.Sel.Name
+	default:
+		t.Fatalf("unsupported embedded field type %T", expression)
+		return ""
+	}
+}
+
 func structFieldNames(t *testing.T, file *ast.File, typeName string) []string {
 	t.Helper()
 	var names []string
@@ -462,6 +480,10 @@ func structFieldNames(t *testing.T, file *ast.File, typeName string) []string {
 			t.Fatalf("%s is not a struct", typeName)
 		}
 		for _, field := range definition.Fields.List {
+			if len(field.Names) == 0 {
+				names = append(names, embeddedFieldName(t, field.Type))
+				continue
+			}
 			for _, name := range field.Names {
 				names = append(names, name.Name)
 			}

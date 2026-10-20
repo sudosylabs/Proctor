@@ -263,7 +263,7 @@ func TestDesktopCompatibilityServiceEvaluatesAuthoritativePolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := service.Evaluate(context.Background(), DesktopCompatibilityQuery{
+	result, err := service.EvaluateDesktopCompatibility(context.Background(), DesktopCompatibilityQuery{
 		DesktopRelease:   "1.2.3",
 		DesktopBuildID:   "darwin-current",
 		Platform:         "darwin",
@@ -284,7 +284,7 @@ func TestDesktopCompatibilityPolicyReadUsesAdministrativeViewAuthorization(t *te
 	t.Parallel()
 	service, persistence, authorization, _, invocation := desktopCompatibilityServiceFixture(t)
 
-	policy, err := service.Read(context.Background(), invocation)
+	policy, err := service.GetDesktopCompatibilityPolicy(context.Background(), invocation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 		Changed: true,
 	}
 
-	result, err := service.Replace(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
+	result, err := service.ReplaceDesktopCompatibilityPolicy(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
 		ExpectedRevision: 1,
 		Settings:         settings,
 		IdempotencyKey:   "desktop-policy-1",
@@ -369,7 +369,7 @@ func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBefor
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := service.Replace(
+			_, err := service.ReplaceDesktopCompatibilityPolicy(
 				context.Background(),
 				NewInvocation(test.mutate(invocation.Principal()), model.RequestMetadata{}),
 				ReplaceDesktopCompatibilityPolicyCommand{
@@ -394,7 +394,7 @@ func TestDesktopCompatibilityPolicyReplacementFailsClosedWhenAuditBeginFails(t *
 	auditError := apperror.New("audit.unavailable")
 	audit.beginErr = auditError
 
-	_, err := service.Replace(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
+	_, err := service.ReplaceDesktopCompatibilityPolicy(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
 		ExpectedRevision: 1,
 		Settings:         persistence.policy.Settings(),
 		IdempotencyKey:   "desktop-policy-audit-unavailable",
@@ -438,7 +438,7 @@ func TestDesktopCompatibilityPolicyReplacementMapsRevisionAndSystemAdministrator
 		t.Run(test.name, func(t *testing.T) {
 			service, persistence, _, audit, invocation := desktopCompatibilityServiceFixture(t)
 			persistence.replaceErr = test.storeErr
-			_, err := service.Replace(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
+			_, err := service.ReplaceDesktopCompatibilityPolicy(context.Background(), invocation, ReplaceDesktopCompatibilityPolicyCommand{
 				ExpectedRevision: 1,
 				Settings:         persistence.policy.Settings(),
 				IdempotencyKey:   "failed-" + test.name,
@@ -487,34 +487,34 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 		{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1},
 		{DesktopRelease: "100.0.0", DesktopBuildID: "next-build", Platform: "linux", Architecture: "x64", RealtimeProtocol: 99},
 	} {
-		result, err := development.Evaluate(t.Context(), query)
-		if err != nil || result.Compatibility != DesktopCompatibilityCompatible || result.PolicyRevision != persistence.policy.Revision {
-			t.Fatalf("dev build rejected: %#v, %v", result, err)
+		result, evaluateErr := development.EvaluateDesktopCompatibility(t.Context(), query)
+		if evaluateErr != nil || result.Compatibility != DesktopCompatibilityCompatible || result.PolicyRevision != persistence.policy.Revision {
+			t.Fatalf("dev build rejected: %#v, %v", result, evaluateErr)
 		}
 		if result.MinimumDesktopRelease != "" || result.MaximumDesktopRelease != "" || result.MinimumRealtimeProtocol != 0 || result.MaximumRealtimeProtocol != 0 {
 			t.Fatal("bypass invented supported bounds")
 		}
-		enforced, err := strict.Evaluate(t.Context(), query)
-		if err != nil || enforced.Compatibility == DesktopCompatibilityCompatible {
-			t.Fatalf("strict environment admitted build: %#v, %v", enforced, err)
+		enforced, evaluateErr := strict.EvaluateDesktopCompatibility(t.Context(), query)
+		if evaluateErr != nil || enforced.Compatibility == DesktopCompatibilityCompatible {
+			t.Fatalf("strict environment admitted build: %#v, %v", enforced, evaluateErr)
 		}
 	}
 	query := DesktopCompatibilityQuery{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1}
 	persistence.policy.Availability = model.DesktopAvailabilityMaintenance
-	result, err := development.Evaluate(t.Context(), query)
+	result, err := development.EvaluateDesktopCompatibility(t.Context(), query)
 	if err != nil || result.Availability != model.DesktopAvailabilityMaintenance {
 		t.Fatalf("maintenance ignored: %#v, %v", result, err)
 	}
-	if _, err := development.Evaluate(t.Context(), DesktopCompatibilityQuery{}); !apperror.Is(err, "request.invalid") {
+	if _, err := development.EvaluateDesktopCompatibility(t.Context(), DesktopCompatibilityQuery{}); !apperror.Is(err, "request.invalid") {
 		t.Fatalf("malformed selectors accepted: %v", err)
 	}
 	persistence.getErr = errors.New("store offline")
-	if _, err := development.Evaluate(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
+	if _, err := development.EvaluateDesktopCompatibility(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
 		t.Fatalf("policy outage ignored: %v", err)
 	}
 	persistence.getErr = nil
 	persistence.policy.Revision = 0
-	if _, err := development.Evaluate(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
+	if _, err := development.EvaluateDesktopCompatibility(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
 		t.Fatalf("corrupt policy ignored: %v", err)
 	}
 }

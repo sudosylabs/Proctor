@@ -21,7 +21,7 @@ type dpopRecoveryVerifier struct {
 	generation int64
 }
 
-func (v *dpopRecoveryVerifier) RecoveryState(_ context.Context, id model.UserID) (*model.UserMFARecovery, error) {
+func (v *dpopRecoveryVerifier) recoveryState(_ context.Context, id model.UserID) (*model.UserMFARecovery, error) {
 	return &model.UserMFARecovery{UserID: id, Generation: v.generation}, nil
 }
 
@@ -65,7 +65,7 @@ func TestDPoPAuthenticationAfterMFARecoverySupportsPrincipalRevalidation(t *test
 		"jti": "recovered-session-proof", "htm": "GET", "htu": service.dpop.policy.Origin + "/api/v1/users/me",
 		"iat": at.Unix(), "nonce": nonce, "ath": dpopAccessTokenHash(raw),
 	})
-	principal, err := service.authenticateDPoP(ctx, raw, proof, "GET", "/api/v1/users/me")
+	principal, err := service.AuthenticateDPoP(ctx, raw, proof, "GET", "/api/v1/users/me")
 	if err != nil {
 		t.Fatal(err)
 	}

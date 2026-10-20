@@ -104,7 +104,7 @@ func (e examResourceRealtimeEffects) Changed(ctx context.Context, examID model.E
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examResourceRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	e.realtime.reportTransientFailure(ctx, operation, err)

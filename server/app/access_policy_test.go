@@ -225,7 +225,7 @@ func TestAccessPolicyPreflightUsesCurrentDeploymentCapabilities(t *testing.T) {
 	service, persistence, _, _, _, invocation := accessPolicyFixture(t)
 	settings := persistence.snapshot.Policy.Settings()
 	settings.ProviderAdmissions["campus-oidc"] = model.ProviderAdmissionAutoProvision
-	result, err := service.Preflight(context.Background(), invocation, PreflightAccessPolicyCommand{ExpectedRevision: 1, Settings: settings})
+	result, err := service.PreflightAccessPolicy(context.Background(), invocation, PreflightAccessPolicyCommand{ExpectedRevision: 1, Settings: settings})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,12 +271,12 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 				run  func() error
 			}{
 				{name: "preflight", run: func() error {
-					_, err := service.Preflight(context.Background(), invocation,
+					_, err := service.PreflightAccessPolicy(context.Background(), invocation,
 						PreflightAccessPolicyCommand{ExpectedRevision: 1, Settings: settings})
 					return err
 				}},
 				{name: "replace", run: func() error {
-					_, err := service.Replace(context.Background(), invocation,
+					_, err := service.ReplaceAccessPolicy(context.Background(), invocation,
 						ReplaceAccessPolicyCommand{ExpectedRevision: 1, Settings: settings, IdempotencyKey: "assurance"})
 					return err
 				}},
@@ -309,7 +309,7 @@ func TestAccessPolicyReplacementIsIdempotentAndPublishesOnlyCommittedRevision(t 
 	persistence.result = &store.AccessPolicyReplacementResult{Snapshot: &store.AccessPolicySnapshot{Policy: next, History: []*model.AccessPolicyTransition{transition}}, Changed: true}
 	settings := persistence.snapshot.Policy.Settings()
 	settings.DesktopAuthorizationEnabled = false
-	result, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{ExpectedRevision: 1, Settings: settings, IdempotencyKey: "policy-1"})
+	result, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{ExpectedRevision: 1, Settings: settings, IdempotencyKey: "policy-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestAccessPolicyReplacementResolvesExactReplayBeforeRevisionPreflight(t *te
 	}
 	settings := persistence.snapshot.Policy.Settings()
 	settings.DesktopAuthorizationEnabled = false
-	result, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
+	result, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, IdempotencyKey: "lost-response",
 	})
 	if err != nil || result.Policy == nil || result.Policy.Revision != 2 {
@@ -356,7 +356,7 @@ func TestAccessPolicyReplacementFingerprintIncludesSessionRevocationChoice(t *te
 	persistence.result = &store.AccessPolicyReplacementResult{Snapshot: persistence.snapshot}
 	settings := persistence.snapshot.Policy.Settings()
 	settings.DesktopAuthorizationEnabled = false
-	_, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
+	_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, RevokeExistingSessions: true, IdempotencyKey: "policy-revoke",
 	})
 	if err != nil {
@@ -367,7 +367,7 @@ func TestAccessPolicyReplacementFingerprintIncludesSessionRevocationChoice(t *te
 	}
 	withRevocation := persistence.command.Fingerprint
 	persistence.result = &store.AccessPolicyReplacementResult{Snapshot: persistence.snapshot}
-	_, err = service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
+	_, err = service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, RevokeExistingSessions: false, IdempotencyKey: "policy-revoke",
 	})
 	if err != nil {
@@ -384,7 +384,7 @@ func TestAccessPolicyReplacementMapsConflictingIdempotencyReuse(t *testing.T) {
 	persistence.replaceErr = &store.ErrIdempotencyConflict{}
 	settings := persistence.snapshot.Policy.Settings()
 	settings.DesktopAuthorizationEnabled = false
-	_, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
+	_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, IdempotencyKey: "reused-key",
 	})
 	if !apperror.Is(err, "idempotency.conflict") {
@@ -413,7 +413,7 @@ func TestAccessPolicyReplacementCompletesRevisionBlockerAndStoreFailures(t *test
 			persistence.replaceErr = tc.storeErr
 			settings := persistence.snapshot.Policy.Settings()
 			settings.DesktopAuthorizationEnabled = false
-			_, err := service.Replace(context.Background(), invocation, ReplaceAccessPolicyCommand{
+			_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 				ExpectedRevision: 1, Settings: settings, IdempotencyKey: "failed-" + tc.name,
 			})
 			if !apperror.Is(err, tc.wantCode) {
@@ -434,7 +434,7 @@ func TestAccessPolicyReadFailsSafelyForMissingSnapshot(t *testing.T) {
 	service, persistence, _, _, _, invocation := accessPolicyFixture(t)
 	for _, snapshot := range []*store.AccessPolicySnapshot{nil, {}} {
 		persistence.snapshot = snapshot
-		_, err := service.Read(context.Background(), invocation)
+		_, err := service.GetAccessPolicy(context.Background(), invocation)
 		if !apperror.Is(err, "access_policy.unavailable") {
 			t.Fatalf("snapshot %#v error = %v", snapshot, err)
 		}
@@ -449,7 +449,7 @@ func TestPublicAccessDiscoveryFiltersUnavailableProvidersAndRestoresByStableID(t
 	persistence.snapshot.Policy = policy
 
 	capabilities.snapshot.Providers = nil
-	discovery, err := service.Discover(context.Background())
+	discovery, err := service.DiscoverAccess(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestPublicAccessDiscoveryFiltersUnavailableProvidersAndRestoresByStableID(t
 		t.Fatalf("removed-provider discovery = %#v", discovery)
 	}
 	capabilities.snapshot.Providers = []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus-oidc", DisplayName: "Campus", Type: "oidc"}}}
-	discovery, err = service.Discover(context.Background())
+	discovery, err = service.DiscoverAccess(context.Background())
 	if err != nil || len(discovery.Providers) != 1 || discovery.Providers[0].Id != "campus-oidc" {
 		t.Fatalf("restored-provider discovery = %#v, %v", discovery, err)
 	}

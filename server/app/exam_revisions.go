@@ -56,7 +56,7 @@ func (e examRealtimeEffects) RevisionPublished(ctx context.Context, revision sto
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 var _ examengine.PublicationEffects = examRealtimeEffects{}

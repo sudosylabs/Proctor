@@ -81,38 +81,6 @@ type CompletePasswordResetCommand struct {
 	Source   string
 }
 
-func (a *App) RequestEmailVerification(
-	ctx context.Context,
-	invocation Invocation,
-	command RequestEmailVerificationCommand,
-) error {
-	return a.accountTokens.RequestEmailVerification(ctx, invocation, command)
-}
-
-func (a *App) RequestPasswordReset(
-	ctx context.Context,
-	invocation Invocation,
-	command RequestPasswordResetCommand,
-) error {
-	return a.accountTokens.RequestPasswordReset(ctx, invocation, command)
-}
-
-func (a *App) CompleteEmailVerification(
-	ctx context.Context,
-	invocation Invocation,
-	command CompleteEmailVerificationCommand,
-) (*model.User, error) {
-	return a.accountTokens.CompleteEmailVerification(ctx, invocation, command)
-}
-
-func (a *App) CompletePasswordReset(
-	ctx context.Context,
-	invocation Invocation,
-	command CompletePasswordResetCommand,
-) (*model.User, error) {
-	return a.accountTokens.CompletePasswordReset(ctx, invocation, command)
-}
-
 func (s *accountTokenService) RequestEmailVerification(
 	ctx context.Context,
 	invocation Invocation,

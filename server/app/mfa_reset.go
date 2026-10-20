@@ -29,11 +29,7 @@ type ResetUserMFACommand struct {
 	VerificationReference string
 }
 
-func (a *App) ResetUserMFA(ctx context.Context, invocation Invocation, command ResetUserMFACommand) error {
-	return a.mfaApplication.ResetUser(ctx, invocation, command)
-}
-
-func (s *mfaApplicationService) ResetUser(ctx context.Context, invocation Invocation, command ResetUserMFACommand) error {
+func (s *mfaApplicationService) ResetUserMFA(ctx context.Context, invocation Invocation, command ResetUserMFACommand) error {
 	principal := invocation.Principal()
 	if err := s.requireStrongRecentSession(principal); err != nil {
 		return err

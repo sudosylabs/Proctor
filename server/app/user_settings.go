@@ -115,18 +115,7 @@ func newUserSettingsService(
 	}, nil
 }
 
-func (a *App) ReplaceOwnUserSettings(
-	ctx context.Context,
-	invocation Invocation,
-	command ReplaceOwnUserSettingsCommand,
-) (UserSettingsReplacementResult, error) {
-	if a == nil || a.userSettings == nil {
-		return UserSettingsReplacementResult{}, apperror.New("user_settings.unavailable")
-	}
-	return a.userSettings.ReplaceOwn(ctx, invocation, command)
-}
-
-func (s *userSettingsService) ReplaceOwn(
+func (s *userSettingsService) ReplaceOwnUserSettings(
 	ctx context.Context,
 	invocation Invocation,
 	command ReplaceOwnUserSettingsCommand,
@@ -230,7 +219,7 @@ func (e userSettingsRealtimeEffects) Changed(ctx context.Context, change userSet
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 type userSettingsEffectReporter struct{ realtime *realtimeService }
@@ -252,16 +241,9 @@ var userSettingsStoreErrors = apperror.StoreTable{
 	Unavailable: "user_settings.unavailable",
 }
 
-// ReadOwn returns only the document owned by the interactive Session
+// ReadOwnUserSettings returns only the document owned by the interactive Session
 // principal. There is intentionally no caller-supplied User identifier.
-func (a *App) ReadOwnUserSettings(ctx context.Context, invocation Invocation) (UserSettingsView, error) {
-	if a == nil || a.userSettings == nil {
-		return UserSettingsView{}, apperror.New("user_settings.unavailable")
-	}
-	return a.userSettings.ReadOwn(ctx, invocation)
-}
-
-func (s *userSettingsService) ReadOwn(ctx context.Context, invocation Invocation) (UserSettingsView, error) {
+func (s *userSettingsService) ReadOwnUserSettings(ctx context.Context, invocation Invocation) (UserSettingsView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return UserSettingsView{}, invalidTokenAppError()

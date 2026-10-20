@@ -152,10 +152,10 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
@@ -196,10 +196,10 @@ func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *tes
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
@@ -229,10 +229,10 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
@@ -270,10 +270,10 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	result := examattempt.AutomaticSubmissionResult{SubmissionResult: examattempt.SubmissionResult{
@@ -314,10 +314,10 @@ func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWar
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
@@ -349,10 +349,10 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 20, 10, 5, 0, 0, time.UTC)
@@ -396,10 +396,10 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.SetSink(sink); err != nil {
+	if err := realtime.AttachRealtimeSink(sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := realtime.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)

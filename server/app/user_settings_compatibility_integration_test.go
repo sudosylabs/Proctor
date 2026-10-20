@@ -37,10 +37,10 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-compatibility-user",
 		Email:    "settings-compatibility-user@example.edu",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}

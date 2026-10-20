@@ -30,8 +30,9 @@ func TestEmailChangeAuditOmitsOldAndNewMailboxes(t *testing.T) {
 		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
 		institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: &emailTransitionMailerFake{}, now: func() time.Time { return now },
 	})
-	application.userProfiles = &userProfileService{authorization: &userProfileAuthorizerFake{events: &events}, audit: auditor}
-	application.recentAuthenticationTTL = 15 * time.Minute
+	application.accountTokenService.administration = userEmailAdministration{
+		authorization: &userProfileAuthorizerFake{events: &events}, audit: auditor, recentAuthenticationTTL: 15 * time.Minute,
+	}
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
@@ -61,7 +62,7 @@ func TestEmailChangePreparesFrozenOldWarningAndNewTargetVerification(t *testing.
 	mailer := &emailTransitionMailerFake{}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
 		tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer, now: func() time.Time { return now }})
-	result, err := app.accountTokens.changeUserEmail(context.Background(), user, "new@example.edu", now, mutationAttemptReference{ID: model.NewAuditEventID(), MutationAtMillis: now.UnixMilli()})
+	result, err := app.accountTokenService.changeUserEmail(context.Background(), user, "new@example.edu", now, mutationAttemptReference{ID: model.NewAuditEventID(), MutationAtMillis: now.UnixMilli()})
 	if err != nil {
 		t.Fatal(err)
 	}

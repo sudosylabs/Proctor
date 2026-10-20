@@ -26,7 +26,7 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			persistence := newAuthenticationStoreFake()
 			authentication := newTestAuthenticationService(t, persistence)
 			const password = "CorrectHorseBatteryStaple1!"
-			user, err := authentication.createLocalUser(context.Background(), CreateLocalUserCommand{
+			user, err := authentication.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "desktop-capacity", Email: "desktop-capacity@example.edu"}, Password: password,
 			})
 			if err != nil {
@@ -50,13 +50,13 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 				command.LoginID = "missing@example.edu"
 			}
 			saturatePasswordWork(t, authentication.hasher)
-			result, err := service.AuthenticateLocal(context.Background(), command)
+			result, err := service.AuthenticateDesktopAuthorizationLocally(context.Background(), Invocation{}, command)
 			if result != nil || !apperror.Is(err, "service.busy") {
 				t.Fatalf("saturated Desktop authentication = %#v/%v", result, err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			result, err = service.AuthenticateLocal(ctx, command)
+			result, err = service.AuthenticateDesktopAuthorizationLocally(ctx, Invocation{}, command)
 			if result != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancelled Desktop authentication = %#v/%v", result, err)
 			}
@@ -101,7 +101,7 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 		DeviceID: "desktop-1", DeviceName: "Exam laptop",
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	result, err := service.Start(context.Background(), command)
+	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 		CodeChallenge: model.NewCredentialToken(),
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	result, err := service.Start(context.Background(), command)
+	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 	if result != nil || !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
 		t.Fatalf("Start() = %#v, %v; persisted=%#v", result, err, persistence.created)
 	}
@@ -193,7 +193,7 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 		CodeChallenge: model.NewCredentialToken(),
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	_, err = service.Start(context.Background(), command)
+	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
 		t.Fatalf("Start() error=%v persisted=%#v", err, persistence.created)
 	}
@@ -254,7 +254,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		AuthenticatedAt: at.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(at)}
 	persistence.issueResult = &store.DesktopAuthorizationCodeIssued{CallbackURL: callback, CodeExpiresAt: at.Add(time.Minute)}
 	persistence.contextUserID = principal.UserID
-	approved, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	approved, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: binding, State: state})
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +274,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		Session: session, Registration: registration,
 		AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
 	}
-	exchanged, err := service.Exchange(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{}),
+	exchanged, err := service.ExchangeDesktopAuthorization(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{}),
 		exchangeCommand)
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 	persistence.contextUserID = principal.UserID
-	_, err = service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+	_, err = service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	if !apperror.Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
 		t.Fatalf("Approve() error=%v failure audit=%q/%q", err, auditor.auditID, auditor.failureCode)
@@ -321,7 +321,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
-	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
+	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
 	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 		t.Fatalf("Exchange() error=%v failure audit=%q", err, auditor.failureCode)
 	}
@@ -354,7 +354,7 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	}
 	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
 
-	result, err := service.Exchange(context.Background(), Invocation{}, command)
+	result, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, command)
 	if result != nil || !apperror.Is(err, "authentication.dpop.unavailable") {
 		t.Fatalf("Exchange() = %#v, %v; want no credential response", result, err)
 	}
@@ -388,7 +388,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 				CodeChallenge: model.NewCredentialToken(),
 			}
 			setTestDesktopAuthorizationBuild(t, &command)
-			_, err = service.Start(context.Background(), command)
+			_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 			if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
@@ -420,7 +420,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			CodeChallenge: model.NewCredentialToken(),
 		}
 		setTestDesktopAuthorizationBuild(t, &command)
-		_, err := service.Start(context.Background(), command)
+		_, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
 			t.Fatalf("Start error = %v", err)
 		}
@@ -435,7 +435,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		service := newService(&desktopAuthorizationStoreFake{issueResult: &store.DesktopAuthorizationCodeIssued{
 			CallbackURL: "https://not-loopback.example/", CodeExpiresAt: at.Add(time.Minute),
 		}, contextUserID: principal.UserID}, auditor)
-		_, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		_, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Approve error/audit = %v/%q", err, auditor.failureCode)
@@ -456,7 +456,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			AccessExpiresAt:  at.Add(testDesktopSessionPolicy().AccessTTL + time.Second),
 			RefreshExpiresAt: at.Add(time.Hour),
 		}
-		_, err := service.Exchange(context.Background(), Invocation{}, exchangeCommand)
+		_, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
 		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Exchange error/audit = %v/%q", err, auditor.failureCode)
 		}
@@ -489,7 +489,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 		CodeChallenge: model.NewCredentialToken(), Source: "192.0.2.10:5000",
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
-	_, err = service.Start(context.Background(), command)
+	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
 	if !apperror.Is(err, "authentication.rate_limited") || persistence.created != nil || auditor.prepareExchange != 0 || auditor.prepareIssue != 0 {
 		t.Fatalf("Start() error=%v persisted=%#v audit prepares=%d/%d", err, persistence.created, auditor.prepareIssue, auditor.prepareExchange)
 	}
@@ -501,7 +501,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, code, model.NewCredentialToken(), model.NewCredentialToken(), "192.0.2.10:5001",
 	)
-	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
+	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
 	if !apperror.Is(err, "authentication.rate_limited") || persistence.exchanged != nil || auditor.prepareExchange != 0 {
 		t.Fatalf("Exchange() error=%v persisted=%#v exchange audits=%d", err, persistence.exchanged, auditor.prepareExchange)
 	}
@@ -709,7 +709,7 @@ type desktopAuthorizationCompatibilityFake struct {
 	err    error
 }
 
-func (f desktopAuthorizationCompatibilityFake) Evaluate(context.Context, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error) {
+func (f desktopAuthorizationCompatibilityFake) EvaluateDesktopCompatibility(context.Context, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error) {
 	if f.err != nil {
 		return DesktopCompatibilityResult{}, f.err
 	}

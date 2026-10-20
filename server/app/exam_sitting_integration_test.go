@@ -85,10 +85,10 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	candidate, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	candidate, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-candidate", Email: "sitting-candidate@example.edu", DisplayName: "Sitting Candidate",
 		EmailVerified: true, Locale: "en", Timezone: "UTC",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -102,9 +102,9 @@ func TestExamSittingIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	manager, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	manager, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-manager", Email: "sitting-manager@example.edu", DisplayName: "Sitting Manager",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -321,9 +321,9 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatalf("subscription after permission revocation error = %v", appErr)
 	}
 
-	overrideUser, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	overrideUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "sitting-override", Email: "sitting-override@example.edu", DisplayName: "Sitting Override",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

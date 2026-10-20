@@ -121,7 +121,7 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return at },
 	)
-	got, err := service.List(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID)})
+	got, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	if err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	}); err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)
-	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	if !apperror.Is(err, "administration.unavailable") {
@@ -235,7 +235,7 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.RevokeAll(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}); err != nil {
+	if err := service.RevokeUserSessions(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}); err != nil {
 		t.Fatal(err)
 	}
 	if persistence.revokeAllInput.UserID != model.UserID(userID) || persistence.revokeAllInput.AuditEventID == "" || persistence.revokeAllInput.Occurrence == nil {
@@ -258,7 +258,7 @@ func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}); err != nil {
+	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(mailer.requests) != 1 || persistence.revokeAllInput == nil || persistence.revokeAllInput.Occurrence == nil {
@@ -278,7 +278,7 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
+	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
 		t.Fatal(err)
 	}
 	if len(mailer.requests) != 0 || slices.Contains(events, "list-active") {
@@ -300,7 +300,7 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		time.Now,
 	)
-	err := service.RevokeOne(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
 	if !apperror.Is(err, "session.not_found") {
@@ -345,7 +345,7 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				&sessionAdministrationAuthorizerFake{events: &events}, audit,
 				&securityNoticeMailerFake{events: &events}, effects, func() time.Time { return now })
 			invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-			err := service.RevokeAll(context.Background(), invocation, RevokeUserSessionsCommand{
+			err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{
 				UserID: model.UserID(userID), IdempotencyKey: "repeat-command", batchReplayed: &unchanged,
 			})
 			wantCode := ""

@@ -702,7 +702,7 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 		RevokedAccessHashes: []string{model.HashToken(model.NewCredentialToken())},
 	}
 	effects.last = ""
-	if session, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{
+	if session, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{
 		RefreshToken: model.NewCredentialToken(),
 	}); session != nil || tokens != nil || !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("refresh(expired) = %#v, %#v, %v", session, tokens, err)
@@ -787,7 +787,7 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 				func() time.Time { return at },
 			)
 
-			_, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{RefreshToken: presentedRefresh})
+			_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: presentedRefresh})
 			if test.wantCode != "" {
 				if !apperror.Is(err, test.wantCode) {
 					t.Fatalf("refresh error = %v, want %s", err, test.wantCode)
@@ -897,14 +897,14 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 		model.NewCredentialToken,
 		func() time.Time { return at },
 	)
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User:     &model.User{Username: "behavior-port-user", Email: "behavior-port@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	login, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	login, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -918,7 +918,7 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 		t.Fatalf("MFA calls=%d session=%#v", mfa.calls, login.Session)
 	}
 
-	app := &App{authentication: service}
+	app := &App{authenticationService: service}
 	resolved, err := app.AuthenticateBearer(context.Background(), model.NewCredentialToken())
 	if err != nil {
 		t.Fatal(err)
@@ -937,7 +937,7 @@ type authenticationMFAVerifierFake struct {
 	afterVerify   func()
 }
 
-func (f *authenticationMFAVerifierFake) VerifyLogin(
+func (f *authenticationMFAVerifierFake) verifyLogin(
 	context.Context,
 	string,
 	string,
@@ -966,7 +966,7 @@ func (f *authenticationPATResolverFake) ResolveBearer(
 
 type discardAuthenticationMFAVerifier struct{}
 
-func (discardAuthenticationMFAVerifier) VerifyLogin(
+func (discardAuthenticationMFAVerifier) verifyLogin(
 	context.Context,
 	string,
 	string,
@@ -989,7 +989,7 @@ func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    "",
 		Password:   "present",
 		ClientType: model.SessionClientCLI,
@@ -1016,7 +1016,7 @@ func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    "missing@example.edu",
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -1033,14 +1033,14 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "policy-user", Email: "policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	service.accessPolicy = authenticationAccessPolicyFake{local: false}
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
 	})
 	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
@@ -1061,7 +1061,7 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			persistence := newAuthenticationStoreFake()
 			service := newTestAuthenticationService(t, persistence)
-			user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+			user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "disabled-user", Email: "disabled@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 			})
 			if err != nil {
@@ -1070,7 +1070,7 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 			persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
 			mfa := &authenticationMFAVerifierFake{recoveryErr: errors.New("disabled User has no active MFA recovery state")}
 			service.mfa = mfa
-			result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+			result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
 			})
 			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") || mfa.recoveryCalls != 0 || mfa.calls != 0 || len(persistence.sessions) != 0 {
@@ -1086,7 +1086,7 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 			persistence := newAuthenticationStoreFake()
 			service := newTestAuthenticationService(t, persistence)
 			const password = "CorrectHorseBatteryStaple1!"
-			user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+			user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "capacity-user", Email: "capacity-user@example.edu"}, Password: password,
 			})
 			if err != nil {
@@ -1111,13 +1111,13 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 				command.Password = strings.Repeat("x", service.hasher.maximumLength+1)
 			}
 			saturatePasswordWork(t, service.hasher)
-			result, err := service.login(context.Background(), Invocation{}, command)
+			result, err := service.Login(context.Background(), Invocation{}, command)
 			if result != nil || !apperror.Is(err, "service.busy") {
 				t.Fatalf("saturated login = %#v/%v, want service.busy", result, err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			result, err = service.login(ctx, Invocation{}, command)
+			result, err = service.Login(ctx, Invocation{}, command)
 			if result != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancelled login = %#v/%v", result, err)
 			}
@@ -1136,12 +1136,12 @@ func TestLocalUserCreationRejectsPasswordWorkBeforePersistence(t *testing.T) {
 	service := newTestAuthenticationService(t, persistence)
 	saturatePasswordWork(t, service.hasher)
 	command := CreateLocalUserCommand{User: &model.User{Username: "new-user", Email: "new-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!"}
-	if user, err := service.createLocalUser(context.Background(), command); user != nil || !apperror.Is(err, "service.busy") {
+	if user, err := service.CreateLocalUser(context.Background(), command); user != nil || !apperror.Is(err, "service.busy") {
 		t.Fatalf("saturated creation = %#v/%v", user, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if user, err := service.createLocalUser(ctx, command); user != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+	if user, err := service.CreateLocalUser(ctx, command); user != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled creation = %#v/%v", user, err)
 	}
 	if len(persistence.users) != 0 || len(persistence.passwords) != 0 || persistence.createdJob != nil {
@@ -1153,7 +1153,7 @@ func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testi
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 	const password = "CorrectHorseBatteryStaple1!"
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "rehash-capacity", Email: "rehash-capacity@example.edu"}, Password: password,
 	})
 	if err != nil {
@@ -1199,7 +1199,7 @@ func TestLoginRejectsDirectDesktopSessionIssuance(t *testing.T) {
 	t.Parallel()
 
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{LoginID: "user@example.edu",
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{LoginID: "user@example.edu",
 		Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientDesktop, Source: "127.0.0.1:3"})
 	if result != nil || !apperror.Is(err, "authentication.client_type.invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -1211,14 +1211,14 @@ func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testin
 
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "terminal-policy-user", Email: "terminal-policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	persistence.saveErr = store.ErrAuthenticationMethodDisabled
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.6",
 	})
 	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
@@ -1238,7 +1238,7 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 			persistence := newAuthenticationStoreFake()
 			service := newTestAuthenticationService(t, persistence)
 			const oldPassword = "CorrectHorseBatteryStaple1!"
-			user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+			user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 				User: &model.User{Username: "password-race", Email: "password-race@example.edu"}, Password: oldPassword,
 			})
 			if err != nil {
@@ -1261,7 +1261,7 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 				strength:    model.AuthenticationSingleFactor,
 				afterVerify: func() { persistence.passwords[user.ID.String()] = &replacement },
 			}
-			result, err := service.login(ctx, Invocation{}, LoginCommand{
+			result, err := service.Login(ctx, Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: oldPassword, ClientType: model.SessionClientWeb, Source: "192.0.2.10",
 			})
 			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
@@ -1283,7 +1283,7 @@ func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 	const password = "CorrectHorseBatteryStaple1!"
-	user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 		User: &model.User{Username: "removed-password", Email: "removed-password@example.edu"}, Password: password,
 	})
 	if err != nil {
@@ -1311,7 +1311,7 @@ func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 	const password = "CorrectHorseBatteryStaple1!"
-	user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 		User: &model.User{Username: "rehash-proof", Email: "rehash-proof@example.edu"}, Password: password,
 	})
 	if err != nil {
@@ -1354,7 +1354,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User:     &model.User{Username: "auth-user", Email: "auth-user@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
@@ -1371,7 +1371,7 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 		t.Fatalf("local user settings = %#v", persistence.createdSettings)
 	}
 
-	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Email,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI,
@@ -1417,14 +1417,14 @@ func TestLoginRejectsInvalidClientType(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User:     &model.User{Username: "client-type-user", Email: "client-type@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientType("pager"),
@@ -1444,13 +1444,13 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 	service.loginRateLimit.MaximumAttempts = 2
 	service.loginRateLimit.MaximumSourceAttempts = 100
 
-	_, _ = service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	_, _ = service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User:     &model.User{Username: "rate-user", Email: "rate-user@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
 
 	for attempt := 0; attempt < 2; attempt++ {
-		_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 			LoginID:    "rate-user",
 			Password:   "wrong-password-value",
 			ClientType: model.SessionClientCLI,
@@ -1461,7 +1461,7 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 			t.Fatalf("attempt %d: err = %v", attempt, err)
 		}
 	}
-	_, err := service.login(context.Background(), Invocation{}, LoginCommand{
+	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    "rate-user",
 		Password:   "wrong-password-value",
 		ClientType: model.SessionClientCLI,
@@ -1473,10 +1473,10 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 	}
 }
 
-func (discardAuthenticationMFAVerifier) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+func (discardAuthenticationMFAVerifier) recoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	return &model.UserMFARecovery{UserID: userID}, nil
 }
-func (f *authenticationMFAVerifierFake) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+func (f *authenticationMFAVerifierFake) recoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	f.recoveryCalls++
 	if f.recoveryErr != nil {
 		return nil, f.recoveryErr

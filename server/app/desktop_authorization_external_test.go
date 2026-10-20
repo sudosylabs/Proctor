@@ -28,7 +28,7 @@ func TestDesktopExternalAuthenticationStartUsesBoundTransactionOwner(t *testing.
 	service := newDesktopExternalAuthenticationFixture(t, transactions)
 	// The facade has only the external-authentication module. It cannot reach
 	// through a sibling's Store to initiate this purpose-specific handoff.
-	application := &App{externalAuthentication: service}
+	application := &App{externalAuthenticationService: service}
 	result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
 		ProviderID: "campus", Binding: binding, State: state, Source: "192.0.2.10",
 	})
@@ -75,7 +75,7 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 			service := newDesktopExternalAuthenticationFixture(t, &test.transactions)
 			provider := &recordingExternalProvider{}
 			service.registry = externalProviderSourceFake{provider: provider}
-			application := &App{externalAuthentication: service}
+			application := &App{externalAuthenticationService: service}
 			result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: test.binding, State: test.state, Source: "192.0.2.10",
 			})
@@ -124,7 +124,7 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 			service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{"campus": true},
 				providerModes: map[string]model.ProviderAdmissionMode{"campus": model.ProviderAdmissionInvitationRequired}}
 			service.audit, service.now = externalHandoffAudit{}, func() time.Time { return at }
-			application := &App{externalAuthentication: service}
+			application := &App{externalAuthenticationService: service}
 			result, err := application.CompleteExternalAuthentication(t.Context(), Invocation{}, CompleteExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: binding,
 			})

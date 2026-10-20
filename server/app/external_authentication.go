@@ -73,7 +73,7 @@ type externalProviderSource interface {
 }
 
 type externalInvitationAcceptor interface {
-	AcceptExternalIdentity(context.Context, *model.ExternalLoginState, *model.ExternalAuthenticationAssertion,
+	acceptExternalIdentity(context.Context, *model.ExternalLoginState, *model.ExternalAuthenticationAssertion,
 		store.AccessDeploymentCapabilities, model.RequestMetadata, string) (*store.ExternalIdentityInvitationAcceptanceResult, error)
 }
 
@@ -193,11 +193,7 @@ func newExternalAuthenticationService(
 	}, nil
 }
 
-func (a *App) ExternalAuthenticationProviders(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
-	return a.externalAuthentication.providers(ctx)
-}
-
-func (s *externalAuthenticationService) providers(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
+func (s *externalAuthenticationService) ExternalAuthenticationProviders(ctx context.Context) ([]model.ExternalAuthenticationProvider, error) {
 	providers, err := s.accessPolicy.AvailableExternalProviders(ctx, s.registry.Descriptors())
 	if err != nil {
 		return nil, authenticationUnavailable(err)
@@ -237,11 +233,7 @@ type BeginDesktopExternalAuthenticationCommand struct {
 	Source     string
 }
 
-func (a *App) BeginDesktopExternalAuthentication(ctx context.Context, _ Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
-	return a.externalAuthentication.beginDesktopAuthorization(ctx, command)
-}
-
-func (s *externalAuthenticationService) beginDesktopAuthorization(ctx context.Context, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+func (s *externalAuthenticationService) BeginDesktopExternalAuthentication(ctx context.Context, _ Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
 	target, err := s.desktopAuthorization.resolveExternalAuthentication(ctx, command.Binding, command.State)
 	if err != nil {
 		return nil, err
@@ -251,21 +243,21 @@ func (s *externalAuthenticationService) beginDesktopAuthorization(ctx context.Co
 		"", "", "", target.transactionID, nil)
 }
 
-func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
-	if err := requireStrongRecentSession(invocation.Principal(), a.externalAuthentication.now(), a.externalAuthentication.recentAuthenticationTTL); err != nil {
+func (s *externalAuthenticationService) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
+	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return nil, err
 	}
-	auditID, err := a.externalAuthentication.mutationAudit.Begin(ctx, invocation, model.ActionExternalIdentityManage,
+	auditID, err := s.mutationAudit.Begin(ctx, invocation, model.ActionExternalIdentityManage,
 		model.Resource{Type: model.ResourceUser, ID: invocation.Principal().UserID.String()}, "connect_provider",
 		map[string]any{"provider": strings.ToLower(strings.TrimSpace(command.ProviderID))}, nil)
 	if err != nil {
 		return nil, err
 	}
-	start, appErr := a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
+	start, appErr := s.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
 		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeConnect,
 		invocation.Principal().UserID, auditID, "", "", nil)
 	if appErr != nil {
-		if failErr := a.externalAuthentication.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
+		if failErr := s.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
 			return nil, failErr
 		}
 	}
@@ -290,12 +282,12 @@ var authenticationMethodStoreErrors = apperror.StoreTable{
 	Unavailable: "authentication.method.unavailable",
 }
 
-func (a *App) BeginExternalAuthentication(
+func (s *externalAuthenticationService) BeginExternalAuthentication(
 	ctx context.Context,
 	_ Invocation,
 	command BeginExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationStart, error) {
-	result, appErr := a.externalAuthentication.beginWithInvitationClaim(
+	result, appErr := s.beginWithInvitationClaim(
 		ctx,
 		command.ProviderID,
 		command.ReturnTo,
@@ -441,12 +433,12 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}, nil
 }
 
-func (a *App) CompleteExternalAuthentication(
+func (s *externalAuthenticationService) CompleteExternalAuthentication(
 	ctx context.Context,
 	invocation Invocation,
 	command CompleteExternalAuthenticationCommand,
 ) (*model.ExternalAuthenticationCompletion, error) {
-	result, appErr := a.externalAuthentication.complete(
+	result, appErr := s.complete(
 		ctx,
 		command.ProviderID,
 		command.Binding,
@@ -601,7 +593,7 @@ func (s *externalAuthenticationService) complete(
 			}
 			return nil, apperror.New("authentication.external.account_not_linked")
 		}
-		result, acceptErr := s.invitationAcceptor.AcceptExternalIdentity(ctx, state, assertion,
+		result, acceptErr := s.invitationAcceptor.acceptExternalIdentity(ctx, state, assertion,
 			accessDeploymentCapabilities(s.capabilities.Snapshot()), metadata, method)
 		if acceptErr != nil {
 			if errors.Is(acceptErr, store.ErrAuthenticationMethodDisabled) {

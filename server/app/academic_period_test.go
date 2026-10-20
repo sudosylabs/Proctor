@@ -90,7 +90,7 @@ func TestAcademicPeriodCreateRejectsInvalidHalfOpenIntervalBeforeAudit(t *testin
 		&academicPeriodAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()}, time.Now, model.NewId,
 	)
-	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "invalid", DisplayName: "Invalid", StartAt: 200, EndAt: 200})
+	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "invalid", DisplayName: "Invalid", StartAt: 200, EndAt: 200})
 	if !apperror.Is(err, "academic_period.invalid") {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
 	persistence := &academicPeriodStoreFake{events: &events, current: period}
 	service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	name := "2026-revised"
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID, Name: &name})
+	updated, err := service.UpdateAcademicPeriod(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID, Name: &name})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestAcademicPeriodCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 	t.Parallel()
 	events := []string{}
 	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events}, &academicPeriodAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
-	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
+	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -142,15 +142,15 @@ func TestAcademicPeriodLookupOperationsAuthorizeBeforeReading(t *testing.T) {
 	t.Parallel()
 	operations := map[string]func(*academicPeriodService) error{
 		"get": func(service *academicPeriodService) error {
-			_, err := service.Get(context.Background(), Invocation{}, GetAcademicPeriodQuery{ID: model.NewAcademicPeriodID()})
+			_, err := service.GetAcademicPeriod(context.Background(), Invocation{}, GetAcademicPeriodQuery{ID: model.NewAcademicPeriodID()})
 			return err
 		},
 		"update": func(service *academicPeriodService) error {
-			_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
+			_, err := service.UpdateAcademicPeriod(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
 			return err
 		},
 		"archive": func(service *academicPeriodService) error {
-			return service.Archive(context.Background(), Invocation{}, ArchiveAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
+			return service.ArchiveAcademicPeriod(context.Background(), Invocation{}, ArchiveAcademicPeriodCommand{ID: model.NewAcademicPeriodID()})
 		},
 	}
 	for name, operation := range operations {
@@ -175,7 +175,7 @@ func TestAcademicPeriodCreateConflictCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events, createErr: store.NewErrConflict("academic_period", "academic_periods_institution_id_name_key", nil)}, &academicPeriodAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
-	_, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
+	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewId(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
 	if !apperror.Is(err, "academic_period.conflict") || auditor.failCode != "academic_period.conflict" {
 		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
 	}
@@ -196,7 +196,7 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 		func() time.Time { return time.UnixMilli(500) }, func() string { return periodID },
 	)
 
-	got, err := service.Create(context.Background(), Invocation{}, CreateAcademicPeriodCommand{
+	got, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{
 		OwnerType: string(model.ResourceInstitution), OwnerID: institutionID,
 		Name: "2026-2027", DisplayName: "2026-2027", StartAt: 100, EndAt: 200,
 	})
@@ -236,21 +236,21 @@ func TestAcademicPeriodCreateIdempotencyBindsCanonicalOwner(t *testing.T) {
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	institutionID := model.NewInstitutionID().String()
 	institution := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(institution).Create(context.Background(), invocation, CreateAcademicPeriodCommand{
+	if _, err := makeService(institution).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: " institution ", OwnerID: " " + institutionID + " ",
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	canonical := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(canonical).Create(context.Background(), invocation, CreateAcademicPeriodCommand{
+	if _, err := makeService(canonical).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: string(model.ResourceInstitution), OwnerID: institutionID,
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	unit := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(unit).Create(context.Background(), invocation, CreateAcademicPeriodCommand{
+	if _, err := makeService(unit).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: string(model.ResourceAcademicUnit), OwnerID: model.NewAcademicUnitID().String(),
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
 	}); err != nil {

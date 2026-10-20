@@ -56,6 +56,8 @@ type accountTokenService struct {
 	publicURL    string
 	newToken     func() string
 	now          func() time.Time
+
+	administration userEmailAdministration
 }
 
 func newAccountTokenService(

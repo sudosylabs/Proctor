@@ -68,7 +68,7 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			case "commit failure":
 				persistence.err = errors.New("atomic reset failed")
 			}
-			err := service.ResetUser(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+			err := service.ResetUserMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
 			if name != "success" {
 				if err == nil || effects.userID != "" {
 					t.Fatal("failed reset returned success or emitted post-commit effects")
@@ -96,17 +96,17 @@ func TestMFARestrictedContextSurvivesDisabledService(t *testing.T) {
 	base := &mfaApplicationStoreFake{}
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.mechanics.settings.Enabled = false
-	status, err := service.GetStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	status, err := service.GetMFAStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), GetMFAStatusQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.ServiceEnabled || !status.MFARecoveryRequired || status.AuthenticationMethod != "password" {
 		t.Fatal("disabled service concealed mandatory reenrollment")
 	}
-	if _, err := service.Setup(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{}); !apperror.Is(err, "authentication.mfa.disabled") {
+	if _, err := service.SetupMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{}); !apperror.Is(err, "authentication.mfa.disabled") {
 		t.Fatalf("disabled setup = %v", err)
 	}
-	if _, err := service.Challenge(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"}); !apperror.Is(err, "authentication.session_required") {
+	if _, err := service.ChallengeMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"}); !apperror.Is(err, "authentication.session_required") {
 		t.Fatalf("restricted challenge = %v", err)
 	}
 }
@@ -118,8 +118,8 @@ func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.security.rateLimit.MaximumAttempts = 1
 	invocation := NewInvocation(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
-	_, _ = service.Challenge(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
-	_, err := service.Challenge(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})
+	_, _ = service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
+	_, err := service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})
 	if !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("unbounded factor challenge: %v", err)
 	}

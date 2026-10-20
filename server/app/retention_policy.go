@@ -58,29 +58,7 @@ func newRetentionPolicyService(
 }
 
 // GetRetentionPolicy returns the current administrative policy.
-func (a *App) GetRetentionPolicy(
-	ctx context.Context,
-	invocation Invocation,
-) (*model.RetentionPolicy, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention_policy.unavailable")
-	}
-	return a.retentionPolicy.Read(ctx, invocation)
-}
-
-// ReplaceRetentionPolicy replaces the current policy.
-func (a *App) ReplaceRetentionPolicy(
-	ctx context.Context,
-	invocation Invocation,
-	command ReplaceRetentionPolicyCommand,
-) (*model.RetentionPolicy, error) {
-	if a == nil || a.retentionPolicy == nil {
-		return nil, apperror.New("retention_policy.unavailable")
-	}
-	return a.retentionPolicy.Replace(ctx, invocation, command)
-}
-
-func (s *retentionPolicyService) Read(
+func (s *retentionPolicyService) GetRetentionPolicy(
 	ctx context.Context,
 	invocation Invocation,
 ) (*model.RetentionPolicy, error) {
@@ -95,7 +73,8 @@ func (s *retentionPolicyService) Read(
 	return policy.Clone(), nil
 }
 
-func (s *retentionPolicyService) Replace(
+// ReplaceRetentionPolicy replaces the current policy.
+func (s *retentionPolicyService) ReplaceRetentionPolicy(
 	ctx context.Context,
 	invocation Invocation,
 	command ReplaceRetentionPolicyCommand,

@@ -38,6 +38,14 @@ type nopOperationalRecorder struct{}
 
 func (nopOperationalRecorder) RecordOperationalEvent(OperationalEvent) {}
 
+// recordOperational reports one use-case outcome to the observability seam.
+// A service built without a recorder (focused unit tests) records nothing.
+func recordOperational(recorder OperationalRecorder, subsystem, event string, err error) {
+	if recorder != nil {
+		recorder.RecordOperationalEvent(operationalEvent(subsystem, event, err))
+	}
+}
+
 func operationalEvent(subsystem, event string, err error) OperationalEvent {
 	return OperationalEvent{subsystem: subsystem, event: event, outcome: operationalOutcome(err)}
 }

@@ -428,7 +428,7 @@ func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testin
 	}
 	woke := 0
 	service.wake = func() { woke++ }
-	view, err := service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	view, err := service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Metrics(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
+	if _, err = service.GetMailMetrics(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
 		t.Fatal(err)
 	}
 	if len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionMailView {
@@ -497,25 +497,25 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	pat.AuthenticatedAt = time.Time{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, err = service.SendTest(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
+	if _, err = service.SendTestMail(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("PAT error = %v", err)
 	}
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, err = service.SendTest(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(err, "authentication.reauthentication_required") {
+	if _, err = service.SendTestMail(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(err, "authentication.reauthentication_required") {
 		t.Fatalf("stale Session error = %v", err)
 	}
 	user.EmailVerified = false
-	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.recipient_unverified") {
+	if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.recipient_unverified") {
 		t.Fatalf("unverified error = %v", err)
 	}
 	user.EmailVerified = true
 	for index := 1; index < mailTestRateLimitMaximum; index++ {
-		if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
+		if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err = service.SendTest(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.test.rate_limited") {
+	if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.test.rate_limited") {
 		t.Fatalf("rate limit error = %v", err)
 	}
 }
@@ -530,12 +530,12 @@ func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, appErr := service.List(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
+	page, appErr := service.ListMailDeliveries(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
 	if appErr != nil || len(page.Items) != 1 || persistence.lists != 1 || authorizer.actions[0] != model.ActionMailView {
 		t.Fatalf("List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	}
 	authorizer.err = apperror.New("authorization.denied")
-	if _, appErr = service.Get(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authorization.denied") || persistence.gets != 0 {
+	if _, appErr = service.GetMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authorization.denied") || persistence.gets != 0 {
 		t.Fatalf("denied Get() err=%v gets=%d", appErr, persistence.gets)
 	}
 	encoded, _ := json.Marshal(page)
@@ -561,15 +561,15 @@ func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testin
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
-	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.token_invalid") || persistence.gets != 0 {
+	if _, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.token_invalid") || persistence.gets != 0 {
 		t.Fatalf("Cancel(PAT) err=%v gets=%d", appErr, persistence.gets)
 	}
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, appErr := service.Cancel(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
+	if _, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
 		t.Fatalf("Cancel(stale) err=%v gets=%d", appErr, persistence.gets)
 	}
-	view, appErr := service.Cancel(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
+	view, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
 	if appErr != nil || view.State != model.MailDeliveryCanceled || persistence.mutates != 1 || auditor.beginCalls != 1 {
 		t.Fatalf("Cancel() view=%#v err=%v mutates=%d audit=%d", view, appErr, persistence.mutates, auditor.beginCalls)
 	}

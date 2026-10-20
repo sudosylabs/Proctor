@@ -86,10 +86,10 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	adminInvocation := application.NewInvocation(*adminPrincipal,
 		model.RequestMetadata{RequestID: "mail-cert-admin", IPAddress: "127.0.0.1"})
 
-	credentialUser, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	credentialUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-credential", Email: "mail-cert-credential@example.edu",
 		DisplayName: "Mail Credential Candidate", Locale: "en", Timezone: "UTC",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -110,10 +110,10 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		t.Fatal(appErr)
 	}
 
-	securityUser, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	securityUser, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-security", Email: "mail-cert-security@example.edu",
 		DisplayName: "Mail Security Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
@@ -123,10 +123,10 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		t.Fatal(appErr)
 	}
 
-	candidate, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+	candidate, appErr := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-candidate", Email: "mail-cert-candidate@example.edu",
 		DisplayName: "Mail Fanout Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
-	}, password)
+	}, Password: password})
 	if appErr != nil {
 		t.Fatal(appErr)
 	}

@@ -66,12 +66,12 @@ type CurrentUserContextView struct {
 	CurrentDesktopRegistrationID model.DesktopRegistrationID
 }
 
-func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) (*CurrentUserContextView, error) {
+func (s *userProfileService) GetCurrentUserContext(ctx context.Context, invocation Invocation) (*CurrentUserContextView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return nil, apperror.New("authentication.token_invalid")
 	}
-	value, err := a.userProfiles.users.GetCurrentContext(ctx, principal.UserID, 21)
+	value, err := s.users.GetCurrentContext(ctx, principal.UserID, 21)
 	if err != nil {
 		return nil, userStoreErrors.Translate(err)
 	}
@@ -115,11 +115,7 @@ func newUserProfileService(users userProfileStore, authorization userProfileAuth
 	return &userProfileService{users: users, authorization: authorization, audit: audit, now: now}
 }
 
-func (a *App) SearchUsers(ctx context.Context, invocation Invocation, query SearchUsersQuery) ([]*model.User, error) {
-	return a.userProfiles.Search(ctx, invocation, query)
-}
-
-func (s *userProfileService) Search(ctx context.Context, invocation Invocation, query SearchUsersQuery) ([]*model.User, error) {
+func (s *userProfileService) SearchUsers(ctx context.Context, invocation Invocation, query SearchUsersQuery) ([]*model.User, error) {
 	visibility, err := s.authorization.AuthorizeSearch(ctx, invocation)
 	if err != nil {
 		return nil, err
@@ -141,11 +137,7 @@ func (s *userProfileService) Search(ctx context.Context, invocation Invocation, 
 	return users, nil
 }
 
-func (a *App) GetUserProfile(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {
-	return a.userProfiles.Get(ctx, invocation, query)
-}
-
-func (s *userProfileService) Get(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {
+func (s *userProfileService) GetUserProfile(ctx context.Context, invocation Invocation, query GetUserProfileQuery) (*model.User, error) {
 	id := query.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -193,11 +185,7 @@ func scopedUserProjection(user *model.User) *model.User {
 	return &projected
 }
 
-func (a *App) UpdateUserProfile(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
-	return a.userProfiles.Update(ctx, invocation, command)
-}
-
-func (s *userProfileService) Update(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
+func (s *userProfileService) UpdateUserProfile(ctx context.Context, invocation Invocation, command UpdateUserProfileCommand) (*model.User, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")

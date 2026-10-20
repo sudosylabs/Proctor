@@ -72,7 +72,7 @@ type failingLoginMFAVerifier struct {
 	discardAuthenticationMFAVerifier
 }
 
-func (failingLoginMFAVerifier) VerifyLogin(context.Context, string, string, time.Time) (model.AuthenticationStrength, int64, error) {
+func (failingLoginMFAVerifier) verifyLogin(context.Context, string, string, time.Time) (model.AuthenticationStrength, int64, error) {
 	return "", 0, apperror.New("authentication.mfa.code_invalid")
 }
 
@@ -83,7 +83,7 @@ func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*au
 		discardAuthenticationPATResolver{}, model.NewCredentialToken, time.Now)
 	audit := &localLoginAuditorFake{}
 	service.loginAudit = audit
-	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "audited-user", Email: "audited-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func TestLocalLoginSuccessIsDurablyAuditedWithActorAndSession(t *testing.T) {
 	t.Parallel()
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 
-	result, err := service.login(context.Background(), localLoginInvocation(), LoginCommand{
+	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.10:1",
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func TestLocalLoginFailuresAreDurablyAudited(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			service, persistence, audit, user := newLocalLoginAuditFixture(t, test.mfa)
-			_, err := service.login(context.Background(), localLoginInvocation(), LoginCommand{
+			_, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 				LoginID: test.loginID, Password: test.password, ClientType: model.SessionClientCLI, Source: "192.0.2.10:2",
 			})
 			if !apperror.Is(err, test.code) {
@@ -168,10 +168,10 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 	service.loginRateLimit.MaximumAttempts = 1
 	command := LoginCommand{LoginID: user.Email, Password: "incorrect password", ClientType: model.SessionClientCLI, Source: "192.0.2.10:3"}
-	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.credentials_invalid") {
+	if _, err := service.Login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("first err = %v", err)
 	}
-	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.rate_limited") {
+	if _, err := service.Login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("limited err = %v", err)
 	}
 	if len(audit.terminal) != 1 || audit.terminal[0].errorCode != "authentication.credentials_invalid" {
@@ -184,7 +184,7 @@ func TestLocalLoginRevokesSessionWhenSuccessAuditCannotComplete(t *testing.T) {
 	service, persistence, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 	audit.completeErr = apperror.New("audit.unavailable")
 
-	result, err := service.login(context.Background(), localLoginInvocation(), LoginCommand{
+	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "192.0.2.10:4",
 	})
 	if result != nil || !apperror.Is(err, "audit.unavailable") {

@@ -88,11 +88,7 @@ func newAcademicUnitMemberService(persistence academicUnitMemberStore, users aca
 		mail: mail, effects: effects, now: now, newID: newID}
 }
 
-func (a *App) ListAcademicUnitMembers(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
-	return a.academicUnitMembers.List(ctx, invocation, query)
-}
-
-func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberService) ListAcademicUnitMembers(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
 	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err
@@ -107,11 +103,7 @@ func (s *academicUnitMemberService) List(ctx context.Context, invocation Invocat
 	return members, nil
 }
 
-func (a *App) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	return a.academicUnitMembers.Create(ctx, invocation, command)
-}
-
-func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberService) CreateAcademicUnitMember(ctx context.Context, invocation Invocation, command CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	resource, err := s.authorizeUnit(ctx, invocation, command.AcademicUnitID, model.ActionAcademicUnitMembersManage)
 	if err != nil {
 		return nil, err
@@ -194,11 +186,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	return result, err
 }
 
-func (a *App) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
-	return a.academicUnitMembers.End(ctx, invocation, command)
-}
-
-func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberService) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "academic_unit_member_id")
@@ -315,11 +303,7 @@ type AcademicUnitMemberPage struct {
 	ActiveAt int64
 }
 
-func (a *App) ListAcademicUnitMembersPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
-	return a.academicUnitMembers.ListPage(ctx, invocation, query)
-}
-
-func (s *academicUnitMemberService) ListPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
+func (s *academicUnitMemberService) ListAcademicUnitMembersPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
 	resource, err := s.authorizeUnit(ctx, invocation, query.AcademicUnitID, model.ActionAcademicUnitMembersView)
 	if err != nil {
 		return nil, err

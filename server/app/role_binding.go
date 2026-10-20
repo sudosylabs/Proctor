@@ -111,11 +111,7 @@ func newRoleBindingService(
 	}
 }
 
-func (a *App) ListRoleBindings(ctx context.Context, invocation Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
-	return a.roleBindings.List(ctx, invocation, query)
-}
-
-func (s *roleBindingService) List(ctx context.Context, invocation Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
+func (s *roleBindingService) ListRoleBindings(ctx context.Context, invocation Invocation, query ListRoleBindingsQuery) ([]*model.RoleBinding, error) {
 	userID := strings.TrimSpace(query.UserID)
 	scopeID := strings.TrimSpace(query.ScopeID)
 	switch {
@@ -152,11 +148,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 	}
 }
 
-func (a *App) CreateRoleBinding(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
-	return a.roleBindings.Create(ctx, invocation, command)
-}
-
-func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
+func (s *roleBindingService) CreateRoleBinding(ctx context.Context, invocation Invocation, command CreateRoleBindingCommand) (*model.RoleBinding, error) {
 	userID, err := model.ParseUserID(strings.TrimSpace(command.UserID))
 	if err != nil {
 		return nil, apperror.New("request.invalid").WithField("field", "user_id")
@@ -285,11 +277,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	return saved, nil
 }
 
-func (a *App) EndRoleBinding(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
-	return a.roleBindings.End(ctx, invocation, command)
-}
-
-func (s *roleBindingService) End(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
+func (s *roleBindingService) EndRoleBinding(ctx context.Context, invocation Invocation, command EndRoleBindingCommand) (*model.RoleBinding, error) {
 	id := command.ID
 	if !id.IsValid() {
 		return nil, apperror.New("request.invalid").WithField("field", "role_binding_id")

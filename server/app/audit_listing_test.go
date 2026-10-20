@@ -59,7 +59,7 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 			AllowedActions:      []string{string(model.ActionClassMembersManage)},
 		},
 	})
-	got, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestInstitutionAcademicAuditListingRetainsAcademicOnlyConstraint(t *testing
 			AllowedActions:          []string{string(model.ActionAcademicUnitManage)},
 		},
 	})
-	got, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{
 		events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	got, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
+	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testin
 		list:   []*model.AuditEvent{{ID: model.NewAuditEventID(), CreatedAt: model.TimeFromMillis(100)}},
 	}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{events: &events})
-	_, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
+	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("error = %v, want authorization.denied", err)
 	}
@@ -153,7 +153,7 @@ func TestAuditListingRejectsInvalidQuery(t *testing.T) {
 		&auditListingStoreFake{events: &events},
 		&auditListingAuthorizerFake{events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
-	_, err := service.List(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 500})
+	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 500})
 	if !apperror.Is(err, "audit.query.invalid") {
 		t.Fatalf("error = %v", err)
 	}

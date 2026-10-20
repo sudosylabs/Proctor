@@ -44,21 +44,10 @@ type mailKeyInspector interface {
 	InspectKeyState(context.Context) (*store.MailKeyState, error)
 }
 
-func (a *App) StartMailRekey(ctx context.Context, invocation Invocation, retiringKeyID string) (MailRekeyView, error) {
-	if a == nil || a.mail == nil {
-		return MailRekeyView{}, apperror.New("mail.unavailable")
-	}
-	return a.mail.StartRekey(ctx, invocation, retiringKeyID)
-}
-
-func (a *App) GetMailKeyState(ctx context.Context, invocation Invocation) (MailKeyStateView, error) {
-	if a == nil || a.mail == nil {
+func (s *mailService) GetMailKeyState(ctx context.Context, invocation Invocation) (MailKeyStateView, error) {
+	if s == nil {
 		return MailKeyStateView{}, apperror.New("mail.unavailable")
 	}
-	return a.mail.KeyState(ctx, invocation)
-}
-
-func (s *mailService) KeyState(ctx context.Context, invocation Invocation) (MailKeyStateView, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailKeyStateView{}, err
 	}
@@ -83,7 +72,10 @@ func (s *mailService) KeyState(ctx context.Context, invocation Invocation) (Mail
 	return view, nil
 }
 
-func (s *mailService) StartRekey(ctx context.Context, invocation Invocation, retiringKeyID string) (MailRekeyView, error) {
+func (s *mailService) StartMailRekey(ctx context.Context, invocation Invocation, retiringKeyID string) (MailRekeyView, error) {
+	if s == nil {
+		return MailRekeyView{}, apperror.New("mail.unavailable")
+	}
 	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
 		return MailRekeyView{}, err
 	}

@@ -230,7 +230,7 @@ func (effects examIntegrityReviewRealtimeEffects) publishManagerBoardInvalidatio
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return effects.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func examIntegrityReviewEventFact(result examreview.Result) apprealtime.ExamIntegrityReviewEventFact {
@@ -245,7 +245,7 @@ func (effects examIntegrityReviewRealtimeEffects) ReviewChanged(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
 }
 
 func (effects examIntegrityReviewRealtimeEffects) ReviewFinalized(ctx context.Context, result examreview.Result) error {
@@ -253,7 +253,7 @@ func (effects examIntegrityReviewRealtimeEffects) ReviewFinalized(ctx context.Co
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, event), effects.publishManagerBoardInvalidation(ctx, result))
 }
 
 func (effects examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Context, result examreview.Result) error {
@@ -270,8 +270,8 @@ func (effects examIntegrityReviewRealtimeEffects) ResultReleased(ctx context.Con
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, manager), effects.realtime.Publish(ctx, candidate),
-		effects.realtime.Publish(ctx, activity), effects.publishManagerBoardInvalidation(ctx, result))
+	return errors.Join(effects.realtime.PublishRealtimeEvent(ctx, manager), effects.realtime.PublishRealtimeEvent(ctx, candidate),
+		effects.realtime.PublishRealtimeEvent(ctx, activity), effects.publishManagerBoardInvalidation(ctx, result))
 }
 
 func (effects examIntegrityReviewRealtimeEffects) Report(ctx context.Context, operation string, err error) {

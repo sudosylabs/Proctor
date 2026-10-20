@@ -64,7 +64,7 @@ func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	t.Parallel()
 	events := []string{}
 	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewId)
-	_, err := service.Get(context.Background(), Invocation{}, GetClassQuery{ID: model.NewClassID()})
+	_, err := service.GetClass(context.Background(), Invocation{}, GetClassQuery{ID: model.NewClassID()})
 	if !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -89,7 +89,7 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	}
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
 	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
-	updated, err := service.Update(context.Background(), Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
+	updated, err := service.UpdateClass(context.Background(), Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,11 +112,11 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 		run  func(*classService) error
 	}{
 		{name: "update", run: func(service *classService) error {
-			_, err := service.Update(context.Background(), Invocation{}, UpdateClassCommand{ID: model.NewClassID()})
+			_, err := service.UpdateClass(context.Background(), Invocation{}, UpdateClassCommand{ID: model.NewClassID()})
 			return err
 		}},
 		{name: "archive", run: func(service *classService) error {
-			return service.Archive(context.Background(), Invocation{}, ArchiveClassCommand{ID: model.NewClassID()})
+			return service.ArchiveClass(context.Background(), Invocation{}, ArchiveClassCommand{ID: model.NewClassID()})
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	levelID := model.NewId()
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewId)
-	_, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
+	_, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewId(), Name: "class-a", DisplayName: "Class A"})
 	if !apperror.Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
 		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
 	}
@@ -151,7 +151,7 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	created := &model.Class{ID: model.ClassID(classID), ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.AcademicPeriodID(periodID)}
 	persistence := &classStoreFake{events: &events, created: created}
 	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
-	got, err := service.Create(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
+	got, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
 	if err != nil || got != created {
 		t.Fatalf("Create() = %#v, %v", got, err)
 	}

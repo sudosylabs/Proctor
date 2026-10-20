@@ -83,9 +83,9 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := primary.App.CreateLocalUser(ctx, &model.User{
+	user, err := primary.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-two-node-user", Email: "settings-two-node-user@example.edu",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,9 +223,9 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		t.Fatal(err)
 	}
 	const password = "correct horse battery staple"
-	user, err := helper.App.CreateLocalUser(ctx, &model.User{
+	user, err := helper.App.CreateLocalUser(ctx, application.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-unknown-user", Email: "settings-unknown-user@example.edu",
-	}, password)
+	}, Password: password})
 	if err != nil {
 		t.Fatal(err)
 	}

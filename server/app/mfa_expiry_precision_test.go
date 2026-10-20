@@ -54,7 +54,7 @@ func TestMFAActivationUsesNativeExclusiveDeadline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = service.Activate(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ActivateMFACommand{Code: code})
+			_, err = service.ActivateMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ActivateMFACommand{Code: code})
 			if !test.valid {
 				if !apperror.Is(err, "authentication.mfa.code_invalid") || persistence.activation != nil || len(mailer.requests) != 0 {
 					t.Fatalf("expired activation: error=%v mutation=%v notices=%d", err, persistence.activation != nil, len(mailer.requests))

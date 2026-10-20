@@ -178,21 +178,21 @@ func (e examRealtimeEffects) Created(ctx context.Context, examID model.ExamID) e
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) DraftUpdated(ctx context.Context, examID model.ExamID, revision int64) error {
 	event, err := apprealtime.NewExamDraftUpdatedEvent(examID, revision)
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) Archived(ctx context.Context, examID model.ExamID, revision int64, archivedAt time.Time) error {
 	event, err := apprealtime.NewExamArchivedEvent(examID, revision, archivedAt)
 	if err != nil {
 		return err
 	}
-	return errors.Join(e.realtime.Publish(ctx, event), e.collections.ExamArchived(ctx, examID))
+	return errors.Join(e.realtime.PublishRealtimeEvent(ctx, event), e.collections.ExamArchived(ctx, examID))
 }
 func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.ExamID, userID model.UserID, present bool, revision int64, changedAt time.Time) error {
 	event, err := apprealtime.NewExamManagerChangedEvent(examID, userID, present, revision, changedAt)
@@ -200,14 +200,14 @@ func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.Ex
 		return err
 	}
 	e.realtime.InvalidateAuthorization(ctx, userID.String())
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) OwnerTransferred(ctx context.Context, examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) error {
 	event, err := apprealtime.NewExamOwnerTransferredEvent(examID, ownerID, revision, changedAt)
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return e.realtime.PublishRealtimeEvent(ctx, event)
 }
 func (e examRealtimeEffects) Report(ctx context.Context, operation string, err error) {
 	e.realtime.reportTransientFailure(ctx, operation, err)

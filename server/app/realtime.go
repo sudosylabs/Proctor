@@ -61,19 +61,21 @@ func newRealtimeServiceWithDelivery(
 	}, nil
 }
 
-// SetClusterFanout attaches the composition adapter and registers peer
-// handlers. Peer handlers apply only local effects so Broadcast never loops.
-func (s *realtimeService) SetClusterFanout(fanout apprealtime.ClusterFanout) error {
+// AttachRealtimeClusterFanout wires the composition-owned cluster adapter and
+// registers peer handlers. It must be called once before the node becomes
+// ready. Peer handlers apply only local effects so Broadcast never loops.
+func (s *realtimeService) AttachRealtimeClusterFanout(fanout apprealtime.ClusterFanout) error {
 	return s.delivery.SetClusterFanout(fanout)
 }
 
-func (s *realtimeService) SetSink(sink apprealtime.Sink) error {
+func (s *realtimeService) AttachRealtimeSink(sink apprealtime.Sink) error {
 	return s.delivery.SetSink(sink)
 }
 
-// Publish delivers a transport-neutral event locally first, then fans it out
-// to peers best-effort. Callers must invoke this only after durable commit.
-func (s *realtimeService) Publish(ctx context.Context, event apprealtime.RealtimeEvent) error {
+// PublishRealtimeEvent delivers a transport-neutral event locally first, then
+// fans it out to peers best-effort. Callers must invoke this only after
+// durable commit.
+func (s *realtimeService) PublishRealtimeEvent(ctx context.Context, event apprealtime.RealtimeEvent) error {
 	err := s.delivery.Publish(ctx, event)
 	if err == nil {
 		return nil
@@ -141,10 +143,10 @@ func (s *realtimeService) SessionsRevoked(
 		managerEvent, managerErr := apprealtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
 		publishErr := errors.Join(candidateErr, managerErr)
 		if candidateErr == nil {
-			publishErr = errors.Join(publishErr, s.Publish(ctx, candidateEvent))
+			publishErr = errors.Join(publishErr, s.PublishRealtimeEvent(ctx, candidateEvent))
 		}
 		if managerErr == nil {
-			publishErr = errors.Join(publishErr, s.Publish(ctx, managerEvent))
+			publishErr = errors.Join(publishErr, s.PublishRealtimeEvent(ctx, managerEvent))
 		}
 		publishErr = errors.Join(publishErr, s.InvalidateCurrentUserContext(ctx, target.CandidateUserID))
 		if publishErr != nil {
@@ -171,7 +173,7 @@ func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID st
 		candidateEvent, candidateErr := apprealtime.NewCandidateExamActivityChangedEvent(parsed)
 		err = errors.Join(candidateErr, s.InvalidateCurrentUserContext(ctx, parsed))
 		if candidateErr == nil {
-			err = errors.Join(err, s.Publish(ctx, candidateEvent))
+			err = errors.Join(err, s.PublishRealtimeEvent(ctx, candidateEvent))
 		}
 	}
 	if err != nil {
@@ -184,7 +186,7 @@ func (s *realtimeService) InvalidateCurrentUserContext(ctx context.Context, user
 	if err != nil {
 		return err
 	}
-	return s.Publish(ctx, event)
+	return s.PublishRealtimeEvent(ctx, event)
 }
 
 var _ authenticationSecurityEffects = (*realtimeService)(nil)
@@ -205,24 +207,6 @@ func invalidRealtimeRequest(field string) error {
 
 func internalRealtimeError(err error) error {
 	return apperror.New("websocket.internal").Wrap(err)
-}
-
-func (a *App) AttachRealtimeSink(sink apprealtime.Sink) error {
-	return a.realtime.SetSink(sink)
-}
-
-// AttachRealtimeClusterFanout wires the composition-owned cluster adapter and
-// registers peer handlers. It must be called once before the node becomes ready.
-func (a *App) AttachRealtimeClusterFanout(fanout apprealtime.ClusterFanout) error {
-	return a.realtime.SetClusterFanout(fanout)
-}
-
-// PublishRealtimeEvent publishes a transport-neutral application event after
-// durable commit. Prefer this over any transport-shaped construction.
-func (a *App) PublishRealtimeEvent(ctx context.Context, event apprealtime.RealtimeEvent) error {
-	err := a.realtime.Publish(ctx, event)
-	a.recordOperational("realtime", "publish", err)
-	return err
 }
 
 func (a *App) AuthorizeWebSocketSubscription(
@@ -263,7 +247,7 @@ func (a *App) ValidateWebSocketPrincipal(
 	ctx context.Context,
 	principal model.Principal,
 ) error {
-	err := a.authentication.ValidatePrincipal(ctx, principal)
+	err := a.authenticationService.ValidatePrincipal(ctx, principal)
 	a.recordOperational("realtime", "principal_validate", err)
 	return err
 }

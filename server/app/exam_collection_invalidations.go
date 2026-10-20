@@ -50,7 +50,7 @@ func (effects examCollectionInvalidationEffects) CandidateActivityChangedForSitt
 				errs = append(errs, eventErr)
 				continue
 			}
-			errs = append(errs, effects.realtime.Publish(ctx, event))
+			errs = append(errs, effects.realtime.PublishRealtimeEvent(ctx, event))
 		}
 		if len(candidateIDs) < examCollectionInvalidationPageSize {
 			return errors.Join(errs...)
@@ -71,7 +71,7 @@ func (effects examCollectionInvalidationEffects) SittingBoardChanged(
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return effects.realtime.PublishRealtimeEvent(ctx, event)
 }
 
 func (effects examCollectionInvalidationEffects) ExamArchived(

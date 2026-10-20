@@ -22,7 +22,7 @@ import (
 func TestRetentionPolicyReadAuthorizesExactInstitutionAndReturnsCopy(t *testing.T) {
 	t.Parallel()
 	fixture := newRetentionPolicyFixture(t)
-	application := &App{retentionPolicy: fixture.service}
+	application := &App{retentionPolicyService: fixture.service}
 	result, err := application.GetRetentionPolicy(t.Context(), fixture.invocation)
 	if err != nil || result == nil || !reflect.DeepEqual(result, fixture.policies.policy) {
 		t.Fatalf("GetRetentionPolicy = %#v, %v", result, err)
@@ -58,7 +58,7 @@ func TestRetentionPolicyReadRejectsUnavailableOrForeignFacts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newRetentionPolicyFixture(t)
 			test.alter(&fixture)
-			result, err := fixture.service.Read(t.Context(), fixture.invocation)
+			result, err := fixture.service.GetRetentionPolicy(t.Context(), fixture.invocation)
 			if result != nil || !apperror.Is(err, "retention_policy.unavailable") {
 				t.Fatalf("read = %#v, %v", result, err)
 			}
@@ -85,7 +85,7 @@ func TestRetentionPolicyReplacementRequiresStrongRecentSessionBeforeWork(t *test
 			fixture := newRetentionPolicyFixture(t)
 			principal := fixture.invocation.Principal()
 			test.alter(&principal)
-			result, err := fixture.service.Replace(t.Context(), NewInvocation(principal, model.RequestMetadata{}), retentionPolicyCommand())
+			result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), NewInvocation(principal, model.RequestMetadata{}), retentionPolicyCommand())
 			if result != nil || !apperror.Is(err, test.code) || fixture.authorization.calls != 0 || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
 				t.Fatalf("unassured replacement = %#v, %v; authorization calls = %d", result, err, fixture.authorization.calls)
 			}
@@ -117,7 +117,7 @@ func TestRetentionPolicyReplacementRejectsInvalidIntentBeforeAuditAndStore(t *te
 			fixture := newRetentionPolicyFixture(t)
 			command := retentionPolicyCommand()
 			test.alter(&fixture, &command)
-			result, err := fixture.service.Replace(t.Context(), fixture.invocation, command)
+			result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, command)
 			if result != nil || !apperror.Is(err, test.code) || fixture.policies.replaceInput != nil || fixture.audit.attempt.Operation != "" {
 				t.Fatalf("invalid replacement = %#v, %v", result, err)
 			}
@@ -134,7 +134,7 @@ func TestRetentionPolicyReplacementPassesAtomicAuditAndIdempotency(t *testing.T)
 		t.Fatal(err)
 	}
 	fixture.policies.result = &store.RetentionPolicyReplacementResult{Policy: next, Changed: true}
-	application := &App{retentionPolicy: fixture.service}
+	application := &App{retentionPolicyService: fixture.service}
 	result, err := application.ReplaceRetentionPolicy(t.Context(), fixture.invocation, command)
 	if err != nil || result == nil || !reflect.DeepEqual(result, next) {
 		t.Fatalf("replace = %#v, %v", result, err)
@@ -170,7 +170,7 @@ func TestRetentionPolicyReplacementReplayAndNoOpUseStoreOutcome(t *testing.T) {
 		fixture.policies.result = &store.RetentionPolicyReplacementResult{Policy: retained, Replayed: replay}
 		command := retentionPolicyCommand()
 		command.Settings = model.RetentionPolicySettings{}
-		result, err := fixture.service.Replace(t.Context(), fixture.invocation, command)
+		result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, command)
 		if err != nil || result == nil || !reflect.DeepEqual(result, retained) || fixture.policies.getCalls != 0 ||
 			fixture.policies.replaceInput.AuditEventID != model.AuditEventID(fixture.audit.beginID) || fixture.authorization.calls != 1 {
 			t.Fatalf("replayed=%t: result=%#v, %v", replay, result, err)
@@ -182,7 +182,7 @@ func TestRetentionPolicyReplacementFingerprintIncludesInstitutionSettingsAndRevi
 	t.Parallel()
 	fixture := newRetentionPolicyFixture(t)
 	command := retentionPolicyCommand()
-	if _, err := fixture.service.Replace(t.Context(), fixture.invocation, command); err != nil {
+	if _, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	original := *fixture.policies.command
@@ -196,7 +196,7 @@ func TestRetentionPolicyReplacementFingerprintIncludesInstitutionSettingsAndRevi
 	} {
 		candidate := command
 		change(&candidate)
-		if _, err := fixture.service.Replace(t.Context(), fixture.invocation, candidate); err != nil {
+		if _, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, candidate); err != nil {
 			t.Fatal(err)
 		}
 		if fixture.policies.command.KeyDigest != original.KeyDigest || fixture.policies.command.Fingerprint == original.Fingerprint {
@@ -205,7 +205,7 @@ func TestRetentionPolicyReplacementFingerprintIncludesInstitutionSettingsAndRevi
 	}
 	fixture.institution.ID = model.NewInstitutionID()
 	fixture.policies.result.Policy.InstitutionID = fixture.institution.ID
-	if _, err := fixture.service.Replace(t.Context(), fixture.invocation, command); err != nil {
+	if _, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, command); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.policies.command.KeyDigest != original.KeyDigest || fixture.policies.command.Fingerprint == original.Fingerprint {
@@ -231,7 +231,7 @@ func TestRetentionPolicyReplacementMapsFailuresAndTerminalizesAudit(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newRetentionPolicyFixture(t)
 			fixture.policies.replaceErr = test.err
-			result, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand())
+			result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, retentionPolicyCommand())
 			if result != nil || !apperror.Is(err, test.code) || fixture.audit.failID != fixture.audit.beginID || fixture.audit.failCode != test.code {
 				t.Fatalf("failure = %#v, %v; audit = %s/%s", result, err, fixture.audit.failID, fixture.audit.failCode)
 			}
@@ -250,13 +250,13 @@ func TestRetentionPolicyReplacementFailsClosedWhenAuditFails(t *testing.T) {
 	fixture := newRetentionPolicyFixture(t)
 	auditFailure := apperror.New("audit.unavailable")
 	fixture.audit.beginErr = auditFailure
-	if result, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); result != nil ||
+	if result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, retentionPolicyCommand()); result != nil ||
 		!errors.Is(err, auditFailure) || fixture.policies.replaceInput != nil {
 		t.Fatalf("failed audit preparation = %#v, %v", result, err)
 	}
 	fixture.audit.beginErr, fixture.audit.failErr = nil, auditFailure
 	fixture.policies.replaceErr = &store.ErrRetentionPolicyRevisionConflict{CurrentRevision: 7}
-	if result, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); result != nil || !errors.Is(err, auditFailure) {
+	if result, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, retentionPolicyCommand()); result != nil || !errors.Is(err, auditFailure) {
 		t.Fatalf("failed terminal audit = %#v, %v", result, err)
 	}
 }
@@ -269,7 +269,7 @@ func TestRetentionPolicyReplacementRejectsMalformedOrForeignOutcome(t *testing.T
 	} {
 		fixture := newRetentionPolicyFixture(t)
 		fixture.policies.result = result
-		if returned, err := fixture.service.Replace(t.Context(), fixture.invocation, retentionPolicyCommand()); returned != nil || !apperror.Is(err, "retention_policy.unavailable") {
+		if returned, err := fixture.service.ReplaceRetentionPolicy(t.Context(), fixture.invocation, retentionPolicyCommand()); returned != nil || !apperror.Is(err, "retention_policy.unavailable") {
 			t.Fatalf("malformed Store outcome returned %#v, %v", returned, err)
 		}
 	}

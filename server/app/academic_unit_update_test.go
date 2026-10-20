@@ -108,7 +108,7 @@ func TestAcademicUnitUpdateReparentAuthorizesBothScopesBeforeCommit(t *testing.T
 		auditor, effects, &academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
-	got, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
+	got, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
 		ID: model.AcademicUnitID(unitID), ParentID: &newParentID,
 		DisplayName: stringPointer("Applied Computing"),
 	})
@@ -157,7 +157,7 @@ func TestAcademicUnitUpdateReparentToRootRequiresInstitutionAuthority(t *testing
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
 	)
 	emptyParent := ""
-	if _, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
+	if _, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{ID: model.AcademicUnitID(unitID), ParentID: &emptyParent}); !apperror.Is(err, "authorization.denied") {
 		t.Fatalf("Update() error = %v, want authorization.denied", err)
 	}
 	assertAcademicUnitCreateEvents(t, events,
@@ -193,7 +193,7 @@ func TestAcademicUnitUpdateCycleFailureIsAuditedWithoutPublication(t *testing.T)
 		auditor, &academicUnitCommandEffectsFake{events: &events},
 		&academicUnitEffectFailureReporterFake{events: &events}, time.Now, model.NewId,
 	)
-	_, err := service.Update(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
+	_, err := service.UpdateAcademicUnit(context.Background(), Invocation{}, UpdateAcademicUnitCommand{
 		ID: model.AcademicUnitID(unitID), ParentID: stringPointer(model.NewId()),
 	})
 	if !apperror.Is(err, "academic_unit.conflict") || auditor.failCode != "academic_unit.conflict" {
@@ -233,7 +233,7 @@ func TestAcademicUnitArchiveCommitsBeforePublishing(t *testing.T) {
 		&academicUnitEffectFailureReporterFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) }, model.NewId,
 	)
-	err := service.Archive(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
+	err := service.ArchiveAcademicUnit(context.Background(), Invocation{}, ArchiveAcademicUnitCommand{ID: model.AcademicUnitID(unitID)})
 	if err != nil {
 		t.Fatal(err)
 	}

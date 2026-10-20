@@ -83,14 +83,7 @@ func newPublicRegistrationService(deps publicRegistrationDependencies) (*publicR
 	return &publicRegistrationService{publicRegistrationDependencies: deps}, nil
 }
 
-func (a *App) RegisterLocalUser(ctx context.Context, invocation Invocation, command RegisterLocalUserCommand) error {
-	if a == nil || a.publicRegistration == nil {
-		return registrationUnavailable(errors.New("public registration is unavailable"))
-	}
-	return a.publicRegistration.Register(ctx, invocation, command)
-}
-
-func (s *publicRegistrationService) Register(ctx context.Context, invocation Invocation, command RegisterLocalUserCommand) error {
+func (s *publicRegistrationService) RegisterLocalUser(ctx context.Context, invocation Invocation, command RegisterLocalUserCommand) error {
 	registrationEnabled, localLoginEnabled, err := s.policies.PublicRegistration(ctx)
 	if err != nil {
 		return registrationUnavailable(err)

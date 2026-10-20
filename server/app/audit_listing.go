@@ -42,11 +42,7 @@ func newAuditListingService(audits auditListingStore, authorization auditListing
 	return &auditListingService{audits: audits, authorization: authorization}
 }
 
-func (a *App) ListAuditEvents(ctx context.Context, invocation Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
-	return a.auditListings.List(ctx, invocation, query)
-}
-
-func (s *auditListingService) List(ctx context.Context, invocation Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
+func (s *auditListingService) ListAuditEvents(ctx context.Context, invocation Invocation, query ListAuditEventsQuery) ([]*model.AuditEvent, error) {
 	visibility, err := s.authorization.AuthorizeList(ctx, invocation)
 	if err != nil {
 		return nil, err
