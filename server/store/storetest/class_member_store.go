@@ -103,6 +103,39 @@ func TestClassMemberStore(t *testing.T, ss store.Store) {
 	t.Run("FiniteAffiliation", func(t *testing.T) {
 		testFiniteAffiliationCannotBackOpenEnrollment(t, ss, firstClass, 1_000_000)
 	})
+	t.Run("EndBeforeModification", func(t *testing.T) { testClassMemberEndBeforeModification(t, ss) })
+}
+
+// testClassMemberEndBeforeModification ends a backdated enrollment at an
+// effective instant earlier than the row's creation. The same ordering arises
+// when a millisecond mutation instant falls inside the microsecond creation
+// instant or a peer node's clock trails the creating node.
+func testClassMemberEndBeforeModification(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := saveClassFixture(t, ctx, ss)
+	now := model.GetMillis()
+	period := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "class-member-backdated-"+model.NewId(), now-3_600_000)
+	class := saveClass(t, ctx, ss, fixture.level.ID.String(), period.ID.String(), "class-member-backdated")
+	user := saveUser(t, ctx, ss)
+	_, err := ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: user.ID, Kind: model.AffiliationStudent, StartsAt: model.TimeFromMillis(now - 3_000_000),
+	})
+	requireNoError(t, err)
+	enrolled, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID: class.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
+	})
+	requireNoError(t, err)
+	endAt := now - 1_000_000
+	ended, err := ss.ClassMember().End(ctx, enrolled.Membership.ID, enrolled.Membership.Revision, endAt)
+	requireNoError(t, err)
+	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(enrolled.Membership.UpdatedAt) {
+		t.Fatalf("End(before creation) = %#v, created %#v", ended, enrolled.Membership)
+	}
+	stored, err := ss.ClassMember().Get(ctx, ended.ID)
+	requireNoError(t, err)
+	if *stored != *ended {
+		t.Fatalf("Get() = %#v, want %#v", stored, ended)
+	}
 }
 
 func testAuditedClassMemberLifecycle(

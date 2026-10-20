@@ -17,6 +17,7 @@ import (
 )
 
 func TestAffiliationStore(t *testing.T, ss store.Store) {
+	t.Run("EndBeforeModification", func(t *testing.T) { testAffiliationEndBeforeModification(t, ss) })
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)
@@ -134,6 +135,30 @@ func TestAffiliationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if _, err := ss.Affiliation().End(ctx, student.ID, student.Revision, start+1); !store.IsConflict(err) {
 		t.Fatalf("End() with active enrollment error = %v", err)
+	}
+}
+
+// testAffiliationEndBeforeModification ends a backdated Affiliation at an
+// effective instant earlier than the row's creation, as a millisecond
+// mutation instant or a trailing peer clock can.
+func testAffiliationEndBeforeModification(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	now := model.GetMillis()
+	saved, err := ss.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: user.ID, Kind: model.AffiliationTeacher, StartsAt: model.TimeFromMillis(now - 2_000_000),
+	})
+	requireNoError(t, err)
+	endAt := now - 1_000_000
+	ended, err := ss.Affiliation().End(ctx, saved.ID, saved.Revision, endAt)
+	requireNoError(t, err)
+	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(saved.UpdatedAt) {
+		t.Fatalf("End(before creation) = %#v, created %#v", ended, saved)
+	}
+	stored, err := ss.Affiliation().Get(ctx, saved.ID)
+	requireNoError(t, err)
+	if *stored != *ended {
+		t.Fatalf("Get() = %#v, want %#v", stored, ended)
 	}
 }
 

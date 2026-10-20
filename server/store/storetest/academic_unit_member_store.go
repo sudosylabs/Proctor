@@ -20,6 +20,7 @@ import (
 func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	t.Run("StablePages", func(t *testing.T) { testAcademicUnitMemberPaging(t, ss) })
 	t.Run("ActiveIntervalPrecision", func(t *testing.T) { testAcademicUnitMemberActiveIntervalPrecision(t, ss) })
+	t.Run("EndBeforeModification", func(t *testing.T) { testAcademicUnitMemberEndBeforeModification(t, ss) })
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-unit")
@@ -122,5 +123,31 @@ func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store)
 				t.Fatalf("active memberships at %v = %#v, want empty", test.at, active)
 			}
 		})
+	}
+}
+
+// testAcademicUnitMemberEndBeforeModification ends a backdated membership at
+// an effective instant earlier than the row's creation, as a millisecond
+// mutation instant or a trailing peer clock can.
+func testAcademicUnitMemberEndBeforeModification(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-backdated-"+model.NewId())
+	user := saveUser(t, ctx, ss)
+	now := model.GetMillis()
+	saved, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: model.TimeFromMillis(now - 2_000_000),
+	})
+	requireNoError(t, err)
+	endAt := now - 1_000_000
+	ended, err := ss.AcademicUnitMember().End(ctx, saved.ID, saved.Revision, endAt)
+	requireNoError(t, err)
+	if ended.EndsAt.Millis() != endAt || !ended.UpdatedAt.Equal(saved.UpdatedAt) {
+		t.Fatalf("End(before creation) = %#v, created %#v", ended, saved)
+	}
+	stored, err := ss.AcademicUnitMember().Get(ctx, saved.ID)
+	requireNoError(t, err)
+	if *stored != *ended {
+		t.Fatalf("Get() = %#v, want %#v", stored, ended)
 	}
 }

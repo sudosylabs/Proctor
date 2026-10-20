@@ -404,24 +404,24 @@ func (s SQLAcademicUnitMemberStore) endAcademicUnitMember(ctx context.Context, t
 		return nil, store.NewErrConflict("academic_unit_member", "academic_unit_member_end_time", nil)
 	}
 	at := model.TimeFromMillis(endAt)
-	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET updated_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
+	result, err := tx.Exec(ctx, `UPDATE academic_unit_members SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end academic unit member: %w", err)
 	}
 	if err = requireAffected(result, "academic_unit_member", id.String()); err != nil {
 		return nil, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=?,end_at=?
+	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=GREATEST(rb.updated_at, ?),end_at=?
 		WHERE rb.origin_academic_unit_member_id=? AND rb.origin_invitation_id IS NOT NULL
 		AND rb.archived_at IS NULL AND rb.start_at<? AND (rb.end_at IS NULL OR rb.end_at>?)`, at, at, id, at, at); err != nil {
 		return nil, fmt.Errorf("end Invitation-origin Role Bindings: %w", err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=?,archived_at=?
+	if _, err = tx.Exec(ctx, `UPDATE role_bindings rb SET updated_at=GREATEST(rb.updated_at, ?),archived_at=?
 		WHERE rb.origin_academic_unit_member_id=? AND rb.origin_invitation_id IS NOT NULL
 		AND rb.archived_at IS NULL AND rb.start_at>=? AND (rb.end_at IS NULL OR rb.end_at>?)`, at, at, id, at, at); err != nil {
 		return nil, fmt.Errorf("archive future Invitation-origin Role Bindings: %w", err)
 	}
-	current.UpdatedAt = at
+	current.UpdatedAt = latestTime(current.UpdatedAt, at)
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil

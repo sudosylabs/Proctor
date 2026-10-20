@@ -53,3 +53,13 @@ func TimeFromNullTime(value sql.NullTime) time.Time {
 func UTCTime(value time.Time) time.Time {
 	return model.TimeUTC(value)
 }
+
+// latestTime returns the later of a row's persisted modification time and a
+// requested mutation instant, matching SQL GREATEST(updated_at, ?) so a
+// returned model reports the stored value.
+func latestTime(persisted, requested time.Time) time.Time {
+	if requested.After(persisted) {
+		return UTCTime(requested)
+	}
+	return UTCTime(persisted)
+}

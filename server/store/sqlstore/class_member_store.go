@@ -416,13 +416,13 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE class_members
-			SET updated_at = ?, end_at = ?, revision = revision + 1, mail_audience_revision = ?
+			SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1, mail_audience_revision = ?
 			 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
 			candidate.UpdatedAt, startAt, audienceRevisions[previous.ClassID], previous.ID.String(),
 		); err != nil {
 			return nil, fmt.Errorf("end previous class enrollment: %w", err)
 		}
-		previous.UpdatedAt = candidate.UpdatedAt
+		previous.UpdatedAt = latestTime(previous.UpdatedAt, candidate.UpdatedAt)
 		previous.EndsAt = model.OptionalTimeFrom(candidate.StartsAt)
 		previous.Revision++
 	case err != nil && !isNoRows(err):
@@ -768,9 +768,14 @@ func (s SQLClassMemberStore) endClassMember(
 	if err != nil {
 		return nil, err
 	}
+	// The effective end may precede the row's creation or last update: a
+	// backdated relationship, a millisecond mutation instant inside the
+	// microsecond creation instant, or a peer node's clock. The modification
+	// time never moves backwards; the revision guard keeps current.UpdatedAt
+	// exact.
 	result, err := executor.Exec(ctx, `
 		UPDATE class_members
-		   SET updated_at = ?, end_at = ?, revision = revision + 1, mail_audience_revision = ?
+		   SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1, mail_audience_revision = ?
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`,
 		at, at, audienceRevisions[current.ClassID], id, expectedRevision,
 	)
@@ -780,7 +785,7 @@ func (s SQLClassMemberStore) endClassMember(
 	if err := requireAffected(result, "class_member", id.String()); err != nil {
 		return nil, err
 	}
-	current.UpdatedAt = at
+	current.UpdatedAt = latestTime(current.UpdatedAt, at)
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil

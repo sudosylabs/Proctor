@@ -373,14 +373,14 @@ func (s SQLAffiliationStore) endAffiliation(ctx context.Context, tx sqlxExecutor
 		}
 	}
 	at := model.TimeFromMillis(endAt)
-	result, err := tx.Exec(ctx, `UPDATE affiliations SET updated_at = ?, end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
+	result, err := tx.Exec(ctx, `UPDATE affiliations SET updated_at = GREATEST(updated_at, ?), end_at = ?, revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, at, at, id, expectedRevision)
 	if err != nil {
 		return nil, fmt.Errorf("end affiliation: %w", err)
 	}
 	if err := requireAffected(result, "affiliation", id.String()); err != nil {
 		return nil, err
 	}
-	current.UpdatedAt = at
+	current.UpdatedAt = latestTime(current.UpdatedAt, at)
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil
