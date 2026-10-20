@@ -872,7 +872,12 @@ make -C server integration-postgres
 ```
 
 This includes Desktop preflight/Connect, native and Browser delivery, quota and
-control boundaries, independent retention and Review conformance. The complete
+control boundaries, independent retention and Review conformance. The target
+discovers every `integration`-tagged test in the module-root, `app`,
+`cmd/proctor/commands`, and `store/sqlstore` packages, so a new PostgreSQL test
+needs no Makefile change. It skips only the WebSocket and Mailpit tests owned by
+`integration-realtime` and `phase-transactional-mail`; the S3 variants skip
+themselves unless `VFS_S3_*` is configured. The complete
 integration and PostgreSQL Store commands allow 25 minutes per Go package because
 the SQL package also runs the three Store decorator conformance suites. Individual
 operation/fixture deadlines still bound each test.
