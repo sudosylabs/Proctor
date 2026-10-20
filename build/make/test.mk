@@ -1,6 +1,6 @@
-.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check server-check integration independent-modules ci
+.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check mail-templates-install mail-templates-check server-check integration independent-modules ci
 
-check: brand-check build-scripts-check webapp-check docs-check server-check ## Run the hermetic product gate.
+check: brand-check build-scripts-check webapp-check docs-check mail-templates-check server-check ## Run the hermetic product gate.
 
 brand-check: ## Check package-local copies against approved brand artwork.
 	@node "$(ROOT_DIR)/build/brand-assets.mjs" check
@@ -37,6 +37,12 @@ docs-start: docs-install ## Preview the public documentation site.
 docs-check: docs-install ## Validate and build the public documentation site.
 	$(MAKE) -C "$(SERVER_DIR)" openapi-check
 	cd "$(DOCS_SITE_DIR)" && $(NPM) run check
+
+mail-templates-install:
+	cd "$(SERVER_DIR)/templates" && $(NPM_CI_DEV)
+
+mail-templates-check: mail-templates-install ## Verify generated transactional-mail HTML is fresh and renders.
+	cd "$(SERVER_DIR)/templates" && $(NPM) run check && $(NPM) test
 
 server-check:
 	$(MAKE) -C "$(SERVER_DIR)" check

@@ -77,7 +77,9 @@ make check
 
 `independent-modules` runs test, race, vet, and build with `GOWORK=off` for all
 four Go modules. The root `check` verifies build scripts, the webapp,
-documentation, and the hermetic server gate.
+documentation, transactional-mail template freshness, and the hermetic server
+gate. The template check needs Node, so it belongs to the root gate rather than
+the Node-free `make -C server check`.
 
 Use the complete CI-facing gate when the change warrants packaging and all
 dependency-backed suites:

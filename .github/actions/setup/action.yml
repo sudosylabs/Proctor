@@ -24,6 +24,7 @@ runs:
         cache-dependency-path: |
           webapp/package-lock.json
           docs/site/package-lock.json
+          server/templates/package-lock.json
     - name: Authenticate private module fetches without persisting credentials
       shell: bash
       env:
