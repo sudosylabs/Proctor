@@ -61,8 +61,8 @@ func (s *auditListingService) List(ctx context.Context, invocation Invocation, q
 		query.Limit = 50
 	}
 	if query.Limit < 1 || query.Limit > 200 ||
-		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
-		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
+		(query.ActorID != "" && !model.UserID(query.ActorID).IsValid()) ||
+		(query.BeforeID != "" && !model.AuditEventID(query.BeforeID).IsValid()) ||
 		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, apperror.New("audit.query.invalid")
 	}

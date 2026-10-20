@@ -57,7 +57,7 @@ func TestFilePurgeCandidatesRespectPurposeReferencesAndLegalHolds(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !model.IsValidId(claim.ID) || claim.Candidate.RevisionID != candidate.RevisionID {
+	if !model.IsValidOpaqueID(claim.ID) || claim.Candidate.RevisionID != candidate.RevisionID {
 		t.Fatalf("purge claim = %#v", claim)
 	}
 	if _, holdErr := ss.GetMaster().Exec(ctx, `INSERT INTO file_legal_holds (file_entry_id, created_at, reason_code) VALUES (?, CURRENT_TIMESTAMP, 'too_late')`, eligible.entryID.String()); holdErr == nil {

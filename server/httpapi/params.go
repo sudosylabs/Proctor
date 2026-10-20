@@ -284,7 +284,7 @@ func pathID[T interface {
 // opaquePathID accepts a path variable that has the opaque identifier form
 // but no fixed entity type.
 func opaquePathID(value string) (string, error) {
-	if !model.IsValidId(value) {
+	if !model.IsValidOpaqueID(value) {
 		return "", invalidRequestError(nil)
 	}
 	return value, nil

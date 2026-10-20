@@ -848,14 +848,14 @@ func (e RealtimeEvent) Clone() RealtimeEvent {
 
 // ValidateForPublish checks local publication invariants. It performs no I/O.
 func (e RealtimeEvent) ValidateForPublish() error {
-	if e.ID != "" && !model.IsValidId(e.ID) {
+	if e.ID != "" && !model.IsValidOpaqueID(e.ID) {
 		return errors.New("realtime event ID is invalid")
 	}
 	if len(e.Name) == 0 || len(e.Name) > maxRealtimeEventNameBytes ||
 		!validRealtimeName(e.Name) {
 		return fmt.Errorf("invalid realtime event %q", e.Name)
 	}
-	if e.UserID != "" && !model.IsValidId(e.UserID) {
+	if e.UserID != "" && !model.UserID(e.UserID).IsValid() {
 		return errors.New("realtime event user ID is invalid")
 	}
 	if e.Action == "" && e.Resource == (model.Resource{}) {

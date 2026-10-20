@@ -317,7 +317,7 @@ func completeCommandBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, 
 		return store.NewErrInvalidInput("command_outcome", "duplicate_audit_event_id", nil)
 	}
 	data := map[string]any{"batch_duplicate": true}
-	if model.IsValidId(originalAuditID) {
+	if model.AuditEventID(originalAuditID).IsValid() {
 		data["idempotency_replayed"] = true
 		data["original_audit_event_id"] = originalAuditID
 	}

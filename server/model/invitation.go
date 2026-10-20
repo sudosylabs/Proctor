@@ -244,7 +244,7 @@ func (i *Invitation) Validate() error {
 	if !i.InviterUserID.IsValid() {
 		return invalidModelError(where, "invitation", "inviter_user_id", "must be a valid identifier", details)
 	}
-	if !i.ScopeType.IsValid() || !IsValidId(i.ScopeID) {
+	if !i.ScopeType.IsValid() || !IsValidOpaqueID(i.ScopeID) {
 		return invalidModelError(where, "invitation", "scope", "must identify a valid authorization scope", details)
 	}
 	if !IsValidTokenHash(i.ClaimHash) {
@@ -412,7 +412,7 @@ func invitationScopedRoleTargetIsValid(invitation *Invitation) bool {
 	case InvitationPurposeAcademicUnitRole:
 		return invitation.AcademicUnitID.IsValid() && invitation.ScopeType == RoleScopeAcademicUnit && invitation.ScopeID == invitation.AcademicUnitID.String()
 	case InvitationPurposeInstitutionRole:
-		return invitation.AcademicUnitID.IsZero() && invitation.ScopeType == RoleScopeInstitution && IsValidId(invitation.ScopeID)
+		return invitation.AcademicUnitID.IsZero() && invitation.ScopeType == RoleScopeInstitution && IsValidOpaqueID(invitation.ScopeID)
 	default:
 		return false
 	}

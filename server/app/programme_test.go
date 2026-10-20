@@ -101,7 +101,7 @@ func (a *programmeAuthorizerFake) AuthorizeWithScope(
 	if resource.Type == model.ResourceClass {
 		return model.RoleScopeClass, resource.ID, nil
 	}
-	if a.scopeType.IsValid() && model.IsValidId(a.scopeID) {
+	if a.scopeType.IsValid() && model.IsValidOpaqueID(a.scopeID) {
 		return a.scopeType, a.scopeID, nil
 	}
 	return model.RoleScopeAcademicUnit, resource.ID, nil

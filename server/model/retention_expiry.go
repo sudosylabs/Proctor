@@ -74,7 +74,7 @@ type RetentionExpiryRecord struct {
 }
 
 func (r RetentionExpiryRecord) Validate() error {
-	if !r.Kind.IsValid() || !IsValidId(r.ID) || r.EventAt.IsZero() ||
+	if !r.Kind.IsValid() || !IsValidOpaqueID(r.ID) || r.EventAt.IsZero() ||
 		r.ScheduledAt.Valid != r.ExpiresAfter.Valid ||
 		(r.ScheduledAt.Valid && (r.ScheduledAt.Time.IsZero() || !r.ExpiresAfter.Time.After(r.ScheduledAt.Time))) {
 		return errors.New("model: invalid retention expiry record")

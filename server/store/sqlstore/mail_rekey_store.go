@@ -219,7 +219,7 @@ func validateMailRekeyStart(input *store.MailRekeyStart) error {
 func (s SQLMailStore) ListRekeyTargets(ctx context.Context, request *store.MailRekeyTargetPageRequest) (*store.MailRekeyTargetPage, error) {
 	if request == nil || !request.JobID.IsValid() || !validMailPayloadKeyID(request.PrimaryKeyID) || request.Limit < 1 || request.Limit > 500 ||
 		(request.AfterKind == "") != (request.AfterID == "") ||
-		(request.AfterKind != "" && (!validMailRekeyKind(request.AfterKind) || !model.IsValidId(request.AfterID))) {
+		(request.AfterKind != "" && (!validMailRekeyKind(request.AfterKind) || !model.IsValidOpaqueID(request.AfterID))) {
 		return nil, store.NewErrInvalidInput("mail_rekey", "page", nil)
 	}
 	rows := make([]mailRekeyTargetRow, 0, request.Limit+1)
@@ -251,7 +251,7 @@ func (s SQLMailStore) ListRekeyTargets(ctx context.Context, request *store.MailR
 	targets := make([]store.MailRekeyTarget, 0, len(rows))
 	for _, row := range rows {
 		kind := store.MailRekeyTargetKind(row.Kind)
-		if !validMailRekeyKind(kind) || !model.IsValidId(row.ID) || !validMailPayloadKeyID(row.KeyID) || len(row.EncryptedPayload) == 0 {
+		if !validMailRekeyKind(kind) || !model.IsValidOpaqueID(row.ID) || !validMailPayloadKeyID(row.KeyID) || len(row.EncryptedPayload) == 0 {
 			return nil, invalidPersistedState("mail_rekey", "target", errors.New("mail rekey target row is invalid"))
 		}
 		targets = append(targets, store.MailRekeyTarget{Kind: kind, ID: row.ID, KeyID: row.KeyID,
@@ -261,7 +261,7 @@ func (s SQLMailStore) ListRekeyTargets(ctx context.Context, request *store.MailR
 }
 
 func (s SQLMailStore) ReplaceRekeyTarget(ctx context.Context, input *store.MailRekeyReplacement) (bool, error) {
-	if input == nil || !input.JobID.IsValid() || !validMailRekeyKind(input.Kind) || !model.IsValidId(input.ID) ||
+	if input == nil || !input.JobID.IsValid() || !validMailRekeyKind(input.Kind) || !model.IsValidOpaqueID(input.ID) ||
 		!validMailPayloadKeyID(input.ExpectedKeyID) || !validMailPayloadKeyID(input.PrimaryKeyID) ||
 		input.ExpectedKeyID == input.PrimaryKeyID || len(input.EncryptedPayload) == 0 || !json.Valid(input.EncryptedPayload) {
 		return false, store.NewErrInvalidInput("mail_rekey", "replacement", nil)

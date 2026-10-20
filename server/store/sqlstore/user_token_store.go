@@ -433,7 +433,7 @@ func (s SQLUserTokenStore) Issue(
 	if input.AuditEvent.Resource.Type != model.ResourceUser ||
 		input.AuditEvent.Resource.ID != candidate.UserID.String() ||
 		input.AuditEvent.Status != model.AuditStatusSuccess ||
-		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.IsValidId(input.AuditEvent.ScopeID) ||
+		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(input.AuditEvent.ScopeID).IsValid() ||
 		input.Occurrence.ID.String() != candidate.ID.String() || input.Occurrence.Kind != model.MailOccurrenceAccountToken ||
 		input.Occurrence.ActorUserID != candidate.UserID || input.Delivery.TargetUserID != candidate.UserID ||
 		input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.Job.ID ||
@@ -903,7 +903,7 @@ func tokenAuditEvent(
 	expectedAction string,
 ) (*model.AuditEvent, error) {
 	if event == nil || event.Status != model.AuditStatusSuccess || event.Action != expectedAction ||
-		event.ScopeType != model.RoleScopeInstitution || !model.IsValidId(event.ScopeID) {
+		event.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(event.ScopeID).IsValid() {
 		return nil, store.NewErrInvalidInput("user_token", "audit_event", nil)
 	}
 	candidate := event.Clone()

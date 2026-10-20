@@ -33,8 +33,8 @@ func membershipPageCursorSpec() opaqueCursorSpec[membershipPageCursor] {
 		acceptsVersion: func(version int) bool { return version == 1 },
 		validate: func(cursor membershipPageCursor) error {
 			if (cursor.ScopeType != model.ResourceAcademicUnit && cursor.ScopeType != model.ResourceClass) ||
-				!model.IsValidId(cursor.ScopeID) || cursor.ActiveAt == nil || *cursor.ActiveAt < 0 ||
-				!model.IsValidId(cursor.AfterUserID) || !model.IsValidId(cursor.AfterID) {
+				!model.IsValidOpaqueID(cursor.ScopeID) || cursor.ActiveAt == nil || *cursor.ActiveAt < 0 ||
+				!model.UserID(cursor.AfterUserID).IsValid() || !model.IsValidOpaqueID(cursor.AfterID) {
 				return errors.New("invalid membership keyset")
 			}
 			return nil

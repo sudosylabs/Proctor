@@ -209,7 +209,7 @@ type idLike interface {
 
 func parseID[T idLike](value, field string) (T, error) {
 	var zero T
-	if !IsValidId(value) {
+	if !IsValidOpaqueID(value) {
 		return zero, fmt.Errorf("model: invalid %s %q", field, value)
 	}
 	return T(value), nil
@@ -217,7 +217,7 @@ func parseID[T idLike](value, field string) (T, error) {
 
 func marshalID[T idLike](id T) ([]byte, error) {
 	value := string(id)
-	if value != "" && !IsValidId(value) {
+	if value != "" && !IsValidOpaqueID(value) {
 		return nil, fmt.Errorf("model: cannot marshal invalid id %q", value)
 	}
 	return []byte(value), nil
@@ -247,7 +247,7 @@ var (
 
 func marshalIDJSON[T idLike](id T) ([]byte, error) {
 	value := string(id)
-	if value != "" && !IsValidId(value) {
+	if value != "" && !IsValidOpaqueID(value) {
 		return nil, fmt.Errorf("model: cannot marshal invalid id %q", value)
 	}
 	return json.Marshal(value)

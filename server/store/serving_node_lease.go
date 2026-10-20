@@ -33,7 +33,7 @@ type ServingNodeLease struct {
 
 func (l *ServingNodeLease) Validate() error {
 	if l == nil || strings.TrimSpace(l.NodeID) == "" || len(l.NodeID) > ClusterDiscoveryNodeIDMaxBytes ||
-		!model.IsValidId(l.LeaseID) || l.UpdatedAt.IsZero() || !l.ExpiresAt.After(l.UpdatedAt) {
+		!model.IsValidOpaqueID(l.LeaseID) || l.UpdatedAt.IsZero() || !l.ExpiresAt.After(l.UpdatedAt) {
 		return errors.New("serving node lease is invalid")
 	}
 	return nil

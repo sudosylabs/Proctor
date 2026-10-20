@@ -127,7 +127,7 @@ func (s *selfSessionService) RevokeOne(
 		return invalidTokenAppError()
 	}
 	sessionID := strings.TrimSpace(command.SessionID)
-	if !model.IsValidId(sessionID) {
+	if !model.SessionID(sessionID).IsValid() {
 		return apperror.New("session.id.invalid").WithField("field", "session_id")
 	}
 	session, err := s.sessions.Get(ctx, model.SessionID(sessionID))

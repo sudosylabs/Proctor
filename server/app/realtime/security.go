@@ -88,7 +88,7 @@ func (s *Service) AuthenticationCacheInvalidated(
 // InvalidateAuthorization closes the affected local connections before
 // best-effort peer propagation. An empty user ID targets every connection.
 func (s *Service) InvalidateAuthorization(ctx context.Context, userID string) {
-	if userID != "" && !model.IsValidId(userID) {
+	if userID != "" && !model.UserID(userID).IsValid() {
 		s.reportSecurityFailure(ctx, "refusing invalid authorization invalidation", "invalid security propagation")
 		return
 	}
@@ -190,7 +190,7 @@ func (s *Service) handlePeerAuthorizationInvalidation(_ context.Context, data []
 	if err := decodePayload(data, &invalidation); err != nil {
 		return err
 	}
-	if invalidation.UserID != "" && !model.IsValidId(invalidation.UserID) {
+	if invalidation.UserID != "" && !model.UserID(invalidation.UserID).IsValid() {
 		return errors.New("cluster authorization invalidation user ID is invalid")
 	}
 	s.applyAuthorizationInvalidation(invalidation.UserID)
@@ -198,14 +198,14 @@ func (s *Service) handlePeerAuthorizationInvalidation(_ context.Context, data []
 }
 
 func validateSessionRevocation(message sessionRevocationMessage) error {
-	if !model.IsValidId(message.UserID) {
+	if !model.UserID(message.UserID).IsValid() {
 		return errors.New("session revocation user ID is invalid")
 	}
 	if len(message.SessionIDs) > 1024 || len(message.AccessTokenHashes) > 2048 {
 		return errors.New("session revocation exceeds bounded entries")
 	}
 	for _, sessionID := range message.SessionIDs {
-		if !model.IsValidId(sessionID) {
+		if !model.SessionID(sessionID).IsValid() {
 			return errors.New("session revocation session ID is invalid")
 		}
 	}

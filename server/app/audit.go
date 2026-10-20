@@ -47,7 +47,7 @@ func (a mailAuditAdapter) Fail(ctx context.Context, auditID model.AuditEventID, 
 }
 
 func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocation, institution model.Resource, delivery *model.MailDelivery, operation string) (model.AuditEventID, error) {
-	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) ||
+	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.InstitutionID(institution.ID).IsValid() ||
 		delivery == nil || delivery.Validate() != nil || (operation != "cancel" && operation != "retry") {
 		return "", auditUnavailable(errors.New("mail control audit dependencies are invalid"))
 	}
@@ -61,7 +61,7 @@ func (a mailAuditAdapter) PrepareControl(ctx context.Context, invocation Invocat
 }
 
 func (a mailAuditAdapter) PrepareTest(ctx context.Context, invocation Invocation, institution model.Resource, deliveryID model.MailDeliveryID) (*model.AuditEvent, error) {
-	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.IsValidId(institution.ID) || !deliveryID.IsValid() {
+	if a.audit == nil || institution.Type != model.ResourceInstitution || !model.InstitutionID(institution.ID).IsValid() || !deliveryID.IsValid() {
 		return nil, auditUnavailable(errors.New("mail audit dependencies are invalid"))
 	}
 	principal := invocation.Principal()
@@ -137,7 +137,7 @@ func (s *auditService) BeginAuthentication(
 	metadata model.RequestMetadata,
 	institutionID string,
 ) (*model.AuditEvent, error) {
-	if !model.IsValidId(userID) || !model.IsValidId(institutionID) ||
+	if !model.UserID(userID).IsValid() || !model.InstitutionID(institutionID).IsValid() ||
 		!clientType.IsValid() || method == "" {
 		return nil, apperror.New("audit.internal")
 	}
@@ -609,8 +609,8 @@ func (s *auditService) List(
 	query model.AuditQuery,
 ) ([]*model.AuditEvent, error) {
 	if query.Limit < 1 || query.Limit > 200 ||
-		(query.ActorID != "" && !model.IsValidId(query.ActorID)) ||
-		(query.BeforeID != "" && !model.IsValidId(query.BeforeID)) ||
+		(query.ActorID != "" && !model.UserID(query.ActorID).IsValid()) ||
+		(query.BeforeID != "" && !model.AuditEventID(query.BeforeID).IsValid()) ||
 		(query.Resource != nil && query.Resource.Validate() != nil) {
 		return nil, apperror.New("audit.query.invalid")
 	}

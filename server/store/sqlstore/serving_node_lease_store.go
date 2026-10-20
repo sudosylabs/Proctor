@@ -126,7 +126,7 @@ func validServingNodeLeaseInput(nodeID, leaseID string, lifetime time.Duration) 
 }
 
 func validServingNodeLeaseIdentity(nodeID, leaseID string) bool {
-	return nodeID != "" && len(nodeID) <= store.ClusterDiscoveryNodeIDMaxBytes && model.IsValidId(leaseID)
+	return nodeID != "" && len(nodeID) <= store.ClusterDiscoveryNodeIDMaxBytes && model.IsValidOpaqueID(leaseID)
 }
 
 func servingNodeLeaseModel(row servingNodeLeaseRow) (*store.ServingNodeLease, error) {

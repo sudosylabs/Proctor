@@ -525,7 +525,7 @@ func IsPersonalAccessTokenAction(action string) bool {
 // Validate checks that the resource identifies a supported authorization target.
 func (r Resource) Validate() error {
 	const where = "Resource.Validate"
-	if !IsValidId(r.ID) {
+	if !IsValidOpaqueID(r.ID) {
 		return invalidModelError(where, "resource", "id", "must be a valid identifier", "")
 	}
 	switch r.Type {

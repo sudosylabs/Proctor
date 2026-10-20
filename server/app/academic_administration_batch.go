@@ -188,7 +188,7 @@ func newAcademicAdministrationBatchService(commands academicAdministrationBatchC
 func (s *academicAdministrationBatchService) Run(ctx context.Context, invocation Invocation, command RunAcademicAdministrationBatchCommand) (AcademicAdministrationBatchResult, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	if s == nil || s.commands == nil || s.authorization == nil || s.now == nil || !command.Operation.IsValid() ||
-		!model.IsValidId(command.ScopeID) || command.IdempotencyKey == "" || len(command.Items) < 1 ||
+		!model.IsValidOpaqueID(command.ScopeID) || command.IdempotencyKey == "" || len(command.Items) < 1 ||
 		len(command.Items) > MaximumAcademicAdministrationBatchItems || !academicAdministrationBatchScopeMatches(command.Operation, command.ScopeType) {
 		return AcademicAdministrationBatchResult{}, apperror.New("request.invalid")
 	}
@@ -422,7 +422,7 @@ func validateAcademicAdministrationBatchItem(operation AcademicAdministrationBat
 	default:
 		return errors.New("invalid academic administration batch operation")
 	}
-	if hasUser && !model.IsValidId(userID) || hasRelationship && !model.IsValidId(relationshipID) || hasRole && !model.IsValidId(roleID) {
+	if hasUser && !model.UserID(userID).IsValid() || hasRelationship && !model.IsValidOpaqueID(relationshipID) || hasRole && !model.RoleID(roleID).IsValid() {
 		return errors.New("invalid academic administration identifier")
 	}
 	return nil
@@ -430,7 +430,7 @@ func validateAcademicAdministrationBatchItem(operation AcademicAdministrationBat
 
 func (s *academicAdministrationBatchService) runItem(ctx context.Context, invocation Invocation, batch RunAcademicAdministrationBatchCommand, item AcademicAdministrationBatchItemCommand, itemKey string, metadata *store.CommandBatch, retained bool) (string, InvitationBatchItemStatus, error) {
 	authority := academicAdministrationBatchAuthority(invocation, batch)
-	if model.IsValidId(strings.TrimSpace(item.UserID)) {
+	if model.UserID(strings.TrimSpace(item.UserID)).IsValid() {
 		authority.RecipientUserID = model.UserID(strings.TrimSpace(item.UserID))
 	}
 	if batch.Operation == AcademicAdministrationClassTransfer || batch.Operation == AcademicAdministrationClassEnd {

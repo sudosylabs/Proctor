@@ -334,8 +334,8 @@ func NewJobID() JobID                  { return JobID(NewId()) }
 func NewJobAttemptID() JobAttemptID    { return JobAttemptID(NewId()) }
 func (id JobID) IsZero() bool          { return id == "" }
 func (id JobAttemptID) IsZero() bool   { return id == "" }
-func (id JobID) IsValid() bool         { return IsValidId(string(id)) }
-func (id JobAttemptID) IsValid() bool  { return IsValidId(string(id)) }
+func (id JobID) IsValid() bool         { return IsValidOpaqueID(string(id)) }
+func (id JobAttemptID) IsValid() bool  { return IsValidOpaqueID(string(id)) }
 func (id JobID) String() string        { return string(id) }
 func (id JobAttemptID) String() string { return string(id) }
 func (t JobClaimToken) IsValid() bool {

@@ -93,7 +93,7 @@ func retentionExpirySQLProbe(s *SQLStore) storetest.RetentionExpirySQLProbe {
 		},
 		RejectCompletion: func(t *testing.T, ctx context.Context, id string) func() {
 			t.Helper()
-			if !model.IsValidId(id) {
+			if !model.IsValidOpaqueID(id) {
 				t.Fatal("invalid audit fixture identity")
 			}
 			_, err := s.GetMaster().Exec(ctx, `ALTER TABLE audit_events ADD CONSTRAINT test_reject_expiry_completion CHECK (id<>'`+id+`' OR status<>'success') NOT VALID`)

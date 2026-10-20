@@ -654,7 +654,7 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 			if decodeErr := decodeCommandOutcome(data, &outcome); decodeErr != nil {
 				return nil, decodeErr
 			}
-			if !model.IsValidId(outcome.UserID) {
+			if !model.UserID(outcome.UserID).IsValid() {
 				return nil, invalidPersistedState("command_outcome", "user_id", nil)
 			}
 			return &userSessionsMutationResult{Value: &store.UserSessionsRevocationResult{Sessions: []*model.Session{}, TokenHashes: []string{}}, NoOp: outcome.NoOp, UserID: outcome.UserID}, nil

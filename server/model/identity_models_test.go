@@ -188,7 +188,7 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 		ExpiresAt: s.ExpiresAt,
 	}
 	refresh.PrepareCreate(NewSessionCredentialID(), beforeCreate)
-	if !IsValidId(refresh.FamilyID) {
+	if !IsValidOpaqueID(refresh.FamilyID) {
 		t.Fatalf("refresh family id = %q", refresh.FamilyID)
 	}
 	if err := refresh.Validate(); err != nil {

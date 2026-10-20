@@ -47,7 +47,7 @@ const (
 
 func NewOnboardingImportID() OnboardingImportID { return OnboardingImportID(NewId()) }
 func (id OnboardingImportID) String() string    { return string(id) }
-func (id OnboardingImportID) IsValid() bool     { return IsValidId(string(id)) }
+func (id OnboardingImportID) IsValid() bool     { return IsValidOpaqueID(string(id)) }
 func (id OnboardingImportID) IsZero() bool      { return id == "" }
 
 func (mode OnboardingImportMode) IsValid() bool {
@@ -80,7 +80,7 @@ func (status OnboardingImportRowStatus) IsValid() bool {
 }
 
 func ValidateOnboardingImportScope(mode OnboardingImportMode, scopeType RoleScopeType, scopeID string) error {
-	if !mode.IsValid() || !IsValidId(scopeID) {
+	if !mode.IsValid() || !IsValidOpaqueID(scopeID) {
 		return fmt.Errorf("model: invalid onboarding import scope")
 	}
 	if (mode == OnboardingImportStudentClass && scopeType != RoleScopeClass) ||

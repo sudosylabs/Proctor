@@ -63,7 +63,7 @@ func parseWebSocketResume(params Params) (string, int64, error) {
 	if params.ConnectionId == "" && params.SequenceNumber == "" {
 		return "", 0, nil
 	}
-	if !model.IsValidId(params.ConnectionId) || params.SequenceNumber == "" {
+	if !model.IsValidOpaqueID(params.ConnectionId) || params.SequenceNumber == "" {
 		return "", 0, invalidRequestError(nil)
 	}
 	sequence, err := strconv.ParseInt(params.SequenceNumber, 10, 64)

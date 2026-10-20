@@ -166,7 +166,7 @@ func (s SQLUserStore) RegisterLocal(ctx context.Context, input *store.PublicLoca
 		audit == nil || !audit.ID.IsZero() || !audit.CreatedAt.IsZero() || !audit.UpdatedAt.IsZero() ||
 		audit.Action != publicLocalRegistrationAuditAction || audit.ActorID.IsValid() ||
 		audit.Resource.Type != model.ResourceUser || audit.Resource.ID != user.ID.String() ||
-		audit.ScopeType != model.RoleScopeInstitution || !model.IsValidId(audit.ScopeID) || audit.Status != model.AuditStatusSuccess {
+		audit.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(audit.ScopeID).IsValid() || audit.Status != model.AuditStatusSuccess {
 		return nil, store.NewErrInvalidInput("user", "public_registration", nil)
 	}
 	payloadKeyID, err := validateUserEmailMail(user.ID, input.VerificationOccurrence, input.VerificationDelivery,
@@ -544,7 +544,7 @@ func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID
 	result.ManagementScopes = make([]store.CurrentUserManagementScope, 0, len(rows))
 	for _, scope := range rows {
 		scopeType := model.RoleScopeType(scope.ScopeType)
-		if !scopeType.IsValid() || !model.IsValidId(scope.ScopeID) || scope.DisplayName == "" {
+		if !scopeType.IsValid() || !model.IsValidOpaqueID(scope.ScopeID) || scope.DisplayName == "" {
 			return nil, invalidPersistedState("user", "current_context_scope", errors.New("invalid management scope"))
 		}
 		result.ManagementScopes = append(result.ManagementScopes, store.CurrentUserManagementScope{

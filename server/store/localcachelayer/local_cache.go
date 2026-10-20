@@ -212,7 +212,7 @@ func (s *academicPeriodStore) Archive(ctx context.Context, id model.AcademicPeri
 }
 
 func (s *academicPeriodStore) invalidateAfterMutation(ctx context.Context, id string) {
-	if !model.IsValidId(id) {
+	if !model.AcademicPeriodID(id).IsValid() {
 		return
 	}
 	_ = s.layer.invalidateAcademicPeriod(context.WithoutCancel(ctx), id)
@@ -220,7 +220,7 @@ func (s *academicPeriodStore) invalidateAfterMutation(ctx context.Context, id st
 }
 
 func (l *Layer) invalidateAcademicPeriod(ctx context.Context, id string) error {
-	if !model.IsValidId(id) {
+	if !model.AcademicPeriodID(id).IsValid() {
 		return errors.New("academic-period cache invalidation ID is invalid")
 	}
 	if err := ctx.Err(); err != nil {

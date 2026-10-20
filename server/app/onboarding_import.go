@@ -184,7 +184,7 @@ func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocat
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
 	command.RoleID = strings.TrimSpace(command.RoleID)
 	if command.Body == nil || command.Mode == model.OnboardingImportStudentProgression || model.ValidateOnboardingImportScope(command.Mode, command.ScopeType, command.ScopeID) != nil ||
-		(command.Mode == model.OnboardingImportTeacherAcademicUnit && !model.IsValidId(command.RoleID)) ||
+		(command.Mode == model.OnboardingImportTeacherAcademicUnit && !model.RoleID(command.RoleID).IsValid()) ||
 		(command.Mode != model.OnboardingImportTeacherAcademicUnit && command.RoleID != "") {
 		return OnboardingImportView{}, apperror.New("request.invalid")
 	}
@@ -832,10 +832,10 @@ func parseOnboardingImportBounds(start, end string) (int64, int64, error) {
 }
 
 func onboardingImportDuplicateKey(row store.OnboardingImportRow) string {
-	if row.Operation == "" || !row.ScopeType.IsValid() || !model.IsValidId(row.ScopeID) {
+	if row.Operation == "" || !row.ScopeType.IsValid() || !model.IsValidOpaqueID(row.ScopeID) {
 		return ""
 	}
-	if row.UserID.IsValid() || model.IsValidId(row.RelationshipID) {
+	if row.UserID.IsValid() || model.IsValidOpaqueID(row.RelationshipID) {
 		key := row.Operation + "\x00" + string(row.ScopeType) + "\x00" + row.ScopeID + "\x00" + row.UserID.String() + "\x00" + row.RelationshipID + "\x00" + row.RoleID.String()
 		if AcademicAdministrationBatchOperation(row.Operation).IsValid() {
 			key += "\x00" + string(row.AffiliationKind) + "\x00" + strconv.FormatInt(row.StartsAt, 10) + "\x00" + strconv.FormatInt(row.EndsAt, 10)

@@ -163,7 +163,7 @@ func testProgrammeLevelStoreSave(t *testing.T, ss store.Store) {
 
 	saved, err := ss.ProgrammeLevel().Save(ctx, level)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.ID.String()) {
+	if !saved.ID.IsValid() {
 		t.Fatalf("Save() id = %q", saved.ID.String())
 	}
 	if !level.ID.IsZero() {

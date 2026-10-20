@@ -67,7 +67,7 @@ func examIntegrityReviewCursorSpec(kind string) opaqueCursorSpec[examIntegrityRe
 		setVersion:     func(cursor *examIntegrityReviewIDCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == examIntegrityReviewCursorVersion },
 		validate: func(cursor examIntegrityReviewIDCursor) error {
-			if cursor.Kind != kind || !model.IsValidId(cursor.ID) {
+			if cursor.Kind != kind || !model.IsValidOpaqueID(cursor.ID) {
 				return errors.New("invalid Integrity Review keyset")
 			}
 			return nil

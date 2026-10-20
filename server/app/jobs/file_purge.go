@@ -67,7 +67,7 @@ func EncodeFilePurgeExpiredContentCheckpoint(value FilePurgeExpiredContentCheckp
 
 func validFilePurgeCursor(value string) bool {
 	prefix, id, ok := strings.Cut(value, ":")
-	return ok && (prefix == "lease" || prefix == "archived") && model.IsValidId(id)
+	return ok && (prefix == "lease" || prefix == "archived") && model.IsValidOpaqueID(id)
 }
 func DecodeFilePurgeExpiredContentCheckpoint(version int, document json.RawMessage) (FilePurgeExpiredContentCheckpointV1, error) {
 	var value FilePurgeExpiredContentCheckpointV1

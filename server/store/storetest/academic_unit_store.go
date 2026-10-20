@@ -256,7 +256,7 @@ func testAcademicUnitStoreSave(t *testing.T, ss store.Store) {
 	root := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "engineering")
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), root.ID.String(), "computing")
 
-	if !model.IsValidId(root.ID.String()) || child.ParentID != root.ID {
+	if !root.ID.IsValid() || child.ParentID != root.ID {
 		t.Fatalf("saved units = root %#v, child %#v", root, child)
 	}
 

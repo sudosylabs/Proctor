@@ -33,13 +33,13 @@ func NewUserSettingsRevision() UserSettingsRevision {
 }
 
 func ParseUserSettingsRevision(value string) (UserSettingsRevision, error) {
-	if !IsValidId(value) {
+	if !IsValidOpaqueID(value) {
 		return "", fmt.Errorf("model: invalid user settings revision")
 	}
 	return UserSettingsRevision(value), nil
 }
 
-func (revision UserSettingsRevision) IsValid() bool  { return IsValidId(string(revision)) }
+func (revision UserSettingsRevision) IsValid() bool  { return IsValidOpaqueID(string(revision)) }
 func (revision UserSettingsRevision) String() string { return string(revision) }
 
 // UserSettingsDocument is the server-authoritative exact portable

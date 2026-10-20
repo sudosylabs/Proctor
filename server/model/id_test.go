@@ -94,9 +94,9 @@ func TestEntityIDJSONRoundTrip(t *testing.T) {
 func TestLegacyStringIDStillCompilesAlongsideTypedIDs(t *testing.T) {
 	t.Parallel()
 
-	// Expand phase: plain NewId()/IsValidId remain for unmigrated aggregates.
+	// Expand phase: plain NewId()/IsValidOpaqueID remain for unmigrated aggregates.
 	legacy := NewId()
-	if !IsValidId(legacy) {
+	if !IsValidOpaqueID(legacy) {
 		t.Fatal(legacy)
 	}
 	typed := UserID(legacy)

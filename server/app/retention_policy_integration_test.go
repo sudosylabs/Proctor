@@ -133,7 +133,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 			Replayed        bool   `json:"idempotency_replayed"`
 			OriginalAuditID string `json:"original_audit_event_id"`
 		}
-		if json.Unmarshal(event.Result, &result) == nil && result.Replayed && model.IsValidId(result.OriginalAuditID) {
+		if json.Unmarshal(event.Result, &result) == nil && result.Replayed && model.AuditEventID(result.OriginalAuditID).IsValid() {
 			replayAudited = true
 		}
 	}
@@ -179,7 +179,7 @@ func TestRetentionPolicyHTTPAcrossNodesPreservesAuthorizationAndRetry(t *testing
 	if err := json.Unmarshal(preview.Body.Bytes(), &previewBody); err != nil {
 		t.Fatal(err)
 	}
-	if !model.IsValidId(previewBody.ID) || previewBody.PolicyRevision != 2 {
+	if !model.RetentionPreviewID(previewBody.ID).IsValid() || previewBody.PolicyRevision != 2 {
 		t.Fatal("preview lost exact policy")
 	}
 	previewRead := commandRequest(secondary.Handler(), http.MethodGet, "/api/v1/retention/previews/"+previewBody.ID, "", login.Tokens.AccessToken, nil)

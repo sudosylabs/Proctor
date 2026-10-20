@@ -121,7 +121,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 	scopeID := strings.TrimSpace(query.ScopeID)
 	switch {
 	case userID != "" && query.ScopeType == "" && scopeID == "":
-		if !model.IsValidId(userID) {
+		if !model.UserID(userID).IsValid() {
 			return nil, apperror.New("request.invalid").WithField("field", "user_id")
 		}
 		visibility, err := s.authorization.AuthorizeRoleBindingList(ctx, invocation, model.ActionRoleBindingView)
@@ -136,7 +136,7 @@ func (s *roleBindingService) List(ctx context.Context, invocation Invocation, qu
 			bindings = []*model.RoleBinding{}
 		}
 		return bindings, nil
-	case userID == "" && query.ScopeType.IsValid() && model.IsValidId(scopeID):
+	case userID == "" && query.ScopeType.IsValid() && model.IsValidOpaqueID(scopeID):
 		if _, err := s.authorization.AuthorizeRoleBindingScope(ctx, invocation, model.ActionRoleBindingView, query.ScopeType, scopeID); err != nil {
 			return nil, err
 		}
@@ -167,7 +167,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		return nil, apperror.New("request.invalid").WithField("field", "role_id")
 	}
 	scopeID := strings.TrimSpace(command.ScopeID)
-	if !command.ScopeType.IsValid() || !model.IsValidId(scopeID) {
+	if !command.ScopeType.IsValid() || !model.IsValidOpaqueID(scopeID) {
 		return nil, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	if command.StartAt < 0 || (command.EndAt != 0 && command.EndAt <= command.StartAt) {

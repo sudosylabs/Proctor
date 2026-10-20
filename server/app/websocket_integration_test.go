@@ -133,14 +133,14 @@ func TestWebSocketIntegration(t *testing.T) {
 	hello := readWebSocketEvent(t, connection)
 	if hello.Event != "hello" ||
 		hello.Sequence != 1 ||
-		!model.IsValidId(hello.Id) {
+		!model.IsValidOpaqueID(hello.Id) {
 		t.Fatalf("hello event = %#v", hello)
 	}
 	var helloData websocket.Hello
 	if err := json.Unmarshal(hello.Data, &helloData); err != nil {
 		t.Fatal(err)
 	}
-	if !model.IsValidId(helloData.ConnectionId) ||
+	if !model.IsValidOpaqueID(helloData.ConnectionId) ||
 		helloData.NodeId != helper.ConfigStore.Get().Cluster.NodeID ||
 		helloData.Resumed {
 		t.Fatalf("hello data = %#v", helloData)

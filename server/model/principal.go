@@ -19,7 +19,7 @@ type CredentialType string
 // credential may be either a session credential or a personal access token.
 type PrincipalCredentialID string
 
-func (id PrincipalCredentialID) IsValid() bool { return IsValidId(string(id)) }
+func (id PrincipalCredentialID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 func (id PrincipalCredentialID) String() string { return string(id) }
 

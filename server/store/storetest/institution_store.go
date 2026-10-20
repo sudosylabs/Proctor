@@ -96,7 +96,7 @@ func testInstitutionStoreSave(t *testing.T, ss store.Store) {
 	}
 	saved, err := ss.Institution().Save(ctx, institution)
 	requireNoError(t, err)
-	if !model.IsValidId(saved.ID.String()) {
+	if !saved.ID.IsValid() {
 		t.Fatalf("Save() id = %q", saved.ID.String())
 	}
 	if !institution.ID.IsZero() {

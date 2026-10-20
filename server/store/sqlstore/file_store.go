@@ -378,7 +378,7 @@ func (s SQLFileStore) ClaimPurgeCandidate(ctx context.Context, candidate *store.
 			return nil, fmt.Errorf("tombstone file entry for purge: %w", err)
 		}
 		claimID := row.ClaimID.String
-		if claimID != "" && !model.IsValidId(claimID) {
+		if claimID != "" && !model.IsValidOpaqueID(claimID) {
 			return nil, invalidPersistedState("file_purge_claim", "id", fmt.Errorf("invalid purge claim identifier"))
 		}
 		if claimID == "" {
@@ -405,7 +405,7 @@ func (s SQLFileStore) ClaimPurgeCandidate(ctx context.Context, candidate *store.
 }
 
 func (s SQLFileStore) CompletePurge(ctx context.Context, claim *store.FilePurgeClaim) error {
-	if claim == nil || !model.IsValidId(claim.ID) || !validFilePurgeCandidate(&claim.Candidate) {
+	if claim == nil || !model.IsValidOpaqueID(claim.ID) || !validFilePurgeCandidate(&claim.Candidate) {
 		return store.NewErrInvalidInput("file", "purge_completion", nil)
 	}
 	candidate := &claim.Candidate

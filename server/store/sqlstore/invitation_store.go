@@ -708,7 +708,7 @@ func completeInvitationBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrappe
 		status, code = model.AuditStatusFail, "onboarding_batch.duplicate"
 	}
 	data := map[string]any{"batch_duplicate": duplicate}
-	if model.IsValidId(originalAuditID) {
+	if model.AuditEventID(originalAuditID).IsValid() {
 		data["idempotency_replayed"] = true
 		data["original_audit_event_id"] = originalAuditID
 	}
@@ -994,7 +994,7 @@ func validateInvitationListOptions(options store.InvitationListOptions) error {
 		!validVisibilityIDs(visibility.AcademicUnitRootIDs) || !validVisibilityIDs(visibility.ClassIDs) ||
 		(options.Purpose != "" && !options.Purpose.IsValid()) || (options.State != "" && !options.State.IsValid()) ||
 		(options.TargetEmail != "" && (!model.IsValidEmail(options.TargetEmail) || options.TargetEmail != strings.ToLower(strings.TrimSpace(options.TargetEmail)))) ||
-		(options.TargetID != "" && !model.IsValidId(options.TargetID)) ||
+		(options.TargetID != "" && !model.IsValidOpaqueID(options.TargetID)) ||
 		(!options.CreatedAfter.IsZero() && !options.CreatedBefore.IsZero() && !options.CreatedBefore.After(options.CreatedAfter)) ||
 		(options.BeforeID.IsValid() != !options.BeforeCreatedAt.IsZero()) {
 		return store.NewErrInvalidInput("invitation", "list_options", nil)

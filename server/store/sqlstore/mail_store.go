@@ -139,7 +139,7 @@ func validateMailTestEnqueue(input *store.MailTestEnqueue) error {
 		input.AuditEvent.Action != string(model.ActionMailManage) ||
 		input.AuditEvent.Resource.Type != model.ResourceMailDelivery ||
 		input.AuditEvent.Resource.ID != input.Delivery.ID.String() ||
-		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.IsValidId(input.AuditEvent.ScopeID) {
+		input.AuditEvent.ScopeType != model.RoleScopeInstitution || !model.InstitutionID(input.AuditEvent.ScopeID).IsValid() {
 		return store.NewErrInvalidInput("audit_event", "value", nil)
 	}
 	command, err := model.DecodeMailDeliveryCommand(input.Job.CommandVersion, input.Job.Command)

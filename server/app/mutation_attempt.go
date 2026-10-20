@@ -61,7 +61,7 @@ func runAuditedMutation[T any](
 	var err error
 	if attempt.ScopeType != "" || attempt.ScopeID != "" {
 		scoped, ok := auditor.(scopedMutationAuditor)
-		if !ok || !attempt.ScopeType.IsValid() || !model.IsValidId(attempt.ScopeID) {
+		if !ok || !attempt.ScopeType.IsValid() || !model.IsValidOpaqueID(attempt.ScopeID) {
 			return zero, apperror.New("audit.internal")
 		}
 		auditID, err = scoped.BeginAtScope(

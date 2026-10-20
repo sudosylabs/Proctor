@@ -275,7 +275,7 @@ func TestAccessPolicyStore(t *testing.T, ss store.Store, probes ...AccessPolicyS
 		if json.Unmarshal(audit.Result, &parameters) == nil && parameters.RevokeExistingSessions && parameters.RevokedSessionCount == 1 {
 			foundRevocationAudit = true
 		}
-		foundReplayAudit = foundReplayAudit || parameters.IdempotencyReplayed && model.IsValidId(parameters.OriginalAuditEventID)
+		foundReplayAudit = foundReplayAudit || parameters.IdempotencyReplayed && model.AuditEventID(parameters.OriginalAuditEventID).IsValid()
 		foundConflictAudit = foundConflictAudit || audit.Status == model.AuditStatusFail && audit.ErrorCode == "idempotency.conflict"
 	}
 	if !foundRevocationAudit || !foundReplayAudit || !foundConflictAudit {

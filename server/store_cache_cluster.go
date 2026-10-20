@@ -54,7 +54,7 @@ func (a *localCacheClusterAdapter) RegisterAcademicPeriod(
 			if err := json.Unmarshal(message.Data, &invalidation); err != nil {
 				return fmt.Errorf("decode academic-period cache invalidation: %w", err)
 			}
-			if !model.IsValidId(invalidation.ID) {
+			if !model.AcademicPeriodID(invalidation.ID).IsValid() {
 				return errors.New("academic-period cache invalidation ID is invalid")
 			}
 			return handler(ctx, invalidation.ID)
@@ -63,7 +63,7 @@ func (a *localCacheClusterAdapter) RegisterAcademicPeriod(
 }
 
 func (a *localCacheClusterAdapter) BroadcastAcademicPeriod(ctx context.Context, id string) error {
-	if !model.IsValidId(id) {
+	if !model.AcademicPeriodID(id).IsValid() {
 		return errors.New("academic-period cache invalidation ID is invalid")
 	}
 	data, err := json.Marshal(academicPeriodInvalidationMessage{ID: id})

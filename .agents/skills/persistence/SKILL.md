@@ -29,6 +29,8 @@ description: Design or change Proctor Store contracts, named atomic operations, 
 
 Contracts return domain types or explicit store projection/aggregate results. SQL rows, nullable driver types, builders, handles, and column names stay private to `sqlstore`. Invalid rehydrated state is an internal integrity failure.
 
+Contracts name every entity by its typed model ID (`model.UserID`, `model.AuditEventID`, and so on) in method parameters, results, and command, cursor, and visibility fields. A plain `string` identifier is reserved for a reference whose entity type is chosen at runtime (a Role scope, a Resource, an onboarding row target, a retention record, a mail rekey target) and for runtime tokens such as node and lease IDs; those are checked with `model.IsValidOpaqueID`. Every entity ID is validated through its typed ID's `IsValid` or `Parse`. Persisted text, such as an idempotent outcome or checkpoint, converts back to the typed ID at the adapter boundary.
+
 Lookup semantics:
 
 - `Get`: missing data is `store.ErrNotFound`;

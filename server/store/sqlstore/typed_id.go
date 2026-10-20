@@ -50,7 +50,7 @@ func (n *NullEntityID) Scan(value any) error {
 		n.Valid = false
 		return nil
 	}
-	if !model.IsValidId(text) {
+	if !model.IsValidOpaqueID(text) {
 		return fmt.Errorf("sqlstore: scanned invalid entity id %q", text)
 	}
 	n.ID = text
@@ -63,7 +63,7 @@ func (n NullEntityID) Value() (driver.Value, error) {
 	if !n.Valid || n.ID == "" {
 		return nil, nil
 	}
-	if !model.IsValidId(n.ID) {
+	if !model.IsValidOpaqueID(n.ID) {
 		return nil, fmt.Errorf("sqlstore: cannot store invalid entity id %q", n.ID)
 	}
 	return n.ID, nil
@@ -71,7 +71,7 @@ func (n NullEntityID) Value() (driver.Value, error) {
 
 // EntityIDValue returns a driver value for a required ID string.
 func EntityIDValue(id string) (driver.Value, error) {
-	if !model.IsValidId(id) {
+	if !model.IsValidOpaqueID(id) {
 		return nil, fmt.Errorf("sqlstore: cannot store invalid entity id %q", id)
 	}
 	return id, nil

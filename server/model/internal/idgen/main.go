@@ -112,7 +112,7 @@ func render(specs []idSpec) ([]byte, error) {
 	}
 	for _, spec := range specs {
 		fmt.Fprintf(&output, "// IsValid reports whether the %s is a canonical non-zero ID.\n", spec.constructorSubject)
-		fmt.Fprintf(&output, "func (id %s) IsValid() bool { return IsValidId(string(id)) }\n\n", spec.typeName)
+		fmt.Fprintf(&output, "func (id %s) IsValid() bool { return IsValidOpaqueID(string(id)) }\n\n", spec.typeName)
 	}
 	for _, spec := range specs {
 		fmt.Fprintf(&output, "// String returns the %s wire/database representation.\n", spec.constructorSubject)

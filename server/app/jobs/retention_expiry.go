@@ -60,7 +60,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 	}
 	var command RetentionExpiryCommandV1
 	if e.Job.CommandVersion != 1 || decodeStrictJobDocument(e.Job.Command, &command) != nil || !command.Kind.IsValid() || (command.CleanupAudit && command.Kind != model.RetentionExpiryAudit) || command.BatchSize < 1 || command.BatchSize > retentionJobMaximumBatch ||
-		(command.AfterID != "" && !model.IsValidId(command.AfterID)) || (command.AfterID != "" && command.Before.IsZero()) {
+		(command.AfterID != "" && !model.AuditEventID(command.AfterID).IsValid()) || (command.AfterID != "" && command.Before.IsZero()) {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("invalid retention expiry command"))
 	}
 	cp := RetentionExpiryCheckpointV1{AfterID: command.AfterID, Before: command.Before}
@@ -69,7 +69,7 @@ func (h retentionExpiryHandler) Run(ctx context.Context, e jobengine.Execution) 
 	}
 	if cp.Examined < 0 || cp.Changed < 0 || cp.Changed > cp.Examined || cp.Examined > command.BatchSize || e.Job.WorkReserved < cp.Examined || e.Job.WorkReserved > command.BatchSize || cp.AfterID < command.AfterID ||
 		(e.Job.WorkReserved > 0 && cp.Before.IsZero()) ||
-		(cp.AfterID != "" && (!model.IsValidId(cp.AfterID) || cp.Before.IsZero())) || (!command.Before.IsZero() && !cp.Before.Equal(command.Before)) {
+		(cp.AfterID != "" && (!model.AuditEventID(cp.AfterID).IsValid() || cp.Before.IsZero())) || (!command.Before.IsZero() && !cp.Before.Equal(command.Before)) {
 		return jobengine.PermanentFailure("job.checkpoint.invalid", errors.New("invalid retention expiry work budget or cursor"))
 	}
 	remaining := command.BatchSize - e.Job.WorkReserved

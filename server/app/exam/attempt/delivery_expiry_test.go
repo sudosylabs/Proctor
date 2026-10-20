@@ -38,7 +38,7 @@ func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.
 	persistence := &expiryDeliveryStoreFake{ExamAttemptStore: f.persistence, due: []store.DeliveryExpiryDue{{Family: "native", SourceID: model.NewId(), AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, SittingID: due.SittingID, ClassID: due.ClassID}}}
 	f.service.deps.Persistence = persistence
 	result, err := f.service.ScanExpiredDeliveries(context.Background(), 1)
-	if err != nil || result.Completed != 1 || persistence.calls != 1 || !model.IsValidId(persistence.auditID) || strings.Join(f.order, ",") != "system.audit" {
+	if err != nil || result.Completed != 1 || persistence.calls != 1 || !model.AuditEventID(persistence.auditID).IsValid() || strings.Join(f.order, ",") != "system.audit" {
 		t.Fatalf("scan=%#v calls=%d order=%v: %v", result, persistence.calls, f.order, err)
 	}
 	for _, limit := range []int{0, 201} {

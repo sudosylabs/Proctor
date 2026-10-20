@@ -79,7 +79,7 @@ func (e *Event) ValidateForPublish() error {
 	if e == nil {
 		return errors.New("websocket event is nil")
 	}
-	if e.Id != "" && !model.IsValidId(e.Id) {
+	if e.Id != "" && !model.IsValidOpaqueID(e.Id) {
 		return errors.New("websocket event ID is invalid")
 	}
 	if len(e.Event) == 0 || len(e.Event) > MaxEventBytes || !validName(e.Event) {
@@ -88,7 +88,7 @@ func (e *Event) ValidateForPublish() error {
 	if e.Sequence != 0 {
 		return errors.New("websocket event sequence must be assigned by the connection")
 	}
-	if e.UserID != "" && !model.IsValidId(e.UserID) {
+	if e.UserID != "" && !model.UserID(e.UserID).IsValid() {
 		return errors.New("websocket event user ID is invalid")
 	}
 	if e.Action == "" && e.Resource == (Resource{}) {

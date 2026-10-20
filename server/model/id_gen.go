@@ -669,181 +669,181 @@ func (id UploadLeaseID) IsZero() bool { return id == "" }
 func (id AdministratorRecoveryRecordID) IsZero() bool { return id == "" }
 
 // IsValid reports whether the institution is a canonical non-zero ID.
-func (id InstitutionID) IsValid() bool { return IsValidId(string(id)) }
+func (id InstitutionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the access-policy is a canonical non-zero ID.
-func (id AccessPolicyID) IsValid() bool { return IsValidId(string(id)) }
+func (id AccessPolicyID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the academic-unit is a canonical non-zero ID.
-func (id AcademicUnitID) IsValid() bool { return IsValidId(string(id)) }
+func (id AcademicUnitID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the programme is a canonical non-zero ID.
-func (id ProgrammeID) IsValid() bool { return IsValidId(string(id)) }
+func (id ProgrammeID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the programme-level is a canonical non-zero ID.
-func (id ProgrammeLevelID) IsValid() bool { return IsValidId(string(id)) }
+func (id ProgrammeLevelID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the class is a canonical non-zero ID.
-func (id ClassID) IsValid() bool { return IsValidId(string(id)) }
+func (id ClassID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the academic-period is a canonical non-zero ID.
-func (id AcademicPeriodID) IsValid() bool { return IsValidId(string(id)) }
+func (id AcademicPeriodID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam is a canonical non-zero ID.
-func (id ExamID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-revision is a canonical non-zero ID.
-func (id ExamRevisionID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamRevisionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-sitting is a canonical non-zero ID.
-func (id ExamSittingID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamSittingID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-resource is a canonical non-zero ID.
-func (id ExamResourceID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamResourceID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-correction-resource-stage is a canonical non-zero ID.
-func (id ExamCorrectionResourceStageID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamCorrectionResourceStageID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-attempt is a canonical non-zero ID.
-func (id ExamAttemptID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamAttemptID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the exam-attempt-workspace is a canonical non-zero ID.
-func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the submission is a canonical non-zero ID.
-func (id SubmissionID) IsValid() bool { return IsValidId(string(id)) }
+func (id SubmissionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the retention hold is a canonical non-zero ID.
-func (id RetentionHoldID) IsValid() bool { return IsValidId(string(id)) }
+func (id RetentionHoldID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the retention preview is a canonical non-zero ID.
-func (id RetentionPreviewID) IsValid() bool { return IsValidId(string(id)) }
+func (id RetentionPreviewID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the retention retirement is a canonical non-zero ID.
-func (id RetentionRetirementID) IsValid() bool { return IsValidId(string(id)) }
+func (id RetentionRetirementID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the examination export is a canonical non-zero ID.
-func (id ExamExportID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExamExportID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the attempt-participation is a canonical non-zero ID.
-func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
+func (id AttemptParticipationID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the attempt-connection is a canonical non-zero ID.
-func (id AttemptConnectionID) IsValid() bool { return IsValidId(string(id)) }
+func (id AttemptConnectionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the focus-loss-signal is a canonical non-zero ID.
-func (id FocusLossSignalID) IsValid() bool { return IsValidId(string(id)) }
+func (id FocusLossSignalID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the integrity-evidence is a canonical non-zero ID.
-func (id IntegrityEvidenceID) IsValid() bool { return IsValidId(string(id)) }
+func (id IntegrityEvidenceID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the integrity-flag is a canonical non-zero ID.
-func (id IntegrityFlagID) IsValid() bool { return IsValidId(string(id)) }
+func (id IntegrityFlagID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the integrity-review-decision is a canonical non-zero ID.
-func (id IntegrityReviewDecisionID) IsValid() bool { return IsValidId(string(id)) }
+func (id IntegrityReviewDecisionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the submission-review is a canonical non-zero ID.
-func (id SubmissionReviewID) IsValid() bool { return IsValidId(string(id)) }
+func (id SubmissionReviewID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the integrity-discrepancy is a canonical non-zero ID.
-func (id IntegrityDiscrepancyID) IsValid() bool { return IsValidId(string(id)) }
+func (id IntegrityDiscrepancyID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the attempt-suspension is a canonical non-zero ID.
-func (id AttemptSuspensionID) IsValid() bool { return IsValidId(string(id)) }
+func (id AttemptSuspensionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the attempt-workspace-entry is a canonical non-zero ID.
-func (id AttemptWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
+func (id AttemptWorkspaceEntryID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the attempt-workspace-object is a canonical non-zero ID.
-func (id AttemptWorkspaceObjectID) IsValid() bool { return IsValidId(string(id)) }
+func (id AttemptWorkspaceObjectID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the starter-workspace-entry is a canonical non-zero ID.
-func (id StarterWorkspaceEntryID) IsValid() bool { return IsValidId(string(id)) }
+func (id StarterWorkspaceEntryID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the starter-workspace-object is a canonical non-zero ID.
-func (id StarterWorkspaceObjectID) IsValid() bool { return IsValidId(string(id)) }
+func (id StarterWorkspaceObjectID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the user is a canonical non-zero ID.
-func (id UserID) IsValid() bool { return IsValidId(string(id)) }
+func (id UserID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the session is a canonical non-zero ID.
-func (id SessionID) IsValid() bool { return IsValidId(string(id)) }
+func (id SessionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the desktop-registration is a canonical non-zero ID.
-func (id DesktopRegistrationID) IsValid() bool { return IsValidId(string(id)) }
+func (id DesktopRegistrationID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the session-credential is a canonical non-zero ID.
-func (id SessionCredentialID) IsValid() bool { return IsValidId(string(id)) }
+func (id SessionCredentialID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the role is a canonical non-zero ID.
-func (id RoleID) IsValid() bool { return IsValidId(string(id)) }
+func (id RoleID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the role-binding is a canonical non-zero ID.
-func (id RoleBindingID) IsValid() bool { return IsValidId(string(id)) }
+func (id RoleBindingID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the affiliation is a canonical non-zero ID.
-func (id AffiliationID) IsValid() bool { return IsValidId(string(id)) }
+func (id AffiliationID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the academic-unit-member is a canonical non-zero ID.
-func (id AcademicUnitMemberID) IsValid() bool { return IsValidId(string(id)) }
+func (id AcademicUnitMemberID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the class-member is a canonical non-zero ID.
-func (id ClassMemberID) IsValid() bool { return IsValidId(string(id)) }
+func (id ClassMemberID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the external-identity is a canonical non-zero ID.
-func (id ExternalIdentityID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExternalIdentityID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the password-credential is a canonical non-zero ID.
-func (id PasswordCredentialID) IsValid() bool { return IsValidId(string(id)) }
+func (id PasswordCredentialID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the personal-access-token is a canonical non-zero ID.
-func (id PersonalAccessTokenID) IsValid() bool { return IsValidId(string(id)) }
+func (id PersonalAccessTokenID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the personal-access-token-preparation is a canonical non-zero ID.
-func (id PersonalAccessTokenPreparationID) IsValid() bool { return IsValidId(string(id)) }
+func (id PersonalAccessTokenPreparationID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the user-token is a canonical non-zero ID.
-func (id UserTokenID) IsValid() bool { return IsValidId(string(id)) }
+func (id UserTokenID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the invitation is a canonical non-zero ID.
-func (id InvitationID) IsValid() bool { return IsValidId(string(id)) }
+func (id InvitationID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the MFA credential is a canonical non-zero ID.
-func (id MFACredentialID) IsValid() bool { return IsValidId(string(id)) }
+func (id MFACredentialID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the MFA recovery-code is a canonical non-zero ID.
-func (id MFARecoveryCodeID) IsValid() bool { return IsValidId(string(id)) }
+func (id MFARecoveryCodeID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the audit-event is a canonical non-zero ID.
-func (id AuditEventID) IsValid() bool { return IsValidId(string(id)) }
+func (id AuditEventID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the mail-occurrence is a canonical non-zero ID.
-func (id MailOccurrenceID) IsValid() bool { return IsValidId(string(id)) }
+func (id MailOccurrenceID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the mail-delivery is a canonical non-zero ID.
-func (id MailDeliveryID) IsValid() bool { return IsValidId(string(id)) }
+func (id MailDeliveryID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the external-login-state is a canonical non-zero ID.
-func (id ExternalLoginStateID) IsValid() bool { return IsValidId(string(id)) }
+func (id ExternalLoginStateID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the browser-authentication-transaction is a canonical non-zero ID.
-func (id BrowserAuthenticationTransactionID) IsValid() bool { return IsValidId(string(id)) }
+func (id BrowserAuthenticationTransactionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the file-entry is a canonical non-zero ID.
-func (id FileEntryID) IsValid() bool { return IsValidId(string(id)) }
+func (id FileEntryID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the file-revision is a canonical non-zero ID.
-func (id FileRevisionID) IsValid() bool { return IsValidId(string(id)) }
+func (id FileRevisionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the file-rendition is a canonical non-zero ID.
-func (id FileRenditionID) IsValid() bool { return IsValidId(string(id)) }
+func (id FileRenditionID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the upload-lease is a canonical non-zero ID.
-func (id UploadLeaseID) IsValid() bool { return IsValidId(string(id)) }
+func (id UploadLeaseID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // IsValid reports whether the administrator-recovery-record is a canonical non-zero ID.
-func (id AdministratorRecoveryRecordID) IsValid() bool { return IsValidId(string(id)) }
+func (id AdministratorRecoveryRecordID) IsValid() bool { return IsValidOpaqueID(string(id)) }
 
 // String returns the institution wire/database representation.
 func (id InstitutionID) String() string { return string(id) }

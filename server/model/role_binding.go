@@ -110,7 +110,7 @@ func (rb *RoleBinding) Validate() error {
 	if !rb.ScopeType.IsValid() {
 		return invalidModelError(where, "role_binding", "scope_type", "has an unknown value", details)
 	}
-	if !IsValidId(rb.ScopeID) {
+	if !IsValidOpaqueID(rb.ScopeID) {
 		return invalidModelError(where, "role_binding", "scope_id", "must be a valid identifier", details)
 	}
 	return validateEffectiveInterval(where, "role_binding", details, rb.StartsAt, rb.EndsAt)

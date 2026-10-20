@@ -290,9 +290,9 @@ func (s SQLInvitationStore) CompleteOnboardingImportPreview(ctx context.Context,
 				return nil, store.NewErrInvalidInput("onboarding_import_row", "preview", nil)
 			}
 			if current.Mode == string(model.OnboardingImportStudentProgression) &&
-				(!row.UserID.IsValid() || !model.IsValidId(row.RelationshipID) || row.RelationshipRevision < 1 || row.ScopeType != model.RoleScopeClass ||
+				(!row.UserID.IsValid() || !model.IsValidOpaqueID(row.RelationshipID) || row.RelationshipRevision < 1 || row.ScopeType != model.RoleScopeClass ||
 					row.ScopeID != current.DestinationClassID.String || (row.Operation != "class.enroll" && row.Operation != "class.transfer") ||
-					(model.IsValidId(row.DestinationRelationshipID) != (row.DestinationRelationshipRevision > 0))) {
+					(model.IsValidOpaqueID(row.DestinationRelationshipID) != (row.DestinationRelationshipRevision > 0))) {
 				return nil, store.NewErrInvalidInput("student_progression_row", "preview", nil)
 			}
 			status := row.PreviewStatus
@@ -457,7 +457,7 @@ func (s SQLInvitationStore) CompleteOnboardingImportRow(ctx context.Context, inp
 	if input == nil || !input.ID.IsValid() || input.RowNumber < 1 || input.At.IsZero() ||
 		(input.Status != model.OnboardingImportRowSucceeded && input.Status != model.OnboardingImportRowNoOp && input.Status != model.OnboardingImportRowFailed) ||
 		((input.Status == model.OnboardingImportRowFailed) != (input.PublicCode != "")) ||
-		(input.Status == model.OnboardingImportRowSucceeded && !input.InvitationID.IsValid() && !model.IsValidId(input.ResourceID)) {
+		(input.Status == model.OnboardingImportRowSucceeded && !input.InvitationID.IsValid() && !model.IsValidOpaqueID(input.ResourceID)) {
 		return nil, store.NewErrInvalidInput("onboarding_import_row", "completion", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "complete onboarding import row", func(ctx context.Context, tx *sqlxTxWrapper) (*store.OnboardingImport, error) {
@@ -734,7 +734,7 @@ func validCommandAuthorization(authority *store.CommandAuthorization) bool {
 		return true
 	}
 	if authority.Principal.Validate() != nil || !authority.ScopeType.IsValid() ||
-		!model.IsValidId(authority.ScopeID) || len(authority.Actions) == 0 {
+		!model.IsValidOpaqueID(authority.ScopeID) || len(authority.Actions) == 0 {
 		return false
 	}
 	if !authority.ClassMemberID.IsZero() && !authority.ClassMemberID.IsValid() ||
@@ -913,7 +913,7 @@ type onboardingImportCommandResult struct {
 }
 
 func administrativeOnboardingOutcome(resourceID string, noOp bool) (onboardingImportCommandResult, error) {
-	if !model.IsValidId(resourceID) {
+	if !model.IsValidOpaqueID(resourceID) {
 		return onboardingImportCommandResult{}, store.NewErrInvalidInput("onboarding_import_row", "resource_outcome", nil)
 	}
 	status := model.OnboardingImportRowSucceeded
@@ -937,7 +937,7 @@ func completeOnboardingImportCommand[T any](ctx context.Context, tx *sqlxTxWrapp
 		return err
 	}
 	if (outcome.Status != model.OnboardingImportRowSucceeded && outcome.Status != model.OnboardingImportRowNoOp) ||
-		(outcome.Status == model.OnboardingImportRowSucceeded && !outcome.InvitationID.IsValid() && !model.IsValidId(outcome.ResourceID)) {
+		(outcome.Status == model.OnboardingImportRowSucceeded && !outcome.InvitationID.IsValid() && !model.IsValidOpaqueID(outcome.ResourceID)) {
 		return store.NewErrInvalidInput("onboarding_import_row", "outcome", nil)
 	}
 	var current struct {
@@ -1137,7 +1137,7 @@ func onboardingImportCommittedSnapshot(current onboardingImportRow) (onboardingI
 }
 
 func requireOnboardingImportAuthority(ctx context.Context, tx *sqlxTxWrapper, principal model.Principal, scopeType model.RoleScopeType, scopeID string) error {
-	if principal.Validate() != nil || !scopeType.IsValid() || !model.IsValidId(scopeID) {
+	if principal.Validate() != nil || !scopeType.IsValid() || !model.IsValidOpaqueID(scopeID) {
 		return store.NewErrInvalidInput("onboarding_import", "authority", nil)
 	}
 	at, err := requireCurrentPrincipalCredential(ctx, tx, principal)
@@ -1257,7 +1257,7 @@ func requireUserActionAtScope(ctx context.Context, tx *sqlxTxWrapper, userID mod
 }
 
 func requireUserActionAtScopeWithDelegation(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID, action model.Action, scopeType model.RoleScopeType, scopeID string, at time.Time, strictParent bool) error {
-	if !userID.IsValid() || !scopeType.IsValid() || !model.IsValidId(scopeID) || at.IsZero() {
+	if !userID.IsValid() || !scopeType.IsValid() || !model.IsValidOpaqueID(scopeID) || at.IsZero() {
 		return store.NewErrInvalidInput("authorization", "scope", nil)
 	}
 	var active bool

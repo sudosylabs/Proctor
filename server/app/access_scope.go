@@ -248,7 +248,7 @@ func (s *accessControlService) authorizeRoleBindingScope(
 }
 
 func roleScopeResource(scopeType model.RoleScopeType, scopeID string) (model.Resource, error) {
-	if !model.IsValidId(scopeID) {
+	if !model.IsValidOpaqueID(scopeID) {
 		return model.Resource{}, apperror.New("request.invalid").WithField("field", "role_binding")
 	}
 	var resourceType model.ResourceType

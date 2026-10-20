@@ -175,7 +175,7 @@ func auditCursorSpec() opaqueCursorSpec[auditCursor] {
 		setVersion:     func(cursor *auditCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
 		validate: func(cursor auditCursor) error {
-			if cursor.CreateAt <= 0 || !model.IsValidId(cursor.Id) {
+			if cursor.CreateAt <= 0 || !model.AuditEventID(cursor.Id).IsValid() {
 				return errors.New("invalid audit keyset")
 			}
 			return nil

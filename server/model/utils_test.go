@@ -15,7 +15,7 @@ func TestNewIdProducesCanonicalUniqueIdentifiers(t *testing.T) {
 	seen := make(map[string]struct{}, 1000)
 	for range 1000 {
 		id := NewId()
-		if !IsValidId(id) {
+		if !IsValidOpaqueID(id) {
 			t.Fatalf("NewId() returned invalid identifier %q", id)
 		}
 		if _, exists := seen[id]; exists {
@@ -25,7 +25,7 @@ func TestNewIdProducesCanonicalUniqueIdentifiers(t *testing.T) {
 	}
 }
 
-func TestIsValidIdRejectsNonCanonicalIdentifiers(t *testing.T) {
+func TestIsValidOpaqueIDRejectsNonCanonicalIdentifiers(t *testing.T) {
 	t.Parallel()
 
 	for _, value := range []string{
@@ -36,8 +36,8 @@ func TestIsValidIdRejectsNonCanonicalIdentifiers(t *testing.T) {
 		"00000000000000000000000000",
 		"ééééééééééééé",
 	} {
-		if IsValidId(value) {
-			t.Errorf("IsValidId(%q) = true", value)
+		if IsValidOpaqueID(value) {
+			t.Errorf("IsValidOpaqueID(%q) = true", value)
 		}
 	}
 }

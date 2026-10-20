@@ -515,7 +515,7 @@ func (a *App) RunInvitationBatch(ctx context.Context, invocation Invocation, com
 
 func (s *invitationService) RunBatch(ctx context.Context, invocation Invocation, command RunInvitationBatchCommand) (InvitationBatchResult, error) {
 	command.ScopeID = strings.TrimSpace(command.ScopeID)
-	if !command.Operation.IsValid() || !model.IsValidId(command.ScopeID) || command.IdempotencyKey == "" ||
+	if !command.Operation.IsValid() || !model.IsValidOpaqueID(command.ScopeID) || command.IdempotencyKey == "" ||
 		len(command.Items) < 1 || len(command.Items) > MaximumInvitationBatchItems || !invitationBatchScopeMatchesOperation(command.Operation, command.ScopeType) {
 		return InvitationBatchResult{}, apperror.New("request.invalid")
 	}
@@ -886,7 +886,7 @@ func (s *invitationService) List(ctx context.Context, invocation Invocation, que
 	targetEmail := strings.ToLower(strings.TrimSpace(query.TargetEmail))
 	if query.Limit < 1 || query.Limit > 200 || (query.Purpose != "" && !query.Purpose.IsValid()) ||
 		(query.State != "" && !query.State.IsValid()) || (targetEmail != "" && !model.IsValidEmail(targetEmail)) ||
-		(query.TargetID != "" && !model.IsValidId(query.TargetID)) ||
+		(query.TargetID != "" && !model.IsValidOpaqueID(query.TargetID)) ||
 		(query.BeforeID.IsValid() != !query.BeforeCreatedAt.IsZero()) {
 		return InvitationAdministrationPage{}, apperror.New("invitation.query.invalid")
 	}

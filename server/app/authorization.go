@@ -392,7 +392,7 @@ func (s *accessControlService) authorizeUserRead(
 			return false, authorizationUnavailableError(err)
 		}
 		allowed = (match.ScopeType == model.RoleScopeAcademicUnit || match.ScopeType == model.RoleScopeClass) &&
-			model.IsValidId(match.ScopeID)
+			model.IsValidOpaqueID(match.ScopeID)
 	}
 	institution, err := s.resolver.institutions.GetSingleton(ctx)
 	if err != nil {

@@ -161,7 +161,7 @@ func (h mailRekeyHandler) Run(ctx context.Context, execution jobengine.Execution
 
 func (h mailRekeyHandler) reencryptTarget(target store.MailRekeyTarget, jobID model.JobID, primaryKeyID string) (*store.MailRekeyReplacement, error) {
 	purpose, ok := mailRekeyTargetPurpose(target.Kind)
-	if !ok || !model.IsValidId(target.ID) || len(target.EncryptedPayload) == 0 {
+	if !ok || !model.IsValidOpaqueID(target.ID) || len(target.EncryptedPayload) == 0 {
 		return nil, errors.New("mail rekey target identity is invalid")
 	}
 	var envelope secretseal.Envelope
@@ -196,7 +196,7 @@ func decodeMailRekeyCheckpoint(version int, document json.RawMessage) (MailRekey
 	}
 	if version != 1 || decodeStrictUniqueJobDocument(document, &checkpoint) != nil ||
 		checkpoint.Processed < 0 || checkpoint.Reencrypted < 0 || checkpoint.Reencrypted > checkpoint.Processed ||
-		checkpoint.AfterID == "" || !model.IsValidId(checkpoint.AfterID) || !validMailRekeyTargetKind(checkpoint.AfterKind) {
+		checkpoint.AfterID == "" || !model.IsValidOpaqueID(checkpoint.AfterID) || !validMailRekeyTargetKind(checkpoint.AfterKind) {
 		return checkpoint, errors.New("mail rekey checkpoint is invalid")
 	}
 	return checkpoint, nil
@@ -224,7 +224,7 @@ func validateMailRekeyProof(proof *store.MailRekeyProof, command MailRekeyComman
 }
 
 func mailRekeyTargetAfter(target store.MailRekeyTarget, checkpoint MailRekeyCheckpointV1) bool {
-	if !validMailRekeyTargetKind(target.Kind) || !model.IsValidId(target.ID) {
+	if !validMailRekeyTargetKind(target.Kind) || !model.IsValidOpaqueID(target.ID) {
 		return false
 	}
 	if checkpoint.AfterKind == "" {

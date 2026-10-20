@@ -216,7 +216,7 @@ func TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout(t *testing.T) {
 			IdempotencyReplayed  bool   `json:"idempotency_replayed"`
 			OriginalAuditEventID string `json:"original_audit_event_id"`
 		}
-		if json.Unmarshal(event.Result, &terminal) == nil && terminal.IdempotencyReplayed && model.IsValidId(terminal.OriginalAuditEventID) {
+		if json.Unmarshal(event.Result, &terminal) == nil && terminal.IdempotencyReplayed && model.AuditEventID(terminal.OriginalAuditEventID).IsValid() {
 			foundReplay = true
 		}
 	}

@@ -40,8 +40,13 @@ func NewId() string {
 	return idEncoding.EncodeToString(value)
 }
 
-// IsValidId reports whether value is a canonical Proctor identifier.
-func IsValidId(value string) bool {
+// IsValidOpaqueID reports whether value has the canonical opaque identifier
+// form. Entity identifiers are validated through their typed ID (for example
+// UserID.IsValid or ParseUserID); this predicate is reserved for references
+// whose entity type is chosen at runtime, such as Role scopes, Resources,
+// mixed-kind cursors and delivery selectors, and for runtime tokens that are
+// not domain entities.
+func IsValidOpaqueID(value string) bool {
 	if len(value) != IdLength {
 		return false
 	}

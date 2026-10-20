@@ -74,7 +74,7 @@ func (a retentionJobAudit) FailRetention(ctx context.Context, id model.AuditEven
 }
 
 func (a retentionJobAudit) BeginRetentionExpiry(ctx context.Context, institutionID model.InstitutionID, kind model.RetentionExpiryKind, id string) (model.AuditEventID, error) {
-	if a.audit == nil || !kind.IsValid() || !model.IsValidId(id) {
+	if a.audit == nil || !kind.IsValid() || !model.IsValidOpaqueID(id) {
 		return "", apperror.New("audit.unavailable")
 	}
 	event, err := a.audit.BeginSystemCriticalActionAtScope(ctx, model.ActionRetentionCleanupManage,

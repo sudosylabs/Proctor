@@ -138,7 +138,7 @@ func (ae *AuditEvent) Validate() error {
 	if err := ae.Resource.Validate(); err != nil {
 		return invalidModelError(where, "audit_event", "resource", "must identify a valid resource", details)
 	}
-	if !ae.ScopeType.IsValid() || !IsValidId(ae.ScopeID) {
+	if !ae.ScopeType.IsValid() || !IsValidOpaqueID(ae.ScopeID) {
 		return invalidModelError(where, "audit_event", "scope", "must identify a valid authorization scope", details)
 	}
 	if ae.Status != AuditStatusAttempt && ae.Status != AuditStatusSuccess && ae.Status != AuditStatusFail {

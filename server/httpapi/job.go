@@ -239,7 +239,7 @@ func jobCursorSpec() opaqueCursorSpec[jobCursor] {
 		setVersion:     func(cursor *jobCursor, version int) { cursor.Version = version },
 		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
 		validate: func(cursor jobCursor) error {
-			if cursor.CreatedAt <= 0 || !model.IsValidId(cursor.ID) {
+			if cursor.CreatedAt <= 0 || !model.JobID(cursor.ID).IsValid() {
 				return errors.New("invalid job keyset")
 			}
 			return nil

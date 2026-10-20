@@ -109,7 +109,7 @@ func (sc *SessionCredential) Validate() error {
 			)
 		}
 	} else {
-		if !IsValidId(sc.FamilyID) {
+		if !IsValidOpaqueID(sc.FamilyID) {
 			return invalidModelError(
 				where,
 				"session_credential",
