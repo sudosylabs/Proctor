@@ -12,19 +12,11 @@ import (
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 type CreateExamExportCommand = examengine.CreateExportCommand
 type ExamExportQuery = examengine.ExportQuery
 type ExamExportDownload = examengine.ExportDownload
-
-type examExportUseCases interface {
-	Create(context.Context, Invocation, examengine.CreateExportCommand) (*model.ExamExport, error)
-	Get(context.Context, Invocation, examengine.ExportQuery) (*model.ExamExport, error)
-	Open(context.Context, Invocation, examengine.ExportQuery) (*examengine.ExportDownload, error)
-	BuildFromJob(context.Context, store.ExamExportBuild) error
-}
 
 func (a *App) CreateExamExport(ctx context.Context, invocation Invocation, command CreateExamExportCommand) (*model.ExamExport, error) {
 	result, err := a.examExports.Create(ctx, invocation, command)

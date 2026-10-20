@@ -12,6 +12,10 @@ import (
 	"errors"
 	"time"
 
+	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -49,12 +53,12 @@ type App struct {
 	invitations                       *invitationService
 	onboardingImports                 *onboardingImportService
 	exams                             examUseCases
-	examRevisions                     examRevisionUseCases
+	examRevisions                     *examengine.Publication
 	examSittings                      examSittingUseCases
-	examRecords                       examRecordsUseCases
-	examExports                       examExportUseCases
-	examAttempts                      examAttemptUseCases
-	examReviews                       examReviewUseCases
+	examRecords                       *examengine.Records
+	examExports                       *examengine.Exports
+	examAttempts                      *examattempt.Service
+	examReviews                       *examreview.Service
 	examResources                     examResourceUseCases
 	examCorrections                   examCorrectionUseCases
 	examStarterWorkspace              examStarterWorkspaceUseCases

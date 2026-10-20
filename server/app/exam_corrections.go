@@ -28,14 +28,7 @@ const (
 
 type StageExamSittingCorrectionResourceContentCommand = examcorrection.StageResourceContentCommand
 
-type ExamSittingCorrectionResourceStage struct {
-	StageID    model.ExamCorrectionResourceStageID
-	ResourceID model.ExamResourceID
-	MediaType  model.ExamResourceMediaType
-	Size       int64
-	SHA256     string
-	ExpiresAt  time.Time
-}
+type ExamSittingCorrectionResourceStage = examcorrection.ResourceStage
 
 type ExamSittingCorrectionInstructions = examcorrection.OptionalInstructions
 type ExamSittingCorrectionBrowserPolicy = examcorrection.OptionalBrowserPolicy
@@ -64,7 +57,7 @@ func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, inv
 	if err != nil {
 		return ExamSittingCorrectionResourceStage{}, examCorrectionError(err, true)
 	}
-	return ExamSittingCorrectionResourceStage{StageID: result.StageID, ResourceID: result.ResourceID, MediaType: result.MediaType, Size: result.Size, SHA256: result.SHA256, ExpiresAt: result.ExpiresAt}, nil
+	return result, nil
 }
 
 func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocation, command ApplyExamSittingCorrectionCommand) (ExamSittingCorrectionResult, error) {

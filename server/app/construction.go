@@ -10,6 +10,10 @@ package app
 import (
 	"errors"
 
+	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -17,14 +21,14 @@ import (
 
 type examinationConstruction struct {
 	authoring              examUseCases
-	revisions              examRevisionUseCases
+	revisions              *examengine.Publication
 	sittings               examSittingUseCases
 	sittingMail            *appmail.SittingComposer
 	sittingMailPreparation sittingScheduleMailPreparationAdapter
-	attempts               examAttemptUseCases
-	reviews                examReviewUseCases
-	records                examRecordsUseCases
-	exports                examExportUseCases
+	attempts               *examattempt.Service
+	reviews                *examreview.Service
+	records                *examengine.Records
+	exports                *examengine.Exports
 	resources              examResourceUseCases
 	corrections            examCorrectionUseCases
 	starterWorkspace       examStarterWorkspaceUseCases

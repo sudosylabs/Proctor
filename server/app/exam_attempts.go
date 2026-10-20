@@ -10,12 +10,9 @@ package app
 import (
 	"context"
 	"errors"
-	"io"
-	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -95,14 +92,7 @@ func (a *App) EndExamAttemptByManager(ctx context.Context, invocation Invocation
 	return result.Receipt, nil
 }
 
-type ConnectExamAttemptCommand struct {
-	Security                         model.ConnectSecurity
-	SittingID                        model.ExamSittingID
-	ContinuityCredential             string
-	ConfigurationManifestFingerprint string
-	InitialConfiguration             *model.AttemptConfigurationCandidate
-	IdempotencyKey                   string
-}
+type ConnectExamAttemptCommand = examattempt.ConnectCommand
 
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
 
@@ -110,78 +100,23 @@ type RenewExamAttemptParticipationCommand = examattempt.RenewParticipationComman
 
 type EvaluateExamAttemptFocusLossCommand = examattempt.FocusLossCommand
 
-type ReallowExamAttemptCommand struct {
-	ExamID                  model.ExamID
-	SittingID               model.ExamSittingID
-	AttemptID               model.ExamAttemptID
-	SuspensionID            model.AttemptSuspensionID
-	ExpectedAttemptRevision int64
-	PrivateReason           string
-	IdempotencyKey          string
-}
+type ReallowExamAttemptCommand = examattempt.ReallowCommand
 
-type ListCandidateExamWorkspaceQuery struct {
-	Access         CandidateExamAttemptAccess
-	ExpectedCursor int64
-	AfterEntryID   model.AttemptWorkspaceEntryID
-	Limit          int
-}
+type ListCandidateExamWorkspaceQuery = examattempt.WorkspaceQuery
 
-type CandidateExamWorkspacePage struct {
-	WorkspaceID     model.ExamAttemptWorkspaceID
-	Cursor          int64
-	Items           []CandidateExamWorkspaceItem
-	HasMore         bool
-	RefreshRequired bool
-}
+type CandidateExamWorkspacePage = examattempt.WorkspacePage
 
 type ListCandidateExamWorkspaceJournalQuery = examattempt.WorkspaceJournalQuery
 
-type CreateCandidateExamWorkspaceDirectoryCommand struct {
-	Access         ExamAttemptWorkspaceMutationAccess
-	Path           string
-	IdempotencyKey string
-}
+type CreateCandidateExamWorkspaceDirectoryCommand = examattempt.CreateWorkspaceDirectoryCommand
 
-type CreateCandidateExamWorkspaceFileCommand struct {
-	Access         ExamAttemptWorkspaceMutationAccess
-	Path           string
-	MediaType      string
-	ExpectedSHA256 string
-	Body           io.Reader
-	Size           int64
-	IdempotencyKey string
-}
+type CreateCandidateExamWorkspaceFileCommand = examattempt.CreateWorkspaceFileCommand
 
-type ReplaceCandidateExamWorkspaceFileCommand struct {
-	Access                 ExamAttemptWorkspaceMutationAccess
-	EntryID                model.AttemptWorkspaceEntryID
-	ExpectedPath           string
-	ExpectedContentVersion model.WorkspaceContentVersion
-	MediaType              string
-	ExpectedSHA256         string
-	Body                   io.Reader
-	Size                   int64
-	IdempotencyKey         string
-}
+type ReplaceCandidateExamWorkspaceFileCommand = examattempt.ReplaceWorkspaceFileCommand
 
-type MoveCandidateExamWorkspaceEntryCommand struct {
-	Access          ExamAttemptWorkspaceMutationAccess
-	EntryID         model.AttemptWorkspaceEntryID
-	ExpectedPath    string
-	DestinationPath string
-	IdempotencyKey  string
-}
+type MoveCandidateExamWorkspaceEntryCommand = examattempt.MoveWorkspaceEntryCommand
 
-type DeleteCandidateExamWorkspaceEntryCommand struct {
-	Access                  ExamAttemptWorkspaceMutationAccess
-	EntryID                 model.AttemptWorkspaceEntryID
-	ExpectedPath            string
-	ExpectedContentVersion  model.WorkspaceContentVersion
-	Recursive               bool
-	ExpectedWorkspaceCursor *int64
-	IdempotencyKey          string
-}
+type DeleteCandidateExamWorkspaceEntryCommand = examattempt.DeleteWorkspaceEntryCommand
 
 type OpenCandidateExamResourceQuery struct {
 	Access     CandidateExamAttemptAccess
@@ -193,81 +128,11 @@ type OpenCandidateExamWorkspaceFileQuery struct {
 	EntryID model.AttemptWorkspaceEntryID
 }
 
-type GetExamAttemptQuery struct {
-	ExamID    model.ExamID
-	SittingID model.ExamSittingID
-	AttemptID model.ExamAttemptID
-}
+type GetExamAttemptQuery = examattempt.GetManagedAttemptQuery
 
-type ListExamAttemptsQuery struct {
-	ExamID          model.ExamID
-	SittingID       model.ExamSittingID
-	States          []model.ExamAttemptState
-	BeforeCreatedAt time.Time
-	BeforeAttemptID model.ExamAttemptID
-	Limit           int
-}
+type ListExamAttemptsQuery = examattempt.ListManagedAttemptsQuery
 
-type ExamAttemptManagerPage struct {
-	Items   []ExamAttemptManagerView
-	HasMore bool
-}
-
-type examAttemptUseCases interface {
-	AppendNativeDelivery(context.Context, Invocation, examattempt.NativeDeliveryAppendCommand) (*model.NativeSecurityAcknowledgement, error)
-	BrowserSourceStatus(context.Context, Invocation, examattempt.BrowserSourceQuery) (*model.BrowserSourceStatus, error)
-	BrowserDeliveryReceipts(context.Context, Invocation, examattempt.BrowserSourceQuery, int64, int) (*model.BrowserReceiptPage, error)
-	DeclareBrowserDeliveryGaps(context.Context, Invocation, examattempt.BrowserDeliveryGapsCommand) (*model.BrowserDeliveryGapResult, error)
-	SealBrowserDelivery(context.Context, Invocation, examattempt.BrowserDeliveryFinalCommand) (*model.BrowserSourceStatus, error)
-	UpdateBrowserDeliverySummary(context.Context, Invocation, examattempt.BrowserDeliverySummaryCommand) (*model.BrowserDeliverySummaryResult, error)
-	AppendHistoricalBrowserDelivery(context.Context, Invocation, examattempt.BrowserDeliveryAppendCommand) (*model.BrowserActivityAcknowledgement, error)
-
-	BrowserSourceList(context.Context, Invocation, examattempt.BrowserSourceQuery) ([]model.BrowserSourceStatus, error)
-	DeliveryBudget(context.Context, Invocation, examattempt.DeliveryBudgetQuery) (*model.DeliveryBudgetSnapshot, error)
-	StopDeliveryDetails(context.Context, Invocation, examattempt.StopDeliveryDetailsCommand) (*model.StopDeliveryDetailsResult, error)
-	NativeDeliveryStatus(context.Context, Invocation, examattempt.NativeDeliveryQuery) (*model.NativeSecurityStreamStatus, error)
-	NativeDeliveryReceipt(context.Context, Invocation, examattempt.NativeDeliveryQuery, int64) (*model.NativeBatchReceipt, error)
-	DeclareNativeDeliveryGaps(context.Context, Invocation, examattempt.NativeDeliveryGapsCommand) (*model.DeliveryGapReceipt, error)
-	SealNativeDelivery(context.Context, Invocation, examattempt.NativeDeliveryFinalCommand) (*model.NativeSecurityStreamStatus, error)
-	UpdateNativeDeliverySummary(context.Context, Invocation, examattempt.NativeDeliverySummaryCommand) (*model.NativeSecurityStreamStatus, error)
-	RecoverSecurityPolicy(context.Context, Invocation, model.ExamAttemptID) (*store.SecurityPolicyRecovery, error)
-	PrepareSecurityPreflight(context.Context, Invocation, examattempt.PrepareSecurityPreflightCommand) (*store.SecurityPreflightPrepared, error)
-	ReportSecurityPreflight(context.Context, Invocation, examattempt.ReportSecurityPreflightCommand) (*model.SecurityPreflightResult, error)
-	Connect(context.Context, Invocation, examattempt.ConnectCommand) (examattempt.ConnectionResult, error)
-	UpdateSecurityCoverage(context.Context, Invocation, examattempt.UpdateSecurityCoverageCommand) (model.SecurityCoverageResult, error)
-	RenewParticipation(context.Context, Invocation, examattempt.RenewParticipationCommand) (examattempt.ParticipationRenewal, error)
-	EvaluateFocusLoss(context.Context, Invocation, examattempt.FocusLossCommand) (examattempt.FocusLossEvaluation, error)
-	Reallow(context.Context, Invocation, examattempt.ReallowCommand) (examattempt.ReallowResult, error)
-	SuspendByManager(context.Context, Invocation, examattempt.ManualSuspensionCommand) (examattempt.ManualSuspensionResult, error)
-	ScanExpiredParticipations(context.Context, int) (examattempt.ExpiryScanResult, error)
-	ScanExpiredDeliveries(context.Context, int) (examattempt.ExpiryScanResult, error)
-	CloseConnection(context.Context, Invocation, examattempt.CloseConnectionCommand) (examattempt.ConnectionClosedResult, error)
-	GetPresentation(context.Context, Invocation, examattempt.CandidateAccess) (examattempt.Presentation, error)
-	ListWorkspace(context.Context, Invocation, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error)
-	ListWorkspaceJournal(context.Context, Invocation, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error)
-	CreateWorkspaceDirectory(context.Context, Invocation, examattempt.CreateWorkspaceDirectoryCommand) (examattempt.WorkspaceMutationResult, error)
-	CreateWorkspaceFile(context.Context, Invocation, examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error)
-	ReplaceWorkspaceFile(context.Context, Invocation, examattempt.ReplaceWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error)
-	MoveWorkspaceEntry(context.Context, Invocation, examattempt.MoveWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error)
-	DeleteWorkspaceEntry(context.Context, Invocation, examattempt.DeleteWorkspaceEntryCommand) (examattempt.WorkspaceMutationResult, error)
-	OpenResource(context.Context, Invocation, examattempt.CandidateAccess, model.ExamResourceID) (*examattempt.OpenedContent, error)
-	OpenWorkspaceFile(context.Context, Invocation, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error)
-	GetManaged(context.Context, Invocation, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error)
-	ListManaged(context.Context, Invocation, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
-	ListCandidateActivity(context.Context, Invocation, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error)
-	ListSittingCandidateStatuses(context.Context, Invocation, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error)
-	StartBrowserActivity(context.Context, Invocation, examattempt.StartBrowserActivityCommand) (model.BrowserSourceStatus, error)
-	AppendBrowserActivity(context.Context, Invocation, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
-	ListBrowserActivity(context.Context, Invocation, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error)
-	AcknowledgeCorrection(context.Context, Invocation, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error)
-	EndByManager(context.Context, Invocation, examattempt.ManagerEndCommand) (examattempt.SubmissionResult, error)
-	Submit(context.Context, Invocation, examattempt.SubmitCommand) (examattempt.SubmissionResult, error)
-	GetSubmission(context.Context, Invocation, examattempt.GetSubmissionQuery) (*examattempt.ManagedSubmission, error)
-	ListSubmissionManifest(context.Context, Invocation, examattempt.ListSubmissionManifestQuery) (examattempt.SubmissionManifestPage, error)
-	OpenSubmissionFile(context.Context, Invocation, examattempt.OpenSubmissionFileQuery) (*examattempt.OpenedContent, error)
-	ListAutomaticSealTargets(context.Context, model.ExamSittingID, model.ExamAttemptID, int) ([]store.ExamSubmissionAutomaticSealTarget, error)
-	SealForSittingClose(context.Context, appinvocation.System, store.ExamSubmissionAutomaticSealTarget) (examattempt.AutomaticSubmissionResult, error)
-}
+type ExamAttemptManagerPage = examattempt.ManagedAttemptPage
 
 func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation Invocation,
 	query ListCandidateExamWorkspaceJournalQuery,
@@ -282,8 +147,7 @@ func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation 
 func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
 	command CreateCandidateExamWorkspaceDirectoryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, invocation,
-		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -293,9 +157,7 @@ func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocat
 func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
 	command CreateCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.CreateWorkspaceFile(ctx, invocation,
-		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Path: command.Path, MediaType: command.MediaType,
-			ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.CreateWorkspaceFile(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -305,10 +167,7 @@ func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation I
 func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
 	command ReplaceCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, invocation,
-		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType, ExpectedSHA256: command.ExpectedSHA256,
-			Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -318,9 +177,7 @@ func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation 
 func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
 	command MoveCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, invocation,
-		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			DestinationPath: command.DestinationPath, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -330,10 +187,7 @@ func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation In
 func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
 	command DeleteCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, invocation,
-		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
-			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -341,10 +195,7 @@ func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation 
 }
 
 func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, command ReallowExamAttemptCommand) (ExamAttemptReallowResult, error) {
-	result, err := a.examAttempts.Reallow(ctx, invocation, examattempt.ReallowCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
-		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
-	})
+	result, err := a.examAttempts.Reallow(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptReallowResult{}, examAttemptError(err, true)
 	}
@@ -383,12 +234,7 @@ func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invoc
 
 func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
-	result, err := a.examAttempts.Connect(ctx, invocation, examattempt.ConnectCommand{Security: command.Security,
-		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential,
-		ConfigurationManifestFingerprint: command.ConfigurationManifestFingerprint,
-		InitialConfiguration:             command.InitialConfiguration,
-		IdempotencyKey:                   command.IdempotencyKey,
-	})
+	result, err := a.examAttempts.Connect(ctx, invocation, command)
 	if err != nil {
 		return ExamAttemptConnection{}, examAttemptError(err, true)
 	}
@@ -413,14 +259,11 @@ func (a *App) GetCandidateExamPresentation(ctx context.Context, invocation Invoc
 }
 
 func (a *App) ListCandidateExamWorkspace(ctx context.Context, invocation Invocation, query ListCandidateExamWorkspaceQuery) (CandidateExamWorkspacePage, error) {
-	result, err := a.examAttempts.ListWorkspace(ctx, invocation, examattempt.WorkspaceQuery{
-		Access: query.Access, ExpectedCursor: query.ExpectedCursor, AfterEntryID: query.AfterEntryID, Limit: query.Limit,
-	})
+	result, err := a.examAttempts.ListWorkspace(ctx, invocation, query)
 	if err != nil {
 		return CandidateExamWorkspacePage{}, examAttemptError(err, true)
 	}
-	return CandidateExamWorkspacePage{WorkspaceID: result.WorkspaceID, Cursor: result.Cursor,
-		Items: result.Items, HasMore: result.HasMore, RefreshRequired: result.RefreshRequired}, nil
+	return result, nil
 }
 
 func (a *App) OpenCandidateExamResource(ctx context.Context, invocation Invocation, query OpenCandidateExamResourceQuery) (OpenedExamAttemptContent, error) {
@@ -446,7 +289,7 @@ func (a *App) OpenCandidateExamWorkspaceFile(ctx context.Context, invocation Inv
 }
 
 func (a *App) GetExamAttempt(ctx context.Context, invocation Invocation, query GetExamAttemptQuery) (ExamAttemptManagerView, error) {
-	result, err := a.examAttempts.GetManaged(ctx, invocation, examattempt.GetManagedAttemptQuery(query))
+	result, err := a.examAttempts.GetManaged(ctx, invocation, query)
 	if err != nil {
 		return ExamAttemptManagerView{}, examAttemptError(err, true)
 	}
@@ -457,14 +300,12 @@ func (a *App) GetExamAttempt(ctx context.Context, invocation Invocation, query G
 }
 
 func (a *App) ListExamAttempts(ctx context.Context, invocation Invocation, query ListExamAttemptsQuery) (ExamAttemptManagerPage, error) {
-	result, err := a.examAttempts.ListManaged(ctx, invocation, examattempt.ListManagedAttemptsQuery{
-		ExamID: query.ExamID, SittingID: query.SittingID, States: append([]model.ExamAttemptState(nil), query.States...),
-		BeforeCreatedAt: query.BeforeCreatedAt, BeforeAttemptID: query.BeforeAttemptID, Limit: query.Limit,
-	})
+	query.States = append([]model.ExamAttemptState(nil), query.States...)
+	result, err := a.examAttempts.ListManaged(ctx, invocation, query)
 	if err != nil {
 		return ExamAttemptManagerPage{}, examAttemptError(err, true)
 	}
-	return ExamAttemptManagerPage{Items: result.Items, HasMore: result.HasMore}, nil
+	return result, nil
 }
 
 type ListCandidateExamActivityQuery = examattempt.CandidateActivityQuery

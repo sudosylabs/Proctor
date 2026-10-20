@@ -132,7 +132,7 @@ func (adapter onboardingImportJobs) Fail(ctx context.Context, id model.Onboardin
 
 type examSittingSealingJobUseCases struct {
 	sittings examSittingUseCases
-	attempts examAttemptUseCases
+	attempts *examattempt.Service
 	jobs     store.JobStore
 	now      func() time.Time
 	newID    func() model.JobID

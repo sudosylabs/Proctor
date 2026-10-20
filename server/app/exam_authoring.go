@@ -22,29 +22,13 @@ import (
 
 type ExamView = examengine.View
 
-type CreateExamCommand struct {
-	AcademicUnitID       model.AcademicUnitID
-	Title                string
-	InstructionsMarkdown string
-	IdempotencyKey       string
-}
+type CreateExamCommand = examengine.CreateCommand
 
 type GetExamQuery struct{ ExamID model.ExamID }
 
-type EditExamDraftTextCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	Title                 *string
-	InstructionsMarkdown  *string
-	IdempotencyKey        string
-}
+type EditExamDraftTextCommand = examengine.EditDraftTextCommand
 
-type ConfigureExamDraftNativePolicyCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	NativePolicy          model.NativeSecurityPolicy
-	IdempotencyKey        string
-}
+type ConfigureExamDraftNativePolicyCommand = examengine.ConfigureDraftNativePolicyCommand
 
 type ConfigureExamDraftFocusLossCommand struct {
 	ExamID                model.ExamID
@@ -57,12 +41,7 @@ type ConfigureExamDraftFocusLossCommand struct {
 	IdempotencyKey        string
 }
 
-type ConfigureExamDraftBrowserPolicyCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	Policy                model.BrowserPolicy
-	IdempotencyKey        string
-}
+type ConfigureExamDraftBrowserPolicyCommand = examengine.ConfigureDraftBrowserPolicyCommand
 
 type examUseCases interface {
 	Create(context.Context, Invocation, examengine.CreateCommand) (examengine.View, error)
@@ -82,10 +61,7 @@ type examUseCases interface {
 
 func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (result ExamView, resultErr error) {
 	defer func() { a.recordOperational("exam", "create", resultErr) }()
-	view, err := a.exams.Create(ctx, invocation, examengine.CreateCommand{
-		AcademicUnitID: command.AcademicUnitID, Title: command.Title,
-		InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.exams.Create(ctx, invocation, command)
 	if err != nil {
 		return ExamView{}, examError(err, false)
 	}
@@ -101,10 +77,7 @@ func (a *App) GetExam(ctx context.Context, invocation Invocation, query GetExamQ
 }
 
 func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, command EditExamDraftTextCommand) (ExamView, error) {
-	view, err := a.exams.EditDraftText(ctx, invocation, examengine.EditDraftTextCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Title: command.Title, InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.exams.EditDraftText(ctx, invocation, command)
 	if err != nil {
 		return ExamView{}, examError(err, true)
 	}
@@ -124,10 +97,8 @@ func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invoca
 }
 
 func (a *App) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftBrowserPolicyCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, invocation, examengine.ConfigureDraftBrowserPolicyCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Policy: command.Policy.Clone(), IdempotencyKey: command.IdempotencyKey,
-	})
+	command.Policy = command.Policy.Clone()
+	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, invocation, command)
 	if err != nil {
 		return ExamView{}, examError(err, true)
 	}
@@ -257,11 +228,8 @@ var _ examengine.Effects = examRealtimeEffects{}
 var _ examengine.EffectFailures = examRealtimeEffects{}
 
 func (a *App) ConfigureExamDraftNativePolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftNativePolicyCommand) (ExamView, error) {
-	view, err := a.exams.ConfigureDraftNativePolicy(ctx, invocation, examengine.ConfigureDraftNativePolicyCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		NativePolicy:   command.NativePolicy.Clone(),
-		IdempotencyKey: command.IdempotencyKey,
-	})
+	command.NativePolicy = command.NativePolicy.Clone()
+	view, err := a.exams.ConfigureDraftNativePolicy(ctx, invocation, command)
 	if err != nil {
 		return ExamView{}, examError(err, true)
 	}

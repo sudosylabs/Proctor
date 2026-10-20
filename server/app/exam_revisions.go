@@ -17,38 +17,18 @@ import (
 )
 
 type ExamRevisionSummary = store.ExamRevisionSummary
-type ExamRevisionPage struct {
-	Items   []ExamRevisionSummary
-	HasMore bool
-}
+type ExamRevisionPage = examengine.RevisionPage
 
-type PublishExamRevisionCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	IdempotencyKey        string
-}
+type PublishExamRevisionCommand = examengine.PublishRevisionCommand
 type GetExamRevisionQuery struct {
 	ExamID     model.ExamID
 	RevisionID model.ExamRevisionID
 }
-type ListExamRevisionsQuery struct {
-	ExamID           model.ExamID
-	BeforeNumber     int64
-	BeforeRevisionID model.ExamRevisionID
-	Limit            int
-}
-
-type examRevisionUseCases interface {
-	Publish(context.Context, Invocation, examengine.PublishRevisionCommand) (store.ExamRevisionSummary, error)
-	Get(context.Context, Invocation, model.ExamID, model.ExamRevisionID) (store.ExamRevisionSummary, error)
-	List(context.Context, Invocation, examengine.ListRevisionsQuery) (examengine.RevisionPage, error)
-}
+type ListExamRevisionsQuery = examengine.ListRevisionsQuery
 
 func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, command PublishExamRevisionCommand) (result ExamRevisionSummary, resultErr error) {
 	defer func() { a.recordOperational("exam", "publish_revision", resultErr) }()
-	summary, err := a.examRevisions.Publish(ctx, invocation, examengine.PublishRevisionCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, IdempotencyKey: command.IdempotencyKey,
-	})
+	summary, err := a.examRevisions.Publish(ctx, invocation, command)
 	if err != nil {
 		return ExamRevisionSummary{}, examError(err, true)
 	}
@@ -64,13 +44,11 @@ func (a *App) GetExamRevision(ctx context.Context, invocation Invocation, query 
 }
 
 func (a *App) ListExamRevisions(ctx context.Context, invocation Invocation, query ListExamRevisionsQuery) (ExamRevisionPage, error) {
-	page, err := a.examRevisions.List(ctx, invocation, examengine.ListRevisionsQuery{
-		ExamID: query.ExamID, BeforeNumber: query.BeforeNumber, BeforeRevisionID: query.BeforeRevisionID, Limit: query.Limit,
-	})
+	page, err := a.examRevisions.List(ctx, invocation, query)
 	if err != nil {
 		return ExamRevisionPage{}, examError(err, true)
 	}
-	return ExamRevisionPage{Items: page.Items, HasMore: page.HasMore}, nil
+	return page, nil
 }
 
 func (e examRealtimeEffects) RevisionPublished(ctx context.Context, revision store.ExamRevisionSummary) error {

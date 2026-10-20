@@ -12,7 +12,6 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
-	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -23,22 +22,13 @@ type GetExamSubmissionQuery = examattempt.GetSubmissionQuery
 type ListExamSubmissionManifestQuery = examattempt.ListSubmissionManifestQuery
 type OpenExamSubmissionFileQuery = examattempt.OpenSubmissionFileQuery
 
-type SubmitExamAttemptCommand struct {
-	Access                    ExamAttemptWorkspaceMutationAccess
-	ExpectedCurrentRevisionID model.ExamRevisionID
-	ExpectedWorkspaceCursor   int64
-	FinalFocusLossSequence    int64
-	IdempotencyKey            string
-}
+type SubmitExamAttemptCommand = examattempt.SubmitCommand
 
 func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 	command SubmitExamAttemptCommand,
 ) (response ExamSubmissionReceipt, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "submit", resultErr) }()
-	result, err := a.examAttempts.Submit(ctx, invocation,
-		examattempt.SubmitCommand{Access: command.Access, ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID,
-			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, FinalFocusLossSequence: command.FinalFocusLossSequence,
-			IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examAttempts.Submit(ctx, invocation, command)
 	if err != nil {
 		return ExamSubmissionReceipt{}, examAttemptError(err, true)
 	}

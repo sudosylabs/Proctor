@@ -22,15 +22,9 @@ import (
 
 type ExamSittingView = store.ExamSittingSnapshot
 
-type ExamSittingPage struct {
-	Items   []ExamSittingView
-	HasMore bool
-}
+type ExamSittingPage = examsitting.Page
 
-type ExamSittingNoShowPage struct {
-	Items   []store.ExamSittingNoShow
-	HasMore bool
-}
+type ExamSittingNoShowPage = examsitting.NoShowPage
 
 type ListExamSittingNoShowsQuery struct {
 	ExamID               model.ExamID
@@ -46,16 +40,7 @@ type GetExamSittingQuery struct {
 	SittingID model.ExamSittingID
 }
 
-type ListExamSittingsQuery struct {
-	ExamID                 model.ExamID
-	ClassID                model.ClassID
-	States                 []model.ExamSittingState
-	OverlapStartAt         time.Time
-	OverlapEndAt           time.Time
-	BeforeScheduledStartAt time.Time
-	BeforeSittingID        model.ExamSittingID
-	Limit                  int
-}
+type ListExamSittingsQuery = examsitting.ListQuery
 
 type UpdateExamSittingScheduleCommand = examsitting.UpdateScheduleCommand
 type CancelExamSittingCommand = examsitting.CancelCommand
@@ -104,15 +89,12 @@ func (a *App) GetExamSitting(ctx context.Context, invocation Invocation, query G
 }
 
 func (a *App) ListExamSittings(ctx context.Context, invocation Invocation, query ListExamSittingsQuery) (ExamSittingPage, error) {
-	page, err := a.examSittings.List(ctx, invocation, examsitting.ListQuery{
-		ExamID: query.ExamID, ClassID: query.ClassID, States: append([]model.ExamSittingState(nil), query.States...),
-		OverlapStartAt: query.OverlapStartAt, OverlapEndAt: query.OverlapEndAt,
-		BeforeScheduledStartAt: query.BeforeScheduledStartAt, BeforeSittingID: query.BeforeSittingID, Limit: query.Limit,
-	})
+	query.States = append([]model.ExamSittingState(nil), query.States...)
+	page, err := a.examSittings.List(ctx, invocation, query)
 	if err != nil {
 		return ExamSittingPage{}, examSittingError(err, true)
 	}
-	return ExamSittingPage{Items: page.Items, HasMore: page.HasMore}, nil
+	return page, nil
 }
 
 func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
@@ -123,7 +105,7 @@ func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
 	if err != nil {
 		return ExamSittingNoShowPage{}, examSittingError(err, true)
 	}
-	return ExamSittingNoShowPage{Items: page.Items, HasMore: page.HasMore}, nil
+	return page, nil
 }
 
 func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocation, command UpdateExamSittingScheduleCommand) (ExamSittingView, error) {

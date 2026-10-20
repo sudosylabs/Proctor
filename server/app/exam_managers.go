@@ -9,37 +9,23 @@ package app
 
 import (
 	"context"
-	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
-	"github.com/sudosylabs/proctor/server/model"
 )
 
-type ListExamManagersQuery struct {
-	ExamID          model.ExamID
-	BeforeGrantedAt time.Time
-	BeforeUserID    model.UserID
-	Limit           int
-}
+type ListExamManagersQuery = examengine.ListManagersQuery
 
 type ExamManagerPage = examengine.ManagerPage
 type ExamManagerSummary = examengine.ManagerSummary
 type ExamManagerChange = examengine.ManagerChange
 
-type AddExamManagerCommand struct {
-	ExamID               model.ExamID
-	UserID               model.UserID
-	ExpectedExamRevision int64
-	IdempotencyKey       string
-}
+type AddExamManagerCommand = examengine.AddManagerCommand
 
-type RemoveExamManagerCommand = AddExamManagerCommand
-type TransferExamOwnershipCommand = AddExamManagerCommand
+type RemoveExamManagerCommand = examengine.RemoveManagerCommand
+type TransferExamOwnershipCommand = examengine.TransferOwnerCommand
 
 func (a *App) ListExamManagers(ctx context.Context, invocation Invocation, query ListExamManagersQuery) (ExamManagerPage, error) {
-	page, err := a.exams.ListManagers(ctx, invocation, examengine.ListManagersQuery{
-		ExamID: query.ExamID, BeforeGrantedAt: query.BeforeGrantedAt, BeforeUserID: query.BeforeUserID, Limit: query.Limit,
-	})
+	page, err := a.exams.ListManagers(ctx, invocation, query)
 	if err != nil {
 		return ExamManagerPage{}, examError(err, true)
 	}
@@ -61,9 +47,7 @@ func (a *App) TransferExamOwnership(ctx context.Context, invocation Invocation, 
 type examManagerUseCase func(context.Context, Invocation, examengine.AddManagerCommand) (examengine.ManagerChange, error)
 
 func (a *App) runExamManagerCommand(ctx context.Context, invocation Invocation, command AddExamManagerCommand, run examManagerUseCase) (ExamManagerChange, error) {
-	result, err := run(ctx, invocation, examengine.AddManagerCommand{
-		ExamID: command.ExamID, UserID: command.UserID, ExpectedExamRevision: command.ExpectedExamRevision, IdempotencyKey: command.IdempotencyKey,
-	})
+	result, err := run(ctx, invocation, command)
 	if err != nil {
 		return ExamManagerChange{}, examError(err, true)
 	}

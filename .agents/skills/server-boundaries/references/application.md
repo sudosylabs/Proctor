@@ -89,18 +89,20 @@ Every Exam service is constructed the same way: `New(Dependencies)
 (*Service, error)` in a child package, or `NewX(XDependencies) (*X, error)`
 for each service of the root `app/exam` package. The constructor validates
 every collaborator once and the service keeps them in a single `deps` field;
-no Exam service takes positional collaborators.
+no Exam service takes positional collaborators. The parent facade holds each
+Exam service by its concrete type; a parent-side interface remains only where
+a focused facade test substitutes a fake for the child.
 
 Exam command shapes belong to the child service that owns their policy. When
-the public `app.App` entry point accepts the same shape, its established command
-name may alias that owned type instead of repeating fields and rebuilding the
-same command. Nested command shapes follow the same ownership rule. Sharing a
-command does not widen a deliberately narrower facade result or change optional
-input presence and collection-copy semantics. The facade retains meaningful
-boundary work: defensive input copies, error
+the public `app.App` entry point accepts or returns the same shape, its
+established name aliases that owned type; the facade never repeats the fields
+or rebuilds the same value field by field. Nested command shapes follow the
+same ownership rule. Sharing a command does not widen a deliberately narrower
+facade result or change optional input presence and collection-copy semantics.
+The facade retains meaningful boundary work: defensive input copies, error
 concealment, and deliberate input or result transformations. Type sharing does
-not move normalization, authorization, audit, or effect timing out of the owning
-use case.
+not move normalization, authorization, audit, or effect timing out of the
+owning use case.
 
 Every application module, parent or child, reports expected public failures
 with the one `*apperror.Error` type from the `app/apperror` leaf. Children

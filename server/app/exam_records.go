@@ -24,16 +24,6 @@ type ListRetentionHoldsQuery = store.ExamRecordsHoldListOptions
 type ExamSittingRecordsSnapshot = store.ExamRecordsCompletionSnapshot
 type RetentionHoldPage = store.ExamRecordsHoldPage
 
-type examRecordsUseCases interface {
-	GetCompletion(context.Context, Invocation, model.ExamID, model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error)
-	FindReviewWaiver(context.Context, Invocation, model.RetentionHoldScope) (*model.SubmissionReviewWaiver, error)
-	CompleteRecords(context.Context, Invocation, examengine.CompleteRecordsCommand) (*model.ExamSittingRecordsCompletion, error)
-	WaiveReview(context.Context, Invocation, examengine.WaiveReviewCommand) (*model.SubmissionReviewWaiver, error)
-	ListHolds(context.Context, Invocation, store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error)
-	CreateHold(context.Context, Invocation, examengine.CreateRetentionHoldCommand) (*model.RetentionHold, error)
-	ReleaseHold(context.Context, Invocation, examengine.ReleaseRetentionHoldCommand) (*model.RetentionHold, error)
-}
-
 func (a *App) GetExamSittingRecords(ctx context.Context, invocation Invocation, examID model.ExamID, sittingID model.ExamSittingID) (*ExamSittingRecordsSnapshot, error) {
 	result, err := a.examRecords.GetCompletion(ctx, invocation, examID, sittingID)
 	return result, examError(err, true)

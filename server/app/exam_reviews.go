@@ -25,75 +25,24 @@ type ExamIntegrityEvidencePage = store.ExamIntegrityEvidencePage
 type ExamIntegrityDiscrepancyPage = store.ExamIntegrityDiscrepancyPage
 type StudentExamResult = model.StudentResult
 
-type SaveExamIntegrityDecisionCommand struct {
-	SubmissionID             model.SubmissionID
-	ReviewID                 model.SubmissionReviewID
-	FlagID                   model.IntegrityFlagID
-	ExpectedReviewRevision   int64
-	ExpectedDecisionRevision int64
-	Outcome                  model.IntegrityReviewOutcome
-	PrivateRationale         string
-	IdempotencyKey           string
-}
+type SaveExamIntegrityDecisionCommand = examreview.SaveDecisionCommand
 
-type UpdateExamIntegrityReviewCommand struct {
-	SubmissionID           model.SubmissionID
-	ReviewID               model.SubmissionReviewID
-	ExpectedReviewRevision int64
-	ManagerNotes           string
-	StudentRemarksMarkdown string
-	IdempotencyKey         string
-}
+type UpdateExamIntegrityReviewCommand = examreview.UpdateDraftCommand
 
-type FinalizeExamIntegrityReviewCommand struct {
-	SubmissionID           model.SubmissionID
-	ReviewID               model.SubmissionReviewID
-	ExpectedReviewRevision int64
-	IdempotencyKey         string
-}
+type FinalizeExamIntegrityReviewCommand = examreview.FinalizeCommand
 
 type ReleaseStudentExamResultCommand = FinalizeExamIntegrityReviewCommand
 
-type ListExamIntegrityFlagsQuery struct {
-	SubmissionID model.SubmissionID
-	AfterFlagID  model.IntegrityFlagID
-	Limit        int
-}
+type ListExamIntegrityFlagsQuery = examreview.ListFlagsQuery
 
-type ListExamIntegrityEvidenceQuery struct {
-	SubmissionID    model.SubmissionID
-	FlagID          model.IntegrityFlagID
-	AfterEvidenceID model.IntegrityEvidenceID
-	Limit           int
-}
+type ListExamIntegrityEvidenceQuery = examreview.ListEvidenceQuery
 
-type ListExamIntegrityDiscrepanciesQuery struct {
-	SubmissionID       model.SubmissionID
-	AfterDiscrepancyID model.IntegrityDiscrepancyID
-	Limit              int
-}
-
-type examReviewUseCases interface {
-	ListNativeConditions(context.Context, Invocation, examreview.NativeConditionListQuery) (*store.NativeConditionPage, error)
-	SaveDecision(context.Context, Invocation, examreview.SaveDecisionCommand) (examreview.Result, error)
-	UpdateDraft(context.Context, Invocation, examreview.UpdateDraftCommand) (examreview.Result, error)
-	Finalize(context.Context, Invocation, examreview.FinalizeCommand) (examreview.Result, error)
-	Release(context.Context, Invocation, examreview.ReleaseCommand) (examreview.Result, error)
-	Get(context.Context, Invocation, examreview.GetReviewQuery) (*store.ExamSubmissionReviewSnapshot, error)
-	ListFlags(context.Context, Invocation, examreview.ListFlagsQuery) (*store.ExamIntegrityFlagPage, error)
-	ListEvidence(context.Context, Invocation, examreview.ListEvidenceQuery) (*store.ExamIntegrityEvidencePage, error)
-	ListDiscrepancies(context.Context, Invocation, examreview.ListDiscrepanciesQuery) (*store.ExamIntegrityDiscrepancyPage, error)
-	GetStudentResult(context.Context, Invocation, examreview.GetStudentResultQuery) (*model.StudentResult, error)
-}
+type ListExamIntegrityDiscrepanciesQuery = examreview.ListDiscrepanciesQuery
 
 func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocation,
 	command SaveExamIntegrityDecisionCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.SaveDecision(ctx, invocation,
-		examreview.SaveDecisionCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			FlagID: command.FlagID, ExpectedReviewRevision: command.ExpectedReviewRevision,
-			ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
-			PrivateRationale: command.PrivateRationale, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examReviews.SaveDecision(ctx, invocation, command)
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -103,10 +52,7 @@ func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocati
 func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command UpdateExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.UpdateDraft(ctx, invocation,
-		examreview.UpdateDraftCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
-			StudentRemarksMarkdown: command.StudentRemarksMarkdown, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examReviews.UpdateDraft(ctx, invocation, command)
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -116,9 +62,7 @@ func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocati
 func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command FinalizeExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Finalize(ctx, invocation,
-		examreview.FinalizeCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examReviews.Finalize(ctx, invocation, command)
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -128,9 +72,7 @@ func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invoca
 func (a *App) ReleaseStudentExamResult(ctx context.Context, invocation Invocation,
 	command ReleaseStudentExamResultCommand,
 ) (ExamIntegrityReviewResult, error) {
-	result, err := a.examReviews.Release(ctx, invocation,
-		examreview.ReleaseCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examReviews.Release(ctx, invocation, examreview.ReleaseCommand(command))
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -152,7 +94,7 @@ func (a *App) ListExamIntegrityFlags(ctx context.Context, invocation Invocation,
 	query ListExamIntegrityFlagsQuery,
 ) (*ExamIntegrityFlagPage, error) {
 	result, err := a.examReviews.ListFlags(ctx, invocation,
-		examreview.ListFlagsQuery(query))
+		query)
 	if err != nil {
 		return nil, examReviewError(err, true)
 	}
@@ -163,7 +105,7 @@ func (a *App) ListExamIntegrityEvidence(ctx context.Context, invocation Invocati
 	query ListExamIntegrityEvidenceQuery,
 ) (*ExamIntegrityEvidencePage, error) {
 	result, err := a.examReviews.ListEvidence(ctx, invocation,
-		examreview.ListEvidenceQuery(query))
+		query)
 	if err != nil {
 		return nil, examReviewError(err, true)
 	}
@@ -174,7 +116,7 @@ func (a *App) ListExamIntegrityDiscrepancies(ctx context.Context, invocation Inv
 	query ListExamIntegrityDiscrepanciesQuery,
 ) (*ExamIntegrityDiscrepancyPage, error) {
 	result, err := a.examReviews.ListDiscrepancies(ctx,
-		invocation, examreview.ListDiscrepanciesQuery(query))
+		invocation, query)
 	if err != nil {
 		return nil, examReviewError(err, true)
 	}
