@@ -170,7 +170,7 @@ func (a *bootstrapHTTPApplication) BootstrapInstallation(context.Context, applic
 }
 
 type loginRevisionHTTPApplication struct {
-	Authentication
+	authenticationEntryApplication
 	user *model.User
 }
 

@@ -23,25 +23,6 @@ type Authenticator interface {
 	AuthenticateBearer(context.Context, string) (*model.Principal, error)
 }
 
-type Authentication interface {
-	Authenticator
-	RegisterLocalUser(context.Context, application.Invocation, application.RegisterLocalUserCommand) error
-	Login(context.Context, application.Invocation, application.LoginCommand) (*application.LoginResult, error)
-	AuthenticateAccess(context.Context, string) (*model.Principal, error)
-	RefreshSession(context.Context, application.Invocation, application.RefreshSessionCommand) (*model.Session, *model.AuthenticationTokens, error)
-	Logout(context.Context, application.Invocation, application.LogoutCommand) error
-	RequestEmailVerification(context.Context, application.Invocation, application.RequestEmailVerificationCommand) error
-	CompleteEmailVerification(context.Context, application.Invocation, application.CompleteEmailVerificationCommand) (*model.User, error)
-	RequestPasswordReset(context.Context, application.Invocation, application.RequestPasswordResetCommand) error
-	CompletePasswordReset(context.Context, application.Invocation, application.CompletePasswordResetCommand) (*model.User, error)
-}
-
-type ExternalAuthentication interface {
-	ExternalAuthenticationProviders(context.Context) ([]model.ExternalAuthenticationProvider, error)
-	BeginExternalAuthentication(context.Context, application.Invocation, application.BeginExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error)
-	CompleteExternalAuthentication(context.Context, application.Invocation, application.CompleteExternalAuthenticationCommand) (*model.ExternalAuthenticationCompletion, error)
-}
-
 type AccountStateApplication interface {
 	SetUserEnabled(context.Context, application.Invocation, application.SetUserEnabledCommand) (*model.User, error)
 }
@@ -213,19 +194,15 @@ type RoleBindingApplication interface {
 	EndRoleBinding(context.Context, application.Invocation, application.EndRoleBindingCommand) (*model.RoleBinding, error)
 }
 
-type Realtime interface {
-	AuthorizeWebSocketSubscription(context.Context, model.Principal, model.RequestMetadata, model.Action, model.Resource) error
-	ValidateWebSocketPrincipal(context.Context, model.Principal) error
-}
-
 // Application is the cohesive application-facing API contract. Its component
 // interfaces keep domain ownership visible without turning authentication into
 // an unrelated service locator.
 type Application interface {
-	Authentication
+	Authenticator
+	authenticationEntryApplication
 	DesktopAuthorization
 	DesktopRegistrations
-	ExternalAuthentication
+	externalAuthenticationEntryApplication
 	authenticationMethodApplication
 	Sessions
 	SessionReauthentication
@@ -248,7 +225,6 @@ type Application interface {
 	ExamStarterWorkspaceApplication
 	ExamAttemptApplication
 	ExamIntegrityReviewApplication
-	Realtime
 }
 
 type MailApplication interface {
