@@ -80,7 +80,7 @@ func examRevisionMutationErrorCodes() []string {
 	return academicMutationErrorCodes(
 		"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict",
 		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
 	)
 }
 

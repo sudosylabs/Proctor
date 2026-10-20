@@ -49,23 +49,23 @@ func TestSessionAuthenticationUsesCurrentStoreStateWithWarmCache(t *testing.T) {
 				change   func(*authenticationStoreFake, *model.User, *model.SessionCredential, *model.Session, time.Time)
 				wantCode string
 			}{
-				{name: "revoked credential", wantCode: "authentication.invalid_token", change: func(_ *authenticationStoreFake, _ *model.User, credential *model.SessionCredential, _ *model.Session, at time.Time) {
+				{name: "revoked credential", wantCode: "authentication.token_invalid", change: func(_ *authenticationStoreFake, _ *model.User, credential *model.SessionCredential, _ *model.Session, at time.Time) {
 					credential.RevokedAt = model.OptionalTimeFrom(at)
 				}},
-				{name: "rotated credential", wantCode: "authentication.invalid_token", change: func(persistence *authenticationStoreFake, _ *model.User, credential *model.SessionCredential, _ *model.Session, _ time.Time) {
+				{name: "rotated credential", wantCode: "authentication.token_invalid", change: func(persistence *authenticationStoreFake, _ *model.User, credential *model.SessionCredential, _ *model.Session, _ time.Time) {
 					delete(persistence.accessByHash, credential.TokenHash)
 				}},
-				{name: "revoked Session", wantCode: "authentication.invalid_token", change: func(_ *authenticationStoreFake, _ *model.User, _ *model.SessionCredential, session *model.Session, at time.Time) {
+				{name: "revoked Session", wantCode: "authentication.token_invalid", change: func(_ *authenticationStoreFake, _ *model.User, _ *model.SessionCredential, session *model.Session, at time.Time) {
 					session.RevokedAt = model.OptionalTimeFrom(at)
 					session.RevocationReason = model.SessionRevocationUserLogout
 				}},
-				{name: "disabled User", wantCode: "authentication.invalid_token", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, at time.Time) {
+				{name: "disabled User", wantCode: "authentication.token_invalid", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, at time.Time) {
 					persistence.users[user.ID.String()].DisabledAt = model.OptionalTimeFrom(at)
 				}},
-				{name: "archived User", wantCode: "authentication.invalid_token", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, at time.Time) {
+				{name: "archived User", wantCode: "authentication.token_invalid", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, at time.Time) {
 					persistence.users[user.ID.String()].ArchivedAt = model.OptionalTimeFrom(at)
 				}},
-				{name: "missing User", wantCode: "authentication.invalid_token", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, _ time.Time) {
+				{name: "missing User", wantCode: "authentication.token_invalid", change: func(persistence *authenticationStoreFake, user *model.User, _ *model.SessionCredential, _ *model.Session, _ time.Time) {
 					delete(persistence.users, user.ID.String())
 				}},
 				{name: "User Store unavailable", wantCode: "authentication.internal", change: func(persistence *authenticationStoreFake, _ *model.User, _ *model.SessionCredential, _ *model.Session, _ time.Time) {
@@ -146,7 +146,7 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 	if _, err := cache.Get(context.Background(), authenticationCachePrefix+hash); err != nil {
 		t.Fatalf("failed delete must retain the positive cache: %v", err)
 	}
-	if principal, err := service.authenticateAccess(context.Background(), rawAccess); principal != nil || !apperror.Is(err, "authentication.invalid_token") {
+	if principal, err := service.authenticateAccess(context.Background(), rawAccess); principal != nil || !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("authentication after committed logout = %#v, %v", principal, err)
 	}
 }

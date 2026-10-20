@@ -18,7 +18,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -28,7 +28,7 @@ paths:
         - request.invalid
         - resource.not_found
         - onboarding_import.conflict
-        - onboarding_import.invalid_file
+        - onboarding_import.file_invalid
         - onboarding_import.unavailable
         - administration.unavailable
         - authentication.dpop.invalid
@@ -123,7 +123,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -29,7 +30,7 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "POST /api/v1/exams", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateExam", RequestSchema: "CreateExamRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamCreated", SuccessSchema: "ExamResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "GET /api/v1/exams/{exam_id}", Auth: AuthPrincipalRequired,
@@ -40,31 +41,31 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "PATCH /api/v1/exams/{exam_id}/draft", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/EditExamDraftText", RequestSchema: "EditExamDraftTextRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "PUT /api/v1/exams/{exam_id}/draft/policies/focus-loss", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ConfigureExamDraftFocusLoss", RequestSchema: "ConfigureExamDraftFocusLossRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "PUT /api/v1/exams/{exam_id}/draft/policies/native", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ConfigureExamDraftNativePolicy", RequestSchema: "ConfigureExamDraftNativePolicyRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "PUT /api/v1/exams/{exam_id}/draft/browser-policy", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ConfigureExamDraftBrowserPolicy", RequestSchema: "ConfigureExamDraftBrowserPolicyRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamOK", SuccessSchema: "ExamResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "POST /api/v1/exams/{exam_id}/archive", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ArchiveExam", RequestSchema: "ArchiveExamRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ExamIdentityOK", SuccessSchema: "ExamIdentityResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"),
 			},
 			{
 				Key: "GET /api/v1/exams/{exam_id}/managers", Auth: AuthPrincipalRequired,
@@ -135,19 +136,19 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 func examManagerAdditionContractCodes() []string {
 	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
 		"exam.manager.exists", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 }
 
 func examManagerRemovalContractCodes() []string {
 	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
 		"exam.manager.not_found", "exam.manager.owner_protected", "exam.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 }
 
 func examOwnerTransferContractCodes() []string {
 	return principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
 		"exam.manager.not_found", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.owner.no_changes", "exam.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 }
 
 func TestEditExamDraftTextOpenAPISchemaRequiresANonNullAuthoredValue(t *testing.T) {

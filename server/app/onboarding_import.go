@@ -207,7 +207,7 @@ func (s *onboardingImportService) Upload(ctx context.Context, invocation Invocat
 			id := model.NewOnboardingImportID()
 			if _, _, stageErr := s.content.StageOnboardingImport(ctx, id, command.Body, store.OnboardingImportMaximumBytes); stageErr != nil {
 				if s.content.IsOnboardingImportTooLarge(stageErr) {
-					return nil, apperror.New("onboarding_import.invalid_file").Wrap(stageErr)
+					return nil, apperror.New("onboarding_import.file_invalid").Wrap(stageErr)
 				}
 				return nil, apperror.New("onboarding_import.unavailable").Wrap(stageErr)
 			}
@@ -611,7 +611,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 		if onboardingImportRetryableError(err) {
 			return err
 		}
-		if _, failErr := s.imports.FailOnboardingImport(ctx, id, "authentication.invalid_token", model.TimeUTC(s.now())); failErr != nil {
+		if _, failErr := s.imports.FailOnboardingImport(ctx, id, "authentication.token_invalid", model.TimeUTC(s.now())); failErr != nil {
 			return failErr
 		}
 		if removeErr := s.content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -655,7 +655,7 @@ func (s *onboardingImportService) parse(ctx context.Context, id model.Onboarding
 		if !errors.Is(err, errOnboardingImportInvalidFile) {
 			return err
 		}
-		if _, failErr := s.imports.FailOnboardingImport(ctx, id, "onboarding_import.invalid_file", model.TimeUTC(s.now())); failErr != nil {
+		if _, failErr := s.imports.FailOnboardingImport(ctx, id, "onboarding_import.file_invalid", model.TimeUTC(s.now())); failErr != nil {
 			return failErr
 		}
 		if removeErr := s.content.RemoveOnboardingImport(context.WithoutCancel(ctx), id); removeErr != nil {
@@ -1301,7 +1301,7 @@ func (s *onboardingImportService) executeRow(ctx context.Context, invocation Inv
 		if onboardingImportRetryableError(err) {
 			return "", "", "", "", err
 		}
-		return model.OnboardingImportRowFailed, "", "", "authentication.invalid_token", nil
+		return model.OnboardingImportRowFailed, "", "", "authentication.token_invalid", nil
 	}
 	if current == nil || current.Mode != model.OnboardingImportStudentProgression {
 		if err := s.revalidateFrozenTarget(ctx, row); err != nil {

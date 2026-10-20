@@ -50,7 +50,7 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 		problem.Status = http.StatusInternalServerError
 	}
 	if problem.Code == "" {
-		problem.Code = "internal"
+		problem.Code = serverInternalCode
 	}
 
 	writer.Header().Set("Content-Type", "application/problem+json")
@@ -94,6 +94,23 @@ func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 	WriteProblem(writer, internalProblem(request))
 }
 
+// Kernel problem codes belong to the routing kernel rather than to any one
+// operation's declared application errors. error_catalog.yaml lists them as
+// problem codes.
+const (
+	serverInternalCode        = "server.internal"
+	routeNotFoundCode         = "route.not_found"
+	routeMethodNotAllowedCode = "route.method_not_allowed"
+	requestTooLargeCode       = "request.too_large"
+	healthNotLiveCode         = "health.not_live"
+	healthNotReadyCode        = "health.not_ready"
+)
+
+// problemType is the documentation URI of a Problem Details code.
+func problemType(code string) string {
+	return "https://proctor.sudosylabs.com/problems/" + code
+}
+
 // errUnpresentableResult reports an application result or capability that the
 // transport cannot present: a missing or malformed result, a result that
 // exceeds its wire bound, or a cursor that cannot be encoded. It is a server
@@ -112,12 +129,12 @@ func unpresentableResult(cause error) error {
 func internalProblem(request *http.Request) Problem {
 	title, detail := localizedProblemPresentation(request, http.StatusInternalServerError)
 	return Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/internal",
+		Type:      problemType(serverInternalCode),
 		Title:     title,
 		Status:    http.StatusInternalServerError,
 		Detail:    detail,
 		Instance:  request.URL.Path,
-		Code:      "internal",
+		Code:      serverInternalCode,
 		RequestID: RequestID(request.Context()),
 	}
 }

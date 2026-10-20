@@ -626,7 +626,7 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 	}
 	persistence.userGetErr = nil
 	session.UserID = model.NewUserID()
-	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.invalid_token") {
+	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("mismatched session error = %v", err)
 	}
 }
@@ -656,7 +656,7 @@ func TestAuthenticationExpiryEnforcementClosesEstablishedWebSocketSession(t *tes
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
 	}
-	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.invalid_token") {
+	if err := service.ValidatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("ValidatePrincipal(expired) error = %v", err)
 	}
 	if effects.last != "sessions" || !session.RevokedAt.Valid ||
@@ -691,7 +691,7 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 		model.NewCredentialToken, func() time.Time { return at },
 	)
 	if principal, err := service.authenticateAccess(context.Background(), accessRaw); principal != nil ||
-		!apperror.Is(err, "authentication.invalid_token") {
+		!apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("authenticateAccess(expired) = %#v, %v", principal, err)
 	}
 	if effects.last != "sessions" || accessSession.RevocationReason != model.SessionRevocationExpired {
@@ -709,7 +709,7 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 	effects.last = ""
 	if session, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{
 		RefreshToken: model.NewCredentialToken(),
-	}); session != nil || tokens != nil || !apperror.Is(err, "authentication.invalid_token") {
+	}); session != nil || tokens != nil || !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("refresh(expired) = %#v, %#v, %v", session, tokens, err)
 	}
 	if effects.last != "sessions" {
@@ -773,7 +773,7 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 		wantEffect string
 	}{
 		{name: "success", wantEffect: "cache"},
-		{name: "replay", replay: true, wantCode: "authentication.invalid_token", wantEffect: "sessions"},
+		{name: "replay", replay: true, wantCode: "authentication.token_invalid", wantEffect: "sessions"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			persistence := newAuthenticationStoreFake()
@@ -1007,7 +1007,7 @@ func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *apperror.Error, got %T %v", err, err)
 	}
-	if failure.Code() != "authentication.invalid_credentials" {
+	if failure.Code() != "authentication.credentials_invalid" {
 		t.Fatalf("code = %q", failure.Code())
 	}
 	type httpStatuser interface{ HTTPStatus() int }
@@ -1028,7 +1028,7 @@ func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
 		Source:     "127.0.0.1:2",
 	})
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.invalid_credentials" {
+	if !ok || failure.Code() != "authentication.credentials_invalid" {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1048,7 +1048,7 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
 	})
-	if result != nil || !apperror.Is(err, "authentication.invalid_credentials") {
+	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	if len(persistence.sessions) != 0 {
@@ -1078,7 +1078,7 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 			result, err := service.login(context.Background(), Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
 			})
-			if result != nil || !apperror.Is(err, "authentication.invalid_credentials") || mfa.recoveryCalls != 0 || mfa.calls != 0 || len(persistence.sessions) != 0 {
+			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") || mfa.recoveryCalls != 0 || mfa.calls != 0 || len(persistence.sessions) != 0 {
 				t.Fatalf("disabled login reached MFA or issued a Session: %v; recovery reads=%d, MFA calls=%d", err, mfa.recoveryCalls, mfa.calls)
 			}
 		})
@@ -1226,7 +1226,7 @@ func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testin
 	result, err := service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.6",
 	})
-	if result != nil || !apperror.Is(err, "authentication.invalid_credentials") {
+	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
@@ -1269,7 +1269,7 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 			result, err := service.login(ctx, Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: oldPassword, ClientType: model.SessionClientWeb, Source: "192.0.2.10",
 			})
-			if result != nil || !apperror.Is(err, "authentication.invalid_credentials") {
+			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
 				t.Fatalf("login after reset = %#v, %v", result, err)
 			}
 			if len(persistence.sessions) != 0 || len(persistence.accessByHash) != 0 {
@@ -1302,7 +1302,7 @@ func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
 		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.11",
 	})
-	if proof != nil || !apperror.Is(err, "authentication.invalid_credentials") {
+	if proof != nil || !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("authenticate removed password = %#v, %v", proof, err)
 	}
 	if persistence.passwords[user.ID.String()] != nil {
@@ -1412,7 +1412,7 @@ func TestAuthenticateAccessRejectsUnknownToken(t *testing.T) {
 	raw := model.NewCredentialToken()
 	_, err := service.authenticateAccess(context.Background(), raw)
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.invalid_token" {
+	if !ok || failure.Code() != "authentication.token_invalid" {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1462,7 +1462,7 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 			Source:     "10.0.0.8:9",
 		})
 		failure, ok := apperror.As(err)
-		if !ok || failure.Code() != "authentication.invalid_credentials" {
+		if !ok || failure.Code() != "authentication.credentials_invalid" {
 			t.Fatalf("attempt %d: err = %v", attempt, err)
 		}
 	}

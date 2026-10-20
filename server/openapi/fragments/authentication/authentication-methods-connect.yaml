@@ -19,7 +19,7 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required

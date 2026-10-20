@@ -22,7 +22,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -42,7 +42,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -105,7 +105,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -125,7 +125,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -181,7 +181,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -201,7 +201,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -213,7 +213,7 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -263,7 +263,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -283,7 +283,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -295,7 +295,7 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -345,7 +345,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -365,7 +365,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -377,7 +377,7 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
       security:
         - bearerAuth: []
         - dpopAuth: []
@@ -428,7 +428,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -448,7 +448,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict
@@ -460,7 +460,7 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - exam.delivery.batch_conflict
         - exam.delivery.replay_window_exceeded
         - exam.delivery.pending_capacity
@@ -523,7 +523,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -543,7 +543,7 @@ paths:
         - exam.attempt.continuity_invalid
         - exam.attempt.connection_closed
         - exam.attempt.connection_lost
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.unavailable
         - exam.delivery.upload_expired
         - exam.delivery.declaration_conflict

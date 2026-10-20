@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -217,12 +218,12 @@ func sortRoutes(routes []Route) {
 func (a *API) handleNotFound(writer http.ResponseWriter, request *http.Request) {
 	title, detail := localizedProblemPresentation(request, http.StatusNotFound)
 	WriteProblem(writer, Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/not-found",
+		Type:      problemType(routeNotFoundCode),
 		Title:     title,
 		Status:    http.StatusNotFound,
 		Detail:    detail,
 		Instance:  request.URL.Path,
-		Code:      "not_found",
+		Code:      routeNotFoundCode,
 		RequestID: RequestID(request.Context()),
 	})
 }
@@ -237,12 +238,12 @@ func (a *API) handleMethodNotAllowed(writer http.ResponseWriter, request *http.R
 func (a *API) writeMethodNotAllowed(writer http.ResponseWriter, request *http.Request) {
 	title, detail := localizedNamedProblemPresentation(request, "method_not_allowed")
 	WriteProblem(writer, Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/method-not-allowed",
+		Type:      problemType(routeMethodNotAllowedCode),
 		Title:     title,
 		Status:    http.StatusMethodNotAllowed,
 		Detail:    detail,
 		Instance:  request.URL.Path,
-		Code:      "method_not_allowed",
+		Code:      routeMethodNotAllowedCode,
 		RequestID: RequestID(request.Context()),
 	})
 }

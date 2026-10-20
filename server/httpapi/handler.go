@@ -196,10 +196,10 @@ func requirePrincipalAssurance(
 	recentAuthenticationTTL time.Duration,
 ) error {
 	if principal.ValidateMFARecovery() != nil {
-		return apperror.New("authentication.invalid_token")
+		return apperror.New("authentication.token_invalid")
 	}
 	if principal.MFARecoveryRequired && requirement != AuthMFARecoverySessionRequired && requirement != AuthRecentMFARecoverySessionRequired {
-		return apperror.New("authentication.invalid_token")
+		return apperror.New("authentication.token_invalid")
 	}
 	strongRequired := requirement == AuthStrongSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired

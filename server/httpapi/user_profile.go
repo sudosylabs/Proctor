@@ -259,7 +259,7 @@ func candidateExamActivityCursorSpec() opaqueCursorSpec[candidateExamActivityCur
 }
 
 func currentUserContextSessionCodes(extra ...string) []string {
-	return append([]string{"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous"}, extra...)
+	return append([]string{"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous"}, extra...)
 }
 
 func (module userProfileResourceModule) context(request operationRequest) (operationResult, error) {
@@ -330,7 +330,7 @@ func userProfileReadCodes(extra ...string) []string {
 
 func userProfilePrincipalCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authorization.denied", "authorization.request.invalid", "authorization.unavailable",
 	}
 	return append(codes, extra...)
@@ -342,7 +342,7 @@ func userProfileMutationCodes(extra ...string) []string {
 
 func userProfilePrincipalMutationCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid",
 		"authorization.unavailable", "audit.unavailable",
 	}

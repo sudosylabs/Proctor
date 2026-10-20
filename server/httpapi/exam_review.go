@@ -310,7 +310,7 @@ func examIntegrityReviewResource(application ExamIntegrityReviewApplication) res
 	mutationErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.integrity_review.invalid",
 		"exam.integrity_review.revision_conflict", "exam.integrity_review.state_conflict", "exam.integrity_review.incomplete",
 		"exam.integrity_review.too_large", "exam.integrity_review.unavailable", "idempotency.key_required",
-		"idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	studentErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found",
 		"exam.integrity_review.invalid", "exam.integrity_review.unavailable")
 	return newResource("exam-integrity-reviews",

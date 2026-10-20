@@ -66,7 +66,7 @@ func academicAdministrationBatchResource(batches AcademicAdministrationBatchAppl
 	return newResource("academic-administration-batches",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("academic-administration-batches")),
 			academicRelationshipMutationErrorCodes("authentication.strong_required", "authentication.reauthentication_required",
-				"idempotency.key_required", "idempotency.invalid_key"), module.run),
+				"idempotency.key_required", "idempotency.key_invalid"), module.run),
 	)
 }
 

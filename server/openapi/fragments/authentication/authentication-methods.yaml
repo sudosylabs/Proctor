@@ -17,7 +17,7 @@ paths:
       x-proctor-auth: session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.method.unavailable
         - authentication.dpop.invalid
@@ -50,7 +50,7 @@ paths:
       x-proctor-error-codes:
         - service.busy
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required
@@ -105,7 +105,7 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required
@@ -168,7 +168,7 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required

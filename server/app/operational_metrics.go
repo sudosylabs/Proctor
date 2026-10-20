@@ -53,7 +53,7 @@ func operationalOutcome(err error) string {
 	switch failure.Code() {
 	case "authorization.denied":
 		return "denied"
-	case "authentication.invalid_credentials", "authentication.invalid_token":
+	case "authentication.credentials_invalid", "authentication.token_invalid":
 		return "rejected"
 	case "authentication.rate_limited":
 		return "rate_limited"

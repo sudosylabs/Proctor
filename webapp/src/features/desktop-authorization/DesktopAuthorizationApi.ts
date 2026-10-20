@@ -137,7 +137,7 @@ export async function authenticateDesktopAuthorizationSession(
     const code = readProblemValue(error)?.code;
     if (
       code === "authentication.required" ||
-      code === "authentication.invalid_token"
+      code === "authentication.token_invalid"
     ) {
       return { kind: "no_session" };
     }
@@ -314,9 +314,9 @@ function desktopAuthenticationFailure(
   switch (code) {
     case "authentication.mfa.required":
       return { kind: "mfa_required" };
-    case "authentication.mfa.invalid_code":
+    case "authentication.mfa.code_invalid":
       return { kind: "mfa_invalid" };
-    case "authentication.invalid_credentials":
+    case "authentication.credentials_invalid":
       return { kind: "invalid_credentials" };
     case "authentication.rate_limited":
       return { kind: "rate_limited" };

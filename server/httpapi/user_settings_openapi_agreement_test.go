@@ -38,7 +38,7 @@ func TestUserSettingsOpenAPIAgreesWithRuntime(t *testing.T) {
 				PublicErrorCodes: sessionMutationErrorCodes(
 					"request.invalid", "user_settings.invalid", "user_settings.format_unsupported",
 					"user_settings.revision_conflict", "user_settings.unavailable", "audit.unavailable",
-					"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+					"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
 				),
 			},
 		},

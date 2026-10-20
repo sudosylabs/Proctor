@@ -24,10 +24,10 @@ func TestExamResourceOpenAPIAgreesWithRuntime(t *testing.T) {
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET " + base, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceListOK", SuccessSchema: "ExamResourceListResponse", PublicErrorCodes: readCodes},
-			{Key: "POST " + base, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, SuccessStatus: "201", SuccessRef: "#/components/responses/ExamResourceCreated", SuccessSchema: "ExamResourceResponse", PublicErrorCodes: examResourceMutationContractCodes("service.busy", "exam.resource.invalid_content", "exam.resource.limit", "exam.resource.upload_invalid", "exam.resource.revision_conflict")},
+			{Key: "POST " + base, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, SuccessStatus: "201", SuccessRef: "#/components/responses/ExamResourceCreated", SuccessSchema: "ExamResourceResponse", PublicErrorCodes: examResourceMutationContractCodes("service.busy", "exam.resource.content_invalid", "exam.resource.limit", "exam.resource.upload_invalid", "exam.resource.revision_conflict")},
 			{Key: "PATCH " + member, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/EditExamResourceMetadata", RequestSchema: "EditExamResourceMetadataRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceOK", SuccessSchema: "ExamResourceResponse", PublicErrorCodes: examResourceMutationContractCodes("exam.resource.no_changes", "exam.resource.revision_conflict")},
 			{Key: "PUT " + base + "/order", Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/ReorderExamResources", RequestSchema: "ReorderExamResourcesRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceListOK", SuccessSchema: "ExamResourceListResponse", PublicErrorCodes: examResourceMutationContractCodes("exam.resource.no_changes", "exam.resource.order_invalid")},
-			{Key: "PUT " + content, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceOK", SuccessSchema: "ExamResourceResponse", PublicErrorCodes: examResourceMutationContractCodes("service.busy", "exam.resource.invalid_content", "exam.resource.upload_invalid", "exam.resource.revision_conflict")},
+			{Key: "PUT " + content, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceOK", SuccessSchema: "ExamResourceResponse", PublicErrorCodes: examResourceMutationContractCodes("service.busy", "exam.resource.content_invalid", "exam.resource.upload_invalid", "exam.resource.revision_conflict")},
 			{Key: "DELETE " + member, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired, RequestBodyRef: "#/components/requestBodies/RemoveExamResource", RequestSchema: "RemoveExamResourceRequest", SuccessStatus: "204", SuccessRef: "#/components/responses/ExamResourceRemoved", PublicErrorCodes: examResourceMutationContractCodes("exam.resource.revision_conflict")},
 			{Key: "GET " + content, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamResourceProtectedContent", ExceptionalSuccess: true, PublicErrorCodes: readCodes},
 		},
@@ -65,7 +65,7 @@ func examResourceMutationContractCodes(specific ...string) []string {
 	common := []string{"request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict", "exam.resource.invalid", "exam.resource.conflict", "exam.resource.unavailable"}
 	common = append(common, specific...)
 	return principalMutationContractCodes(append(common,
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
 }
 
 func assertExamMultipartOperation(t *testing.T, document openAPIDocument, path, method, schemaRef string) {

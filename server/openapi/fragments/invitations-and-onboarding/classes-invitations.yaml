@@ -20,7 +20,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -31,7 +31,7 @@ paths:
         - resource.not_found
         - administration.unavailable
         - invitation.invalid
-        - invitation.class_period_invalid
+        - invitation.class_period_conflict
         - invitation.conflict
         - invitation.mail_unavailable
         - invitation.unavailable

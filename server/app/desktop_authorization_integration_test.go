@@ -187,7 +187,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	}
 	if _, _, bearerErr := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
-	}); !apperror.Is(bearerErr, "authentication.invalid_token") {
+	}); !apperror.Is(bearerErr, "authentication.token_invalid") {
 		t.Fatalf("Desktop refresh accepted as Bearer: %v", bearerErr)
 	}
 	refreshProof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
@@ -224,7 +224,7 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		rotated.RefreshToken == exchanged.Tokens.RefreshToken {
 		t.Fatalf("desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
 	}
-	if _, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken); !apperror.Is(err, "authentication.invalid_token") {
+	if _, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("old desktop access after rotation error = %v", err)
 	}
 }

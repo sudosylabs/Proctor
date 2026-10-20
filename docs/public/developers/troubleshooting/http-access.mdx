@@ -39,7 +39,7 @@ known identifier rather than publishing the entire file:
 rg -n '"request_id":"<request-id>"' .build/dev/logs/local/server.log
 ```
 
-Unexpected failures deliberately return a generic `internal` problem. The
+Unexpected failures deliberately return a generic `server.internal` problem. The
 correlated server record owns the internal cause; the public response does not.
 
 ## Interpret the Boundary That Rejected the Request

@@ -111,7 +111,7 @@ func TestAffiliationResourceFailsClosedForUndeclaredError(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "internal" {
+	if problem.Code != "server.internal" {
 		t.Fatalf("problem = %#v", problem)
 	}
 }

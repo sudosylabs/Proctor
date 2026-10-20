@@ -43,7 +43,7 @@ export async function beginExternalProof(task: ReauthenticationTask): Promise<Ex
 
 function proofFailure(error: unknown, status: number): ReauthenticationFailure {
   switch (readProblemValue(error)?.code) {
-    case "authentication.invalid_credentials": return { kind: "invalid_password" };
+    case "authentication.credentials_invalid": return { kind: "invalid_password" };
     case "authentication.reauthentication_method_required": return { kind: "method_required" };
     default: return securityFailure(error, status);
   }

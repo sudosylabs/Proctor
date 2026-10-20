@@ -18,7 +18,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -30,7 +30,7 @@ paths:
         - authentication.strong_required
         - authentication.reauthentication_required
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - administration.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed
@@ -184,7 +184,7 @@ components:
             - audit.unavailable
             - administration.unavailable
             - mail.unavailable
-            - authentication.invalid_token
+            - authentication.token_invalid
             - authentication.strong_required
             - authentication.reauthentication_required
             - affiliation.invalid
@@ -198,7 +198,7 @@ components:
             - role_binding.invalid
             - role_binding.conflict
             - role_binding.last_system_admin
-            - role_binding.system_admin_requires_institution_scope
+            - role_binding.system_admin_scope_invalid
             - user.invalid
             - user.conflict
             - user.last_system_admin

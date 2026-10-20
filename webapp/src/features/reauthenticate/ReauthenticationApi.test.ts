@@ -19,7 +19,7 @@ describe("fresh Session proof", () => {
   });
 
   it.each([
-    ["authentication.invalid_credentials", "invalid_password"],
+    ["authentication.credentials_invalid", "invalid_password"],
     ["authentication.reauthentication_method_required", "method_required"],
     ["authentication.rate_limited", "rate_limited"],
   ])("classifies %s", async (problemCode, kind) => {

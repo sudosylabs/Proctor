@@ -71,7 +71,7 @@ func (a *controlAdmission) enter(ctx context.Context, user model.UserID, now tim
 		return nil, err
 	}
 	if !user.IsValid() {
-		return nil, apperror.New("authentication.invalid_token")
+		return nil, apperror.New("authentication.token_invalid")
 	}
 	a.mu.Lock()
 	lane := a.lane

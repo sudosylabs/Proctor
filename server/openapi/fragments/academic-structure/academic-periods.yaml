@@ -18,7 +18,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
@@ -76,7 +76,7 @@ paths:
       x-proctor-idempotency: optional
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -88,7 +88,7 @@ paths:
         - academic_period.invalid
         - academic_period.conflict
         - administration.unavailable
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
         - authentication.dpop.invalid
@@ -135,7 +135,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
@@ -177,7 +177,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -237,7 +237,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied

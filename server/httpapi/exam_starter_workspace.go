@@ -98,7 +98,7 @@ func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplicatio
 	createFileErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found",
 		"exam.starter_workspace.entry_limit", "exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired", "exam.starter_workspace.object_conflict")
 	moveErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.path_conflict", "exam.starter_workspace.parent_not_found",
-		"exam.starter_workspace.no_changes", "exam.starter_workspace.invalid_move")
+		"exam.starter_workspace.no_changes", "exam.starter_workspace.move_conflict")
 	replaceErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.total_size_limit", "exam.starter_workspace.upload_expired",
 		"exam.starter_workspace.object_conflict", "exam.starter_workspace.content_conflict", "exam.starter_workspace.entry_kind")
 	removeErrors := examStarterWorkspaceMutationErrors("exam.starter_workspace.directory_not_empty")
@@ -118,7 +118,7 @@ func examStarterWorkspaceHTTPResource(application ExamStarterWorkspaceApplicatio
 func examStarterWorkspaceMutationErrors(specific ...string) []string {
 	common := []string{"request.invalid", "resource.not_found", "exam.archived", "exam.draft.revision_conflict",
 		"exam.starter_workspace.invalid", "exam.starter_workspace.conflict", "exam.starter_workspace.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"}
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"}
 	return academicMutationErrorCodes(append(common, specific...)...)
 }
 

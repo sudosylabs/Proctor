@@ -21,7 +21,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -37,7 +37,7 @@ paths:
         - exam.sitting.revision_conflict
         - exam.sitting.state_conflict
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable

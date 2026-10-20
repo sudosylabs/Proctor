@@ -107,7 +107,7 @@ func externalAuthenticationResource(
 				"authentication.method.disabled", "authentication.method.last_usable", "authentication.method.not_found",
 				"authentication.method.provider_conflict", "authentication.method.conflict", "authentication.method.unavailable",
 				"authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable",
-				"authentication.desktop_authorization.account_session_locked", "authentication.invalid_credentials",
+				"authentication.desktop_authorization.account_session_locked", "authentication.credentials_invalid",
 			},
 			module.complete,
 		),

@@ -72,7 +72,7 @@ export async function beginProviderConnection(
     const code = readProblemValue(error)?.code;
     if (
       code === "authentication.required" ||
-      code === "authentication.invalid_token" ||
+      code === "authentication.token_invalid" ||
       code === "authentication.strong_required" ||
       code === "authentication.reauthentication_required"
     ) {

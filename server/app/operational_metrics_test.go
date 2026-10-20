@@ -23,7 +23,7 @@ func TestOperationalEventProjectsOnlyBoundedOutcome(t *testing.T) {
 	}{
 		{name: "success", want: "success"},
 		{name: "denied", err: apperror.New("authorization.denied").Wrap(errors.New("private detail")), want: "denied"},
-		{name: "credentials", err: apperror.New("authentication.invalid_credentials"), want: "rejected"},
+		{name: "credentials", err: apperror.New("authentication.credentials_invalid"), want: "rejected"},
 		{name: "rate limit", err: apperror.New("authentication.rate_limited"), want: "rate_limited"},
 		{name: "unknown", err: errors.New("must-not-become-a-label"), want: "error"},
 	}

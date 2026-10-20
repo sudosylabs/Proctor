@@ -859,8 +859,8 @@ func invitationBatchPublicErrorCode(err error) string {
 		switch failure.Code() {
 		case "request.invalid", "resource.not_found", "authorization.denied", "authorization.request.invalid",
 			"authorization.unavailable", "audit.unavailable", "administration.unavailable",
-			"authentication.invalid_token", "authentication.strong_required", "authentication.reauthentication_required",
-			"invitation.invalid", "invitation.class_period_invalid", "invitation.conflict",
+			"authentication.token_invalid", "authentication.strong_required", "authentication.reauthentication_required",
+			"invitation.invalid", "invitation.class_period_conflict", "invitation.conflict",
 			"invitation.role_not_delegable", "invitation.mail_unavailable", "invitation.unavailable",
 			"student_progression.conflict", "student_progression.target_conflict",
 			"idempotency.conflict", "idempotency.in_progress", "onboarding_batch.duplicate":
@@ -1341,7 +1341,7 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 		return InvitationView{}, invitationStoreErrors.Translate(err)
 	}
 	if class.ID != parsedClassID || period.ID != class.AcademicPeriodID {
-		return InvitationView{}, apperror.New("invitation.class_period_invalid")
+		return InvitationView{}, apperror.New("invitation.class_period_conflict")
 	}
 	semantic := command
 	semantic.IdempotencyKey = ""

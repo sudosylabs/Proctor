@@ -17,7 +17,7 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
@@ -87,7 +87,7 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid

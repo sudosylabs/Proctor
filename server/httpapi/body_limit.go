@@ -12,11 +12,6 @@ import (
 	"net/http"
 )
 
-// requestTooLargeCode is the routing-kernel code for a request body over the
-// route's limit. Like not_found and method_not_allowed it belongs to the
-// kernel rather than to any one operation's declared application errors.
-const requestTooLargeCode = "request.too_large"
-
 func limitRequestBody(next http.Handler, maxBodyBytes int64) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.ContentLength > maxBodyBytes {
@@ -43,7 +38,7 @@ func writeRequestTooLarge(writer http.ResponseWriter, request *http.Request) {
 	// rather than draining an oversized remainder.
 	writer.Header().Set("Connection", "close")
 	WriteProblem(writer, Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/request-too-large",
+		Type:      problemType(requestTooLargeCode),
 		Title:     title,
 		Status:    http.StatusRequestEntityTooLarge,
 		Detail:    detail,

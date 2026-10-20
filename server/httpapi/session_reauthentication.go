@@ -42,7 +42,7 @@ func sessionReauthenticationResource(authentication SessionReauthentication, coo
 	return newResource("session-reauthentication",
 		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("reauthenticate"), literal("external")), personalAccessTokenSessionMutationCodes("request.invalid", "authentication.reauthentication_method_required", "authentication.external.request.invalid", "authentication.external.provider_not_found", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.external.unavailable", "authentication.external.rejected", "authentication.internal", "audit.unavailable"), module.external),
 		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("reauthenticate"), literal("password")),
-			personalAccessTokenSessionMutationCodes("service.busy", "request.invalid", "authentication.invalid_credentials", "authentication.reauthentication_method_required", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable"), module.password),
+			personalAccessTokenSessionMutationCodes("service.busy", "request.invalid", "authentication.credentials_invalid", "authentication.reauthentication_method_required", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable"), module.password),
 	)
 }
 

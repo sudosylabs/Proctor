@@ -24,7 +24,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -41,7 +41,7 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.registered_desktop_required
         - exam.attempt.desktop_incompatible
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.management_authority_conflict
         - exam.attempt.configuration_unsupported
         - exam.attempt.unavailable
@@ -54,10 +54,10 @@ paths:
         - exam.security.session_changed
         - exam.security.configuration_unsupported
         - exam.security.attempt_not_ready
-        - exam.security.catalog_unavailable
+        - exam.security.catalog_missing
         - exam.security.unsupported_capability
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
       security:
@@ -82,6 +82,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -106,7 +108,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -123,7 +125,7 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.registered_desktop_required
         - exam.attempt.desktop_incompatible
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.management_authority_conflict
         - exam.attempt.configuration_unsupported
         - exam.attempt.unavailable
@@ -136,10 +138,10 @@ paths:
         - exam.security.session_changed
         - exam.security.configuration_unsupported
         - exam.security.attempt_not_ready
-        - exam.security.catalog_unavailable
+        - exam.security.catalog_missing
         - exam.security.unsupported_capability
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
       security:
@@ -164,6 +166,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
@@ -187,7 +191,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -204,7 +208,7 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.registered_desktop_required
         - exam.attempt.desktop_incompatible
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.management_authority_conflict
         - exam.attempt.configuration_unsupported
         - exam.attempt.unavailable
@@ -217,10 +221,10 @@ paths:
         - exam.security.session_changed
         - exam.security.configuration_unsupported
         - exam.security.attempt_not_ready
-        - exam.security.catalog_unavailable
+        - exam.security.catalog_missing
         - exam.security.unsupported_capability
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
       security:
@@ -240,6 +244,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':

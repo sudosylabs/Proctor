@@ -332,7 +332,7 @@ func (module authenticationResourceModule) register(request operationRequest) (o
 func authenticationLoginErrorCodes() []string {
 	return []string{
 		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "service.busy",
-		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code",
+		"authentication.credentials_invalid", "authentication.mfa.required", "authentication.mfa.code_invalid",
 		"authentication.mfa.unavailable",
 		"authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited",
 		"authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable",
@@ -341,7 +341,7 @@ func authenticationLoginErrorCodes() []string {
 
 func authenticationRefreshErrorCodes() []string {
 	return []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal",
 		"authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce",
 		"authentication.dpop.unavailable",
@@ -350,7 +350,7 @@ func authenticationRefreshErrorCodes() []string {
 
 func sessionAuthenticationMutationErrorCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authentication.csrf.invalid",
 	}
 	return append(codes, extra...)
@@ -669,7 +669,7 @@ func applicationErrorCode(err error) string {
 	if errors.As(err, &failure) {
 		return failure.Code()
 	}
-	return "internal"
+	return serverInternalCode
 }
 
 func applicationErrorRequiresLogging(err error) bool {

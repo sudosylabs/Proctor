@@ -247,9 +247,9 @@ it does not receive or compare server codes.
 
 | Problem code | Page behavior |
 | --- | --- |
-| `authentication.invalid_credentials` | One generic form error; do not identify the login ID, password, User state, or local-login policy as the cause |
+| `authentication.credentials_invalid` | One generic form error; do not identify the login ID, password, User state, or local-login policy as the cause |
 | `authentication.mfa.required` | Enter the MFA continuation |
-| `authentication.mfa.invalid_code` | MFA-control error; keep the challenge active |
+| `authentication.mfa.code_invalid` | MFA-control error; keep the challenge active |
 | `authentication.mfa.unavailable` | Recoverable MFA challenge error; never bypass MFA |
 | `authentication.sessions.maximum_reached` | Blocking form error explaining that another active Session must be resolved; do not retry automatically |
 | `authentication.rate_limited` | Blocking form error asking the person to try later; no countdown is invented without a server retry interval |

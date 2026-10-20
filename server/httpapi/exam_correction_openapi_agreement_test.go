@@ -24,13 +24,13 @@ func TestExamSittingCorrectionOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "POST " + stages, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSittingCorrectionResourceStageCreated", SuccessSchema: "ExamSittingCorrectionResourceStageResponse",
-				PublicErrorCodes: examSittingCorrectionContractCodes("service.busy", "exam.sitting.correction.invalid_content", "exam.sitting.correction.stage_invalid"),
+				PublicErrorCodes: examSittingCorrectionContractCodes("service.busy", "exam.sitting.correction.content_invalid", "exam.sitting.correction.stage_conflict"),
 			},
 			{
 				Key: "POST " + corrections, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				RequestBodyRef: "#/components/requestBodies/ApplyExamSittingCorrection", RequestSchema: "ApplyExamSittingCorrectionRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSittingCorrectionCreated", SuccessSchema: "ExamSittingCorrectionResponse",
-				PublicErrorCodes: examSittingCorrectionContractCodes("exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_invalid", "exam.sitting.correction.stage_invalid", "exam.resource.limit"),
+				PublicErrorCodes: examSittingCorrectionContractCodes("exam.sitting.correction.no_changes", "exam.sitting.correction.manifest_conflict", "exam.sitting.correction.stage_conflict", "exam.resource.limit"),
 			},
 		},
 		Schemas: []openAPIAgreementSchema{
@@ -58,5 +58,5 @@ func examSittingCorrectionContractCodes(specific ...string) []string {
 	}
 	common = append(common, specific...)
 	return principalMutationContractCodes(append(common,
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
 }

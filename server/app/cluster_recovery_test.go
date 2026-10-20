@@ -73,7 +73,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 	if _, err := cacheB.Get(ctx, authenticationCachePrefix+hash); err != nil {
 		t.Fatalf("peer positive cache must still be present: %v", err)
 	}
-	if _, err := serviceB.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.invalid_token") {
+	if _, err := serviceB.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("node B auth after committed revocation with stale cache error = %v", err)
 	}
 }
@@ -241,7 +241,7 @@ func TestSessionExpiryRejectsDespitePositiveCache(t *testing.T) {
 			session.IdleExpiresAt = fixedNow.Add(-time.Minute)
 		}
 	}
-	if _, err := service.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.invalid_token") {
+	if _, err := service.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("auth with expired authoritative Session error = %v", err)
 	}
 }

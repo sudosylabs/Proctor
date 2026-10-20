@@ -41,7 +41,7 @@ func TestSystemResourceReturnsTypedUnhealthyProblemThroughKernel(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "not_live" || problem.Detail != "The process is not healthy." {
+	if problem.Code != "health.not_live" || problem.Detail != "The process is not healthy." {
 		t.Fatalf("liveness problem = %#v", problem)
 	}
 }
@@ -82,7 +82,7 @@ func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing
 
 	failure := httptest.NewRecorder()
 	httpAPI.ServeHTTP(failure, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret","bootstrap_secret":"deployment-secret"}`)))
-	if failure.Code != http.StatusInternalServerError || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
+	if failure.Code != http.StatusServiceUnavailable || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
 		t.Fatalf("bootstrap failure = %d %s", failure.Code, failure.Body.String())
 	}
 }

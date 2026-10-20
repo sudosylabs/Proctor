@@ -286,7 +286,7 @@ func (s *mfaApplicationService) Challenge(
 	now := model.TimeUTC(s.now())
 	proof, err := s.mechanics.verifySecondFactor(ctx, s.credentials, principal.UserID.String(), command.Code, now)
 	if err != nil {
-		code := "authentication.mfa.invalid_code"
+		code := "authentication.mfa.code_invalid"
 		if failure, ok := apperror.As(err); ok {
 			code = failure.Code()
 		}
@@ -298,7 +298,7 @@ func (s *mfaApplicationService) Challenge(
 	result, err := s.credentials.ChallengeWithAudit(ctx, &store.MFAChallenge{Principal: principal, CredentialID: proof.credentialID, TimeStep: proof.step, RecoveryCodeHash: proof.recoveryHash, VerifiedAt: now, AuditEventID: model.AuditEventID(auditID)})
 	if err != nil {
 		if store.IsNotFound(err) {
-			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.invalid_code", nil); auditErr != nil {
+			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.code_invalid", nil); auditErr != nil {
 				return nil, errors.Join(mfaInvalidCodeError(), auditErr)
 			}
 			return nil, mfaInvalidCodeError()
@@ -488,7 +488,7 @@ func (s *mfaApplicationService) requireStrongRecentSession(principal model.Princ
 		return err
 	}
 	if !principal.HasStrongAuthentication() {
-		return apperror.New("authentication.strong_authentication_required")
+		return apperror.New("authentication.strong_required")
 	}
 	return nil
 }

@@ -179,7 +179,7 @@ func TestUserSettingsReadOwnRequiresInteractiveSession(t *testing.T) {
 		"system invocation":     {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := service.ReadOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.invalid_token") {
+			if _, err := service.ReadOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
 				t.Fatalf("ReadOwn() error = %v", err)
 			}
 		})
@@ -521,7 +521,7 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 	_, err = service.ReplaceOwn(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{}\n", FormatVersion: 1, ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "rejected",
 	})
-	if !apperror.Is(err, "authentication.invalid_token") || persistence.reads != 0 || persistence.replaceInput != nil || len(effects.changes) != 0 {
+	if !apperror.Is(err, "authentication.token_invalid") || persistence.reads != 0 || persistence.replaceInput != nil || len(effects.changes) != 0 {
 		t.Fatalf("error=%v reads=%d replace=%#v changes=%#v", err, persistence.reads, persistence.replaceInput, effects.changes)
 	}
 }

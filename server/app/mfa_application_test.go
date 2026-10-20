@@ -56,8 +56,8 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 	if persistence.upgradedAt != model.TimeUTC(now) {
 		t.Fatalf("Session upgrade instant = %s, want %s", persistence.upgradedAt, model.TimeUTC(now))
 	}
-	if _, err := application.ChallengeMFA(context.Background(), invocation, command); !apperror.Is(err, "authentication.mfa.invalid_code") {
-		t.Fatalf("replayed challenge error = %v, want authentication.mfa.invalid_code", err)
+	if _, err := application.ChallengeMFA(context.Background(), invocation, command); !apperror.Is(err, "authentication.mfa.code_invalid") {
+		t.Fatalf("replayed challenge error = %v, want authentication.mfa.code_invalid", err)
 	}
 
 	want := []string{
@@ -196,7 +196,7 @@ func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
 		switch {
 		case err == nil:
 			successes++
-		case apperror.Is(err, "authentication.mfa.invalid_code"):
+		case apperror.Is(err, "authentication.mfa.code_invalid"):
 			rejected++
 		default:
 			t.Fatalf("VerifyLogin error = %v", err)

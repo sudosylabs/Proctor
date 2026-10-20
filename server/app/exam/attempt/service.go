@@ -524,7 +524,7 @@ type ReallowResult struct {
 func (service *Service) Reallow(ctx context.Context, call Call, command ReallowCommand) (ReallowResult, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return ReallowResult{}, apperror.New("authentication.invalid_token")
+		return ReallowResult{}, apperror.New("authentication.token_invalid")
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		!command.SuspensionID.IsValid() || command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
@@ -745,7 +745,7 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 	defer release()
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return ParticipationRenewal{}, apperror.New("authentication.invalid_token")
+		return ParticipationRenewal{}, apperror.New("authentication.token_invalid")
 	}
 	if !principal.HasRegisteredDesktopKey() {
 		return ParticipationRenewal{}, apperror.New("exam.attempt.registered_desktop_required")
@@ -812,7 +812,7 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 	}
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return ConnectionResult{}, apperror.New("authentication.invalid_token")
+		return ConnectionResult{}, apperror.New("authentication.token_invalid")
 	}
 	if !principal.HasRegisteredDesktopKey() {
 		return ConnectionResult{}, apperror.New("exam.attempt.registered_desktop_required")
@@ -1120,7 +1120,7 @@ func (service *Service) OpenWorkspaceFile(ctx context.Context, call Call, access
 func candidateSelector(call Call, access CandidateAccess) (store.CandidateAttemptAccess, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return store.CandidateAttemptAccess{}, apperror.New("authentication.invalid_token")
+		return store.CandidateAttemptAccess{}, apperror.New("authentication.token_invalid")
 	}
 	if !principal.HasRegisteredDesktopKey() {
 		return store.CandidateAttemptAccess{}, apperror.New("exam.attempt.registered_desktop_required")
@@ -1304,8 +1304,8 @@ var storeErrors = apperror.StoreTable{
 	Constraints: map[string]apperror.Code{
 		"control_conflict":                         "exam.security.control_conflict",
 		"exam_attempt_membership":                  "exam.attempt.not_found",
-		"exam_sitting_state":                       "exam.attempt.sitting_unavailable",
-		"exam_sitting_deadline_reached":            "exam.attempt.sitting_unavailable",
+		"exam_sitting_state":                       "exam.attempt.sitting_not_open",
+		"exam_sitting_deadline_reached":            "exam.attempt.sitting_not_open",
 		"exam_attempt_state":                       "exam.attempt.state_conflict",
 		"exam_attempt_management_authority":        "exam.attempt.management_authority_conflict",
 		"desktop_compatibility_policy_revision":    "exam.attempt.desktop_incompatible",

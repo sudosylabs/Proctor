@@ -236,7 +236,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 			return ResourceStage{}, mapContent(writeErr)
 		}
 		if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(c.ExpectedSHA256)) != 1 {
-			return ResourceStage{}, apperror.New("exam.sitting.correction.invalid_content").Wrap(errors.New("content checksum mismatch"))
+			return ResourceStage{}, apperror.New("exam.sitting.correction.content_invalid").Wrap(errors.New("content checksum mismatch"))
 		}
 		stage, err = s.persistence.MarkResourceStageReady(ctx, &store.ExamCorrectionResourceStageReadyInput{StageID: stage.ID, ActorUserID: principal.UserID, Rendition: &rendition, ReadyAt: model.TimeUTC(s.now())})
 		if err != nil {
@@ -428,7 +428,7 @@ func mapContent(err error) error {
 	}
 	var invalidContent invalidContentError
 	if errors.As(err, &invalidContent) {
-		return apperror.New("exam.sitting.correction.invalid_content").Wrap(err)
+		return apperror.New("exam.sitting.correction.content_invalid").Wrap(err)
 	}
 	return apperror.New("exam.sitting.correction.unavailable").Wrap(err)
 }
@@ -444,8 +444,8 @@ var storeErrors = apperror.StoreTable{
 		"exam_correction_no_changes":        "exam.sitting.correction.no_changes",
 		"exam_correction_limit":             "exam.sitting.correction.limit",
 		"exam_correction_resource_limit":    "exam.resource.limit",
-		"exam_correction_resource_manifest": "exam.sitting.correction.manifest_invalid",
-		"exam_correction_resource_stage":    "exam.sitting.correction.stage_invalid",
+		"exam_correction_resource_manifest": "exam.sitting.correction.manifest_conflict",
+		"exam_correction_resource_stage":    "exam.sitting.correction.stage_conflict",
 	},
 	NotFound:     "exam.sitting.correction.not_found",
 	Conflict:     "exam.sitting.correction.conflict",

@@ -40,7 +40,7 @@ type NativeDeliverySummaryCommand struct {
 func nativeDeliverySelector(call Call, query NativeDeliveryQuery) (store.NativeDeliveryAccess, error) {
 	p := call.Principal()
 	if p.Validate() != nil || p.CredentialType != model.CredentialSessionAccess {
-		return store.NativeDeliveryAccess{}, apperror.New("authentication.invalid_token")
+		return store.NativeDeliveryAccess{}, apperror.New("authentication.token_invalid")
 	}
 	if !p.HasRegisteredDesktopKey() {
 		return store.NativeDeliveryAccess{}, apperror.New("exam.attempt.registered_desktop_required")

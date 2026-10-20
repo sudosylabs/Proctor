@@ -140,10 +140,10 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	pat.MFACompletedAt = model.OptionalTime{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, appErr = service.StartRekey(context.Background(), NewInvocation(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.invalid_token") {
+	if _, appErr = service.StartRekey(context.Background(), NewInvocation(pat, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !apperror.Is(appErr, "authentication.token_invalid") {
 		t.Fatalf("PAT error = %v", appErr)
 	}
-	if _, appErr = service.KeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.invalid_token") {
+	if _, appErr = service.KeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(appErr, "authentication.token_invalid") {
 		t.Fatalf("PAT key state error = %v", appErr)
 	}
 	weak := mailTestPrincipal(model.TimeUTC(now))

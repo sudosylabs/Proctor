@@ -73,7 +73,7 @@ func TestRetentionPolicyReplacementRequiresStrongRecentSessionBeforeWork(t *test
 		alter func(*model.Principal)
 		code  string
 	}{
-		{"PAT", func(p *model.Principal) { p.CredentialType, p.SessionID = model.CredentialPersonalAccessToken, "" }, "authentication.invalid_token"},
+		{"PAT", func(p *model.Principal) { p.CredentialType, p.SessionID = model.CredentialPersonalAccessToken, "" }, "authentication.token_invalid"},
 		{"single factor", func(p *model.Principal) {
 			p.AuthenticationStrength, p.MFACompletedAt = model.AuthenticationSingleFactor, model.OptionalTime{}
 		}, "authentication.strong_required"},

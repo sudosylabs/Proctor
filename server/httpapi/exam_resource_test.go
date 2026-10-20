@@ -220,7 +220,7 @@ func (f *examResourceHTTPFake) AuthenticateBearer(context.Context, string) (*mod
 func (f *examResourceHTTPFake) CreateExamResource(_ context.Context, _ application.Invocation, c application.CreateExamResourceCommand) (application.ExamResourceRecord, error) {
 	raw, err := io.ReadAll(c.Body)
 	if err != nil {
-		return application.ExamResourceRecord{}, apperror.New("exam.resource.invalid_content")
+		return application.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid")
 	}
 	f.create, f.uploaded, f.created = c, raw, true
 	return f.record, nil

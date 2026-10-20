@@ -170,8 +170,8 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	if err := json.Unmarshal(errorResponse.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if errorResponse.Code != http.StatusInternalServerError || problem.Code != "audit.unavailable" ||
-		problem.Detail != "An unexpected error occurred." {
+	if errorResponse.Code != http.StatusServiceUnavailable || problem.Code != "audit.unavailable" ||
+		problem.Detail != "The service is temporarily unavailable." {
 		t.Fatalf("unsafe audit error response = %d: %s", errorResponse.Code, errorResponse.Body.String())
 	}
 }

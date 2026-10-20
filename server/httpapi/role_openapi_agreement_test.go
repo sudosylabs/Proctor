@@ -27,7 +27,7 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "POST /api/v1/roles", Auth: AuthPrincipalRequired,
 				RequestBodyRef: "#/components/requestBodies/CreateRole", RequestSchema: "CreateRoleRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/RoleCreated", SuccessSchema: "RoleResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.unknown", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable"),
 			},
 			{
 				Key: "GET /api/v1/roles/{role_id}", Auth: AuthPrincipalRequired,
@@ -38,7 +38,7 @@ func TestRoleOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "PATCH /api/v1/roles/{role_id}", Auth: AuthPrincipalRequired,
 				RequestBodyRef: "#/components/requestBodies/UpdateRole", RequestSchema: "UpdateRoleRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/RoleOK", SuccessSchema: "RoleResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.unknown", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.invalid", "administration.unavailable"),
 			},
 			{
 				Key: "DELETE /api/v1/roles/{role_id}", Auth: AuthPrincipalRequired,

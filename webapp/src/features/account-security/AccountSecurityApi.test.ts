@@ -92,7 +92,7 @@ describe("explicit MFA mutations", () => {
   it.each([
     ["authentication.reauthentication_required", "primary_required"],
     ["authentication.strong_required", "strong_required"],
-    ["authentication.mfa.invalid_code", "invalid_code"],
+    ["authentication.mfa.code_invalid", "invalid_code"],
     ["authentication.mfa.disabled", "disabled"],
     ["authentication.mfa.conflict", "conflict"],
     ["authentication.mfa.not_found", "conflict"],

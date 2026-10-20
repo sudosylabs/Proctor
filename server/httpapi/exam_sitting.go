@@ -311,7 +311,7 @@ func examSittingMutationErrorCodes(specific ...string) []string {
 	common := []string{"request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable"}
 	common = append(common, specific...)
 	return academicMutationErrorCodes(append(common,
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")...)
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")...)
 }
 
 func examSittingScheduleErrorCodes() []string {

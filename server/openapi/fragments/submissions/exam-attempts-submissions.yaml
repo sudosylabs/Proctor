@@ -24,7 +24,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - audit.unavailable
@@ -34,11 +34,11 @@ paths:
         - exam.attempt.revision_conflict
         - exam.attempt.correction_conflict
         - exam.attempt.state_conflict
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.connection_closed
         - exam.attempt.unavailable
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
         - authentication.dpop.invalid
@@ -103,20 +103,20 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - audit.unavailable
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.state_conflict
         - exam.attempt.connection_closed
         - exam.attempt.conflict
         - exam.attempt.unavailable
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - idempotency.conflict
         - idempotency.in_progress
         - exam.attempt.workspace.cursor_conflict

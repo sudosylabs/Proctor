@@ -20,7 +20,7 @@ paths:
       x-proctor-idempotency: required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -30,10 +30,10 @@ paths:
         - request.invalid
         - resource.not_found
         - onboarding_import.conflict
-        - onboarding_import.invalid_file
+        - onboarding_import.file_invalid
         - onboarding_import.unavailable
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - administration.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed

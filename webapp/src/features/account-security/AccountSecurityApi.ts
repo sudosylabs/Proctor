@@ -116,10 +116,10 @@ export async function signOutSecuritySession(): Promise<SecurityMutationResult> 
 export function securityFailure(error: unknown, status: number): SecurityFailure {
   switch (readProblemValue(error)?.code) {
     case "authentication.required":
-    case "authentication.invalid_token": return { kind: "no_session" };
+    case "authentication.token_invalid": return { kind: "no_session" };
     case "authentication.reauthentication_required": return { kind: "primary_required" };
     case "authentication.strong_required": return { kind: "strong_required" };
-    case "authentication.mfa.invalid_code": return { kind: "invalid_code" };
+    case "authentication.mfa.code_invalid": return { kind: "invalid_code" };
     case "authentication.rate_limited": return { kind: "rate_limited" };
     case "authentication.mfa.disabled": return { kind: "disabled" };
     case "authentication.mfa.conflict":

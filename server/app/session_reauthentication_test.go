@@ -47,10 +47,10 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 		commit   bool
 	}{
 		{name: "success", password: "CorrectHorseBatteryStaple1!", method: "password", commit: true},
-		{name: "wrong password", password: "IncorrectHorseBatteryStaple1!", method: "password", code: "authentication.invalid_credentials"},
+		{name: "wrong password", password: "IncorrectHorseBatteryStaple1!", method: "password", code: "authentication.credentials_invalid"},
 		{name: "external Session", password: "CorrectHorseBatteryStaple1!", method: "oidc", code: "authentication.reauthentication_method_required"},
-		{name: "password changed", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.ErrPasswordCredentialChanged, code: "authentication.invalid_credentials", commit: true},
-		{name: "Session revoked", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.NewErrNotFound("session", ""), code: "authentication.invalid_credentials", commit: true},
+		{name: "password changed", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.ErrPasswordCredentialChanged, code: "authentication.credentials_invalid", commit: true},
+		{name: "Session revoked", password: "CorrectHorseBatteryStaple1!", method: "password", storeErr: store.NewErrNotFound("session", ""), code: "authentication.credentials_invalid", commit: true},
 		{name: "audit unavailable", password: "CorrectHorseBatteryStaple1!", method: "password", auditErr: apperror.New("audit.unavailable"), code: "audit.unavailable"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

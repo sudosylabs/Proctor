@@ -100,7 +100,7 @@ func institutionResource(institutions InstitutionApplication) resource {
 func academicReadErrorCodes(specific ...string) []string {
 	codes := []string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 		"authorization.denied",
 		"authorization.request.invalid",
@@ -113,7 +113,7 @@ func academicReadErrorCodes(specific ...string) []string {
 func academicMutationErrorCodes(specific ...string) []string {
 	codes := []string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 		"authentication.csrf.invalid",
 		"authorization.denied",

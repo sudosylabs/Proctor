@@ -17,7 +17,7 @@ paths:
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.dpop.invalid
@@ -26,7 +26,7 @@ paths:
         - authentication.dpop.unavailable
         - service.busy
         - request.invalid
-        - authentication.invalid_credentials
+        - authentication.credentials_invalid
         - authentication.reauthentication_method_required
         - authentication.rate_limited
         - authentication.rate_limit_unavailable
@@ -67,7 +67,7 @@ paths:
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.dpop.invalid

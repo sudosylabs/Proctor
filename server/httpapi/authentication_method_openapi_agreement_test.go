@@ -16,7 +16,7 @@ import (
 )
 
 func TestAuthenticationMethodOpenAPIAgreesWithRuntime(t *testing.T) {
-	listCodes := []string{"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.method.unavailable"}
+	listCodes := []string{"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous", "authentication.method.unavailable"}
 	suite := openAPIAgreementSuite{Operations: []openAPIAgreementOperation{
 		{Key: "GET /api/v1/authentication-methods", Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/AuthenticationMethodListOK", SuccessSchema: "AuthenticationMethodResponse", PublicErrorCodes: listCodes},
 		{Key: "PUT /api/v1/authentication-methods/password", Auth: AuthStrongRecentSessionRequired, RequestBodyRef: "#/components/requestBodies/EnrollPassword", RequestSchema: "EnrollPasswordRequest", SuccessStatus: "204", SuccessRef: "#/components/responses/SensitiveNoContent", PublicErrorCodes: strongRecentAuthenticationMethodCodes("request.invalid", "authentication.password.invalid", "service.busy", "authentication.method.disabled", "authentication.method.conflict", "authentication.method.unavailable", "audit.unavailable")},

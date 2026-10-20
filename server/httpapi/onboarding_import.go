@@ -79,14 +79,14 @@ type onboardingImportRowResponse struct {
 
 func onboardingImportResource(imports OnboardingImportApplication) resource {
 	module := onboardingImportModule{imports: imports}
-	codes := academicRelationshipMutationErrorCodes("onboarding_import.conflict", "onboarding_import.invalid_file", "onboarding_import.unavailable")
+	codes := academicRelationshipMutationErrorCodes("onboarding_import.conflict", "onboarding_import.file_invalid", "onboarding_import.unavailable")
 	return newResource("onboarding-imports",
 		idempotentProtocolRoute(IdempotencyNone, application.MaximumOnboardingImportBytes, "onboarding-import-csv", RouteProtocolStreamingUpload, AuthPrincipalRequired,
 			http.MethodPost, apiPath(literal("onboarding-imports")), codes, module.upload),
 		principalRoute(http.MethodGet, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id")),
 			append(academicRelationshipReadErrorCodes(), "onboarding_import.unavailable"), module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("commit")),
-			append(codes, "idempotency.key_required", "idempotency.invalid_key"), module.commit),
+			append(codes, "idempotency.key_required", "idempotency.key_invalid"), module.commit),
 		principalRoute(http.MethodPost, apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("cancel")), codes, module.cancel),
 		protocolRoute("onboarding-import-report", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
 			apiPath(literal("onboarding-imports"), canonicalID("onboarding_import_id"), literal("report")), append(academicRelationshipReadErrorCodes(), "onboarding_import.conflict", "onboarding_import.unavailable"), module.report),

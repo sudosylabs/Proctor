@@ -82,11 +82,11 @@ func roleResource(roles RoleApplication) resource {
 		principalRoute(http.MethodGet, apiPath(literal("roles")),
 			operatorReadErrorCodes("administration.unavailable"), module.list),
 		principalRoute(http.MethodPost, apiPath(literal("roles")),
-			operatorMutationErrorCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.unknown", "administration.unavailable"), module.create),
+			operatorMutationErrorCodes("request.invalid", "role.invalid", "role.conflict", "role.permission.invalid", "administration.unavailable"), module.create),
 		principalRoute(http.MethodGet, apiPath(literal("roles"), canonicalID("role_id")),
 			operatorReadErrorCodes("request.invalid", "resource.not_found", "administration.unavailable"), module.get),
 		principalRoute(http.MethodPatch, apiPath(literal("roles"), canonicalID("role_id")),
-			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.unknown", "administration.unavailable"), module.patch),
+			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role.invalid", "role.conflict", "role.built_in.protected", "role.permission.invalid", "administration.unavailable"), module.patch),
 		principalRoute(http.MethodDelete, apiPath(literal("roles"), canonicalID("role_id")),
 			operatorMutationErrorCodes("request.invalid", "resource.not_found", "role.built_in.protected", "role.conflict", "administration.unavailable"), module.archive),
 	)
@@ -95,7 +95,7 @@ func roleResource(roles RoleApplication) resource {
 func operatorReadErrorCodes(specific ...string) []string {
 	codes := []string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 		"authorization.denied",
 		"authorization.request.invalid",

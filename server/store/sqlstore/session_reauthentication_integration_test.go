@@ -112,7 +112,7 @@ func TestExternalReauthenticationRechecksExactIdentityAndLiveBoundSession(t *tes
 			case "disabled provider":
 				_, err = s.GetMaster().Exec(ctx, `UPDATE access_policies SET provider_admissions='{}'::jsonb`)
 			case "terminal audit":
-				_, err = s.Audit().Complete(ctx, audit.ID.String(), model.AuditStatusFail, "authentication.invalid_token", nil, model.GetMillis())
+				_, err = s.Audit().Complete(ctx, audit.ID.String(), model.AuditStatusFail, "authentication.token_invalid", nil, model.GetMillis())
 			}
 			if err != nil {
 				t.Fatal(err)

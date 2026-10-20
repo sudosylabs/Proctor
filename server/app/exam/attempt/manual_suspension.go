@@ -50,7 +50,7 @@ type ManualSuspensionResult struct {
 func (service *Service) SuspendByManager(ctx context.Context, call Call, command ManualSuspensionCommand) (ManualSuspensionResult, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return ManualSuspensionResult{}, apperror.New("authentication.invalid_token")
+		return ManualSuspensionResult{}, apperror.New("authentication.token_invalid")
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {

@@ -38,13 +38,13 @@ describe("readProblemValue", () => {
       type: "/problems/authentication",
       title: "Authentication failed",
       status: 401,
-      code: "authentication.invalid_credentials",
+      code: "authentication.credentials_invalid",
       private_value: "must not escape",
     })).toEqual({
       type: "/problems/authentication",
       title: "Authentication failed",
       status: 401,
-      code: "authentication.invalid_credentials",
+      code: "authentication.credentials_invalid",
     });
   });
 });

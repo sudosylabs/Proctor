@@ -259,10 +259,10 @@ func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
 				func(error) error { return mapped },
 			)
 			appErr, ok := apperror.As(err)
-			if !ok || appErr.Code() != "audit.event.invalid" {
+			if !ok || appErr.Code() != "audit.internal" {
 				t.Fatalf("runAuditedMutation() error = %v", err)
 			}
-			if auditor.failCode != "audit.event.invalid" {
+			if auditor.failCode != "audit.internal" {
 				t.Fatalf("failure code = %q", auditor.failCode)
 			}
 		})

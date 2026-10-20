@@ -76,7 +76,7 @@ paths:
               --header 'X-Proctor-CSRF-Token: <csrf-proof>'
       tags: [Authentication]
       x-proctor-auth: session_required
-      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, authentication.csrf.invalid, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-error-codes: [authentication.required, authentication.token_invalid, authentication.credential_ambiguous, authentication.csrf.invalid, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
@@ -98,7 +98,7 @@ paths:
       description: Validates local credentials and any required MFA code only for the browser-bound Desktop transaction, without creating a Web Session or approving the Desktop request.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: [service.busy, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.invalid_credentials, authentication.mfa.required, authentication.mfa.invalid_code, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-error-codes: [service.busy, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.credentials_invalid, authentication.mfa.required, authentication.mfa.code_invalid, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationLocalAuthentication'}

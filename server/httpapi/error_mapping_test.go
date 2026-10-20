@@ -98,9 +98,9 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		},
 		{
 			name:       "invalid authentication token",
-			err:        apperror.New("authentication.invalid_token"),
+			err:        apperror.New("authentication.token_invalid"),
 			wantStatus: http.StatusUnauthorized,
-			wantCode:   "authentication.invalid_token",
+			wantCode:   "authentication.token_invalid",
 		},
 		{
 			name:       "invalid authorization request",
@@ -111,7 +111,7 @@ func TestWriteErrorMapsTransportNeutralApplicationErrors(t *testing.T) {
 		{
 			name:       "fail closed audit unavailable",
 			err:        apperror.New("audit.unavailable"),
-			wantStatus: http.StatusInternalServerError,
+			wantStatus: http.StatusServiceUnavailable,
 			wantCode:   "audit.unavailable",
 		},
 		{
@@ -228,7 +228,7 @@ func TestWriteErrorFailsSafeForUnmappedApplicationCodes(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "internal" || problem.Status != http.StatusInternalServerError {
+	if problem.Code != "server.internal" || problem.Status != http.StatusInternalServerError {
 		t.Fatalf("problem = %#v", problem)
 	}
 	if len(problem.Fields) != 0 {
@@ -264,7 +264,7 @@ func TestApplicationErrorMappingCoversEveryRegisteredCode(t *testing.T) {
 		if status < 400 || status > 599 {
 			t.Fatalf("code %q maps to non-error status %d", code, status)
 		}
-		if code == "" || code == "internal" {
+		if code == "" || code == "server.internal" {
 			t.Fatalf("registry contains reserved or empty code %q", code)
 		}
 		response := writeErrorResponse(t, apperror.New(apperror.Code(code)))

@@ -29,8 +29,8 @@ func TestBrowserRouteProblemHandlersWriteProblemDetails(t *testing.T) {
 		code    string
 		allow   string
 	}{
-		{"not found", api.NotFoundHandler(), http.MethodGet, "/assets/missing-AbCdEf12.js", http.StatusNotFound, "not_found", ""},
-		{"method not allowed", api.MethodNotAllowedHandler(http.MethodGet, http.MethodHead), http.MethodPost, "/login", http.StatusMethodNotAllowed, "method_not_allowed", "GET, HEAD"},
+		{"not found", api.NotFoundHandler(), http.MethodGet, "/assets/missing-AbCdEf12.js", http.StatusNotFound, "route.not_found", ""},
+		{"method not allowed", api.MethodNotAllowedHandler(http.MethodGet, http.MethodHead), http.MethodPost, "/login", http.StatusMethodNotAllowed, "route.method_not_allowed", "GET, HEAD"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

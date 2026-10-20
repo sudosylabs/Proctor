@@ -42,8 +42,8 @@ describe("authenticateLocal", () => {
 
   it.each([
     ["authentication.mfa.required", "mfa_required"],
-    ["authentication.mfa.invalid_code", "mfa_invalid"],
-    ["authentication.invalid_credentials", "invalid_credentials"],
+    ["authentication.mfa.code_invalid", "mfa_invalid"],
+    ["authentication.credentials_invalid", "invalid_credentials"],
     ["authentication.mfa.unavailable", "mfa_unavailable"],
     ["authentication.sessions.maximum_reached", "session_limit"],
     ["authentication.rate_limited", "rate_limited"],

@@ -62,7 +62,7 @@ func TestPublicLoginRejectsUnsafeBrowserRequestsBeforeAuthentication(t *testing.
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			logger, _ := newTestLogger(t)
-			fake := &authenticationEntryHTTPApplication{loginError: apperror.New("authentication.invalid_credentials")}
+			fake := &authenticationEntryHTTPApplication{loginError: apperror.New("authentication.credentials_invalid")}
 			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, authenticationResource(fake, browserCookies{}))
 			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/login",
 				strings.NewReader(`{"login_id":"student","password":"test-password","client_type":"web"}`))

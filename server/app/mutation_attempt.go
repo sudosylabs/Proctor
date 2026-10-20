@@ -62,7 +62,7 @@ func runAuditedMutation[T any](
 	if attempt.ScopeType != "" || attempt.ScopeID != "" {
 		scoped, ok := auditor.(scopedMutationAuditor)
 		if !ok || !attempt.ScopeType.IsValid() || !model.IsValidId(attempt.ScopeID) {
-			return zero, apperror.New("audit.event.invalid")
+			return zero, apperror.New("audit.internal")
 		}
 		auditID, err = scoped.BeginAtScope(
 			ctx, attempt.Invocation, attempt.Action, attempt.Resource,
@@ -95,7 +95,7 @@ func runAuditedMutation[T any](
 	mapped := mapError(err)
 	failure, ok := apperror.As(mapped)
 	if !ok {
-		mapped = apperror.New("audit.event.invalid").Wrap(
+		mapped = apperror.New("audit.internal").Wrap(
 			errors.New("mutation error mapper returned no application error"),
 		)
 		failure, _ = apperror.As(mapped)

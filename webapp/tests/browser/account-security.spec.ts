@@ -35,7 +35,7 @@ async function mockSecurity(page: Page, context = baseContext) {
       return json({ secret: setupKey, provisioning_uri: provisioningURI, expires_at: Date.now() + 600_000 }, 201);
     }
     if (path === "/api/v1/users/me/mfa/activate") {
-      if (request.postDataJSON().code !== "123456") return problem("authentication.mfa.invalid_code");
+      if (request.postDataJSON().code !== "123456") return problem("authentication.mfa.code_invalid");
       state.context.enabled = true; state.context.pending = false;
       state.context.mfa_recovery_required = false;
       state.context.recovery_codes_remaining = recoveryCodes.length;
@@ -57,7 +57,7 @@ async function mockSecurity(page: Page, context = baseContext) {
       await route.fulfill({ status: 204 }); return;
     }
     if (path === "/api/v1/auth/reauthenticate/password") {
-      if (request.postDataJSON().password !== "current-password") return problem("authentication.invalid_credentials", 401);
+      if (request.postDataJSON().password !== "current-password") return problem("authentication.credentials_invalid", 401);
       state.context.recently_authenticated = true;
       return json({ id: "current-session", client_type: "web", reauthenticated_at: Date.now() });
     }
@@ -422,7 +422,7 @@ test("sign-in status offers the bounded security destination for ordinary and re
   await expect(page.getByRole("link", { name: "Account security" })).toHaveAttribute("href", "/account/security");
   state.context.mfa_recovery_required = true;
   await page.route("**/api/v1/users/me", (route) => route.fulfill({ status: 401, contentType: "application/problem+json", body: JSON.stringify({
-    type: "about:blank", title: "Private recovery detail", status: 401, code: "authentication.invalid_token",
+    type: "about:blank", title: "Private recovery detail", status: 401, code: "authentication.token_invalid",
   }) }));
   await page.reload();
   await expect(page.getByRole("heading", { name: "Restore account access" })).toBeVisible();

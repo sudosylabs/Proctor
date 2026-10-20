@@ -396,7 +396,7 @@ var roleStoreErrors = apperror.AdministrationStoreTable("role", "role.conflict",
 func validateKnownPermissions(permissions []string) error {
 	for _, permission := range permissions {
 		if !model.IsGrantableAction(permission) {
-			return apperror.New("role.permission.unknown").WithField("permission", permission)
+			return apperror.New("role.permission.invalid").WithField("permission", permission)
 		}
 	}
 	return nil
@@ -419,7 +419,7 @@ func validatePatchedPermissions(current []string, permissions *[]string) error {
 		if _, preserved := existingUnknown[permission]; preserved {
 			continue
 		}
-		return apperror.New("role.permission.unknown").WithField("permission", permission)
+		return apperror.New("role.permission.invalid").WithField("permission", permission)
 	}
 	return nil
 }

@@ -70,7 +70,7 @@ type CurrentUserContextView struct {
 func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) (*CurrentUserContextView, error) {
 	principal := invocation.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return nil, apperror.New("authentication.invalid_token")
+		return nil, apperror.New("authentication.token_invalid")
 	}
 	value, err := a.userProfiles.users.GetCurrentContext(ctx, principal.UserID, 21)
 	if err != nil {

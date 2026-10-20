@@ -108,12 +108,12 @@ func (s *authenticationService) ReauthenticatePassword(ctx context.Context, invo
 
 var reauthenticationStoreErrors = apperror.StoreTable{
 	Rules: []apperror.StoreRule{
-		{Kind: apperror.StoreSentinel, Sentinel: store.ErrPasswordCredentialChanged, Code: "authentication.invalid_credentials"},
-		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.invalid_credentials"},
-		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.invalid_credentials"},
-		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.invalid_credentials"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrPasswordCredentialChanged, Code: "authentication.credentials_invalid"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationMethodDisabled, Code: "authentication.credentials_invalid"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrAuthenticationGenerationChanged, Code: "authentication.credentials_invalid"},
+		{Kind: apperror.StoreSentinel, Sentinel: store.ErrMFAReenrollmentRequired, Code: "authentication.credentials_invalid"},
 	},
-	NotFound:    "authentication.invalid_credentials",
-	Conflict:    "authentication.invalid_credentials",
+	NotFound:    "authentication.credentials_invalid",
+	Conflict:    "authentication.credentials_invalid",
 	Unavailable: "authentication.internal",
 }

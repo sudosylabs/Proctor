@@ -4117,6 +4117,29 @@
           }
         }
       },
+      "Gone": {
+        "content": {
+          "application/problem+json": {
+            "example": {
+              "code": "exam.security.preflight_expired",
+              "detail": "The security preflight expired.",
+              "request_id": "req_docs_gone",
+              "status": 410,
+              "title": "Gone",
+              "type": "/problems/exam.security.preflight_expired"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        },
+        "description": "Gone",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
       "HealthOK": {
         "content": {
           "application/json": {
@@ -4164,12 +4187,12 @@
         "content": {
           "application/problem+json": {
             "example": {
-              "code": "authentication.internal",
-              "detail": "The request could not be completed.",
+              "code": "server.internal",
+              "detail": "An unexpected error occurred.",
               "request_id": "req_docs_internal",
               "status": 500,
               "title": "Internal server error",
-              "type": "/problems/internal"
+              "type": "/problems/server.internal"
             },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
@@ -5535,7 +5558,7 @@
               "audit.unavailable",
               "administration.unavailable",
               "mail.unavailable",
-              "authentication.invalid_token",
+              "authentication.token_invalid",
               "authentication.strong_required",
               "authentication.reauthentication_required",
               "affiliation.invalid",
@@ -5549,7 +5572,7 @@
               "role_binding.invalid",
               "role_binding.conflict",
               "role_binding.last_system_admin",
-              "role_binding.system_admin_requires_institution_scope",
+              "role_binding.system_admin_scope_invalid",
               "user.invalid",
               "user.conflict",
               "user.last_system_admin",
@@ -16051,11 +16074,11 @@
               "authorization.unavailable",
               "audit.unavailable",
               "administration.unavailable",
-              "authentication.invalid_token",
+              "authentication.token_invalid",
               "authentication.strong_required",
               "authentication.reauthentication_required",
               "invitation.invalid",
-              "invitation.class_period_invalid",
+              "invitation.class_period_conflict",
               "invitation.conflict",
               "invitation.role_not_delegable",
               "invitation.mail_unavailable",
@@ -23514,7 +23537,7 @@
     }
   },
   "info": {
-    "description": "The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures. The routing kernel also answers any operation with not_found (404), method_not_allowed (405), or request.too_large (413) Problem Details for an unknown path, an unsupported method, or a request body over the operation's limit. JSON request bodies require one Content-Type of application/json, optionally with charset=utf-8. Unsafe browser requests must use the configured public origin; conflicting Origin or Fetch Metadata headers are rejected before authentication. Native clients may omit browser headers. Cookie-authenticated mutations also require their signed CSRF proof. CAS and OIDC GET callbacks retain their purpose-specific state and browser-binding checks.",
+    "description": "The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures. The routing kernel also answers any operation with route.not_found (404), route.method_not_allowed (405), or request.too_large (413) Problem Details for an unknown path, an unsupported method, or a request body over the operation's limit. JSON request bodies require one Content-Type of application/json, optionally with charset=utf-8. Unsafe browser requests must use the configured public origin; conflicting Origin or Fetch Metadata headers are rejected before authentication. Native clients may omit browser headers. Cookie-authenticated mutations also require their signed CSRF proof. CAS and OIDC GET callbacks retain their purpose-specific state and browser-binding checks.",
     "title": "Proctor Server API",
     "version": "1.0.0"
   },
@@ -23574,7 +23597,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -23586,7 +23609,7 @@
           "authentication.strong_required",
           "authentication.reauthentication_required",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -23664,7 +23687,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -23735,7 +23758,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -23747,7 +23770,7 @@
           "academic_period.invalid",
           "academic_period.conflict",
           "administration.unavailable",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -23818,7 +23841,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -23880,7 +23903,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -23951,7 +23974,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24026,7 +24049,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24121,7 +24144,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -24194,7 +24217,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24205,7 +24228,7 @@
           "administration.unavailable",
           "academic_unit.invalid",
           "academic_unit.conflict",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -24276,7 +24299,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24338,7 +24361,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -24408,7 +24431,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24473,7 +24496,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -24543,7 +24566,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24631,7 +24654,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -24729,7 +24752,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24831,7 +24854,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -24944,7 +24967,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25015,7 +25038,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -25103,7 +25126,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25174,7 +25197,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -25236,7 +25259,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25308,7 +25331,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25318,7 +25341,7 @@
           "authentication.strong_required",
           "authentication.reauthentication_required",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "request.invalid",
@@ -25383,7 +25406,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25458,7 +25481,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -25578,7 +25601,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -25718,7 +25741,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.rate_limited",
@@ -25919,9 +25942,9 @@
           "authentication.desktop_authorization.rejected",
           "authentication.desktop_authorization.unavailable",
           "authentication.desktop_authorization.account_session_locked",
-          "authentication.invalid_credentials",
+          "authentication.credentials_invalid",
           "authentication.mfa.required",
-          "authentication.mfa.invalid_code",
+          "authentication.mfa.code_invalid",
           "authentication.mfa.unavailable",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable"
@@ -26050,7 +26073,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
@@ -26339,7 +26362,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.rate_limited",
@@ -26400,9 +26423,9 @@
           "request.invalid",
           "authentication.client_type.invalid",
           "authentication.password.invalid",
-          "authentication.invalid_credentials",
+          "authentication.credentials_invalid",
           "authentication.mfa.required",
-          "authentication.mfa.invalid_code",
+          "authentication.mfa.code_invalid",
           "authentication.mfa.unavailable",
           "authentication.sessions.maximum_reached",
           "authentication.desktop_authorization.account_session_locked",
@@ -26464,7 +26487,7 @@
         "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.internal",
@@ -26615,7 +26638,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
-          "authentication.invalid_credentials",
+          "authentication.credentials_invalid",
           "request.invalid",
           "authentication.external.invalid",
           "authentication.external.provider_not_found",
@@ -26822,7 +26845,7 @@
         "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.dpop.invalid",
@@ -26895,7 +26918,7 @@
         "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.dpop.invalid",
@@ -26904,7 +26927,7 @@
           "authentication.dpop.unavailable",
           "service.busy",
           "request.invalid",
-          "authentication.invalid_credentials",
+          "authentication.credentials_invalid",
           "authentication.reauthentication_method_required",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
@@ -26964,7 +26987,7 @@
         "x-proctor-auth": "refresh_credential_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.session.invalid",
@@ -27056,7 +27079,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.method.unavailable",
           "authentication.dpop.invalid",
@@ -27123,7 +27146,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -27190,7 +27213,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -27265,7 +27288,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -27355,7 +27378,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -27385,6 +27408,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
         "security": [],
@@ -27500,7 +27526,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -27585,7 +27611,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -27647,7 +27673,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -27718,7 +27744,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -27817,7 +27843,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -27828,7 +27854,7 @@
           "resource.not_found",
           "administration.unavailable",
           "invitation.invalid",
-          "invitation.class_period_invalid",
+          "invitation.class_period_conflict",
           "invitation.conflict",
           "invitation.mail_unavailable",
           "invitation.unavailable",
@@ -27930,7 +27956,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -28001,7 +28027,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28065,7 +28091,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -28137,7 +28163,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -28147,7 +28173,7 @@
           "authentication.strong_required",
           "authentication.reauthentication_required",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "request.invalid",
@@ -28263,7 +28289,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28283,7 +28309,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28365,7 +28391,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28385,7 +28411,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28486,7 +28512,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28506,7 +28532,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28518,7 +28544,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "exam.delivery.batch_conflict",
           "exam.delivery.replay_window_exceeded",
           "exam.delivery.pending_capacity",
@@ -28605,7 +28631,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28625,7 +28651,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28637,7 +28663,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -28727,7 +28753,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28747,7 +28773,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28847,7 +28873,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28867,7 +28893,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28879,7 +28905,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -28961,7 +28987,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -28981,7 +29007,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -28993,7 +29019,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -29069,7 +29095,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
@@ -29079,11 +29105,11 @@
           "exam.attempt.revision_conflict",
           "exam.attempt.correction_conflict",
           "exam.attempt.state_conflict",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.connection_closed",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -29165,7 +29191,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29185,7 +29211,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -29279,7 +29305,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29299,7 +29325,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -29311,7 +29337,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -29369,12 +29395,12 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.unavailable",
           "authentication.dpop.invalid",
@@ -29455,12 +29481,12 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.unavailable",
           "authentication.dpop.invalid",
@@ -29521,7 +29547,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
@@ -29621,7 +29647,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29641,7 +29667,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -29653,7 +29679,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "exam.delivery.batch_conflict",
           "exam.delivery.replay_window_exceeded",
           "exam.delivery.pending_capacity",
@@ -29685,6 +29711,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           },
@@ -29713,7 +29742,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29730,7 +29759,7 @@
           "exam.attempt.invalid",
           "exam.attempt.registered_desktop_required",
           "exam.attempt.desktop_incompatible",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.management_authority_conflict",
           "exam.attempt.configuration_unsupported",
           "exam.attempt.unavailable",
@@ -29743,10 +29772,10 @@
           "exam.security.session_changed",
           "exam.security.configuration_unsupported",
           "exam.security.attempt_not_ready",
-          "exam.security.catalog_unavailable",
+          "exam.security.catalog_missing",
           "exam.security.unsupported_capability",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress"
         ],
@@ -29820,7 +29849,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29840,7 +29869,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -29940,7 +29969,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -29960,7 +29989,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -29972,7 +30001,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -30039,7 +30068,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -30059,7 +30088,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -30162,7 +30191,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -30182,7 +30211,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -30194,7 +30223,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -30276,7 +30305,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -30296,7 +30325,7 @@
           "exam.attempt.continuity_invalid",
           "exam.attempt.connection_closed",
           "exam.attempt.connection_lost",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.unavailable",
           "exam.delivery.upload_expired",
           "exam.delivery.declaration_conflict",
@@ -30308,7 +30337,7 @@
           "idempotency.conflict",
           "idempotency.in_progress",
           "idempotency.key_required",
-          "idempotency.invalid_key"
+          "idempotency.key_invalid"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -30387,20 +30416,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.cursor_conflict",
@@ -30491,12 +30520,12 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.unavailable",
           "authentication.dpop.invalid",
@@ -30589,12 +30618,12 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.unavailable",
           "authentication.dpop.invalid",
@@ -30678,20 +30707,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.path_conflict",
@@ -30768,20 +30797,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.path_conflict",
@@ -30866,20 +30895,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.path_conflict",
@@ -30982,20 +31011,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.path_conflict",
@@ -31082,12 +31111,12 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.unavailable",
           "authentication.dpop.invalid",
@@ -31190,20 +31219,20 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "audit.unavailable",
           "request.invalid",
           "resource.not_found",
           "exam.attempt.invalid",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.state_conflict",
           "exam.attempt.connection_closed",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "exam.attempt.workspace.path_conflict",
@@ -31255,6 +31284,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           },
@@ -31284,7 +31316,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31301,7 +31333,7 @@
           "exam.attempt.invalid",
           "exam.attempt.registered_desktop_required",
           "exam.attempt.desktop_incompatible",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.management_authority_conflict",
           "exam.attempt.configuration_unsupported",
           "exam.attempt.unavailable",
@@ -31314,10 +31346,10 @@
           "exam.security.session_changed",
           "exam.security.configuration_unsupported",
           "exam.security.attempt_not_ready",
-          "exam.security.catalog_unavailable",
+          "exam.security.catalog_missing",
           "exam.security.unsupported_capability",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress"
         ],
@@ -31464,7 +31496,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -31542,7 +31574,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31555,7 +31587,7 @@
           "exam.conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -31612,7 +31644,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -31696,7 +31728,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31710,7 +31742,7 @@
           "exam.revision_conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -31784,7 +31816,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31799,7 +31831,7 @@
           "exam.draft.no_changes",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -31873,7 +31905,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31888,7 +31920,7 @@
           "exam.draft.no_changes",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -31962,7 +31994,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -31977,7 +32009,7 @@
           "exam.draft.no_changes",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32051,7 +32083,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32066,7 +32098,7 @@
           "exam.draft.no_changes",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32123,7 +32155,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -32225,7 +32257,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32239,12 +32271,12 @@
           "exam.resource.invalid",
           "exam.resource.conflict",
           "exam.resource.unavailable",
-          "exam.resource.invalid_content",
+          "exam.resource.content_invalid",
           "exam.resource.limit",
           "exam.resource.upload_invalid",
           "exam.resource.revision_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32318,7 +32350,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32335,7 +32367,7 @@
           "exam.resource.no_changes",
           "exam.resource.order_invalid",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32404,7 +32436,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32420,7 +32452,7 @@
           "exam.resource.unavailable",
           "exam.resource.revision_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32495,7 +32527,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32512,7 +32544,7 @@
           "exam.resource.no_changes",
           "exam.resource.revision_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32583,7 +32615,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -32688,7 +32720,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32702,11 +32734,11 @@
           "exam.resource.invalid",
           "exam.resource.conflict",
           "exam.resource.unavailable",
-          "exam.resource.invalid_content",
+          "exam.resource.content_invalid",
           "exam.resource.upload_invalid",
           "exam.resource.revision_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32763,7 +32795,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -32848,7 +32880,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32866,7 +32898,7 @@
           "exam.starter_workspace.parent_not_found",
           "exam.starter_workspace.entry_limit",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -32935,7 +32967,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -32951,7 +32983,7 @@
           "exam.starter_workspace.unavailable",
           "exam.starter_workspace.directory_not_empty",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33026,7 +33058,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33043,9 +33075,9 @@
           "exam.starter_workspace.path_conflict",
           "exam.starter_workspace.parent_not_found",
           "exam.starter_workspace.no_changes",
-          "exam.starter_workspace.invalid_move",
+          "exam.starter_workspace.move_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33109,6 +33141,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
@@ -33142,7 +33177,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33163,7 +33198,7 @@
           "exam.starter_workspace.upload_expired",
           "exam.starter_workspace.object_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33234,7 +33269,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -33305,6 +33340,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
@@ -33338,7 +33376,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33358,7 +33396,7 @@
           "exam.starter_workspace.content_conflict",
           "exam.starter_workspace.entry_kind",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33438,7 +33476,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -33516,7 +33554,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33533,7 +33571,7 @@
           "exam.manager.candidate_conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33602,7 +33640,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33618,7 +33656,7 @@
           "exam.manager.owner_protected",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33700,7 +33738,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -33718,7 +33756,7 @@
           "exam.owner.no_changes",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33825,7 +33863,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -33901,7 +33939,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -33914,7 +33952,7 @@
           "exam.conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -33989,7 +34027,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34002,7 +34040,7 @@
           "exam.conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -34084,7 +34122,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34168,7 +34206,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -34185,7 +34223,7 @@
           "exam.revision.capacity_exceeded",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -34242,7 +34280,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34380,7 +34418,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34458,7 +34496,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -34475,7 +34513,7 @@
           "exam.sitting.schedule_outside_period",
           "exam.sitting.schedule_not_future",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -34532,7 +34570,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34613,7 +34651,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -34633,7 +34671,7 @@
           "exam.sitting.schedule_outside_period",
           "exam.sitting.schedule_not_future",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -34729,7 +34767,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34800,7 +34838,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34897,7 +34935,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -34994,7 +35032,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35006,12 +35044,12 @@
           "exam.attempt.invalid",
           "exam.attempt.revision_conflict",
           "exam.attempt.state_conflict",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.management_authority_conflict",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35091,7 +35129,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35104,11 +35142,11 @@
           "exam.attempt.revision_conflict",
           "exam.attempt.suspension_conflict",
           "exam.attempt.state_conflict",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35165,7 +35203,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -35256,7 +35294,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -35359,7 +35397,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -35459,7 +35497,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35471,11 +35509,11 @@
           "exam.attempt.invalid",
           "exam.attempt.revision_conflict",
           "exam.attempt.state_conflict",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.conflict",
           "exam.attempt.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35552,7 +35590,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35568,7 +35606,7 @@
           "exam.sitting.revision_conflict",
           "exam.sitting.state_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35648,7 +35686,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -35739,7 +35777,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35755,7 +35793,7 @@
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35847,7 +35885,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35863,10 +35901,10 @@
           "exam.sitting.revision_conflict",
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
-          "exam.sitting.correction.invalid_content",
-          "exam.sitting.correction.stage_invalid",
+          "exam.sitting.correction.content_invalid",
+          "exam.sitting.correction.stage_conflict",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -35943,7 +35981,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -35960,11 +35998,11 @@
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
           "exam.sitting.correction.no_changes",
-          "exam.sitting.correction.manifest_invalid",
-          "exam.sitting.correction.stage_invalid",
+          "exam.sitting.correction.manifest_conflict",
+          "exam.sitting.correction.stage_conflict",
           "exam.resource.limit",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -36039,7 +36077,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36059,7 +36097,7 @@
           "exam.export.source_retired",
           "exam.export.scope_changed",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -36129,7 +36167,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36212,7 +36250,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36300,7 +36338,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -36320,7 +36358,7 @@
           "exam.sitting.class_ineligible",
           "exam.sitting.schedule_outside_period",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -36401,7 +36439,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36493,7 +36531,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -36509,7 +36547,7 @@
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -36574,7 +36612,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36653,7 +36691,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36666,7 +36704,7 @@
           "exam.conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -36743,7 +36781,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -36760,7 +36798,7 @@
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -36838,7 +36876,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -36858,7 +36896,7 @@
           "exam.export.source_retired",
           "exam.export.scope_changed",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -36931,7 +36969,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37017,7 +37055,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37096,7 +37134,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37178,7 +37216,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37191,7 +37229,7 @@
           "exam.conflict",
           "exam.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -37248,7 +37286,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37313,7 +37351,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -37410,7 +37448,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -37489,7 +37527,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -37502,7 +37540,7 @@
           "authentication.reauthentication_required",
           "invitation.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -37653,7 +37691,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -37735,7 +37773,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.rate_limited",
@@ -37814,7 +37852,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.rate_limited",
@@ -38002,7 +38040,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38081,7 +38119,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -38163,7 +38201,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -38241,7 +38279,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -38336,7 +38374,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38398,7 +38436,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38491,7 +38529,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38586,7 +38624,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -38671,7 +38709,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -38798,7 +38836,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38859,7 +38897,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -38952,7 +38990,7 @@
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39038,7 +39076,7 @@
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39100,7 +39138,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39158,7 +39196,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39221,7 +39259,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39287,7 +39325,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39371,7 +39409,7 @@
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39511,7 +39549,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -39521,7 +39559,7 @@
           "request.invalid",
           "resource.not_found",
           "onboarding_import.conflict",
-          "onboarding_import.invalid_file",
+          "onboarding_import.file_invalid",
           "onboarding_import.unavailable",
           "administration.unavailable",
           "authentication.dpop.invalid",
@@ -39577,7 +39615,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39659,7 +39697,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -39669,7 +39707,7 @@
           "request.invalid",
           "resource.not_found",
           "onboarding_import.conflict",
-          "onboarding_import.invalid_file",
+          "onboarding_import.file_invalid",
           "onboarding_import.unavailable",
           "administration.unavailable",
           "authentication.dpop.invalid",
@@ -39742,7 +39780,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -39752,10 +39790,10 @@
           "request.invalid",
           "resource.not_found",
           "onboarding_import.conflict",
-          "onboarding_import.invalid_file",
+          "onboarding_import.file_invalid",
           "onboarding_import.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -39813,7 +39851,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -39896,7 +39934,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -39958,7 +39996,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40029,7 +40067,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -40094,7 +40132,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40165,7 +40203,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -40245,7 +40283,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -40307,7 +40345,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40378,7 +40416,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -40466,7 +40504,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40537,7 +40575,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -40599,7 +40637,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40671,7 +40709,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40681,7 +40719,7 @@
           "authentication.strong_required",
           "authentication.reauthentication_required",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "request.invalid",
@@ -40741,7 +40779,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40814,7 +40852,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40829,7 +40867,7 @@
           "retention_policy.revision_conflict",
           "resource.not_found",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.strong_required",
@@ -40899,7 +40937,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -40914,7 +40952,7 @@
           "retention_policy.revision_conflict",
           "resource.not_found",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -40981,7 +41019,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41066,7 +41104,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41152,7 +41190,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41217,7 +41255,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41230,7 +41268,7 @@
           "resource.not_found",
           "role_binding.invalid",
           "role_binding.conflict",
-          "role_binding.system_admin_requires_institution_scope",
+          "role_binding.system_admin_scope_invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -41295,7 +41333,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41364,7 +41402,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41425,7 +41463,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41435,7 +41473,7 @@
           "request.invalid",
           "role.invalid",
           "role.conflict",
-          "role.permission.unknown",
+          "role.permission.invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -41500,7 +41538,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41563,7 +41601,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41634,7 +41672,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41646,7 +41684,7 @@
           "role.invalid",
           "role.conflict",
           "role.built_in.protected",
-          "role.permission.unknown",
+          "role.permission.invalid",
           "administration.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
@@ -41692,6 +41730,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           },
@@ -41721,7 +41762,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41738,7 +41779,7 @@
           "exam.attempt.invalid",
           "exam.attempt.registered_desktop_required",
           "exam.attempt.desktop_incompatible",
-          "exam.attempt.sitting_unavailable",
+          "exam.attempt.sitting_not_open",
           "exam.attempt.management_authority_conflict",
           "exam.attempt.configuration_unsupported",
           "exam.attempt.unavailable",
@@ -41751,10 +41792,10 @@
           "exam.security.session_changed",
           "exam.security.configuration_unsupported",
           "exam.security.attempt_not_ready",
-          "exam.security.catalog_unavailable",
+          "exam.security.catalog_missing",
           "exam.security.unsupported_capability",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress"
         ],
@@ -41813,7 +41854,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -41882,7 +41923,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -41964,7 +42005,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42050,7 +42091,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42067,7 +42108,7 @@
           "student_progression.unavailable",
           "administration.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
           "authentication.dpop.use_nonce",
@@ -42124,7 +42165,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42214,7 +42255,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42304,7 +42345,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42394,7 +42435,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42487,7 +42528,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42555,7 +42596,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -42633,7 +42674,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42649,7 +42690,7 @@
           "exam.integrity_review.too_large",
           "exam.integrity_review.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -42726,7 +42767,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42742,7 +42783,7 @@
           "exam.integrity_review.too_large",
           "exam.integrity_review.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -42816,7 +42857,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42832,7 +42873,7 @@
           "exam.integrity_review.too_large",
           "exam.integrity_review.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -42906,7 +42947,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -42922,7 +42963,7 @@
           "exam.integrity_review.too_large",
           "exam.integrity_review.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "administration.unavailable",
@@ -43130,7 +43171,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -43191,7 +43232,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -43245,7 +43286,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "administration.unavailable",
           "authentication.dpop.invalid",
@@ -43295,7 +43336,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "desktop_registration.unavailable",
           "authentication.dpop.invalid",
@@ -43363,7 +43404,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "desktop_registration.unavailable",
           "authentication.csrf.invalid",
@@ -43442,7 +43483,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "exam.attempt.unavailable",
@@ -43493,7 +43534,7 @@
         "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.mfa.disabled",
           "authentication.mfa.unavailable",
@@ -43563,12 +43604,12 @@
         "x-proctor-auth": "recent_mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.reauthentication_required",
           "request.invalid",
-          "authentication.mfa.invalid_code",
+          "authentication.mfa.code_invalid",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
           "authentication.mfa.disabled",
@@ -43643,11 +43684,11 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
-          "authentication.mfa.invalid_code",
+          "authentication.mfa.code_invalid",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
           "authentication.mfa.disabled",
@@ -43723,7 +43764,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -43799,7 +43840,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.strong_required",
@@ -43877,7 +43918,7 @@
         "x-proctor-auth": "recent_mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.reauthentication_required",
@@ -43959,7 +44000,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -44014,7 +44055,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.internal",
           "authentication.dpop.invalid",
@@ -44074,7 +44115,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
@@ -44139,7 +44180,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.internal",
@@ -44190,7 +44231,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "user_settings.unavailable",
           "authentication.dpop.invalid",
@@ -44253,7 +44294,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
@@ -44263,7 +44304,7 @@
           "user_settings.unavailable",
           "audit.unavailable",
           "idempotency.key_required",
-          "idempotency.invalid_key",
+          "idempotency.key_invalid",
           "idempotency.conflict",
           "idempotency.in_progress",
           "authentication.dpop.invalid",
@@ -44313,7 +44354,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "personal_access_token.unavailable",
           "authentication.dpop.invalid",
@@ -44374,7 +44415,7 @@
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.reauthentication_required",
@@ -44445,7 +44486,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
@@ -44523,7 +44564,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "request.invalid",
@@ -44599,7 +44640,7 @@
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.reauthentication_required",
@@ -44661,7 +44702,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -44732,7 +44773,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -44797,7 +44838,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -44868,7 +44909,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -44948,7 +44989,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45026,7 +45067,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -45109,7 +45150,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -45191,7 +45232,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45272,7 +45313,7 @@
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authentication.dpop.invalid",
@@ -45363,7 +45404,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45461,7 +45502,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -45571,7 +45612,7 @@
         "x-proctor-error-codes": [
           "service.busy",
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45648,7 +45689,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authorization.denied",
           "authorization.request.invalid",
@@ -45728,7 +45769,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45800,7 +45841,7 @@
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "authentication.csrf.invalid",
           "authorization.denied",
@@ -45894,7 +45935,7 @@
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
-          "authentication.invalid_token",
+          "authentication.token_invalid",
           "authentication.credential_ambiguous",
           "request.invalid",
           "websocket.origin.invalid",
@@ -45926,7 +45967,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
-          "not_live"
+          "health.not_live"
         ],
         "x-proctor-idempotency": "none"
       }
@@ -45950,7 +45991,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
-          "not_ready"
+          "health.not_ready"
         ],
         "x-proctor-idempotency": "none"
       }

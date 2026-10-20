@@ -32,8 +32,13 @@ import (
 type Entry struct {
 	// Code is the stable machine-readable code.
 	Code string `yaml:"code"`
-	// Status is the HTTP status presented for the code.
-	Status int `yaml:"status"`
+	// Status is the HTTP status presented for the code. Source states it only
+	// for a documented exception; Parse otherwise derives it from the
+	// condition.
+	Status int `yaml:"status,omitempty"`
+	// Reason documents why an exception's status differs from the status its
+	// condition implies.
+	Reason string `yaml:"reason,omitempty"`
 	// Description states, for API consumers, the condition the code reports.
 	Description string `yaml:"description"`
 	// Transport marks a kernel code the HTTP or WebSocket transport may mint.
@@ -50,16 +55,40 @@ type Catalog struct {
 }
 
 type document struct {
-	Codes []Entry `yaml:"codes"`
+	Conditions    map[string]int `yaml:"conditions"`
+	DefaultStatus int            `yaml:"default_status"`
+	Codes         []Entry        `yaml:"codes"`
 }
 
 var (
-	segment     = `[a-z][a-z0-9]*(?:_[a-z0-9]+)*`
-	codeGrammar = regexp.MustCompile(`^` + segment + `(?:\.` + segment + `)+$`)
-	problemCode = regexp.MustCompile(`^` + segment + `$`)
+	segment          = `[a-z][a-z0-9]*(?:_[a-z0-9]+)*`
+	segmentGrammar   = regexp.MustCompile(`^` + segment + `$`)
+	codeGrammar      = regexp.MustCompile(`^` + segment + `(?:\.` + segment + `)+$`)
+	errorStatusRange = func(status int) bool { return status >= 400 && status <= 599 && http.StatusText(status) != "" }
 )
 
-// Parse decodes and validates catalog source.
+// conditionStatuses derives a code's HTTP status from its condition, the last
+// code segment. A condition equal to a vocabulary word, or ending in
+// _<word>, takes the word's status; the longest matching word wins. Any other
+// condition names a resource state that rejects the request.
+type conditionStatuses struct {
+	words         []string
+	statuses      map[string]int
+	defaultStatus int
+}
+
+func (c conditionStatuses) derive(code string) int {
+	condition := code[strings.LastIndex(code, ".")+1:]
+	for _, word := range c.words {
+		if condition == word || strings.HasSuffix(condition, "_"+word) {
+			return c.statuses[word]
+		}
+	}
+	return c.defaultStatus
+}
+
+// Parse decodes and validates catalog source and derives every status that
+// source does not state as an exception.
 func Parse(source []byte) (*Catalog, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(source))
 	decoder.KnownFields(true)
@@ -71,8 +100,23 @@ func Parse(source []byte) (*Catalog, error) {
 		return nil, errors.New("error catalog declares no codes")
 	}
 	var problems []string
+	vocabulary := conditionStatuses{statuses: parsed.Conditions, defaultStatus: parsed.DefaultStatus}
+	for word, status := range parsed.Conditions {
+		if !segmentGrammar.MatchString(word) || !errorStatusRange(status) {
+			problems = append(problems, fmt.Sprintf("condition %s: %d is not a snake_case condition with an HTTP error status", word, status))
+		}
+		vocabulary.words = append(vocabulary.words, word)
+	}
+	sort.Slice(vocabulary.words, func(i, j int) bool {
+		left, right := vocabulary.words[i], vocabulary.words[j]
+		return len(left) > len(right) || len(left) == len(right) && left < right
+	})
+	if !errorStatusRange(parsed.DefaultStatus) {
+		problems = append(problems, fmt.Sprintf("default_status %d is not an HTTP error status", parsed.DefaultStatus))
+	}
 	seen := make(map[string]struct{}, len(parsed.Codes))
-	for index, entry := range parsed.Codes {
+	for index := range parsed.Codes {
+		entry := &parsed.Codes[index]
 		if index > 0 && parsed.Codes[index-1].Code >= entry.Code {
 			problems = append(problems, fmt.Sprintf("%s: codes must be unique and sorted", entry.Code))
 		}
@@ -80,7 +124,7 @@ func Parse(source []byte) (*Catalog, error) {
 			continue
 		}
 		seen[entry.Code] = struct{}{}
-		problems = append(problems, validateEntry(entry)...)
+		problems = append(problems, validateEntry(entry, vocabulary.derive(entry.Code))...)
 	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid error catalog:\n  %s", strings.Join(problems, "\n  "))
@@ -88,16 +132,22 @@ func Parse(source []byte) (*Catalog, error) {
 	return &Catalog{Entries: parsed.Codes}, nil
 }
 
-func validateEntry(entry Entry) []string {
+func validateEntry(entry *Entry, derived int) []string {
 	var problems []string
-	switch {
-	case entry.Problem && !problemCode.MatchString(entry.Code) && !codeGrammar.MatchString(entry.Code):
-		problems = append(problems, fmt.Sprintf("%s: code is not a lowercase snake_case name", entry.Code))
-	case !entry.Problem && !codeGrammar.MatchString(entry.Code):
+	if !codeGrammar.MatchString(entry.Code) {
 		problems = append(problems, fmt.Sprintf("%s: code is not <domain>[.<subdomain>].<condition> with snake_case segments", entry.Code))
 	}
-	if entry.Status < 400 || entry.Status > 599 || http.StatusText(entry.Status) == "" {
+	switch {
+	case entry.Status == 0 && entry.Reason != "":
+		problems = append(problems, fmt.Sprintf("%s: reason documents no status exception", entry.Code))
+	case entry.Status == 0:
+		entry.Status = derived
+	case entry.Status == derived:
+		problems = append(problems, fmt.Sprintf("%s: status %d is already implied by the condition", entry.Code, entry.Status))
+	case !errorStatusRange(entry.Status):
 		problems = append(problems, fmt.Sprintf("%s: status %d is not an HTTP error status", entry.Code, entry.Status))
+	case strings.TrimSpace(entry.Reason) == "":
+		problems = append(problems, fmt.Sprintf("%s: status %d differs from the condition's %d without a reason", entry.Code, entry.Status, derived))
 	}
 	if strings.TrimSpace(entry.Description) == "" {
 		problems = append(problems, fmt.Sprintf("%s: description is required", entry.Code))

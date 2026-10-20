@@ -18,7 +18,7 @@ import (
 func TestRetentionOpenAPIAgreesWithRuntime(t *testing.T) {
 	t.Parallel()
 	read := principalContractCodes("request.invalid", "retention.invalid", "retention.unavailable", "retention_policy.unavailable", "resource.not_found")
-	mutate := principalMutationContractCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+	mutate := principalMutationContractCodes("request.invalid", "retention.invalid", "retention.conflict", "retention.unavailable", "retention_policy.unavailable", "retention_policy.revision_conflict", "resource.not_found", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET /api/v1/retention/control", Auth: AuthSessionRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/RetentionControlOK", SuccessSchema: "RetentionControlResponse", PublicErrorCodes: read},

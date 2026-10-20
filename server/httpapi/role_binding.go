@@ -65,7 +65,7 @@ func roleBindingResource(bindings RoleBindingApplication) resource {
 		principalRoute(http.MethodGet, apiPath(literal("role-bindings")),
 			operatorReadErrorCodes("request.invalid", "administration.unavailable"), module.list),
 		strongRecentSessionRoute(http.MethodPost, apiPath(literal("role-bindings")),
-			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_requires_institution_scope", "administration.unavailable"), module.create),
+			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict", "role_binding.system_admin_scope_invalid", "administration.unavailable"), module.create),
 		strongRecentSessionRoute(http.MethodDelete, apiPath(literal("role-bindings"), canonicalID("role_binding_id")),
 			roleBindingMutationErrorCodes("request.invalid", "resource.not_found", "role_binding.conflict", "role_binding.last_system_admin", "administration.unavailable"), module.end),
 	)

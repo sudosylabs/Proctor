@@ -74,7 +74,7 @@ func desktopCompatibilityPolicyResource(application DesktopCompatibilityApplicat
 		"authentication.strong_required",
 		"authentication.reauthentication_required",
 		"idempotency.key_required",
-		"idempotency.invalid_key",
+		"idempotency.key_invalid",
 		"idempotency.conflict",
 		"idempotency.in_progress",
 		"request.invalid",

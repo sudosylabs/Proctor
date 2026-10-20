@@ -92,14 +92,14 @@ func TestRoutingFailuresUseProblemDetails(t *testing.T) {
 		detail  string
 	}{
 		{
-			http.MethodGet, "/missing", http.StatusNotFound, "not_found", "",
-			"https://proctor.sudosylabs.com/problems/not-found",
+			http.MethodGet, "/missing", http.StatusNotFound, "route.not_found", "",
+			"https://proctor.sudosylabs.com/problems/route.not_found",
 			"Resource not found", "The requested resource was not found.",
 		},
 		{
 			http.MethodPost, "/health/live", http.StatusMethodNotAllowed,
-			"method_not_allowed", http.MethodGet,
-			"https://proctor.sudosylabs.com/problems/method-not-allowed",
+			"route.method_not_allowed", http.MethodGet,
+			"https://proctor.sudosylabs.com/problems/route.method_not_allowed",
 			"Method not allowed",
 			"The request method is not allowed for this resource.",
 		},

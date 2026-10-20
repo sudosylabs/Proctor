@@ -173,7 +173,7 @@ func TestClassResourceFailsClosedForUndeclaredApplicationError(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "internal" {
+	if problem.Code != "server.internal" {
 		t.Fatalf("problem code = %q, want internal", problem.Code)
 	}
 }
@@ -203,7 +203,7 @@ func TestClassResourceFailsClosedForUndeclaredAuthenticationError(t *testing.T) 
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem.Code != "internal" {
+	if problem.Code != "server.internal" {
 		t.Fatalf("problem code = %q, want internal", problem.Code)
 	}
 }

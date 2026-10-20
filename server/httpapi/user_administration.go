@@ -38,7 +38,7 @@ func userAdministrationResource(
 
 func userAdministrationReadCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authorization.denied", "authorization.request.invalid", "authorization.unavailable",
 		"request.invalid", "resource.not_found",
 	}
@@ -48,7 +48,7 @@ func userAdministrationReadCodes(extra ...string) []string {
 
 func userAdministrationMutationCodes(extra ...string) []string {
 	codes := []string{
-		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
+		"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous",
 		"authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid",
 		"authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found",
 	}

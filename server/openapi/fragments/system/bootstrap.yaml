@@ -24,6 +24,8 @@ paths:
           $ref: '#/components/responses/InstallationStatusOK'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       operationId: bootstrapInstallation
       summary: Bootstrap the installation
@@ -45,8 +47,6 @@ paths:
       requestBody:
         $ref: '#/components/requestBodies/BootstrapInstallation'
       responses:
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
         "201":
           $ref: '#/components/responses/InstallationBootstrapCreated'
         "400":
@@ -59,6 +59,8 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     BootstrapInstallation:

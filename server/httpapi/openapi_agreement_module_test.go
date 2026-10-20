@@ -585,8 +585,8 @@ func openAPIErrorStatuses() map[string]int {
 	statuses := ApplicationErrorStatuses()
 	statuses["authentication.credential_ambiguous"] = http.StatusBadRequest
 	statuses["authentication.csrf.invalid"] = http.StatusForbidden
-	statuses["not_live"] = http.StatusServiceUnavailable
-	statuses["not_ready"] = http.StatusServiceUnavailable
+	statuses["health.not_live"] = http.StatusServiceUnavailable
+	statuses["health.not_ready"] = http.StatusServiceUnavailable
 	return statuses
 }
 

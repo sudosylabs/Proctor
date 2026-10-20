@@ -17,7 +17,7 @@ import (
 
 func TestExamRecordsOpenAPIAgreesWithRuntime(t *testing.T) {
 	readCodes := principalContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "administration.unavailable")
-	mutationCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+	mutationCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	completion := "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/records-completion"
 	waiver := "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/review-waiver"
 	holds := "/api/v1/exams/{exam_id}/retention-holds"

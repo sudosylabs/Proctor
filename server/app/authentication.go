@@ -758,7 +758,7 @@ func (a *App) AuthenticateBearer(
 		a.recordOperational("authentication", "bearer", nil)
 		return principal, nil
 	}
-	if failure, ok := apperror.As(err); !ok || failure.Code() != "authentication.invalid_token" {
+	if failure, ok := apperror.As(err); !ok || failure.Code() != "authentication.token_invalid" {
 		a.recordOperational("authentication", "bearer", err)
 		return nil, err
 	}
@@ -1090,11 +1090,11 @@ func validRawCredential(token string) bool {
 }
 
 func invalidCredentialsAppError() error {
-	return apperror.New("authentication.invalid_credentials")
+	return apperror.New("authentication.credentials_invalid")
 }
 
 func invalidTokenAppError() error {
-	return apperror.New("authentication.invalid_token")
+	return apperror.New("authentication.token_invalid")
 }
 
 func authenticationUnavailable(err error) error {

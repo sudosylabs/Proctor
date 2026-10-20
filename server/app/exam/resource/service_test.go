@@ -55,7 +55,7 @@ func TestCreateInvalidContentRemainsInvisibleAndUnaudited(t *testing.T) {
 	f.content.storeErr = testInvalidContentError{}
 	_, err := f.service.Create(context.Background(), f.call, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaPDF, Body: strings.NewReader("bad"), Size: 3, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.invalid_content" {
+	if !errors.As(err, &fault) || fault.Code() != "exam.resource.content_invalid" {
 		t.Fatalf("error=%v", err)
 	}
 	if f.persistence.finalization != nil || f.auditor.began {

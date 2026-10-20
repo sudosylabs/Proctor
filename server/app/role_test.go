@@ -196,7 +196,7 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	_, err := service.Create(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
-	if !apperror.Is(err, "role.permission.unknown") {
+	if !apperror.Is(err, "role.permission.invalid") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-manage"}
@@ -209,8 +209,8 @@ func TestRoleCreateRejectsRelationshipOnlyParticipationAction(t *testing.T) {
 	t.Parallel()
 
 	err := validateKnownPermissions([]string{string(model.ActionExamSittingParticipate)})
-	if err == nil || !apperror.Is(err, "role.permission.unknown") {
-		t.Fatalf("validateKnownPermissions() error = %v, want role.permission.unknown", err)
+	if err == nil || !apperror.Is(err, "role.permission.invalid") {
+		t.Fatalf("validateKnownPermissions() error = %v, want role.permission.invalid", err)
 	}
 }
 
@@ -317,7 +317,7 @@ func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t 
 		t.Fatalf("preserved unknown permission rejected: %v", err)
 	}
 	introduced := []string{"another.future_permission"}
-	if err := validatePatchedPermissions(current, &introduced); err == nil || !apperror.Is(err, "role.permission.unknown") {
+	if err := validatePatchedPermissions(current, &introduced); err == nil || !apperror.Is(err, "role.permission.invalid") {
 		t.Fatalf("new unknown permission error = %v", err)
 	}
 }

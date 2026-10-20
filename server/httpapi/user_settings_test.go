@@ -261,7 +261,7 @@ func TestUserSettingsHTTPRejectsNonSessionAndArbitraryUserPaths(t *testing.T) {
 	patAPI := newFocusedResourceAPI(
 		t,
 		logger,
-		classRouteAuthenticator{err: apperror.New("authentication.invalid_token")},
+		classRouteAuthenticator{err: apperror.New("authentication.token_invalid")},
 		userSettingsResource(applicationFake),
 	)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/settings", nil)

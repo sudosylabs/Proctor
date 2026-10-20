@@ -120,7 +120,7 @@ func accessPolicyResource(application AccessPolicyApplication) resource {
 		"authentication.reauthentication_required", "request.invalid", "access_policy.invalid",
 		"access_policy.revision_conflict", "access_policy.unavailable")
 	mutationErrors := operatorMutationErrorCodes("authentication.strong_required", "authentication.reauthentication_required",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "access_policy.invalid",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "request.invalid", "access_policy.invalid",
 		"access_policy.revision_conflict", "access_policy.blocked", "access_policy.unavailable")
 	replace := strongRecentSessionRoute(http.MethodPut, apiPath(literal("access-policy")), mutationErrors, module.replace)
 	replace.idempotency = IdempotencyRequired

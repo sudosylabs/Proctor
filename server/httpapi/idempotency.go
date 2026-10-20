@@ -46,7 +46,7 @@ func (a *API) withIdempotency(next http.Handler, requirement IdempotencyRequirem
 			return
 		}
 		if len(values) != 1 || !validIdempotencyKey.MatchString(values[0]) {
-			writeApplicationError(writer, request, a.logger, apperror.New("idempotency.invalid_key"))
+			writeApplicationError(writer, request, a.logger, apperror.New("idempotency.key_invalid"))
 			return
 		}
 		ctx := context.WithValue(request.Context(), idempotencyKeyContextKey{}, values[0])

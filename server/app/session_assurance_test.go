@@ -35,8 +35,8 @@ func TestRequireStrongRecentSessionPreservesAssuranceErrors(t *testing.T) {
 		principal model.Principal
 		wantCode  string
 	}{
-		{name: "invalid principal", principal: model.Principal{}, wantCode: "authentication.invalid_token"},
-		{name: "personal access token", principal: pat, wantCode: "authentication.invalid_token"},
+		{name: "invalid principal", principal: model.Principal{}, wantCode: "authentication.token_invalid"},
+		{name: "personal access token", principal: pat, wantCode: "authentication.token_invalid"},
 		{name: "single factor", principal: func() model.Principal {
 			value := recent
 			value.AuthenticationStrength = model.AuthenticationSingleFactor

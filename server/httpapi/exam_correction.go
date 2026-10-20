@@ -165,22 +165,22 @@ func examSittingCorrectionMutationErrorCodes(specific ...string) []string {
 	}
 	common = append(common, specific...)
 	return academicMutationErrorCodes(append(common,
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")...)
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")...)
 }
 
 func examSittingCorrectionStageErrorCodes() []string {
 	return examSittingCorrectionMutationErrorCodes(
 		"service.busy",
-		"exam.sitting.correction.invalid_content",
-		"exam.sitting.correction.stage_invalid",
+		"exam.sitting.correction.content_invalid",
+		"exam.sitting.correction.stage_conflict",
 	)
 }
 
 func examSittingCorrectionApplyErrorCodes() []string {
 	return examSittingCorrectionMutationErrorCodes(
 		"exam.sitting.correction.no_changes",
-		"exam.sitting.correction.manifest_invalid",
-		"exam.sitting.correction.stage_invalid",
+		"exam.sitting.correction.manifest_conflict",
+		"exam.sitting.correction.stage_conflict",
 		"exam.resource.limit",
 	)
 }

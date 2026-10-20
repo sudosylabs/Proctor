@@ -10,958 +10,728 @@
 # renders error_mapping.go from it, and `go run ./cmd/ptool errors check` fails
 # when source mints a code missing here or a listed code is never minted.
 #
+# A code is <domain>[.<subdomain>].<condition>: lowercase dot-separated
+# segments, each snake_case. The condition is the last segment; a qualifier
+# precedes its vocabulary word, as in revision_conflict or content_invalid.
+# The HTTP status is a function of the condition: a condition equal to, or
+# ending in _<word> for, a word below takes that status, and any other
+# condition names a resource state that rejects the request (409). An entry
+# states `status` only for a documented exception, with its `reason`.
+#
 # transport: the HTTP or WebSocket transport may mint the code; every other
 #            code is minted only by the application.
 # problem:   the HTTP kernel writes the code directly as Problem Details.
+conditions:
+  invalid: 400
+  denied: 403
+  disabled: 403
+  not_found: 404
+  conflict: 409
+  expired: 410
+  rate_limited: 429
+  internal: 500
+  unavailable: 503
+  busy: 503
+default_status: 409
 codes:
   - code: academic_period.conflict
-    status: 409
     description: "The Academic Period conflicts with an existing period or its current state."
   - code: academic_period.invalid
-    status: 400
     description: "An Academic Period field or reference is invalid; `fields` names the rejected input when known."
   - code: academic_unit.conflict
-    status: 409
     description: "The Academic Unit conflicts with an existing unit or its current state."
   - code: academic_unit.invalid
-    status: 400
     description: "An Academic Unit field or reference is invalid; `fields` names the rejected input when known."
   - code: academic_unit_member.conflict
-    status: 409
     description: "The Academic Unit membership conflicts with an existing membership or its current state."
   - code: academic_unit_member.invalid
-    status: 400
     description: "An Academic Unit membership field or reference is invalid."
   - code: access_policy.blocked
-    status: 409
     description: "The Access Policy change would lock out a required authentication path; `fields` names the first blocker."
   - code: access_policy.invalid
-    status: 400
     description: "The proposed Access Policy is invalid."
   - code: access_policy.revision_conflict
-    status: 409
     description: "The supplied Access Policy revision is stale; `fields.current_revision` carries the current revision."
   - code: access_policy.unavailable
-    status: 503
     description: "The Access Policy could not be read or saved; retry later."
   - code: administration.unavailable
-    status: 500
     description: "An administration dependency failed; retry later."
-  - code: administrator_recovery.failed
-    status: 500
-    description: "Administrator recovery could not be completed; retry the recovery command."
   - code: administrator_recovery.invalid
-    status: 400
     description: "The administrator recovery request is invalid."
+  - code: administrator_recovery.unavailable
+    description: "Administrator recovery could not be completed; retry the recovery command."
   - code: affiliation.conflict
-    status: 409
     description: "The Affiliation conflicts with an existing Affiliation or its current state."
   - code: affiliation.invalid
-    status: 400
     description: "An Affiliation field or reference is invalid."
   - code: affiliation.student_has_active_enrollment
-    status: 409
     description: "A student Affiliation cannot end while the student has an open Class enrollment."
-  - code: audit.event.invalid
-    status: 500
+  - code: audit.internal
     description: "The server produced an audit event it cannot record; the operation is refused."
   - code: audit.query.invalid
-    status: 400
     description: "The audit listing filters are semantically invalid."
   - code: audit.unavailable
-    status: 500
     description: "The required audit record could not be written or read, so the operation was refused."
   - code: authentication.account_recovery.unavailable
-    status: 503
     description: "Account recovery mail could not be prepared; retry later."
   - code: authentication.account_token.invalid
-    status: 400
     description: "The account token is unknown, expired, or already used."
   - code: authentication.client_type.invalid
-    status: 400
     description: "The declared client type is not accepted for this credential."
   - code: authentication.credential_ambiguous
     status: 400
+    reason: "A missing, extra, or ambiguous credential or header is a malformed request."
     description: "The request presented more than one credential."
     transport: true
+  - code: authentication.credentials_invalid
+    status: 401
+    reason: "A failed credential presentation is an authentication failure."
+    description: "The username, password, or second factor is incorrect."
   - code: authentication.csrf.invalid
     status: 403
+    reason: "A failed cross-site request forgery check forbids the request rather than rejecting its content."
     description: "The cookie-authenticated request failed cross-site request forgery protection."
     transport: true
   - code: authentication.desktop_authorization.account_session_locked
-    status: 409
     description: "Desktop authorization is locked to another account session."
   - code: authentication.desktop_authorization.disabled
-    status: 403
     description: "Desktop authorization is disabled by the current Access Policy."
   - code: authentication.desktop_authorization.incompatible
-    status: 409
     description: "The Desktop build is not compatible with this installation."
   - code: authentication.desktop_authorization.invalid
-    status: 400
     description: "The desktop authorization request is malformed."
     transport: true
   - code: authentication.desktop_authorization.rejected
     status: 401
+    reason: "A failed credential presentation is an authentication failure."
     description: "The desktop authorization grant is unknown, expired, or no longer valid."
   - code: authentication.desktop_authorization.unavailable
-    status: 503
     description: "Desktop authorization failed or is temporarily unavailable; retry later."
   - code: authentication.dpop.invalid
     status: 401
+    reason: "A failed credential presentation is an authentication failure."
     description: "The DPoP proof is missing, malformed, or does not match the request."
     transport: true
   - code: authentication.dpop.replayed
     status: 401
+    reason: "A failed credential presentation is an authentication failure."
     description: "The DPoP proof identifier was already used; create a new proof."
     transport: true
   - code: authentication.dpop.unavailable
-    status: 503
     description: "DPoP proof validation is temporarily unavailable; retry later."
     transport: true
   - code: authentication.dpop.use_nonce
     status: 401
+    reason: "RFC 9449 answers a missing server nonce with 401 and a DPoP-Nonce challenge."
     description: "Retry with a new DPoP proof that carries the `DPoP-Nonce` from this response."
     transport: true
   - code: authentication.external.account_conflict
-    status: 409
     description: "The external identity conflicts with another account."
   - code: authentication.external.account_not_linked
     status: 403
+    reason: "The external identity authenticated but may not sign in to any account."
     description: "No account is linked to the external identity."
   - code: authentication.external.invalid
     status: 401
+    reason: "A failed credential presentation is an authentication failure."
     description: "The external authentication callback is invalid or expired."
     transport: true
   - code: authentication.external.provider_not_found
-    status: 404
     description: "The identity provider is not configured or not enabled."
   - code: authentication.external.rejected
     status: 401
+    reason: "A failed credential presentation is an authentication failure."
     description: "The identity provider rejected the sign-in."
   - code: authentication.external.request.invalid
-    status: 400
     description: "The external authentication request is malformed."
   - code: authentication.external.unavailable
     status: 502
+    reason: "The upstream identity provider failed while the server acted as its gateway."
     description: "The identity provider could not be reached; retry later."
   - code: authentication.internal
-    status: 500
     description: "Authentication failed because of a server fault; retry later."
-  - code: authentication.invalid_credentials
-    status: 401
-    description: "The username, password, or second factor is incorrect."
-  - code: authentication.invalid_token
-    status: 401
-    description: "The credential is missing, expired, revoked, or malformed."
-    transport: true
   - code: authentication.method.conflict
-    status: 409
     description: "The authentication method change conflicts with current state."
   - code: authentication.method.disabled
-    status: 403
     description: "The authentication method is disabled by the current Access Policy."
   - code: authentication.method.last_usable
-    status: 409
     description: "Removing the method would leave the account without a usable sign-in method."
   - code: authentication.method.not_found
-    status: 404
     description: "The authentication method does not exist."
   - code: authentication.method.provider_conflict
-    status: 409
     description: "The external identity is already linked to another account."
   - code: authentication.method.unavailable
-    status: 503
     description: "The authentication method change failed; retry later."
+  - code: authentication.mfa.code_invalid
+    status: 401
+    reason: "A failed credential presentation is an authentication failure."
+    description: "The one-time or recovery code is incorrect or already used."
   - code: authentication.mfa.conflict
-    status: 409
     description: "The multi-factor enrollment changed concurrently or must be re-enrolled."
   - code: authentication.mfa.disabled
     status: 501
+    reason: "Multi-factor authentication is not implemented by this installation."
     description: "Multi-factor authentication is not available on this installation."
-  - code: authentication.mfa.invalid_code
-    status: 401
-    description: "The one-time or recovery code is incorrect or already used."
   - code: authentication.mfa.not_found
-    status: 404
     description: "No multi-factor enrollment exists for the account."
   - code: authentication.mfa.required
     status: 401
+    reason: "The request lacks a credential the route requires."
     description: "A second factor is required to complete authentication."
   - code: authentication.mfa.reset_invalid
-    status: 400
     description: "The multi-factor reset request is invalid."
   - code: authentication.mfa.unavailable
-    status: 503
     description: "Multi-factor processing failed; retry later."
   - code: authentication.password.invalid
-    status: 400
     description: "The password does not meet the password policy."
   - code: authentication.rate_limit_unavailable
-    status: 503
     description: "Authentication rate limiting is temporarily unavailable; retry later."
   - code: authentication.rate_limited
-    status: 429
     description: "Too many authentication attempts; wait before retrying."
   - code: authentication.reauthentication_method_required
-    status: 409
     description: "Recent reauthentication needs a method the account has not enrolled."
   - code: authentication.reauthentication_required
     status: 403
+    reason: "The authenticated caller lacks the assurance or prerequisite the operation requires."
     description: "The operation requires recent reauthentication."
     transport: true
   - code: authentication.registration.invalid
-    status: 400
     description: "The registration request is invalid; `fields` names the rejected input when known."
   - code: authentication.registration.invitation_required
     status: 403
+    reason: "The authenticated caller lacks the assurance or prerequisite the operation requires."
     description: "Registration on this installation requires an Invitation."
   - code: authentication.registration.unavailable
-    status: 503
     description: "Registration failed or is temporarily unavailable; retry later."
   - code: authentication.required
     status: 401
+    reason: "The request lacks a credential the route requires."
     description: "The route requires a credential and none was presented."
     transport: true
   - code: authentication.session.invalid
-    status: 400
     description: "The session request is invalid."
   - code: authentication.session_required
     status: 401
+    reason: "The request lacks a credential the route requires."
     description: "The route requires a browser Session credential."
   - code: authentication.sessions.maximum_reached
-    status: 409
     description: "The account reached its maximum number of active Sessions."
-  - code: authentication.strong_authentication_required
-    status: 403
-    description: "The operation requires a multi-factor authenticated Session."
   - code: authentication.strong_required
     status: 403
-    description: "The route requires a multi-factor authenticated Session."
+    reason: "The authenticated caller lacks the assurance or prerequisite the operation requires."
+    description: "The operation requires a multi-factor authenticated Session."
+    transport: true
+  - code: authentication.token_invalid
+    status: 401
+    reason: "A failed credential presentation is an authentication failure."
+    description: "The credential is missing, expired, revoked, or malformed."
     transport: true
   - code: authentication.user.conflict
-    status: 409
     description: "The username or mailbox is already assigned to another account."
   - code: authentication.user.invalid
-    status: 400
     description: "The local account to create is invalid."
   - code: authorization.denied
-    status: 403
     description: "The caller is not permitted to perform the action on the resource."
   - code: authorization.request.invalid
-    status: 400
     description: "The authorization request names an unknown action or resource."
   - code: authorization.unavailable
-    status: 500
     description: "The authorization decision could not be evaluated; retry later."
   - code: class.conflict
-    status: 409
     description: "The Class conflicts with an existing Class or its current state."
   - code: class.enrollment_conflict
-    status: 409
     description: "The Class membership conflicts with an existing enrollment or its current state."
   - code: class.invalid
-    status: 400
     description: "A Class field or reference is invalid; `fields` names the rejected input when known."
   - code: class_member.invalid
-    status: 400
     description: "A Class membership field or reference is invalid."
   - code: class_member.student_affiliation_required
-    status: 409
     description: "A student needs an active student Affiliation before Class enrollment."
   - code: desktop_compatibility_policy.invalid
-    status: 400
     description: "The proposed Desktop Compatibility Policy is invalid."
   - code: desktop_compatibility_policy.revision_conflict
-    status: 409
     description: "The supplied Desktop Compatibility Policy revision is stale; `fields.current_revision` carries the current revision."
   - code: desktop_compatibility_policy.unavailable
-    status: 503
     description: "The Desktop Compatibility Policy could not be read or saved; retry later."
   - code: desktop_registration.unavailable
-    status: 500
     description: "The Desktop Registration change failed; retry later."
   - code: exam.archived
-    status: 409
     description: "The Exam is archived and cannot change."
   - code: exam.attempt.already_connected
-    status: 409
     description: "The Attempt already has an open connection."
   - code: exam.attempt.browser_activity_conflict
-    status: 409
     description: "The Browser Activity report conflicts with the recorded sequence or source."
   - code: exam.attempt.configuration_frozen
-    status: 409
     description: "The Attempt Configuration is frozen and cannot change."
   - code: exam.attempt.configuration_required
-    status: 409
     description: "The Attempt needs a frozen Attempt Configuration first."
   - code: exam.attempt.configuration_stale
-    status: 409
     description: "The Attempt Configuration changed; reload it."
   - code: exam.attempt.configuration_unsupported
-    status: 409
     description: "The Desktop build cannot satisfy the Attempt Configuration."
   - code: exam.attempt.conflict
-    status: 409
     description: "The Attempt change conflicts with current state."
   - code: exam.attempt.connection_closed
-    status: 409
     description: "The Attempt connection was closed by a newer connection or by the server."
   - code: exam.attempt.connection_lost
-    status: 409
     description: "The Attempt participation lease expired."
   - code: exam.attempt.continuity_invalid
     status: 404
+    reason: "Presented as absence so an invalid continuity credential reveals nothing about the Attempt."
     description: "The Attempt continuity credential is not valid; presented as not found so it reveals nothing."
   - code: exam.attempt.correction_conflict
-    status: 409
     description: "The correction acknowledgement does not match the pending correction."
   - code: exam.attempt.desktop_incompatible
-    status: 409
     description: "The Desktop build is not compatible with the current Desktop Compatibility Policy."
   - code: exam.attempt.focus_loss_conflict
-    status: 409
     description: "The focus-loss report is out of sequence."
   - code: exam.attempt.invalid
-    status: 400
     description: "An Attempt field is invalid; `fields` names the rejected input when known."
   - code: exam.attempt.management_authority_conflict
-    status: 409
     description: "The manager lost authority over the Attempt."
   - code: exam.attempt.not_found
-    status: 404
     description: "The Attempt does not exist or is not visible to the caller."
   - code: exam.attempt.registered_desktop_required
     status: 403
+    reason: "The authenticated caller lacks the assurance or prerequisite the operation requires."
     description: "The Attempt requires a registered Desktop client."
   - code: exam.attempt.renewal_conflict
-    status: 409
     description: "The participation renewal is out of sequence."
   - code: exam.attempt.revision_conflict
-    status: 409
     description: "The Attempt changed since it was read."
-  - code: exam.attempt.sitting_unavailable
-    status: 409
+  - code: exam.attempt.sitting_not_open
     description: "The Exam Sitting is not open for this Attempt."
   - code: exam.attempt.state_conflict
-    status: 409
     description: "The Attempt state does not permit the operation."
   - code: exam.attempt.suspension_conflict
-    status: 409
     description: "The Attempt is suspended or the suspension changed."
   - code: exam.attempt.unavailable
-    status: 500
     description: "The Attempt operation failed; retry later."
   - code: exam.attempt.workspace.content_conflict
-    status: 409
     description: "The Attempt Workspace file content changed since it was read."
   - code: exam.attempt.workspace.cursor_conflict
-    status: 409
     description: "The Attempt Workspace changed since the supplied cursor."
   - code: exam.attempt.workspace.directory_not_empty
-    status: 409
     description: "The Attempt Workspace directory is not empty."
   - code: exam.attempt.workspace.entry_conflict
-    status: 409
     description: "The Attempt Workspace entry changed since it was read."
   - code: exam.attempt.workspace.entry_limit
-    status: 409
     description: "The Attempt Workspace reached its entry limit."
   - code: exam.attempt.workspace.object_conflict
-    status: 409
     description: "The uploaded Attempt Workspace object is in an unexpected state."
   - code: exam.attempt.workspace.path_conflict
-    status: 409
     description: "Another Attempt Workspace entry already uses the path."
   - code: exam.attempt.workspace.size_limit
-    status: 409
     description: "The Attempt Workspace reached its size limit."
   - code: exam.browser.source_budget_exhausted
-    status: 409
     description: "The Attempt exhausted its Browser source replacement budget."
   - code: exam.conflict
-    status: 409
     description: "The Exam change conflicts with current state."
   - code: exam.delivery.append_rate_limited
-    status: 429
     description: "Too many delivery appends; retry after the `Retry-After` interval."
   - code: exam.delivery.batch_conflict
-    status: 409
     description: "The delivery batch conflicts with an accepted batch at the same position."
   - code: exam.delivery.control_rate_limited
-    status: 429
     description: "Too many delivery control requests; retry after the `Retry-After` interval."
   - code: exam.delivery.declaration_conflict
-    status: 409
     description: "The delivery declaration conflicts with an accepted declaration."
   - code: exam.delivery.detail_budget_exhausted
-    status: 409
     description: "The Attempt exhausted its delivery detail budget; `delivery` carries the recovery state."
   - code: exam.delivery.metadata_capacity
-    status: 409
     description: "The delivery metadata reservation exceeds capacity; `delivery_metadata_capacity` carries the bounds."
   - code: exam.delivery.pending_capacity
     status: 429
+    reason: "Delivery backpressure: the client retries after the Retry-After interval."
     description: "Too many pending delivery records; retry after the `Retry-After` interval."
   - code: exam.delivery.replay_window_exceeded
-    status: 409
     description: "The delivery position is outside the replay window; `delivery` carries the recovery state."
   - code: exam.delivery.sequence_limit
-    status: 409
     description: "The delivery stream reached its sequence limit."
   - code: exam.delivery.summary_rate_limited
-    status: 429
     description: "Too many delivery summaries; retry after the `Retry-After` interval."
   - code: exam.delivery.upload_expired
-    status: 410
     description: "The delivery upload expired before it was committed."
   - code: exam.draft.no_changes
-    status: 409
     description: "The Draft update would not change the Draft."
   - code: exam.draft.revision_conflict
-    status: 409
     description: "The supplied Draft revision is stale."
   - code: exam.export.claim_lost
-    status: 409
     description: "The export build lost its claim to another worker."
   - code: exam.export.conflict
-    status: 409
     description: "The Exam export conflicts with current state."
   - code: exam.export.expired
-    status: 410
     description: "The Exam export expired and its content was removed."
   - code: exam.export.limit
-    status: 409
     description: "The Exam reached its limit of active exports."
   - code: exam.export.not_found
-    status: 404
     description: "The Exam export does not exist or is not visible to the caller."
   - code: exam.export.not_ready
-    status: 409
     description: "The Exam export is still being built."
   - code: exam.export.policy_unconfigured
-    status: 409
     description: "Exports need an Institution Retention Policy first."
   - code: exam.export.scope_changed
-    status: 409
     description: "The exported records changed while the export was requested."
   - code: exam.export.source_retired
-    status: 409
     description: "The records to export were retired by retention."
   - code: exam.export.unavailable
-    status: 503
     description: "The Exam export failed or is temporarily unavailable; retry later."
   - code: exam.integrity_review.incomplete
-    status: 409
     description: "The Integrity Review inventory is incomplete or changed."
   - code: exam.integrity_review.invalid
-    status: 400
     description: "An Integrity Review field is invalid; `fields` names the rejected input when known."
   - code: exam.integrity_review.not_found
-    status: 404
     description: "The Integrity Review does not exist or is not visible to the caller."
   - code: exam.integrity_review.revision_conflict
-    status: 409
     description: "The supplied Integrity Review revision is stale."
   - code: exam.integrity_review.state_conflict
-    status: 409
     description: "The Integrity Review state does not permit the operation."
   - code: exam.integrity_review.too_large
-    status: 409
     description: "The Integrity Review exceeds its bounded size."
   - code: exam.integrity_review.unavailable
-    status: 500
     description: "The Integrity Review operation failed; retry later."
   - code: exam.invalid
-    status: 400
     description: "An Exam field is invalid; `fields` names the rejected input when known."
   - code: exam.manager.candidate_conflict
-    status: 409
     description: "The Exam Manager candidate changed concurrently."
   - code: exam.manager.exists
-    status: 409
     description: "The User is already an Exam Manager."
   - code: exam.manager.ineligible
-    status: 409
     description: "The User is not eligible to manage this Exam."
   - code: exam.manager.not_found
-    status: 409
     description: "The User is not an Exam Manager of this Exam."
   - code: exam.manager.owner_protected
-    status: 409
     description: "The Exam owner cannot be removed as a Manager."
   - code: exam.not_found
-    status: 404
     description: "The Exam does not exist or is not visible to the caller."
   - code: exam.owner.no_changes
-    status: 409
     description: "The ownership transfer would not change the owner."
   - code: exam.resource.conflict
-    status: 409
     description: "The Exam Resource change conflicts with current state."
-  - code: exam.resource.invalid
-    status: 400
-    description: "An Exam Resource field is invalid; `fields` names the rejected input when known."
-  - code: exam.resource.invalid_content
-    status: 400
+  - code: exam.resource.content_invalid
     description: "The Exam Resource content is not an accepted file."
+  - code: exam.resource.invalid
+    description: "An Exam Resource field is invalid; `fields` names the rejected input when known."
   - code: exam.resource.limit
-    status: 409
     description: "The Exam reached its Resource limit."
   - code: exam.resource.no_changes
-    status: 409
     description: "The Resource update would not change the Resource."
   - code: exam.resource.not_found
-    status: 404
     description: "The Exam Resource does not exist or is not visible to the caller."
   - code: exam.resource.order_invalid
-    status: 400
     description: "The Resource order does not list exactly the current Resources."
   - code: exam.resource.revision_conflict
-    status: 409
     description: "The Exam Resource changed since it was read."
   - code: exam.resource.unavailable
-    status: 500
     description: "The Exam Resource operation failed; retry later."
   - code: exam.resource.upload_invalid
-    status: 400
     description: "The Resource upload is unknown, expired, or already used."
   - code: exam.revision.capacity_exceeded
-    status: 409
     description: "The Exam reached its maximum number of Revisions."
   - code: exam.revision.no_changes
-    status: 409
     description: "Publishing would not create a Revision that differs from the current one."
   - code: exam.revision_conflict
-    status: 409
     description: "The supplied Exam Revision is stale."
   - code: exam.security.attempt_not_ready
-    status: 409
     description: "The Attempt is not ready for a security preflight."
-  - code: exam.security.catalog_unavailable
-    status: 409
+  - code: exam.security.catalog_missing
     description: "The native security catalog for the Desktop build is unavailable."
   - code: exam.security.configuration_unsupported
-    status: 409
     description: "The Desktop cannot satisfy the security configuration."
   - code: exam.security.control_conflict
-    status: 409
     description: "The security control request conflicts with current state."
   - code: exam.security.policy_changed
-    status: 409
     description: "The security policy changed since the preflight."
   - code: exam.security.posture_blocked
-    status: 409
     description: "The reported security posture does not permit the Attempt."
   - code: exam.security.preflight_consumed
-    status: 409
     description: "The security preflight was already used."
   - code: exam.security.preflight_expired
-    status: 409
     description: "The security preflight expired."
   - code: exam.security.preflight_rate_limited
-    status: 429
     description: "Too many security preflights; wait before retrying."
   - code: exam.security.preflight_report_changed
-    status: 409
     description: "The security report differs from the preflighted report."
   - code: exam.security.preflight_required
-    status: 409
     description: "The Attempt needs a current security preflight."
   - code: exam.security.preflight_superseded
-    status: 409
     description: "A newer security preflight replaced this one."
   - code: exam.security.resume_required
-    status: 409
     description: "The Attempt must resume through security recovery."
   - code: exam.security.session_changed
-    status: 409
     description: "The Session changed since the preflight."
   - code: exam.security.unsupported_capability
-    status: 409
     description: "The Desktop does not support a required security capability."
   - code: exam.sitting.class_ineligible
-    status: 409
     description: "The Class cannot sit this Exam."
   - code: exam.sitting.conflict
-    status: 409
     description: "The Exam Sitting change conflicts with current state."
   - code: exam.sitting.correction.conflict
-    status: 409
     description: "The live correction conflicts with current state."
-  - code: exam.sitting.correction.invalid
-    status: 400
-    description: "A live correction field is invalid; `fields` names the rejected input when known."
-  - code: exam.sitting.correction.invalid_content
-    status: 400
+  - code: exam.sitting.correction.content_invalid
     description: "The correction Resource content is not an accepted file."
+  - code: exam.sitting.correction.invalid
+    description: "A live correction field is invalid; `fields` names the rejected input when known."
   - code: exam.sitting.correction.limit
-    status: 409
     description: "The Sitting reached its live correction limit."
-  - code: exam.sitting.correction.manifest_invalid
-    status: 409
+  - code: exam.sitting.correction.manifest_conflict
     description: "The correction Resource manifest does not match the current Revision."
   - code: exam.sitting.correction.no_changes
-    status: 409
     description: "The correction would not change the Sitting."
   - code: exam.sitting.correction.not_found
-    status: 404
     description: "The correction stage does not exist or is not visible to the caller."
-  - code: exam.sitting.correction.stage_invalid
-    status: 409
+  - code: exam.sitting.correction.stage_conflict
     description: "A correction stage is not ready or belongs to another Sitting."
   - code: exam.sitting.correction.unavailable
-    status: 500
     description: "The live correction failed; retry later."
   - code: exam.sitting.deadline_reached
-    status: 409
     description: "The Exam Sitting deadline has passed."
   - code: exam.sitting.extension_not_later
-    status: 409
     description: "An extension must move the Sitting end later."
   - code: exam.sitting.invalid
-    status: 400
     description: "An Exam Sitting field is invalid; `fields` names the rejected input when known."
   - code: exam.sitting.no_changes
-    status: 409
     description: "The Sitting change would not change the Sitting."
   - code: exam.sitting.not_found
-    status: 404
     description: "The Exam Sitting does not exist or is not visible to the caller."
   - code: exam.sitting.revision_conflict
-    status: 409
     description: "The supplied Exam Sitting revision is stale."
   - code: exam.sitting.schedule_not_future
-    status: 409
     description: "A new or changed Sitting start must be in the future."
   - code: exam.sitting.schedule_outside_period
-    status: 409
     description: "The Sitting schedule is outside the Class's Academic Period."
   - code: exam.sitting.state_conflict
-    status: 409
     description: "The Exam Sitting state does not permit the operation."
   - code: exam.sitting.unavailable
-    status: 500
     description: "The Exam Sitting operation failed; retry later."
   - code: exam.starter_workspace.conflict
-    status: 409
     description: "The Starter Workspace change conflicts with current state."
   - code: exam.starter_workspace.content_conflict
-    status: 409
     description: "The Starter Workspace file content changed since it was read."
   - code: exam.starter_workspace.directory_not_empty
-    status: 409
     description: "The Starter Workspace directory is not empty."
   - code: exam.starter_workspace.entry_kind
-    status: 409
     description: "The operation does not apply to this kind of Starter Workspace entry."
   - code: exam.starter_workspace.entry_limit
-    status: 409
     description: "The Starter Workspace reached its entry limit."
   - code: exam.starter_workspace.invalid
-    status: 400
     description: "A Starter Workspace field or path is invalid."
-  - code: exam.starter_workspace.invalid_move
-    status: 409
+  - code: exam.starter_workspace.move_conflict
     description: "The Starter Workspace entry cannot move to that path."
   - code: exam.starter_workspace.no_changes
-    status: 409
     description: "The Starter Workspace change would not change the Draft."
   - code: exam.starter_workspace.not_found
-    status: 404
     description: "The Starter Workspace entry does not exist or is not visible to the caller."
   - code: exam.starter_workspace.object_conflict
-    status: 409
     description: "The uploaded Starter Workspace object is in an unexpected state."
   - code: exam.starter_workspace.parent_not_found
-    status: 409
     description: "The parent directory of the Starter Workspace path does not exist."
   - code: exam.starter_workspace.path_conflict
-    status: 409
     description: "Another Starter Workspace entry already uses the path."
   - code: exam.starter_workspace.total_size_limit
-    status: 409
     description: "The Starter Workspace reached its total size limit."
   - code: exam.starter_workspace.unavailable
-    status: 500
     description: "The Starter Workspace operation failed; retry later."
   - code: exam.starter_workspace.upload_expired
-    status: 409
     description: "The Starter Workspace upload expired before it was committed."
   - code: exam.unavailable
-    status: 500
     description: "The Exam operation failed; retry later."
+  - code: health.not_live
+    status: 503
+    reason: "Health probes report a failed check as 503."
+    description: "The server process is not live."
+    problem: true
+  - code: health.not_ready
+    status: 503
+    reason: "Health probes report a failed check as 503."
+    description: "The server is not ready to serve requests."
+    problem: true
   - code: idempotency.conflict
-    status: 409
     description: "The idempotency key was already used with different input."
   - code: idempotency.in_progress
-    status: 409
     description: "A command with the same idempotency key is still in progress; retry later."
-  - code: idempotency.invalid_key
-    status: 400
+  - code: idempotency.key_invalid
     description: "The `Idempotency-Key` header is malformed."
     transport: true
   - code: idempotency.key_required
     status: 400
+    reason: "A missing, extra, or ambiguous credential or header is a malformed request."
     description: "The operation requires an `Idempotency-Key` header."
     transport: true
   - code: idempotency.not_supported
     status: 400
+    reason: "A missing, extra, or ambiguous credential or header is a malformed request."
     description: "The operation does not accept an `Idempotency-Key` header."
     transport: true
   - code: installation.already_initialized
-    status: 409
     description: "The installation is already initialized."
   - code: installation.bootstrap_denied
-    status: 403
     description: "Bootstrap is not permitted for this request."
   - code: installation.unavailable
-    status: 500
     description: "Installation bootstrap failed; retry later."
   - code: institution.conflict
-    status: 409
     description: "The Institution update conflicts with its current state."
   - code: institution.invalid
-    status: 400
     description: "An Institution field is invalid; `fields` names the rejected input when known."
-  - code: internal
-    status: 500
-    description: "An unexpected server fault; record the `request_id` for support."
-    problem: true
-  - code: invitation.class_period_invalid
-    status: 409
+  - code: invitation.class_period_conflict
     description: "The Class's Academic Period does not accept the Invitation."
   - code: invitation.conflict
-    status: 409
     description: "The Invitation conflicts with an existing Invitation or its current state."
   - code: invitation.invalid
-    status: 400
     description: "The Invitation is unknown, expired, revoked, or the request is invalid."
   - code: invitation.mail_unavailable
-    status: 503
     description: "The Invitation mail could not be prepared; retry later."
   - code: invitation.query.invalid
-    status: 400
     description: "The Invitation listing filters are semantically invalid."
   - code: invitation.role_not_delegable
-    status: 409
     description: "The caller cannot delegate the Invitation Role at this scope."
   - code: invitation.unavailable
-    status: 503
     description: "The Invitation operation failed or is temporarily unavailable; retry later."
   - code: invitation.user_invalid
-    status: 400
     description: "The suggested account details on the Invitation are invalid."
   - code: job.cancel.unsupported
-    status: 409
     description: "The Job type or state does not support cancellation."
   - code: job.conflict
-    status: 409
     description: "The Job changed concurrently."
   - code: job.query.invalid
-    status: 400
     description: "The Job listing filters are semantically invalid."
   - code: job.retry.unsupported
-    status: 409
     description: "The Job type or state does not support a manual retry."
   - code: job.unavailable
-    status: 500
     description: "The Job operation failed; retry later."
   - code: mail.conflict
-    status: 409
     description: "The mail delivery cannot change from its current state."
   - code: mail.query.invalid
-    status: 400
     description: "The mail delivery listing filters are semantically invalid."
   - code: mail.recipient_ineligible
-    status: 409
     description: "The recipient cannot receive this mail."
   - code: mail.recipient_unverified
-    status: 409
     description: "The recipient mailbox is not verified."
   - code: mail.rekey.conflict
-    status: 409
     description: "A mail rekey is already in progress or its state changed."
   - code: mail.rekey.invalid
-    status: 400
     description: "The mail rekey request is invalid."
   - code: mail.test.rate_limited
-    status: 429
     description: "Too many test mails; wait before sending another."
   - code: mail.unavailable
-    status: 500
     description: "Mail processing failed; retry later."
-  - code: method_not_allowed
-    status: 405
-    description: "The route does not support the request method; `Allow` lists the supported methods."
-    problem: true
-  - code: not_found
-    status: 404
-    description: "No route matches the request path."
-    problem: true
-  - code: not_live
-    status: 503
-    description: "The server process is not live."
-    problem: true
-  - code: not_ready
-    status: 503
-    description: "The server is not ready to serve requests."
-    problem: true
   - code: onboarding_batch.duplicate
-    status: 409
     description: "The batch item repeats an earlier item in the same batch."
   - code: onboarding_import.conflict
-    status: 409
     description: "The onboarding import conflicts with its current state or revision."
-  - code: onboarding_import.invalid_file
-    status: 400
+  - code: onboarding_import.file_invalid
     description: "The uploaded onboarding file is malformed or exceeds its bounds."
   - code: onboarding_import.unavailable
-    status: 503
     description: "Onboarding import processing failed or is temporarily unavailable; retry later."
   - code: personal_access_token.invalid
-    status: 400
     description: "A Personal Access Token field is invalid; `fields` names the rejected input when known."
   - code: personal_access_token.maximum_reached
-    status: 409
     description: "The account reached its maximum number of Personal Access Tokens."
   - code: personal_access_token.unavailable
-    status: 500
     description: "The Personal Access Token operation failed; retry later."
   - code: profile_picture.invalid
-    status: 400
     description: "The profile picture upload is not an accepted image."
   - code: profile_picture.unavailable
-    status: 500
     description: "The profile picture could not be processed or stored; retry later."
   - code: programme.conflict
-    status: 409
     description: "The Programme conflicts with an existing Programme or its current state."
   - code: programme.invalid
-    status: 400
     description: "A Programme field or reference is invalid; `fields` names the rejected input when known."
   - code: programme_level.conflict
-    status: 409
     description: "The Programme Level conflicts with an existing level or its current state."
   - code: programme_level.invalid
-    status: 400
     description: "A Programme Level field or reference is invalid; `fields` names the rejected input when known."
   - code: request.invalid
-    status: 400
     description: "The request encoding, shape, or a parameter is invalid; `fields` names the rejected input when known."
     transport: true
   - code: request.too_large
     status: 413
+    reason: "HTTP defines 413 for a body over the route limit."
     description: "The request body exceeds the route limit."
     problem: true
   - code: resource.not_found
-    status: 404
     description: "The resource does not exist or is not visible to the caller; `fields.resource` names its kind when known."
   - code: retention.conflict
-    status: 409
     description: "The retention control or preview conflicts with current state."
   - code: retention.invalid
-    status: 400
     description: "The retention request is invalid."
   - code: retention.unavailable
-    status: 503
     description: "Retention processing failed or is temporarily unavailable; retry later."
   - code: retention_policy.invalid
-    status: 400
     description: "The proposed Institution Retention Policy is invalid."
   - code: retention_policy.revision_conflict
-    status: 409
     description: "The supplied Retention Policy revision is stale; `fields.current_revision` carries the current revision."
   - code: retention_policy.unavailable
-    status: 503
     description: "The Institution Retention Policy could not be read or saved; retry later."
   - code: role.built_in.protected
-    status: 409
     description: "Built-in Roles cannot be changed or removed."
   - code: role.conflict
-    status: 409
     description: "The Role conflicts with an existing Role or its current state."
   - code: role.invalid
-    status: 400
     description: "A Role field is invalid; `fields` names the rejected input when known."
-  - code: role.permission.unknown
-    status: 400
+  - code: role.permission.invalid
     description: "The Role names a permission this server does not define."
   - code: role_binding.conflict
-    status: 409
     description: "The Role Binding conflicts with an existing binding or its current state."
   - code: role_binding.invalid
-    status: 400
     description: "A Role Binding field or reference is invalid."
   - code: role_binding.last_system_admin
-    status: 409
     description: "The change would remove the last System Administrator."
-  - code: role_binding.system_admin_requires_institution_scope
-    status: 400
+  - code: role_binding.system_admin_scope_invalid
     description: "The System Administrator Role can only be bound at Institution scope."
+  - code: route.method_not_allowed
+    status: 405
+    reason: "HTTP defines 405 for a method the route does not support."
+    description: "The route does not support the request method; `Allow` lists the supported methods."
+    problem: true
+  - code: route.not_found
+    description: "No route matches the request path."
+    problem: true
+  - code: server.internal
+    description: "An unexpected server fault; record the `request_id` for support."
+    problem: true
   - code: service.busy
-    status: 503
     description: "The node is at capacity for expensive work; retry after the `Retry-After` interval."
     transport: true
   - code: session.id.invalid
-    status: 400
     description: "The Session identifier is malformed."
   - code: session.not_found
-    status: 404
     description: "The Session does not exist or is not visible to the caller."
   - code: student_progression.conflict
-    status: 409
     description: "The Student Progression conflicts with its current state or another progression."
   - code: student_progression.effective_date_conflict
-    status: 409
     description: "The progression effective date is outside the source and target Academic Periods."
   - code: student_progression.lineage_conflict
-    status: 409
     description: "The target Class is not a valid successor of the source Class."
   - code: student_progression.roster_too_large
-    status: 409
     description: "The source roster exceeds the bounded progression size."
   - code: student_progression.target_conflict
-    status: 409
     description: "The target Class or period cannot receive the progression."
   - code: student_progression.unavailable
-    status: 503
     description: "Student Progression processing failed or is temporarily unavailable; retry later."
   - code: user.conflict
-    status: 409
     description: "The User conflicts with another account or the User changed concurrently."
   - code: user.invalid
-    status: 400
     description: "A User field is invalid; `fields` names the rejected input when known."
   - code: user.last_system_admin
-    status: 409
     description: "The change would disable or remove the last System Administrator."
   - code: user_settings.format_unsupported
-    status: 409
     description: "The User Settings document format is not supported by this server."
   - code: user_settings.invalid
-    status: 400
     description: "The User Settings document is invalid."
   - code: user_settings.revision_conflict
-    status: 409
     description: "The supplied User Settings revision is stale; `fields.current_revision` carries the current revision."
   - code: user_settings.unavailable
-    status: 500
     description: "User Settings could not be read or saved; retry later."
   - code: websocket.internal
-    status: 500
     description: "The WebSocket upgrade failed because of a server fault."
     transport: true
   - code: websocket.origin.invalid
     status: 403
+    reason: "A cross-origin WebSocket upgrade is forbidden rather than malformed."
     description: "The WebSocket upgrade origin is not the configured public origin."
     transport: true
   - code: websocket.request.invalid
-    status: 400
     description: "The WebSocket upgrade or protocol request is malformed."
     transport: true
   - code: websocket.unavailable
-    status: 503
     description: "The WebSocket service is unavailable; retry later."
     transport: true

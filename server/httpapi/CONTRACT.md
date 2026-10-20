@@ -37,12 +37,20 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   `apperror.Code`, when the transport mints an application-only code, or when
   a listed code is never minted. Route error lists may name only catalog
   codes;
+- name every code `<domain>[.<subdomain>].<condition>` with lowercase,
+  dot-separated `snake_case` segments, putting a qualifier before the
+  condition word (`revision_conflict`, `content_invalid`). The HTTP status is
+  a function of the condition through the catalog's vocabulary (`invalid`
+  400, `denied`/`disabled` 403, `not_found` 404, `conflict` 409, `expired`
+  410, `rate_limited` 429, `internal` 500, `unavailable`/`busy` 503, any other
+  state condition 409); an exception states its status with a reason in the
+  catalog;
 - mint only transport and kernel codes in `httpapi`: `request.*` for encoding,
   shape, and query-parameter failures, the authentication, CSRF, DPoP, and
   idempotency kernel codes, `service.busy`, and the routing codes. Every domain
   code comes from the application. A result the transport cannot present
   (missing, malformed, over its wire bound, or not encodable as a cursor) is a
-  server fault answered with the generic `internal` problem, never a domain
+  server fault answered with the generic `server.internal` problem, never a domain
   `*.unavailable` code;
 - add an agreement test that compares registered route/auth metadata, DTO JSON
   fields, success schemas, and public errors with OpenAPI;
@@ -221,9 +229,9 @@ Some failures belong to the routing kernel rather than to any operation's
 declared application errors, so they are not repeated in each operation's
 `x-proctor-error-codes`:
 
-- an unknown path returns `404` with code `not_found`;
+- an unknown path returns `404` with code `route.not_found`;
 - an unsupported method on a known path returns `405` with code
-  `method_not_allowed` and an `Allow` header;
+  `route.method_not_allowed` and an `Allow` header;
 - a request body over the route's effective limit returns `413` with code
   `request.too_large` and `Connection: close`, either before the operation
   runs when `Content-Length` exceeds the limit or when a streamed body first
@@ -337,7 +345,7 @@ not create an ordinary Web Session or leave a relationship-free User behind.
 The security context, setup and activation routes explicitly accept
 `mfa_recovery_session_required` or `recent_mfa_recovery_session_required`.
 Password and original-provider reauthentication and logout also accept the
-restricted Session context. Ordinary routes fail with `authentication.invalid_token`;
+restricted Session context. Ordinary routes fail with `authentication.token_invalid`;
 clients may query the bounded MFA status to distinguish mandatory reenrollment
 from a signed-out browser. Restricted Sessions retain normal cookie/CSRF rules.
 MFA status projects the original password/oidc/cas method, optional provider ID,
@@ -1224,7 +1232,7 @@ Malformed paths, cursors, limits, states, or protection headers return
 Participation, credential, Connection, or manager-visible target is concealed
 as `resource.not_found` (`404`). A presently unreadable Sitting or blocked
 Attempt returns its stable safe `exam.attempt.*` conflict (`409`); dependency
-failure is `exam.attempt.unavailable` (`500`). No error distinguishes which
+failure is `exam.attempt.unavailable` (`503`). No error distinguishes which
 sensitive selector failed.
 
 Correction acknowledgement uses strict JSON containing the current

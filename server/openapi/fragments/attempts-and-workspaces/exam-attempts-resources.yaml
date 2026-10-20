@@ -20,12 +20,12 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - request.invalid
         - resource.not_found
         - exam.attempt.invalid
-        - exam.attempt.sitting_unavailable
+        - exam.attempt.sitting_not_open
         - exam.attempt.state_conflict
         - exam.attempt.unavailable
         - authentication.dpop.invalid

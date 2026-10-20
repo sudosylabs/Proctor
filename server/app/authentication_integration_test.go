@@ -88,7 +88,7 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Logout() error = %v, want committed success", err)
 	}
-	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !apperror.Is(err, "authentication.invalid_token") {
+	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("AuthenticateAccess() after logout error = %v, want invalid token", err)
 	}
 	if !strings.Contains(helper.Logs.String(), "session revocation broadcast failed") ||
@@ -160,7 +160,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expired HTTP access status = %d: %s", response.Code, response.Body.String())
 	}
-	assertProblemCode(t, response, "authentication.invalid_token")
+	assertProblemCode(t, response, "authentication.token_invalid")
 	assertExpired(httpSession.ID)
 
 	refreshSession, refreshTokens := login("expiry-refresh")
@@ -171,7 +171,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("expired refresh status = %d: %s", response.Code, response.Body.String())
 	}
-	assertProblemCode(t, response, "authentication.invalid_token")
+	assertProblemCode(t, response, "authentication.token_invalid")
 	assertExpired(refreshSession.ID)
 
 	websocketSession, websocketTokens := login("expiry-websocket")
@@ -180,7 +180,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 		t.Fatal(err)
 	}
 	expire(websocketSession.ID, websocketTokens.AccessToken)
-	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !apperror.Is(err, "authentication.invalid_token") {
+	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("expired WebSocket principal error = %v", err)
 	}
 	assertExpired(websocketSession.ID)
@@ -504,7 +504,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if wrong.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong-password status = %d: %s", wrong.Code, wrong.Body.String())
 	}
-	assertProblemCode(t, wrong, "authentication.invalid_credentials")
+	assertProblemCode(t, wrong, "authentication.credentials_invalid")
 
 	login := performJSONRequest(
 		helper.Handler(),
@@ -540,7 +540,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		outcomes[event.Status] = event
 	}
 	if failed := outcomes[model.AuditStatusFail]; failed == nil || failed.ActorID != "" ||
-		failed.ErrorCode != "authentication.invalid_credentials" || failed.AuthMethod != "password" {
+		failed.ErrorCode != "authentication.credentials_invalid" || failed.AuthMethod != "password" {
 		t.Fatalf("failed login audit = %#v", failed)
 	}
 	if succeeded := outcomes[model.AuditStatusSuccess]; succeeded == nil || succeeded.ActorID != user.ID ||
@@ -588,7 +588,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if oldAccess.Code != http.StatusUnauthorized {
 		t.Fatalf("old access status = %d", oldAccess.Code)
 	}
-	assertProblemCode(t, oldAccess, "authentication.invalid_token")
+	assertProblemCode(t, oldAccess, "authentication.token_invalid")
 
 	replay := performJSONRequest(
 		helper.Handler(),
@@ -600,7 +600,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if replay.Code != http.StatusUnauthorized {
 		t.Fatalf("refresh replay status = %d: %s", replay.Code, replay.Body.String())
 	}
-	assertProblemCode(t, replay, "authentication.invalid_token")
+	assertProblemCode(t, replay, "authentication.token_invalid")
 	revokedByReplay := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -611,7 +611,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if revokedByReplay.Code != http.StatusUnauthorized {
 		t.Fatalf("replay-family access status = %d", revokedByReplay.Code)
 	}
-	assertProblemCode(t, revokedByReplay, "authentication.invalid_token")
+	assertProblemCode(t, revokedByReplay, "authentication.token_invalid")
 
 	loginAgain := performJSONRequest(
 		helper.Handler(),
@@ -647,7 +647,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if afterLogout.Code != http.StatusUnauthorized {
 		t.Fatalf("post-logout access status = %d", afterLogout.Code)
 	}
-	assertProblemCode(t, afterLogout, "authentication.invalid_token")
+	assertProblemCode(t, afterLogout, "authentication.token_invalid")
 
 	loginBeforeDisable := performJSONRequest(
 		helper.Handler(),
@@ -696,7 +696,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	if refreshAfterDisable.Code != http.StatusUnauthorized {
 		t.Fatalf("disabled-user refresh status = %d", refreshAfterDisable.Code)
 	}
-	assertProblemCode(t, refreshAfterDisable, "authentication.invalid_token")
+	assertProblemCode(t, refreshAfterDisable, "authentication.token_invalid")
 	for attempt := 1; attempt <= 3; attempt++ {
 		rateLimited := performJSONRequest(
 			helper.Handler(),
@@ -722,7 +722,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 				rateLimited.Body.String(),
 			)
 		}
-		wantCode := "authentication.invalid_credentials"
+		wantCode := "authentication.credentials_invalid"
 		if attempt == 3 {
 			wantCode = "authentication.rate_limited"
 		}

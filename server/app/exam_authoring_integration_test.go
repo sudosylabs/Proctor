@@ -205,7 +205,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	if _, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken); !apperror.Is(appErr, "authentication.invalid_token") {
+	if _, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken); !apperror.Is(appErr, "authentication.token_invalid") {
 		t.Fatalf("disabled Manager authentication error = %v", appErr)
 	}
 	reenabledAt := model.GetMillis()

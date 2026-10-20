@@ -145,7 +145,7 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		UserID: model.NewId(), RoleID: roleID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewId(), StartAt: 100,
 	})
-	if !apperror.Is(err, "role_binding.system_admin_requires_institution_scope") {
+	if !apperror.Is(err, "role_binding.system_admin_scope_invalid") {
 		t.Fatalf("error = %v", err)
 	}
 	want := []string{"authorize-binding-scope", "get-role"}

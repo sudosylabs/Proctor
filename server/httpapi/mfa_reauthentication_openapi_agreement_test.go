@@ -21,7 +21,7 @@ func TestMFAReauthenticationOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "POST /api/v1/auth/reauthenticate/password", Auth: AuthMFARecoverySessionRequired,
 				RequestBodyRef: "#/components/requestBodies/PasswordReauthentication", RequestSchema: "PasswordReauthenticationRequest",
 				SuccessStatus: "200", SuccessRef: "#/components/responses/PasswordReauthenticationOK", SuccessSchema: "SessionResponse",
-				PublicErrorCodes: sessionMutationErrorCodes("service.busy", "request.invalid", "authentication.invalid_credentials",
+				PublicErrorCodes: sessionMutationErrorCodes("service.busy", "request.invalid", "authentication.credentials_invalid",
 					"authentication.reauthentication_method_required", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.internal", "audit.unavailable")},
 			{Key: "POST /api/v1/auth/reauthenticate/external", Auth: AuthMFARecoverySessionRequired,
 				RequestBodyRef: "#/components/requestBodies/ExternalReauthentication", RequestSchema: "ExternalReauthenticationRequest",

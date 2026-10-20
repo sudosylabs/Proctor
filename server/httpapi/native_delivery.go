@@ -16,11 +16,11 @@ import (
 )
 
 func nativeDeliveryErrorCodes() []string {
-	return academicMutationErrorCodes("exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.not_found", "exam.attempt.registered_desktop_required", "exam.attempt.continuity_invalid", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_unavailable", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress")
+	return academicMutationErrorCodes("exam.delivery.control_rate_limited", "request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.not_found", "exam.attempt.registered_desktop_required", "exam.attempt.continuity_invalid", "exam.attempt.connection_closed", "exam.attempt.connection_lost", "exam.attempt.sitting_not_open", "exam.attempt.unavailable", "exam.delivery.upload_expired", "exam.delivery.declaration_conflict", "exam.delivery.sequence_limit", "exam.delivery.detail_budget_exhausted", "exam.delivery.metadata_capacity", "exam.delivery.summary_rate_limited", "idempotency.conflict", "idempotency.in_progress")
 }
 
 func nativeDeliveryDeclarationErrorCodes() []string {
-	return append(nativeDeliveryErrorCodes(), "idempotency.key_required", "idempotency.invalid_key")
+	return append(nativeDeliveryErrorCodes(), "idempotency.key_required", "idempotency.key_invalid")
 }
 
 func nativeDeliveryResource(app ExamAttemptApplication) resource {

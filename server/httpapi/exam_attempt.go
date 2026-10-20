@@ -739,19 +739,19 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	managerErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable")
 	reallowErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"exam.attempt.sitting_not_open", "exam.attempt.conflict", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	suspendErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_unavailable",
+		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open",
 		"exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	managerEndErrors := academicMutationErrorCodes("request.invalid", "resource.not_found",
 		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
-		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict",
+		"exam.attempt.sitting_not_open", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
+		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict",
 		"idempotency.in_progress")
 	candidateErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable")
+		"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable")
 	directoryMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
 		"exam.attempt.workspace.entry_conflict", "exam.attempt.workspace.entry_limit")
 	createFileMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
@@ -767,8 +767,8 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		"exam.attempt.connection_lost")
 	correctionAcknowledgementErrors := personalAccessTokenSessionMutationCodes("audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.connection_closed", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"exam.attempt.sitting_not_open", "exam.attempt.connection_closed", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	return newResource("exam-attempts",
 		principalRoute(http.MethodGet, managerCollection, managerErrors, module.listManaged),
 		principalRoute(http.MethodGet, candidateStatuses, managerErrors, module.listCandidateStatuses),
@@ -953,8 +953,8 @@ func sittingCandidateStatusCursorSpec() opaqueCursorSpec[sittingCandidateStatusC
 
 func candidateWorkspaceMutationErrors(specific ...string) []string {
 	common := []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
-		"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key",
+		"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
+		"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid",
 		"idempotency.conflict", "idempotency.in_progress"}
 	return personalAccessTokenSessionMutationCodes(append(common, specific...)...)
 }

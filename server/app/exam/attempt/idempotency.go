@@ -25,7 +25,7 @@ func prepareIdempotency(call Call, operation, key string, semantic any) (*store.
 	var encodingError *applicationidempotency.SemanticEncodingError
 	switch {
 	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
-		return nil, apperror.New("idempotency.invalid_key").Wrap(err)
+		return nil, apperror.New("idempotency.key_invalid").Wrap(err)
 	case errors.As(err, &encodingError):
 		return nil, apperror.New("request.invalid").Wrap(err)
 	default:

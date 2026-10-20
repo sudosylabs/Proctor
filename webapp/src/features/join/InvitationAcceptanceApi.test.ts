@@ -79,7 +79,7 @@ describe("acceptInvitationSession", () => {
 
   it.each([
     ["authentication.required", "session_required"],
-    ["authentication.invalid_token", "session_required"],
+    ["authentication.token_invalid", "session_required"],
     ["unexpected.code", "unavailable"],
   ])("maps %s to %s", async (problemCode, kind) => {
     vi.spyOn(apiClient, "POST").mockResolvedValue(

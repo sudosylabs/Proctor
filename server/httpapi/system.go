@@ -51,8 +51,8 @@ func systemResourceWithApplication(
 	}
 	return newResource(
 		"system",
-		publicRoute(http.MethodGet, rootPath(literal("health"), literal("live")), []string{"not_live"}, module.liveness),
-		publicRoute(http.MethodGet, rootPath(literal("health"), literal("ready")), []string{"not_ready"}, module.readiness),
+		publicRoute(http.MethodGet, rootPath(literal("health"), literal("live")), []string{healthNotLiveCode}, module.liveness),
+		publicRoute(http.MethodGet, rootPath(literal("health"), literal("ready")), []string{healthNotReadyCode}, module.readiness),
 		publicRoute(http.MethodGet, apiPath(literal("system"), literal("ping")), []string{"request.invalid"}, module.ping),
 		publicRoute(http.MethodGet, apiPath(literal("system"), literal("version")), nil, module.version),
 	)
@@ -77,12 +77,12 @@ func (module systemResourceModule) liveness(request operationRequest) (operation
 	if !module.health.Live() {
 		title, detail := localizedNamedProblemPresentation(request.request, "not_live")
 		return problemResult(Problem{
-			Type:      "https://proctor.sudosylabs.com/problems/not-live",
+			Type:      problemType(healthNotLiveCode),
 			Title:     title,
 			Status:    http.StatusServiceUnavailable,
 			Detail:    detail,
 			Instance:  request.request.URL.Path,
-			Code:      "not_live",
+			Code:      healthNotLiveCode,
 			RequestID: RequestID(request.context),
 		}), nil
 	}
@@ -93,12 +93,12 @@ func (module systemResourceModule) readiness(request operationRequest) (operatio
 	if !module.health.Ready() {
 		title, detail := localizedNamedProblemPresentation(request.request, "not_ready")
 		return problemResult(Problem{
-			Type:      "https://proctor.sudosylabs.com/problems/not-ready",
+			Type:      problemType(healthNotReadyCode),
 			Title:     title,
 			Status:    http.StatusServiceUnavailable,
 			Detail:    detail,
 			Instance:  request.request.URL.Path,
-			Code:      "not_ready",
+			Code:      healthNotReadyCode,
 			RequestID: RequestID(request.context),
 		}), nil
 	}

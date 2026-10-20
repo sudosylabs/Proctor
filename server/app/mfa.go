@@ -407,7 +407,7 @@ func mfaProvisioningURI(issuer string, accountName string, secret string) string
 }
 
 func mfaInvalidCodeError() error {
-	return apperror.New("authentication.mfa.invalid_code")
+	return apperror.New("authentication.mfa.code_invalid")
 }
 
 var mfaStoreErrors = apperror.StoreTable{

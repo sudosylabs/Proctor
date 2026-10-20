@@ -77,7 +77,7 @@ type failingLoginMFAVerifier struct {
 }
 
 func (failingLoginMFAVerifier) VerifyLogin(context.Context, string, string, time.Time) (model.AuthenticationStrength, int64, error) {
-	return "", 0, apperror.New("authentication.mfa.invalid_code")
+	return "", 0, apperror.New("authentication.mfa.code_invalid")
 }
 
 func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*authenticationService, *authenticationStoreFake, *localLoginAuditorFake, *model.User) {
@@ -135,11 +135,11 @@ func TestLocalLoginFailuresAreDurablyAudited(t *testing.T) {
 		knownTarget bool
 	}{
 		{name: "wrong password", mfa: discardAuthenticationMFAVerifier{}, loginID: "audited-user@example.edu",
-			password: "incorrect password", code: "authentication.invalid_credentials", knownTarget: true},
+			password: "incorrect password", code: "authentication.credentials_invalid", knownTarget: true},
 		{name: "unknown account", mfa: discardAuthenticationMFAVerifier{}, loginID: "nobody@example.edu",
-			password: "CorrectHorseBatteryStaple1!", code: "authentication.invalid_credentials"},
+			password: "CorrectHorseBatteryStaple1!", code: "authentication.credentials_invalid"},
 		{name: "mfa failure", mfa: failingLoginMFAVerifier{}, loginID: "audited-user@example.edu",
-			password: "CorrectHorseBatteryStaple1!", code: "authentication.mfa.invalid_code", knownTarget: true},
+			password: "CorrectHorseBatteryStaple1!", code: "authentication.mfa.code_invalid", knownTarget: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -172,13 +172,13 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 	service.loginRateLimit.MaximumAttempts = 1
 	command := LoginCommand{LoginID: user.Email, Password: "incorrect password", ClientType: model.SessionClientCLI, Source: "192.0.2.10:3"}
-	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.invalid_credentials") {
+	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("first err = %v", err)
 	}
 	if _, err := service.login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.rate_limited") {
 		t.Fatalf("limited err = %v", err)
 	}
-	if len(audit.terminal) != 1 || audit.terminal[0].errorCode != "authentication.invalid_credentials" {
+	if len(audit.terminal) != 1 || audit.terminal[0].errorCode != "authentication.credentials_invalid" {
 		t.Fatalf("rate-limited attempt was audited: %#v", audit.terminal)
 	}
 }
@@ -224,11 +224,11 @@ func TestAuditServiceLocalLoginEventsCarryRequestIdentity(t *testing.T) {
 		t.Fatalf("begin event = %#v", event)
 	}
 	if err := service.RecordLocalLoginFailure(context.Background(), "", model.SessionClientCLI, metadata,
-		"authentication.invalid_credentials"); err != nil {
+		"authentication.credentials_invalid"); err != nil {
 		t.Fatal(err)
 	}
 	failed := audits.saved
-	if failed.ActorID != "" || failed.Status != model.AuditStatusFail || failed.ErrorCode != "authentication.invalid_credentials" ||
+	if failed.ActorID != "" || failed.Status != model.AuditStatusFail || failed.ErrorCode != "authentication.credentials_invalid" ||
 		failed.Resource != (model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}) || failed.IPAddress != "192.0.2.20" {
 		t.Fatalf("failure event = %#v", failed)
 	}

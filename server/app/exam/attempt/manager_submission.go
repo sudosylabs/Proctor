@@ -32,7 +32,7 @@ func (service *Service) EndByManager(ctx context.Context, call Call,
 ) (SubmissionResult, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil {
-		return SubmissionResult{}, apperror.New("authentication.invalid_token")
+		return SubmissionResult{}, apperror.New("authentication.token_invalid")
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		command.ExpectedAttemptRevision < 1 || !validManagerEndReason(command.PrivateReason) {

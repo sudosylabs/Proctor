@@ -436,15 +436,15 @@ func examAttemptFocusLossError(err error) (string, websocketErrorPresentation) {
 	switch failure.Code() {
 	case "authorization.denied", "resource.not_found":
 		return "resource.not_found", websocketErrorFocusLossDenied
-	case "authentication.invalid_token":
-		return "authentication.invalid_token", websocketErrorFocusLossDenied
+	case "authentication.token_invalid":
+		return "authentication.token_invalid", websocketErrorFocusLossDenied
 	case "exam.attempt.connection_closed":
 		return "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive
 	case "exam.attempt.connection_lost":
 		return "exam.attempt.connection_lost", websocketErrorAttemptConnectionLost
 	case "exam.attempt.focus_loss_conflict":
 		return "exam.attempt.focus_loss_conflict", websocketErrorFocusLossConflict
-	case "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict":
+	case "exam.attempt.sitting_not_open", "exam.attempt.state_conflict":
 		return failure.Code(), websocketErrorFocusLossFailed
 	default:
 		return "exam.attempt.unavailable", websocketErrorFocusLossFailed

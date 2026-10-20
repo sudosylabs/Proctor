@@ -283,12 +283,12 @@ func TestRoutingKernelAppliesTypedHeadersProblemsAndNamedProtocolOperations(t *t
 			publicRoute(
 				http.MethodGet,
 				apiPath(literal("unavailable")),
-				[]string{"not_ready"},
+				[]string{"health.not_ready"},
 				func(request operationRequest) (operationResult, error) {
 					return problemResult(Problem{
-						Type: "https://proctor.sudosylabs.com/problems/not-ready", Title: "Service unavailable",
+						Type: "https://proctor.sudosylabs.com/problems/health.not_ready", Title: "Service unavailable",
 						Status: http.StatusServiceUnavailable, Detail: "The service is not ready to accept requests.",
-						Instance: request.request.URL.Path, Code: "not_ready", RequestID: RequestID(request.context),
+						Instance: request.request.URL.Path, Code: "health.not_ready", RequestID: RequestID(request.context),
 					}), nil
 				},
 			),
@@ -317,7 +317,7 @@ func TestRoutingKernelAppliesTypedHeadersProblemsAndNamedProtocolOperations(t *t
 
 	unavailable := httptest.NewRecorder()
 	httpAPI.ServeHTTP(unavailable, httptest.NewRequest(http.MethodGet, "/api/v1/unavailable", nil))
-	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), `"code":"not_ready"`) {
+	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), `"code":"health.not_ready"`) {
 		t.Fatalf("typed problem response = %d %s", unavailable.Code, unavailable.Body.String())
 	}
 
@@ -349,7 +349,7 @@ func TestRoutingKernelValidatesResultsBeforeEmittingResponseEffects(t *testing.T
 				return operationResult{status: http.StatusInternalServerError, headers: cookieHeaders}, nil
 			}),
 			publicRoute(http.MethodGet, apiPath(literal("undeclared-problem")), nil, func(request operationRequest) (operationResult, error) {
-				return problemResult(Problem{Status: http.StatusServiceUnavailable, Code: "not_ready", Instance: request.request.URL.Path}).withHeaders(cookieHeaders), nil
+				return problemResult(Problem{Status: http.StatusServiceUnavailable, Code: "health.not_ready", Instance: request.request.URL.Path}).withHeaders(cookieHeaders), nil
 			}),
 			protocolRoute("mismatched-protocol", RouteProtocolRedirect, AuthPublic, http.MethodGet, apiPath(literal("invalid-protocol")), nil, func(operationRequest) (protocolResult, error) {
 				return streamingUploadProtocolResult(http.StatusOK, map[string]string{"status": "wrong"}).withHeaders(cookieHeaders), nil
@@ -363,7 +363,7 @@ func TestRoutingKernelValidatesResultsBeforeEmittingResponseEffects(t *testing.T
 	for _, path := range []string{"invalid-ordinary", "undeclared-problem", "invalid-protocol", "invalid-protocol-error"} {
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/"+path, nil))
-		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"internal"`) {
+		if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"server.internal"`) {
 			t.Fatalf("%s response = %d %s", path, response.Code, response.Body.String())
 		}
 		if response.Header().Get("Set-Cookie") != "" || response.Header().Get("X-Should-Not-Exist") != "" {

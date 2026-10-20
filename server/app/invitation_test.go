@@ -415,7 +415,7 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
 	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
 	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !apperror.Is(err, "authentication.invalid_token") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
+	if !apperror.Is(err, "authentication.token_invalid") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
 		t.Fatalf("Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 	}
 

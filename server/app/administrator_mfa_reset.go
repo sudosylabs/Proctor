@@ -54,18 +54,18 @@ func (s *bootstrapService) ResetAdministratorMFA(ctx context.Context, command Ad
 		return nil, apperror.New("authentication.mfa.disabled")
 	}
 	if s.recoveryPolicy.capabilities == nil {
-		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("administrator recovery capabilities are unavailable"))
+		return nil, apperror.New("administrator_recovery.unavailable").Wrap(errors.New("administrator recovery capabilities are unavailable"))
 	}
 	result, err := s.installations.ResetAdministratorMFA(ctx, &store.AdministratorMFAReset{
 		InstitutionID: institutionID, UserID: userID, MFAEnabled: s.recoveryPolicy.mfaEnabled,
 		Capabilities: accessDeploymentCapabilities(s.recoveryPolicy.capabilities.Snapshot()),
 	})
 	if err != nil {
-		return nil, apperror.New("administrator_recovery.failed").Wrap(err)
+		return nil, apperror.New("administrator_recovery.unavailable").Wrap(err)
 	}
 	if result == nil || !model.IsValidId(result.RecordID) || result.Recovery == nil || result.Recovery.Validate() != nil ||
 		result.Recovery.UserID != userID || !result.Recovery.ReenrollmentRequired {
-		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("persistence returned no valid MFA recovery evidence"))
+		return nil, apperror.New("administrator_recovery.unavailable").Wrap(errors.New("persistence returned no valid MFA recovery evidence"))
 	}
 	return &AdministratorMFAResetResult{RecoveryGeneration: result.Recovery.Generation, ReenrollmentRequired: true}, nil
 }

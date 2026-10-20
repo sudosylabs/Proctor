@@ -509,7 +509,7 @@ test("login failure stays beside the action without moving the credentials", asy
         type: "/problems/invalid-credentials",
         title: "Credentials were not accepted",
         status: 401,
-        code: "authentication.invalid_credentials",
+        code: "authentication.credentials_invalid",
       }),
     });
   });

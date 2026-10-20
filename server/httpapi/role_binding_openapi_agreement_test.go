@@ -30,7 +30,7 @@ func TestRoleBindingOpenAPIAgreesWithRuntime(t *testing.T) {
 				PublicErrorCodes: strongRecentSessionMutationErrorCodes(
 					"authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable",
 					"request.invalid", "resource.not_found", "role_binding.invalid", "role_binding.conflict",
-					"role_binding.system_admin_requires_institution_scope", "administration.unavailable",
+					"role_binding.system_admin_scope_invalid", "administration.unavailable",
 				),
 			},
 			{

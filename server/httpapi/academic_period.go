@@ -71,7 +71,7 @@ func academicPeriodResource(academicPeriods AcademicPeriodApplication) resource 
 			http.MethodPost, collection,
 			academicMutationErrorCodes(
 				"request.invalid", "resource.not_found", "academic_period.invalid",
-				"academic_period.conflict", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+				"academic_period.conflict", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
 			),
 			module.create,
 		),

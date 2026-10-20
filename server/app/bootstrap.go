@@ -96,7 +96,7 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 		var err error
 		passwordHash, err = s.hasher.Hash(ctx, command.Password)
 		if err != nil {
-			return nil, passwordHashError(err, "administrator_recovery.failed")
+			return nil, passwordHashError(err, "administrator_recovery.unavailable")
 		}
 	}
 	result, err := s.installations.RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
@@ -104,10 +104,10 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 		EnableLocalLogin: command.EnableLocalLogin, RotatePasswordHash: passwordHash,
 	})
 	if err != nil {
-		return nil, apperror.New("administrator_recovery.failed").Wrap(err)
+		return nil, apperror.New("administrator_recovery.unavailable").Wrap(err)
 	}
 	if result == nil {
-		return nil, apperror.New("administrator_recovery.failed").Wrap(errors.New("persistence returned no recovery result"))
+		return nil, apperror.New("administrator_recovery.unavailable").Wrap(errors.New("persistence returned no recovery result"))
 	}
 	return &AdministratorRecoveryResult{
 		LocalLoginEnabled: result.LocalLoginEnabled,

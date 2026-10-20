@@ -20,7 +20,7 @@ paths:
         - Membership and progression
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -37,7 +37,7 @@ paths:
         - student_progression.unavailable
         - administration.unavailable
         - idempotency.key_required
-        - idempotency.invalid_key
+        - idempotency.key_invalid
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce

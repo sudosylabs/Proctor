@@ -56,7 +56,7 @@ func examExportReadErrors() []string {
 	return academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable")
 }
 func examExportMutationErrors() []string {
-	return academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+	return academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "exam.export.not_found", "exam.export.conflict", "exam.export.unavailable", "exam.export.policy_unconfigured", "exam.export.limit", "exam.export.source_retired", "exam.export.scope_changed", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 }
 
 type createExamExportRequest struct {

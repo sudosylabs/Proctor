@@ -18,7 +18,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authorization.denied
         - authorization.request.invalid
@@ -73,7 +73,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied
@@ -86,7 +86,7 @@ paths:
         - resource.not_found
         - role_binding.invalid
         - role_binding.conflict
-        - role_binding.system_admin_requires_institution_scope
+        - role_binding.system_admin_scope_invalid
         - administration.unavailable
         - authentication.dpop.invalid
         - authentication.dpop.replayed
@@ -137,7 +137,7 @@ paths:
       x-proctor-idempotency: none
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authorization.denied

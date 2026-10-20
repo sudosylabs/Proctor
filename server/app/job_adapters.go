@@ -90,7 +90,7 @@ func (adapter onboardingImportJobs) PreviewProgression(ctx context.Context, id m
 	}
 	if failure, ok := apperror.As(err); ok {
 		switch failure.Code() {
-		case "authorization.denied", "authentication.invalid_token":
+		case "authorization.denied", "authentication.token_invalid":
 			return "student_progression.authorization_lost", err
 		case "student_progression.target_conflict", "student_progression.lineage_conflict", "student_progression.effective_date_conflict", "student_progression.roster_too_large":
 			return failure.Code(), err
@@ -106,11 +106,11 @@ func (adapter onboardingImportJobs) Parse(ctx context.Context, id model.Onboardi
 	if err == nil {
 		return "", nil
 	}
-	if failure, ok := apperror.As(err); ok && (failure.Code() == "authentication.invalid_token" || failure.Code() == "authorization.denied") {
+	if failure, ok := apperror.As(err); ok && (failure.Code() == "authentication.token_invalid" || failure.Code() == "authorization.denied") {
 		return "onboarding_import.authorization_lost", err
 	}
 	if errors.Is(err, errOnboardingImportInvalidFile) {
-		return "onboarding_import.invalid_file", err
+		return "onboarding_import.file_invalid", err
 	}
 	return "", err
 }

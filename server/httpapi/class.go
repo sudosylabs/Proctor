@@ -96,7 +96,7 @@ func classResource(classes ClassApplication) resource {
 func classReadErrorCodes() []string {
 	return []string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 		"authorization.denied",
 		"authorization.request.invalid",
@@ -110,7 +110,7 @@ func classReadErrorCodes() []string {
 func classMutationErrorCodes(specific ...string) []string {
 	codes := []string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 		"authentication.csrf.invalid",
 		"authorization.denied",

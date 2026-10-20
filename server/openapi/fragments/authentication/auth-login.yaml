@@ -28,9 +28,9 @@ paths:
         - request.invalid
         - authentication.client_type.invalid
         - authentication.password.invalid
-        - authentication.invalid_credentials
+        - authentication.credentials_invalid
         - authentication.mfa.required
-        - authentication.mfa.invalid_code
+        - authentication.mfa.code_invalid
         - authentication.mfa.unavailable
         - authentication.sessions.maximum_reached
         - authentication.desktop_authorization.account_session_locked

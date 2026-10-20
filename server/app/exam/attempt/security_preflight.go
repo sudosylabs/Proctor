@@ -33,7 +33,7 @@ type ReportSecurityPreflightCommand struct {
 func (service *Service) securityPreflightAccess(ctx context.Context, call Call, sittingID model.ExamSittingID) (store.SecurityPreflightAccess, error) {
 	principal := call.Principal()
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
-		return store.SecurityPreflightAccess{}, apperror.New("authentication.invalid_token")
+		return store.SecurityPreflightAccess{}, apperror.New("authentication.token_invalid")
 	}
 	if !principal.HasRegisteredDesktopKey() {
 		return store.SecurityPreflightAccess{}, apperror.New("exam.attempt.registered_desktop_required")
@@ -134,7 +134,7 @@ func (service *Service) ReportSecurityPreflight(ctx context.Context, call Call, 
 // securityPreflightStoreErrors adds the native catalog sentinels to the
 // Attempt table.
 var securityPreflightStoreErrors = storeErrors.With(
-	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCatalogUnavailable, Code: "exam.security.catalog_unavailable"},
+	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCatalogUnavailable, Code: "exam.security.catalog_missing"},
 	apperror.StoreRule{Kind: apperror.StoreSentinel, Sentinel: model.ErrNativeCoverageUnsupported, Code: "exam.security.unsupported_capability"},
 )
 

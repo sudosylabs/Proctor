@@ -50,7 +50,7 @@ func userSettingsResource(settings UserSettingsApplication) resource {
 		userSettingsSessionMutationCodes(
 			"request.invalid", "user_settings.invalid", "user_settings.format_unsupported",
 			"user_settings.revision_conflict", "user_settings.unavailable", "audit.unavailable",
-			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+			"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
 		),
 		module.replace,
 	)
@@ -66,7 +66,7 @@ func userSettingsResource(settings UserSettingsApplication) resource {
 func userSettingsSessionCodes(extra ...string) []string {
 	return append([]string{
 		"authentication.required",
-		"authentication.invalid_token",
+		"authentication.token_invalid",
 		"authentication.credential_ambiguous",
 	}, extra...)
 }

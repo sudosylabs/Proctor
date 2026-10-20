@@ -163,7 +163,7 @@ func TestPrepareIdempotencyFaultMapping(t *testing.T) {
 		t.Fatalf("missing key error = %v", err)
 	}
 	invalid := NewCall(model.Principal{}, model.RequestMetadata{})
-	if _, err := prepareIdempotency(invalid, "operation", "key", struct{}{}); faultCode(err) != "idempotency.invalid_key" {
+	if _, err := prepareIdempotency(invalid, "operation", "key", struct{}{}); faultCode(err) != "idempotency.key_invalid" {
 		t.Fatalf("invalid principal error = %v", err)
 	}
 	if _, err := prepareIdempotency(valid, "operation", "key", make(chan struct{})); faultCode(err) != "request.invalid" {

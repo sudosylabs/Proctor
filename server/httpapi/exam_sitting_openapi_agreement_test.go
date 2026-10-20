@@ -76,7 +76,7 @@ func examSittingMutationContractCodes(specific ...string) []string {
 	common := []string{"request.invalid", "resource.not_found", "exam.sitting.invalid", "exam.sitting.conflict", "exam.sitting.unavailable"}
 	common = append(common, specific...)
 	return principalMutationContractCodes(append(common,
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")...)
 }
 
 func assertExamSittingListParameters(t *testing.T, path string) {

@@ -253,7 +253,7 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 			p.CredentialType = model.CredentialPersonalAccessToken
 			p.SessionID = ""
 			return p
-		}(), wantCode: "authentication.invalid_token"},
+		}(), wantCode: "authentication.token_invalid"},
 		{name: "single factor", principal: func() model.Principal {
 			p := invocation.Principal()
 			p.AuthenticationStrength = model.AuthenticationSingleFactor

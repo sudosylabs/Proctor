@@ -494,7 +494,7 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	pat.AuthenticatedAt = time.Time{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, err = service.SendTest(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.invalid_token") {
+	if _, err = service.SendTest(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("PAT error = %v", err)
 	}
 	stale := principal
@@ -558,7 +558,7 @@ func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testin
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
-	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.invalid_token") || persistence.gets != 0 {
+	if _, appErr := service.Cancel(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.token_invalid") || persistence.gets != 0 {
 		t.Fatalf("Cancel(PAT) err=%v gets=%d", appErr, persistence.gets)
 	}
 	stale := principal

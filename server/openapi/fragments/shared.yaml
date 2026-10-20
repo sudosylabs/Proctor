@@ -222,6 +222,22 @@ components:
             detail: The idempotency key was already used with different input.
             code: idempotency.conflict
             request_id: req_docs_conflict
+    Gone:
+      description: Gone
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/exam.security.preflight_expired
+            title: Gone
+            status: 410
+            detail: The security preflight expired.
+            code: exam.security.preflight_expired
+            request_id: req_docs_gone
     InternalError:
       description: Internal server error
       headers:
@@ -232,11 +248,11 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
           example:
-            type: /problems/internal
+            type: /problems/server.internal
             title: Internal server error
             status: 500
-            detail: The request could not be completed.
-            code: authentication.internal
+            detail: An unexpected error occurred.
+            code: server.internal
             request_id: req_docs_internal
     TooManyRequests:
       description: Rate limited

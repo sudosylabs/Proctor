@@ -33,7 +33,7 @@ async function confirmSession(): Promise<ConfirmationState> {
       return "signed_in";
     }
     if (response.status === 401) {
-      if (readProblemValue(error)?.code === "authentication.invalid_token") {
+      if (readProblemValue(error)?.code === "authentication.token_invalid") {
         const security = await requestSecurityContext();
         if (security.kind === "ready" && security.context.recoveryRequired) return "recovery_required";
       }

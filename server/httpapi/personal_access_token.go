@@ -102,7 +102,7 @@ func appendRoutePath(path routePath, parts ...pathPart) routePath {
 }
 
 func personalAccessTokenSessionCodes(extra ...string) []string {
-	return append([]string{"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous"}, extra...)
+	return append([]string{"authentication.required", "authentication.token_invalid", "authentication.credential_ambiguous"}, extra...)
 }
 
 func personalAccessTokenSessionMutationCodes(extra ...string) []string {

@@ -17,7 +17,7 @@ paths:
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.mfa.disabled
         - authentication.mfa.unavailable
@@ -59,7 +59,7 @@ paths:
       x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.reauthentication_required
@@ -109,12 +109,12 @@ paths:
       x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.reauthentication_required
         - request.invalid
-        - authentication.mfa.invalid_code
+        - authentication.mfa.code_invalid
         - authentication.rate_limited
         - authentication.rate_limit_unavailable
         - authentication.mfa.disabled
@@ -167,11 +167,11 @@ paths:
       x-proctor-auth: session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - request.invalid
-        - authentication.mfa.invalid_code
+        - authentication.mfa.code_invalid
         - authentication.rate_limited
         - authentication.rate_limit_unavailable
         - authentication.mfa.disabled
@@ -232,7 +232,7 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required
@@ -290,7 +290,7 @@ paths:
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.strong_required

@@ -14,15 +14,15 @@ for operators or users, not as a machine interface.
 
 ```json
 {
-  "type": "https://docs.proctor.example/problems/validation-failed",
-  "title": "Request validation failed",
+  "type": "https://proctor.sudosylabs.com/problems/exam.invalid",
+  "title": "Invalid request",
   "status": 400,
-  "detail": "One or more request fields are invalid.",
+  "detail": "The request is invalid.",
   "instance": "/api/v1/exams",
-  "code": "validation_failed",
+  "code": "exam.invalid",
   "request_id": "req_01J7YN7BR7R2BW0VWP2JEN8M4M",
   "fields": {
-    "title": "must not be empty"
+    "field": "title"
   }
 }
 ```
@@ -30,6 +30,36 @@ for operators or users, not as a machine interface.
 The exact `type` URI is documentation, while `code` is the bounded value an
 integration uses for program logic. Each endpoint page lists its possible
 codes in **Stable error codes**.
+
+## Code Grammar
+
+Every code is `<domain>[.<subdomain>].<condition>`: lowercase segments
+separated by dots, each segment `snake_case`. The domain names the resource
+family, such as `exam`, `exam.attempt`, or `authentication.mfa`. The condition
+is the last segment; when it is qualified, the qualifier comes first and the
+condition word last, as in `revision_conflict` or `content_invalid`.
+
+The condition determines the HTTP status:
+
+| Condition word | Status |
+| --- | --- |
+| `invalid` | `400` |
+| `denied`, `disabled` | `403` |
+| `not_found` | `404` |
+| `conflict` | `409` |
+| `expired` | `410` |
+| `rate_limited` | `429` |
+| `internal` | `500` |
+| `unavailable`, `busy` | `503` |
+
+A condition equal to a word in the table, or ending in `_` and that word,
+takes its status. Any other condition, such as `archived` or
+`deadline_reached`, names a resource state that rejects the request and
+returns `409`. A few codes are documented exceptions: credential failures in
+the `authentication` domain return `401` or `403`,
+`exam.attempt.continuity_invalid` returns `404` so an invalid credential
+reveals nothing, and the routing-kernel codes below use their HTTP-defined
+statuses.
 
 ## Handling Rules
 
@@ -55,9 +85,10 @@ A body larger than the route's limit returns status `413` with code
 `request.too_large`, whichever operation received it. Fix the request rather
 than retrying it unchanged.
 
-Every operation may also return `404` with code `not_found` for an unknown
-path and `405` with code `method_not_allowed`, with an `Allow` header, for an
-unsupported method. These routing failures are not repeated in each
+Every operation may also return `404` with code `route.not_found` for an
+unknown path, `405` with code `route.method_not_allowed`, with an `Allow`
+header, for an unsupported method, and `500` with code `server.internal` for
+an unexpected server fault. These kernel failures are not repeated in each
 endpoint's list of stable codes.
 
 ## Retries

@@ -61,7 +61,7 @@ func newProblem(
 	fields map[string]string,
 ) Problem {
 	return Problem{
-		Type:      "https://proctor.sudosylabs.com/problems/" + code,
+		Type:      problemType(code),
 		Title:     title,
 		Status:    status,
 		Detail:    detail,

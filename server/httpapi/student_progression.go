@@ -49,7 +49,7 @@ func studentProgressionResource(progressions StudentProgressionApplication) reso
 		principalRoute(http.MethodPost, apiPath(literal("student-progressions")), mutationCodes, module.dryRun),
 		principalRoute(http.MethodGet, apiPath(literal("student-progressions"), canonicalID("student_progression_id")), readCodes, module.get),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("commit")),
-			append(mutationCodes, "idempotency.key_required", "idempotency.invalid_key"), module.commit),
+			append(mutationCodes, "idempotency.key_required", "idempotency.key_invalid"), module.commit),
 		principalRoute(http.MethodPost, apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("cancel")), mutationCodes, module.cancel),
 		protocolRoute("student-progression-report", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
 			apiPath(literal("student-progressions"), canonicalID("student_progression_id"), literal("report")),

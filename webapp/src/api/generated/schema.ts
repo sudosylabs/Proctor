@@ -5290,7 +5290,7 @@ export interface components {
         };
         AcademicAdministrationBatchItemResponse: {
             /** @enum {string} */
-            error_code?: "request.invalid" | "resource.not_found" | "authorization.denied" | "authorization.request.invalid" | "authorization.unavailable" | "audit.unavailable" | "administration.unavailable" | "mail.unavailable" | "authentication.invalid_token" | "authentication.strong_required" | "authentication.reauthentication_required" | "affiliation.invalid" | "affiliation.conflict" | "affiliation.student_has_active_enrollment" | "academic_unit_member.invalid" | "academic_unit_member.conflict" | "class_member.invalid" | "class_member.student_affiliation_required" | "class.enrollment_conflict" | "role_binding.invalid" | "role_binding.conflict" | "role_binding.last_system_admin" | "role_binding.system_admin_requires_institution_scope" | "user.invalid" | "user.conflict" | "user.last_system_admin" | "session.not_found" | "idempotency.conflict" | "idempotency.in_progress" | "onboarding_batch.duplicate";
+            error_code?: "request.invalid" | "resource.not_found" | "authorization.denied" | "authorization.request.invalid" | "authorization.unavailable" | "audit.unavailable" | "administration.unavailable" | "mail.unavailable" | "authentication.token_invalid" | "authentication.strong_required" | "authentication.reauthentication_required" | "affiliation.invalid" | "affiliation.conflict" | "affiliation.student_has_active_enrollment" | "academic_unit_member.invalid" | "academic_unit_member.conflict" | "class_member.invalid" | "class_member.student_affiliation_required" | "class.enrollment_conflict" | "role_binding.invalid" | "role_binding.conflict" | "role_binding.last_system_admin" | "role_binding.system_admin_scope_invalid" | "user.invalid" | "user.conflict" | "user.last_system_admin" | "session.not_found" | "idempotency.conflict" | "idempotency.in_progress" | "onboarding_batch.duplicate";
             index: number;
             resource_id?: components["schemas"]["ID"];
             /** @enum {string} */
@@ -8209,7 +8209,7 @@ export interface components {
         };
         InvitationBatchItemResponse: {
             /** @enum {string} */
-            error_code?: "request.invalid" | "resource.not_found" | "authorization.denied" | "authorization.request.invalid" | "authorization.unavailable" | "audit.unavailable" | "administration.unavailable" | "authentication.invalid_token" | "authentication.strong_required" | "authentication.reauthentication_required" | "invitation.invalid" | "invitation.class_period_invalid" | "invitation.conflict" | "invitation.role_not_delegable" | "invitation.mail_unavailable" | "invitation.unavailable" | "idempotency.conflict" | "idempotency.in_progress" | "onboarding_batch.duplicate";
+            error_code?: "request.invalid" | "resource.not_found" | "authorization.denied" | "authorization.request.invalid" | "authorization.unavailable" | "audit.unavailable" | "administration.unavailable" | "authentication.token_invalid" | "authentication.strong_required" | "authentication.reauthentication_required" | "invitation.invalid" | "invitation.class_period_conflict" | "invitation.conflict" | "invitation.role_not_delegable" | "invitation.mail_unavailable" | "invitation.unavailable" | "idempotency.conflict" | "idempotency.in_progress" | "onboarding_batch.duplicate";
             index: number;
             invitation_id?: components["schemas"]["ID"];
             /** @enum {string} */
@@ -11557,6 +11557,26 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /** @description Gone */
+        Gone: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "exam.security.preflight_expired",
+                 *       "detail": "The security preflight expired.",
+                 *       "request_id": "req_docs_gone",
+                 *       "status": 410,
+                 *       "title": "Gone",
+                 *       "type": "/problems/exam.security.preflight_expired"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
         /** @description Health status */
         HealthOK: {
             headers: {
@@ -11607,12 +11627,12 @@ export interface components {
             content: {
                 /**
                  * @example {
-                 *       "code": "authentication.internal",
-                 *       "detail": "The request could not be completed.",
+                 *       "code": "server.internal",
+                 *       "detail": "An unexpected error occurred.",
                  *       "request_id": "req_docs_internal",
                  *       "status": 500,
                  *       "title": "Internal server error",
-                 *       "type": "/problems/internal"
+                 *       "type": "/problems/server.internal"
                  *     }
                  */
                 "application/problem+json": components["schemas"]["ProblemDetails"];
@@ -15473,6 +15493,7 @@ export interface operations {
         responses: {
             200: components["responses"]["InstallationStatusOK"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     bootstrapInstallation: {
@@ -16177,6 +16198,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            410: components["responses"]["Gone"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -16649,6 +16671,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            410: components["responses"]["Gone"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -17171,6 +17194,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            410: components["responses"]["Gone"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -17230,6 +17254,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            410: components["responses"]["Gone"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -19739,6 +19764,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            410: components["responses"]["Gone"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];

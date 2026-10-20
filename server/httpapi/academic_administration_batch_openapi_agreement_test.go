@@ -21,7 +21,7 @@ func TestAcademicAdministrationBatchOpenAPIAgreesWithRuntime(t *testing.T) {
 			RequestSchema: "AcademicAdministrationBatchRequest", SuccessStatus: "200",
 			SuccessRef: "#/components/responses/AcademicAdministrationBatchOK", SuccessSchema: "AcademicAdministrationBatchResponse",
 			PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "authentication.strong_required",
-				"authentication.reauthentication_required", "idempotency.key_required", "idempotency.invalid_key", "administration.unavailable"),
+				"authentication.reauthentication_required", "idempotency.key_required", "idempotency.key_invalid", "administration.unavailable"),
 		}},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "AcademicAdministrationBatchItemRequest", DTO: reflect.TypeOf(academicAdministrationBatchItemRequest{}), Required: []string{"key"}},

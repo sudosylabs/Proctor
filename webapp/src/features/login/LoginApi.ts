@@ -50,9 +50,9 @@ export const authenticateLocal: AuthenticateLocal = async (submission) => {
     switch (readProblemValue(error)?.code) {
       case "authentication.mfa.required":
         return { kind: "mfa_required" };
-      case "authentication.mfa.invalid_code":
+      case "authentication.mfa.code_invalid":
         return { kind: "mfa_invalid" };
-      case "authentication.invalid_credentials":
+      case "authentication.credentials_invalid":
         return { kind: "invalid_credentials" };
       case "authentication.mfa.unavailable":
         return { kind: "mfa_unavailable" };

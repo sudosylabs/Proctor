@@ -23,7 +23,7 @@ paths:
       x-proctor-auth: session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - request.invalid
         - websocket.origin.invalid

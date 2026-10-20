@@ -23,7 +23,7 @@ func TestAccessPolicyOpenAPIAgreesWithRuntime(t *testing.T) {
 	)
 	replaceCodes := principalMutationContractCodes(
 		"authentication.strong_required", "authentication.reauthentication_required",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress",
 		"request.invalid", "access_policy.invalid", "access_policy.revision_conflict", "access_policy.blocked", "access_policy.unavailable",
 	)
 	suite := openAPIAgreementSuite{

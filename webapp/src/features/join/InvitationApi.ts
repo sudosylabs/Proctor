@@ -125,7 +125,7 @@ export async function acceptInvitationSession(
     }
     switch (readProblemValue(error)?.code) {
       case "authentication.required":
-      case "authentication.invalid_token":
+      case "authentication.token_invalid":
         return { kind: "session_required" };
       default:
         return { kind: "unavailable" };

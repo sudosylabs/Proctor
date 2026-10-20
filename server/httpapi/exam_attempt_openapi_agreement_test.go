@@ -42,23 +42,23 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	managerCodes := principalContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid", "exam.attempt.unavailable", "administration.unavailable")
 	reallowCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+		"exam.attempt.sitting_not_open", "exam.attempt.conflict", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	suspendCodes := principalMutationContractCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_unavailable",
+		"exam.attempt.revision_conflict", "exam.attempt.state_conflict", "exam.attempt.sitting_not_open",
 		"exam.attempt.conflict", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable")
 	managerEndCodes := principalMutationContractCodes("request.invalid", "resource.not_found",
 		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
-		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict",
+		"exam.attempt.sitting_not_open", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
+		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict",
 		"idempotency.in_progress", "administration.unavailable")
 	candidateCodes := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
-		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable")
+		"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.unavailable")
 	workspaceMutationCodes := func(specific ...string) []string {
 		common := []string{"audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
-			"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
-			"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key",
+			"exam.attempt.sitting_not_open", "exam.attempt.state_conflict", "exam.attempt.connection_closed",
+			"exam.attempt.conflict", "exam.attempt.unavailable", "idempotency.key_required", "idempotency.key_invalid",
 			"idempotency.conflict", "idempotency.in_progress"}
 		return personalAccessTokenSessionMutationCodes(append(common, specific...)...)
 	}
@@ -77,8 +77,8 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 		"exam.attempt.connection_lost")
 	correctionAcknowledgementCodes := personalAccessTokenSessionMutationCodes("audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.state_conflict",
-		"exam.attempt.sitting_unavailable", "exam.attempt.connection_closed", "exam.attempt.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"exam.attempt.sitting_not_open", "exam.attempt.connection_closed", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	suite := openAPIAgreementSuite{
 		Operations: []openAPIAgreementOperation{
 			{Key: "GET " + managerBase, Auth: AuthPrincipalRequired, SuccessStatus: "200", SuccessRef: "#/components/responses/ExamAttemptManagerListOK", SuccessSchema: "ExamAttemptManagerListResponse", PublicErrorCodes: managerCodes},

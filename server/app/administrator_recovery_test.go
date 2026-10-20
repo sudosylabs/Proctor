@@ -46,7 +46,7 @@ func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testi
 }
 
 func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
-	testPasswordHashFailures(t, "administrator_recovery.failed", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+	testPasswordHashFailures(t, "administrator_recovery.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
 		events := []string{}
 		persistence := &installationStoreFake{events: &events}
 		service := newBootstrapService(persistence, hasher,

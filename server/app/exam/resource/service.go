@@ -223,7 +223,7 @@ func (s *Service) Create(ctx context.Context, call Call, command CreateCommand) 
 	}
 	if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(command.ExpectedSHA256)) != 1 {
 		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
-		return store.ExamResourceRecord{}, apperror.New("exam.resource.invalid_content").Wrap(errors.New("content checksum mismatch"))
+		return store.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid").Wrap(errors.New("content checksum mismatch"))
 	}
 	return s.finalize(ctx, call, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "add")
 }
@@ -267,7 +267,7 @@ func (s *Service) ReplaceContent(ctx context.Context, call Call, command Replace
 	}
 	if subtle.ConstantTimeCompare([]byte(rendition.SHA256), []byte(command.ExpectedSHA256)) != 1 {
 		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
-		return store.ExamResourceRecord{}, apperror.New("exam.resource.invalid_content").Wrap(errors.New("content checksum mismatch"))
+		return store.ExamResourceRecord{}, apperror.New("exam.resource.content_invalid").Wrap(errors.New("content checksum mismatch"))
 	}
 	updated := *current.Resource
 	if _, err = updated.ReplaceContent(revisionID, at); err != nil {
@@ -547,7 +547,7 @@ func mapContent(err error) error {
 	}
 	var invalidContent invalidContentError
 	if errors.As(err, &invalidContent) {
-		return apperror.New("exam.resource.invalid_content").Wrap(err)
+		return apperror.New("exam.resource.content_invalid").Wrap(err)
 	}
 	return apperror.New("exam.resource.unavailable").Wrap(err)
 }

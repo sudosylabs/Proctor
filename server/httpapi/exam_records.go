@@ -37,7 +37,7 @@ func examRecordsResource(application ExamRecordsApplication) resource {
 	release := apiPath(literal("exams"), canonicalID("exam_id"), literal("retention-holds"), canonicalID("retention_hold_id"), literal("release"))
 	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable")
 	mutationErrors := academicMutationErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.conflict", "exam.unavailable",
-		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+		"idempotency.key_required", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress")
 	completeRoute := sessionRoute(http.MethodPost, completion, mutationErrors, m.complete)
 	waiveRoute := sessionRoute(http.MethodPost, waiver, mutationErrors, m.waive)
 	createRoute := sessionRoute(http.MethodPost, holds, mutationErrors, m.createHold)

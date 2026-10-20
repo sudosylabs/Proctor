@@ -250,7 +250,7 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialPersonalAccessToken}},
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})
-	if !apperror.Is(err, "authentication.invalid_token") {
+	if !apperror.Is(err, "authentication.token_invalid") {
 		t.Fatalf("PAT sensitive batch error = %v", err)
 	}
 	if len(commands.disabled) != 0 {

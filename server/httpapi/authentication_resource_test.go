@@ -318,11 +318,11 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop"}`),
 		),
 	)
-	if undeclared.Code != http.StatusInternalServerError || !strings.Contains(undeclared.Body.String(), `"code":"internal"`) || strings.Contains(undeclared.Body.String(), "resource.not_found") {
+	if undeclared.Code != http.StatusInternalServerError || !strings.Contains(undeclared.Body.String(), `"code":"server.internal"`) || strings.Contains(undeclared.Body.String(), "resource.not_found") {
 		t.Fatalf("undeclared login error = %d %s", undeclared.Code, undeclared.Body.String())
 	}
 
-	authentication.loginError = apperror.New("authentication.mfa.invalid_code")
+	authentication.loginError = apperror.New("authentication.mfa.code_invalid")
 	invalidSecondFactor := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		invalidSecondFactor,
@@ -333,7 +333,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 		),
 	)
 	if invalidSecondFactor.Code != http.StatusUnauthorized ||
-		!strings.Contains(invalidSecondFactor.Body.String(), `"code":"authentication.mfa.invalid_code"`) {
+		!strings.Contains(invalidSecondFactor.Body.String(), `"code":"authentication.mfa.code_invalid"`) {
 		t.Fatalf("invalid login second factor = %d %s", invalidSecondFactor.Code, invalidSecondFactor.Body.String())
 	}
 }

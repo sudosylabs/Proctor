@@ -556,7 +556,7 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 		_, err := service.login(context.Background(), Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
-		if !apperror.Is(err, "authentication.invalid_credentials") {
+		if !apperror.Is(err, "authentication.credentials_invalid") {
 			t.Fatalf("attempt %d from %s: err = %v", index, source, err)
 		}
 	}
@@ -569,7 +569,7 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 	_, err = service.login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
-	if !apperror.Is(err, "authentication.invalid_credentials") {
+	if !apperror.Is(err, "authentication.credentials_invalid") {
 		t.Fatalf("another account from the same source = %v, want an independent budget", err)
 	}
 }

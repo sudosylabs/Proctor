@@ -61,7 +61,7 @@ func academicUnitResource(academicUnits AcademicUnitApplication) resource {
 	return newResource(
 		"academic-units",
 		principalRoute(http.MethodGet, collection, academicReadErrorCodes("request.invalid"), module.listRoot),
-		idempotentPrincipalRoute(IdempotencyOptional, http.MethodPost, collection, academicMutationErrorCodes("request.invalid", "academic_unit.invalid", "academic_unit.conflict", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress"), module.createRoot),
+		idempotentPrincipalRoute(IdempotencyOptional, http.MethodPost, collection, academicMutationErrorCodes("request.invalid", "academic_unit.invalid", "academic_unit.conflict", "idempotency.key_invalid", "idempotency.conflict", "idempotency.in_progress"), module.createRoot),
 		principalRoute(http.MethodGet, member, academicReadErrorCodes("resource.not_found"), module.get),
 		principalRoute(http.MethodPatch, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.invalid", "academic_unit.conflict"), module.patch),
 		principalRoute(http.MethodDelete, member, academicMutationErrorCodes("request.invalid", "resource.not_found", "academic_unit.conflict"), module.archive),

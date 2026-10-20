@@ -1004,7 +1004,7 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.sitting_unavailable" ||
+	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.sitting_not_open" ||
 		f.audit.failedCode != fault.Code() || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
 		t.Fatalf("error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
 	}
@@ -1142,7 +1142,7 @@ func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
 		},
 	} {
 		var fault *apperror.Error
-		if err := open(); !errors.As(err, &fault) || fault.Code() != "authentication.invalid_token" {
+		if err := open(); !errors.As(err, &fault) || fault.Code() != "authentication.token_invalid" {
 			t.Fatalf("error=%v", err)
 		}
 	}

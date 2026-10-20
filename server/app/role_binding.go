@@ -200,7 +200,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	}
 	if role.Name == model.SystemAdministratorRoleName &&
 		candidate.ScopeType != model.RoleScopeInstitution {
-		return nil, apperror.New("role_binding.system_admin_requires_institution_scope")
+		return nil, apperror.New("role_binding.system_admin_scope_invalid")
 	}
 	delegatedPermissions := role.Permissions
 	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
@@ -385,5 +385,5 @@ func (e roleBindingRealtimeEffects) AuthorizationChangedForUser(ctx context.Cont
 
 var roleBindingStoreErrors = apperror.AdministrationStoreTable("role_binding", "role_binding.conflict", "role_binding.invalid", map[string]apperror.Code{
 	"role_bindings_last_system_admin":              "role_binding.last_system_admin",
-	"role_bindings_system_admin_institution_scope": "role_binding.system_admin_requires_institution_scope",
+	"role_bindings_system_admin_institution_scope": "role_binding.system_admin_scope_invalid",
 })

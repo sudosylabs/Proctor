@@ -149,7 +149,7 @@ func NewOnboardingImportExecuteDescriptor(service OnboardingImportService) joben
 
 func onboardingImportDescriptor(kind model.JobType, handler jobengine.Handler, cancelable bool) jobengine.Descriptor {
 	return jobengine.Descriptor{Type: kind, CommandVersions: []int{1}, ResultVersions: []int{1},
-		PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.invalid_file"},
+		PublicErrorCodes: []string{"dependency.unavailable", "job.canceled", "job.checkpoint.invalid", "job.command.invalid", "onboarding_import.authorization_lost", "onboarding_import.file_invalid"},
 		Timeout:          10 * time.Minute, Concurrency: 2, MaximumAttempts: 8, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second,
 		BaseRetryDelay: 10 * time.Second, MaximumRetryDelay: 5 * time.Minute, Cancelable: cancelable, Visibility: jobengine.VisibilityDomain,
 		SuccessRetention: 7 * 24 * time.Hour, FailureRetention: 7 * 24 * time.Hour, Handler: handler}

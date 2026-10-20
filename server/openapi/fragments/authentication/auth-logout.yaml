@@ -24,7 +24,7 @@ paths:
       x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
-        - authentication.invalid_token
+        - authentication.token_invalid
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.internal
