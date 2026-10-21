@@ -67,6 +67,8 @@ func TestTranslateErrorClassifiesRejectedValues(t *testing.T) {
 			require.ErrorAs(t, got, &driver)
 			require.Same(t, test.err, driver)
 			require.False(t, IsTransientError(got), "rejected values classified as transient")
+			require.True(t, store.IsConstraintViolation(got), "database rejection is not marked as a constraint violation")
 		})
 	}
+	require.False(t, store.IsConstraintViolation(store.NewErrInvalidInput("user", "value", nil)), "Store-refused input marked as a constraint violation")
 }

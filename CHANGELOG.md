@@ -95,6 +95,8 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: a database constraint rejection during Sitting sealing or lifecycle
+  work is retried instead of failing that Sitting's Job permanently.
 - Server: adding an Exam Manager or granting a Role Binding locks the User
   before the Attempt admission fence, so it no longer deadlocks with an
   Invitation acceptance for the same User.

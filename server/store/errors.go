@@ -39,14 +39,40 @@ var ErrInvalidState = errors.New("invalid persisted state")
 // ErrInvalidInput reports that a repository received a model in a state it
 // cannot persist.
 type ErrInvalidInput struct {
-	Entity string
-	Field  string
-	Value  any
-	cause  error
+	Entity     string
+	Field      string
+	Value      any
+	cause      error
+	constraint bool
 }
 
 func NewErrInvalidInput(entity, field string, value any) *ErrInvalidInput {
 	return &ErrInvalidInput{Entity: entity, Field: field, Value: value}
+}
+
+// NewErrConstraintViolation reports a write that the database rejected under a
+// schema constraint (CHECK, NOT NULL, or length) rather than input the Store
+// refused before writing. Field names the constraint or column. A concurrent
+// transition or clock skew can trip such a constraint, so unlike other invalid
+// input the same request may succeed when retried.
+func NewErrConstraintViolation(entity, field string) *ErrInvalidInput {
+	return &ErrInvalidInput{Entity: entity, Field: field, constraint: true}
+}
+
+// IsConstraintViolation reports whether err contains invalid input that the
+// database, not the Store, rejected.
+func IsConstraintViolation(err error) bool {
+	for err != nil {
+		var invalid *ErrInvalidInput
+		if !errors.As(err, &invalid) {
+			return false
+		}
+		if invalid.constraint {
+			return true
+		}
+		err = invalid.cause
+	}
+	return false
 }
 
 func (e *ErrInvalidInput) Error() string {

@@ -108,6 +108,31 @@ func TestExamSittingSealingJobLeavesUnfinishedClosingStateRetryable(t *testing.T
 	require.Equal(t, 1, service.finishCalls, "outcome=%#v finish", outcome)
 }
 
+func TestExamSittingSealingJobRetriesDatabaseConstraintRejection(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
+	sitting := closingSittingForSealingTest(t, at)
+	job := mustExamSittingSealingJob(t, sitting.ID, at)
+	for _, test := range []struct {
+		name string
+		err  error
+		kind jobengine.OutcomeKind
+		code string
+	}{
+		{"database constraint rejection", store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), jobengine.OutcomeRetryableFailure, "dependency.unavailable"},
+		{"refused input", store.NewErrInvalidInput("exam_sitting", "finish", nil), jobengine.OutcomePermanentFailure, "job.invariant_failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			service := &examSittingSealingFake{finishErr: test.err}
+			outcome := (examSittingSealingHandler{service: service}).Run(context.Background(),
+				jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
+			require.Equal(t, test.kind, outcome.Kind, "outcome=%#v", outcome)
+			require.Equal(t, test.code, outcome.PublicErrorCode, "outcome=%#v", outcome)
+		})
+	}
+}
+
 func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 18, 9, 0, 0, 0, time.UTC)
@@ -154,6 +179,7 @@ type examSittingSealingFake struct {
 	sealed                []model.ExamAttemptID
 	finish                *store.ExamSittingLifecycleResult
 	finishCalls           int
+	finishErr             error
 	continuationCalls     int
 	continuationSittingID model.ExamSittingID
 	continuationParentID  model.JobID
@@ -186,7 +212,7 @@ func (f *examSittingSealingFake) FinishExamSittingSealingFromJob(context.Context
 	model.JobID, model.JobAttemptID,
 ) (*store.ExamSittingLifecycleResult, error) {
 	f.finishCalls++
-	return f.finish, nil
+	return f.finish, f.finishErr
 }
 
 func (f *examSittingSealingFake) EnqueueExamSittingSealingContinuationFromJob(_ context.Context,

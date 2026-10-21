@@ -57,7 +57,8 @@ func isDomainError(err error) bool {
 
 // translateError maps driver failures to store errors. Integrity violations
 // that reject the written values (CHECK, NOT NULL, and over-length strings)
-// become ErrInvalidInput naming the constraint or column, never the value.
+// become constraint-violation ErrInvalidInput naming the constraint or column,
+// never the value.
 func translateError(resource, id string, err error) error {
 	if err == nil {
 		return nil
@@ -73,11 +74,11 @@ func translateError(resource, id string, err error) error {
 		case postgresForeignKeyViolation:
 			return store.NewErrReference(resource, pqErr.Constraint, err)
 		case postgresCheckViolation:
-			return store.NewErrInvalidInput(resource, pqErr.Constraint, nil).Wrap(err)
+			return store.NewErrConstraintViolation(resource, pqErr.Constraint).Wrap(err)
 		case postgresNotNullViolation:
-			return store.NewErrInvalidInput(resource, pqErr.Column, nil).Wrap(err)
+			return store.NewErrConstraintViolation(resource, pqErr.Column).Wrap(err)
 		case postgresStringDataTruncation:
-			return store.NewErrInvalidInput(resource, pqErr.Column, nil).Wrap(err)
+			return store.NewErrConstraintViolation(resource, pqErr.Column).Wrap(err)
 		}
 	}
 	return err

@@ -90,6 +90,7 @@ func TestExamSittingLifecycleHandlerClassifiesFailures(t *testing.T) {
 			return &copy
 		}(), kind: jobengine.OutcomePermanentFailure, code: "job.command.invalid"},
 		{name: "invalid durable request", job: valid, err: store.NewErrInvalidInput("exam_sitting", "advance_due", nil), kind: jobengine.OutcomePermanentFailure, code: "job.invariant_failed"},
+		{name: "database constraint rejection", job: valid, err: store.NewErrConstraintViolation("exam_sitting", "exam_sittings_lifecycle_check"), kind: jobengine.OutcomeRetryableFailure, code: "dependency.unavailable"},
 		{name: "missing durable target", job: valid, err: store.NewErrNotFound("exam_sitting", sittingID.String()), kind: jobengine.OutcomePermanentFailure, code: "job.invariant_failed"},
 		{name: "dependency failure", job: valid, err: errors.New("database unavailable"), kind: jobengine.OutcomeRetryableFailure, code: "dependency.unavailable"},
 	}

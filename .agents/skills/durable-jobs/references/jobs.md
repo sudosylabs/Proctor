@@ -94,7 +94,9 @@ does not consume the failure-attempt budget. A handler returns one of
 `Succeeded`, `RetryableFailure`, `Relinquished`, `PermanentFailure`, or
 `Canceled`. Transient dependency failures retry;
 invalid payload versions, rejected content, invariant failures, and unsupported
-operations fail permanently. Panics are contained and retry with a safe code
+operations fail permanently. Input the Store refuses is permanent, but a
+database constraint rejection (`store.IsConstraintViolation`) can come from a
+concurrent transition or clock skew and retries within the attempt budget. Panics are contained and retry with a safe code
 until the attempt limit is exhausted.
 
 ## Payloads and visibility

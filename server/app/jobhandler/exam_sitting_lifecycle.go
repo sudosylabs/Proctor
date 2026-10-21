@@ -92,9 +92,12 @@ func validExamSittingLifecycleTransition(value store.ExamSittingLifecycleTransit
 	}
 }
 
+// examSittingLifecycleFailure fails permanently only for input the Store refused. A
+// database constraint rejection can come from a concurrent transition or clock
+// skew, so it stays retryable within the attempt budget.
 func examSittingLifecycleFailure(err error) jobengine.Outcome {
 	var invalid *store.ErrInvalidInput
-	if errors.As(err, &invalid) || store.IsNotFound(err) {
+	if (errors.As(err, &invalid) && !store.IsConstraintViolation(err)) || store.IsNotFound(err) {
 		return jobengine.PermanentFailure("job.invariant_failed", err)
 	}
 	return jobengine.RetryableFailure("dependency.unavailable", err)
