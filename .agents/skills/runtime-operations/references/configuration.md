@@ -104,6 +104,14 @@ environment overrides. Unknown fields are rejected, validation errors are
 aggregated where possible, URLs/durations are parsed at the boundary, secrets
 are explicitly redacted, and the schema is versioned.
 
+In `server/config`, `config.go` holds the root `Config`, `Default`, cloning,
+redaction, and the aggregate `Validate`. Each top-level section declares its
+types and its validation in the file named for it (`server.go`,
+`server_tls.go`, `metrics.go`, `database.go`, `cache.go`, `cluster.go`,
+`mail.go`, `vfs.go`, `file_content.go`, `authentication.go`,
+`external_authentication.go`, `localization.go`, `log.go`); checks that span
+sections, such as secret-key separation, have their own file.
+
 `Database.MaxOpenConnections` is at least two because Morph holds one
 connection for migration work and a second for its refreshed named lock during
 startup convergence.

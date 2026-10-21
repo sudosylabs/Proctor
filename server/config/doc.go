@@ -28,4 +28,8 @@
 // Successful effective changes notify listeners after serialized Store work has
 // completed, allowing a listener to perform another configuration operation.
 // Store owns its backing lifecycle and Close is terminal.
+//
+// config.go declares the root Config, its defaults, cloning, redaction, and
+// the aggregate Validate. Each top-level section declares its types and
+// validation in the file named for it.
 package config

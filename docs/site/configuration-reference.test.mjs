@@ -9,10 +9,11 @@ const repositoryRoot = resolve(siteRoot, '../..');
 const referenceRoot = resolve(siteRoot, '../public/reference/configuration');
 
 async function configurationStructs() {
-  const sources = await Promise.all([
-    'server/config/config.go',
-    'server/config/external_authentication.go',
-  ].map((file) => readFile(resolve(repositoryRoot, file), 'utf8')));
+  const configDirectory = resolve(repositoryRoot, 'server/config');
+  const files = (await readdir(configDirectory, {withFileTypes: true}))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.go') && !entry.name.endsWith('_test.go'))
+    .map((entry) => resolve(configDirectory, entry.name));
+  const sources = await Promise.all(files.map((file) => readFile(file, 'utf8')));
 
   const structs = new Map();
   for (const source of sources) {
