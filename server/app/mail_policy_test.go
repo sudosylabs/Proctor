@@ -16,7 +16,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -178,13 +178,13 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 		{FanoutsTerminalized: 4, DeliveriesSuppressed: 2, More: true},
 		{FanoutsTerminalized: 1, DeliveriesSuppressed: 1},
 	}}
-	command, _ := json.Marshal(appjobs.MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
+	command, _ := json.Marshal(jobhandler.MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, 1, command, "cleanup", time.Now(), time.Now(), 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	metrics := &recordingMailMetrics{}
-	descriptor := appjobs.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})
+	descriptor := jobhandler.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})
 	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
 	if outcome.Kind != jobengine.OutcomeSucceeded || string(outcome.Result) != `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}` {
 		t.Fatalf("cleanup outcome = %#v", outcome)

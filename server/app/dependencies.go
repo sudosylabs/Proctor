@@ -18,7 +18,7 @@ import (
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -33,10 +33,10 @@ type FileContent interface {
 	ProfilePictureReadFiles
 	DefaultProfilePictureRenderFiles
 	DefaultProfilePictureGenerationFiles
-	appjobs.FileRevisionContentPurger
-	appjobs.StarterWorkspaceObjectPurger
-	appjobs.AttemptWorkspaceObjectPurger
-	appjobs.RetentionContentPurger
+	jobhandler.FileRevisionContentPurger
+	jobhandler.StarterWorkspaceObjectPurger
+	jobhandler.AttemptWorkspaceObjectPurger
+	jobhandler.RetentionContentPurger
 	examengine.ExportContent
 	examattempt.Content
 	examresource.FileContent

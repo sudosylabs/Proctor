@@ -8,7 +8,7 @@ internal/canonicaljson ← model ← store ← app/job
 {model, store} ← app/apperror ← {app, app/idempotency, app/exam, httpapi, websocket}
 model ← app/invocation ← {app, app/idempotency, app/exam}
 {model, store, app/apperror, app/invocation} ← app/idempotency ← {app, app/exam}
-{model, store, app/job, app/mail, app/exam} ← app/jobs ← app
+{model, store, app/job, app/mail, app/exam} ← app/jobhandler ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
@@ -51,7 +51,7 @@ inside `app/` are application-owned modules, not transports.
 | `app/apperror` | `store` error contracts, standard library | SQL, HTTP status, localization, transports, concrete adapters |
 | `app/invocation` | `model`, standard library | authorization or audit policy, `store`, parent `app`, Exam modules, transports, concrete adapters |
 | `app/idempotency` | `model`, `store`, `app/apperror`, `app/invocation`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
-| `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
+| `app/jobhandler` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/apperror`, `app/invocation`, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
@@ -61,7 +61,7 @@ inside `app/` are application-owned modules, not transports.
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
-| `app` | `model`, `store`, `app/apperror`, `app/invocation`, `app/idempotency`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
+| `app` | `model`, `store`, `app/apperror`, `app/invocation`, `app/idempotency`, `app/job`, `app/jobhandler`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `httpapi` | `app`, `app/apperror`, `model`, `localization`, `internal/weborigin`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |

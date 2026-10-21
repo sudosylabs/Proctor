@@ -18,7 +18,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -73,7 +73,7 @@ func TestRecurringMaintenanceUsesOnePermanentOccurrenceAcrossNodesAndRestart(t *
 	persistence := openClusteredJobIntegrationStore(t)
 	occurrence := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
 	proposer := &signalingCleanupProposer{
-		next: integrationRecurrenceProposer(t, appjobs.NewCatalog(appjobs.CatalogDependencies{
+		next: integrationRecurrenceProposer(t, jobhandler.NewCatalog(jobhandler.CatalogDependencies{
 			JobStore: persistence.Job(), Now: time.Now,
 		}), "job-history-cleanup"),
 		calls: make(chan recurrenceProposalResult, 3),
@@ -118,7 +118,7 @@ func TestRecurringMaintenanceRecoversTransientProposalFailureWithoutRepeatingCom
 	persistence := openClusteredJobIntegrationStore(t)
 	occurrence := time.Date(2026, time.August, 11, 8, 0, 0, 0, time.UTC)
 	proposer := &signalingCleanupProposer{
-		next: integrationRecurrenceProposer(t, appjobs.NewCatalog(appjobs.CatalogDependencies{
+		next: integrationRecurrenceProposer(t, jobhandler.NewCatalog(jobhandler.CatalogDependencies{
 			JobStore: persistence.Job(), Now: time.Now,
 		}), "job-history-cleanup"),
 		remainingFail: 1,
@@ -153,7 +153,7 @@ func TestRecurringMaintenanceRecoversTransientProposalFailureWithoutRepeatingCom
 
 func newRecurrenceIntegrationEngine(t *testing.T, persistence *sqlstore.SQLStore, nodeID string, proposer jobengine.OccurrenceProposer, occurrence time.Time) *jobengine.Engine {
 	t.Helper()
-	descriptor := integrationJobDescriptor(t, appjobs.NewCatalog(appjobs.CatalogDependencies{
+	descriptor := integrationJobDescriptor(t, jobhandler.NewCatalog(jobhandler.CatalogDependencies{
 		JobStore: persistence.Job(), Now: time.Now,
 	}), model.JobTypeCleanup)
 	descriptor.Handler = recurrenceIntegrationHandler{}
@@ -169,7 +169,7 @@ func newRecurrenceIntegrationEngine(t *testing.T, persistence *sqlstore.SQLStore
 	return engine
 }
 
-func integrationJobDescriptor(t *testing.T, catalog appjobs.Catalog, jobType model.JobType) jobengine.Descriptor {
+func integrationJobDescriptor(t *testing.T, catalog jobhandler.Catalog, jobType model.JobType) jobengine.Descriptor {
 	t.Helper()
 	for _, descriptor := range catalog.Descriptors {
 		if descriptor.Type == jobType {
@@ -180,7 +180,7 @@ func integrationJobDescriptor(t *testing.T, catalog appjobs.Catalog, jobType mod
 	return jobengine.Descriptor{}
 }
 
-func integrationRecurrenceProposer(t *testing.T, catalog appjobs.Catalog, name string) jobengine.OccurrenceProposer {
+func integrationRecurrenceProposer(t *testing.T, catalog jobhandler.Catalog, name string) jobengine.OccurrenceProposer {
 	t.Helper()
 	for _, recurrence := range catalog.Recurrences {
 		if recurrence.Name == name {

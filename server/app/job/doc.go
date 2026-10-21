@@ -20,8 +20,8 @@
 // stage, result, public error code, or recurring occurrence.
 //
 // Domain-specific handlers, commands, and recurrence proposers live in the
-// sibling app/jobs package. Parent app supplies narrow use-case adapters and
-// constructs Engine from the immutable app/jobs catalog plus domain-owned
+// sibling app/jobhandler package. Parent app supplies narrow use-case adapters and
+// constructs Engine from the immutable app/jobhandler catalog plus domain-owned
 // PeriodicTasks. The module-root
 // server retains the constructed Engine and owns when it starts and closes;
 // construction itself is inert.
@@ -34,6 +34,6 @@
 //
 // Tests at this boundary cover registration, execution, fencing, recovery,
 // recurrence, projections, controls, races, and shutdown. Concrete handler
-// tests live in app/jobs, while PostgreSQL and root-lifecycle tests provide
+// tests live in app/jobhandler, while PostgreSQL and root-lifecycle tests provide
 // cross-component recovery and wiring evidence.
 package job

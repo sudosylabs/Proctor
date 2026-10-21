@@ -19,7 +19,7 @@ import (
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -83,7 +83,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		SystemAuditor:  examSittingSystemAuditAdapter{audit: foundation.audit},
 		Effects:        examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
 		EffectFailures: examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
-		Jobs:           appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
+		Jobs:           jobhandler.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
 		Mail:           sittingMailPreparation,
 		Now:            time.Now,
 		NewID:          model.NewExamSittingID,

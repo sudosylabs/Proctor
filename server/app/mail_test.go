@@ -19,7 +19,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -92,7 +92,7 @@ func TestCredentialMailDescriptorUsesDedicatedPoolAndReserve(t *testing.T) {
 	job.Type = model.JobTypeMailDeliverCredential
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
-	descriptor := appjobs.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant,
+	descriptor := jobhandler.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant,
 		func() time.Time { return at.Add(time.Second) }, true)
 	if descriptor.Type != model.JobTypeMailDeliverCredential || descriptor.Concurrency != 4 {
 		t.Fatalf("credential descriptor = type %q concurrency %d", descriptor.Type, descriptor.Concurrency)
@@ -140,15 +140,15 @@ func (s *mailStoreFake) CompleteDelivery(_ context.Context, input *store.MailDel
 }
 
 type jobMailMetricsFake struct {
-	values   []appjobs.MailDeliveryMetric
-	attempts []appjobs.MailAttemptMetric
+	values   []jobhandler.MailDeliveryMetric
+	attempts []jobhandler.MailAttemptMetric
 }
 
-func (r *jobMailMetricsFake) RecordJobMailDelivery(_ context.Context, metric appjobs.MailDeliveryMetric) {
+func (r *jobMailMetricsFake) RecordJobMailDelivery(_ context.Context, metric jobhandler.MailDeliveryMetric) {
 	r.values = append(r.values, metric)
 }
 
-func (r *jobMailMetricsFake) RecordJobMailAttempt(_ context.Context, metric appjobs.MailAttemptMetric) {
+func (r *jobMailMetricsFake) RecordJobMailAttempt(_ context.Context, metric jobhandler.MailAttemptMetric) {
 	r.attempts = append(r.attempts, metric)
 }
 
@@ -622,7 +622,7 @@ func TestMailDeliveryHandlerRecordsAttemptBeforeCompletionFailure(t *testing.T) 
 	persistence := &mailStoreFake{delivery: delivery, completeErr: completionErr}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
 	recorder := &jobMailMetricsFake{}
-	descriptor := appjobs.NewMailDeliveryDescriptor(
+	descriptor := jobhandler.NewMailDeliveryDescriptor(
 		persistence, sender, sealer, recorder, nil, jobMailDeliveryIsRelevant,
 		func() time.Time { return at.Add(time.Second) }, false,
 	)
@@ -712,10 +712,10 @@ func mailDeliveryHandlerFixture(t *testing.T, at time.Time, deadlineAfter time.D
 	return sealer, prepared.Job, prepared.Delivery
 }
 
-func runMailDeliveryJob(persistence appjobs.MailDeliveryLifecycleStore, sender MailDeliverySender,
+func runMailDeliveryJob(persistence jobhandler.MailDeliveryLifecycleStore, sender MailDeliverySender,
 	sealer *secretseal.Sealer, now func() time.Time, job *model.Job,
 ) jobengine.Outcome {
-	descriptor := appjobs.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant, now, false)
+	descriptor := jobhandler.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant, now, false)
 	return descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
 }
 

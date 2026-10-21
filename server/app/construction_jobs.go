@@ -14,7 +14,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,7 +34,7 @@ func constructJobs(
 		return jobConstruction{}, errors.New("Examination lifecycle use cases are required when Jobs are enabled")
 	}
 
-	defaultJobs := appjobs.NewDefaultProfilePictureJobs(deps.Store.Job())
+	defaultJobs := jobhandler.NewDefaultProfilePictureJobs(deps.Store.Job())
 	// Enabled workers must be able to open every active payload before runtime
 	// construction. Disabled workers suppress payloads before decryption, so a
 	// deliberately absent or retired ring must not prevent that convergence.
@@ -150,7 +150,7 @@ func buildApplicationJobDefinitions(
 	identity identityConstruction,
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
-	defaultJobs *appjobs.DefaultProfilePictureJobs,
+	defaultJobs *jobhandler.DefaultProfilePictureJobs,
 	mailHealth *MailHealth,
 ) applicationJobDefinitions {
 	if mailHealth == nil {
@@ -159,11 +159,11 @@ func buildApplicationJobDefinitions(
 	lifecycleUseCases := examSittingLifecycleJobUseCases{sittings: examinations.sittings}
 	sealingUseCases := examSittingSealingJobUseCases{sittings: examinations.sittings, attempts: examinations.attempts,
 		jobs: deps.Store.Job(), now: time.Now, newID: model.NewJobID}
-	var onboarding appjobs.OnboardingImportService
+	var onboarding jobhandler.OnboardingImportService
 	if identity.onboardingImports != nil {
 		onboarding = onboardingImportJobs{service: identity.onboardingImports}
 	}
-	catalog := appjobs.NewCatalog(appjobs.CatalogDependencies{
+	catalog := jobhandler.NewCatalog(jobhandler.CatalogDependencies{
 		JobStore:                       deps.Store.Job(),
 		DefaultProfilePictureGenerator: jobDefaultProfilePictureGenerator{service: profiles.profilePictures}, Users: deps.Store.User(), DefaultProfilePictureJobs: defaultJobs,
 		Files: deps.Store.File(), FileContent: deps.FileContent,

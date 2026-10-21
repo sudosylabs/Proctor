@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -94,7 +94,7 @@ func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
 	if job == nil || job.Validate() != nil || job.Type != model.JobTypeMailRekey || job.CommandVersion != 1 {
 		return MailRekeyStatusView{}, errors.New("mail rekey Job is invalid")
 	}
-	command, commandErr := appjobs.DecodeMailRekeyCommand(job.Command)
+	command, commandErr := jobhandler.DecodeMailRekeyCommand(job.Command)
 	if commandErr != nil || !validMailRekeyKeyID(command.PrimaryKeyID) ||
 		!validMailRekeyKeyID(command.RetiringKeyID) || command.PrimaryKeyID == command.RetiringKeyID {
 		return MailRekeyStatusView{}, errors.New("mail rekey command is invalid")
@@ -104,7 +104,7 @@ func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
 		CompletedAt: job.CompletedAt, PublicErrorCode: job.PublicErrorCode,
 		AttemptCount: job.AttemptCount, MaximumAttempts: job.MaximumAttempts}
 	if len(job.Checkpoint) > 0 {
-		checkpoint, err := appjobs.DecodeMailRekeyCheckpoint(job.CheckpointVersion, job.Checkpoint)
+		checkpoint, err := jobhandler.DecodeMailRekeyCheckpoint(job.CheckpointVersion, job.Checkpoint)
 		if err != nil || job.Progress == nil || job.Progress.Current != checkpoint.Processed ||
 			job.Progress.Total < checkpoint.Processed || job.Progress.Stage != "reencrypting" {
 			return MailRekeyStatusView{}, errors.New("mail rekey checkpoint projection is invalid")
@@ -118,7 +118,7 @@ func projectMailRekeyStatus(job *model.Job) (MailRekeyStatusView, error) {
 		if job.Status != model.JobStatusSucceeded || job.ResultVersion != 1 {
 			return MailRekeyStatusView{}, errors.New("mail rekey result state is invalid")
 		}
-		result, resultErr := appjobs.DecodeMailRekeyResult(job.Result)
+		result, resultErr := jobhandler.DecodeMailRekeyResult(job.Result)
 		if resultErr != nil ||
 			result.PrimaryKeyID != command.PrimaryKeyID || result.RetiringKeyID != command.RetiringKeyID ||
 			result.Processed < view.Processed || result.Reencrypted < view.Reencrypted || result.Reencrypted > result.Processed ||

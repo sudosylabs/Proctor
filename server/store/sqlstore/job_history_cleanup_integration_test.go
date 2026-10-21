@@ -15,7 +15,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -27,7 +27,7 @@ func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
 	for range 237 {
 		insertTerminalJobHistoryFixture(t, ss, model.JobTypeProfilePictureGenerateDefault, model.JobStatusSucceeded, 31*24*time.Hour, true)
 	}
-	catalog := appjobs.NewCatalog(appjobs.CatalogDependencies{JobStore: ss.Job(), Now: time.Now})
+	catalog := jobhandler.NewCatalog(jobhandler.CatalogDependencies{JobStore: ss.Job(), Now: time.Now})
 	var descriptor jobengine.Descriptor
 	var proposer jobengine.OccurrenceProposer
 	for _, value := range catalog.Descriptors {

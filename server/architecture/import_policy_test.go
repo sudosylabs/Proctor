@@ -256,7 +256,7 @@ var dependencyRules = []dependencyRule{
 	},
 	{
 		name:           "concrete jobs",
-		sources:        []pathPattern{subtree(serverModule + "/app/jobs")},
+		sources:        []pathPattern{subtree(serverModule + "/app/jobhandler")},
 		deniedStandard: standardInfrastructure,
 		project: only(
 			exact(serverModule+"/model"),
@@ -424,7 +424,7 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/app/job"),
-			exact(serverModule+"/app/jobs"),
+			exact(serverModule+"/app/jobhandler"),
 			exact(serverModule+"/app/realtime"),
 			exact(serverModule+"/app/mail"),
 			exact(serverModule+"/secretseal"),
@@ -615,7 +615,7 @@ func TestDependencyRulePrecedence(t *testing.T) {
 		packagePath string
 		wantRule    string
 	}{
-		{packagePath: serverModule + "/app/jobs", wantRule: "concrete jobs"},
+		{packagePath: serverModule + "/app/jobhandler", wantRule: "concrete jobs"},
 		{packagePath: serverModule + "/app/idempotency", wantRule: "idempotency application"},
 		{packagePath: serverModule + "/app/invocation", wantRule: "invocation application"},
 		{packagePath: serverModule + "/app/apperror", wantRule: "application error vocabulary"},

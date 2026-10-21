@@ -16,7 +16,7 @@ import (
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	appinvocation "github.com/sudosylabs/proctor/server/app/invocation"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -25,12 +25,12 @@ import (
 // narrow capabilities consumed by concrete Jobs. They intentionally do not
 // expose App, Dependencies, store.Catalog, or platform.Service.
 
-type MailRekeyCommandV1 = appjobs.MailRekeyCommandV1
-type MailRekeyCheckpointV1 = appjobs.MailRekeyCheckpointV1
-type MailRekeyResultV1 = appjobs.MailRekeyResultV1
+type MailRekeyCommandV1 = jobhandler.MailRekeyCommandV1
+type MailRekeyCheckpointV1 = jobhandler.MailRekeyCheckpointV1
+type MailRekeyResultV1 = jobhandler.MailRekeyResultV1
 
 func prepareUserDefaultProfilePictureJob(user *model.User, at time.Time) (*model.User, *model.Job, error) {
-	return appjobs.PrepareUserDefaultProfilePictureJob(user, at)
+	return jobhandler.PrepareUserDefaultProfilePictureJob(user, at)
 }
 
 type jobDefaultProfilePictureGenerator struct{ service *profilePictureService }
@@ -52,7 +52,7 @@ func (jobDefaultProfilePictureGenerator) ClassifyDefaultProfilePictureError(err 
 
 type jobMailDeliveryRecorder struct{ recorder MailDeliveryRecorder }
 
-func (a jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context, metric appjobs.MailDeliveryMetric) {
+func (a jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context, metric jobhandler.MailDeliveryMetric) {
 	if a.recorder == nil {
 		return
 	}
@@ -62,7 +62,7 @@ func (a jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context, metr
 	})
 }
 
-func (a jobMailDeliveryRecorder) RecordJobMailAttempt(ctx context.Context, metric appjobs.MailAttemptMetric) {
+func (a jobMailDeliveryRecorder) RecordJobMailAttempt(ctx context.Context, metric jobhandler.MailAttemptMetric) {
 	if a.recorder == nil {
 		return
 	}

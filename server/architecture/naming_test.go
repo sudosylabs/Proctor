@@ -139,6 +139,24 @@ func TestSQLStoreAdvisoryLocksUseOneHelper(t *testing.T) {
 	})
 }
 
+// pluralEntityFile matches a file name that pluralizes a domain entity word.
+var pluralEntityFile = regexp.MustCompile(`(^|_)(attempts|corrections|exams|exports|invalidations|managers|notices|resources|reviews|revisions|sittings|submissions|templates)(_|$)`)
+
+// TestFilesAreNamedForTheSingularConcept names a file for the singular concept
+// it holds, such as exam_attempt.go. Concepts whose name is plural, such as
+// Exam Records or User Settings, and topic files such as metrics.go keep their
+// names.
+func TestFilesAreNamedForTheSingularConcept(t *testing.T) {
+	t.Parallel()
+
+	inspectServerGoFiles(t, func(path string, _ *ast.File) {
+		stem := strings.TrimSuffix(filepath.Base(path), ".go")
+		if pluralEntityFile.MatchString(stem) {
+			t.Errorf("%s pluralizes a domain entity; name the file for the singular concept", path)
+		}
+	})
+}
+
 func receiverTypeName(expression ast.Expr) string {
 	switch typed := expression.(type) {
 	case *ast.StarExpr:

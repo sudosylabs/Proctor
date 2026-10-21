@@ -1011,7 +1011,7 @@
       "visual_system": "proctor-assurance-v1",
       "last_reviewed": "2026-08-30",
       "visual_review": {"status": "approved", "source_sha256": "5888b3fe87870ceed0b16f114e801e75d04cbec38b1bf2f8d2b1503e6ea9bc06", "reviewed": "2026-08-30", "method": "Exact SVG bytes inspected full-size in a browser and in-page at 1440x1024 and 390x844; responsive review confirmed containment, connector continuity, no horizontal overflow, and usable caption/full-size controls, while print-emulated element capture confirmed contrast and non-color meaning.", "checks": ["text_containment", "connector_continuity", "rendered_legibility", "narrow_viewport", "print_contrast"], "viewports": [{"name": "desktop", "width": 1440, "height": 1024}, {"name": "mobile", "width": 390, "height": 844}]},
-      "review_triggers": [".agents/skills/exam-lifecycle/references/examinations.md", "server/model/exam_submission.go", "server/app/exam_submissions.go", "server/store/sqlstore/exam_submission_store.go"]
+      "review_triggers": [".agents/skills/exam-lifecycle/references/examinations.md", "server/model/exam_submission.go", "server/app/exam_submission.go", "server/store/sqlstore/exam_submission_store.go"]
     },
     {
       "id": "integrity-review-release-boundary",
@@ -1031,7 +1031,7 @@
       "visual_system": "proctor-assurance-v1",
       "last_reviewed": "2026-08-30",
       "visual_review": {"status": "approved", "source_sha256": "df9a727dcc7bd2ef9ad95091b9f10d536a761203a3ac83cfb1627249fb79c89c", "reviewed": "2026-08-30", "method": "Exact SVG bytes inspected full-size in a browser and in-page at 1440x1024 and 390x844; responsive review confirmed containment, connector continuity, no horizontal overflow, and usable caption/full-size controls, while print-emulated element capture confirmed contrast and non-color meaning.", "checks": ["text_containment", "connector_continuity", "rendered_legibility", "narrow_viewport", "print_contrast"], "viewports": [{"name": "desktop", "width": 1440, "height": 1024}, {"name": "mobile", "width": 390, "height": 844}]},
-      "review_triggers": [".agents/skills/exam-lifecycle/references/examinations.md", "server/model/exam_review.go", "server/app/exam_reviews.go", "server/openapi/fragments/integrity-review/submissions-review.yaml", "server/openapi/fragments/submissions/exam-attempts-result.yaml"]
+      "review_triggers": [".agents/skills/exam-lifecycle/references/examinations.md", "server/model/exam_review.go", "server/app/exam_review.go", "server/openapi/fragments/integrity-review/submissions-review.yaml", "server/openapi/fragments/submissions/exam-attempts-result.yaml"]
     },
     {
       "id": "node-readiness-lifecycle",

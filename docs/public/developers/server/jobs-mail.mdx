@@ -39,7 +39,7 @@ explicitly.
 | `store.JobStore` | Enqueue, claim, lease fence, checkpoint, terminal transition, and retention guarantees |
 | `app/job` | Generic engine mechanics and safe projections |
 | Owning application capability | Why work exists, actor authorization, domain policy, and durable effects |
-| `app/jobs` | Typed handler catalog, versioned payloads, descriptors, recurrence definitions, and concrete handlers |
+| `app/jobhandler` | Typed handler catalog, versioned payloads, descriptors, recurrence definitions, and concrete handlers |
 | Module-root server | Engine start, readiness participation, and close order |
 
 A worker receives only the capabilities its handler declares. It does not

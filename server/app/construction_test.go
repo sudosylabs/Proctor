@@ -22,7 +22,7 @@ import (
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
-	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -266,7 +266,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	if jobs.runtime == nil || jobs.operations == nil {
 		t.Fatalf("constructed Jobs = %#v, want runtime and operations", jobs)
 	}
-	_, ok := profiles.profilePictures.reads.defaultJobs.(*appjobs.DefaultProfilePictureJobs)
+	_, ok := profiles.profilePictures.reads.defaultJobs.(*jobhandler.DefaultProfilePictureJobs)
 	if !ok {
 		t.Fatalf("profile default Jobs = %#v, want attached proposer with wake backlink", profiles.profilePictures.reads.defaultJobs)
 	}
@@ -295,7 +295,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		applicationFoundation{},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
 		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}}, profiles,
-		appjobs.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
+		jobhandler.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
 		newMailHealth(false),
 	)
 	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
