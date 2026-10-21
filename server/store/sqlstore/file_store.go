@@ -577,7 +577,7 @@ func publishProfilePictureRevision(ctx context.Context, tx *sqlxTxWrapper, actor
 	if _, err = tx.Exec(ctx, `UPDATE file_entries SET current_revision_id = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, revisionID.String(), at, entryID.String()); err != nil {
 		return nil, fmt.Errorf("publish file entry: %w", err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at = ?, updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, at, at, leaseID.String()); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE upload_leases SET consumed_at = GREATEST(created_at, ?), updated_at = GREATEST(updated_at, ?), revision = revision + 1 WHERE id = ?`, at, at, leaseID.String()); err != nil {
 		return nil, fmt.Errorf("consume upload lease: %w", err)
 	}
 	return &model.FileRevision{ID: revisionID, FileEntryID: entryID, CreatedAt: renditions[0].CreatedAt, Availability: model.FileAvailabilityAvailable, IndexingState: model.FileIndexingNotRequired, Renditions: append([]model.FileRendition(nil), renditions...)}, nil

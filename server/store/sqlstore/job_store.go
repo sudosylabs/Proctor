@@ -249,7 +249,9 @@ func (s SQLJobStore) ClaimNext(ctx context.Context, request *store.JobClaimReque
 		if err != nil {
 			return nil, err
 		}
-		running, err := job.Start(databaseNow)
+		// CURRENT_TIMESTAMP decided claimability; the recorded transition never
+		// precedes the enqueueing node's clock or a later committed transition.
+		running, err := job.Start(latestTime(job.UpdatedAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrConflict("job", "not_claimable", err)
 		}
@@ -287,7 +289,9 @@ func (s SQLJobStore) Heartbeat(ctx context.Context, input *store.JobHeartbeat) (
 		if err != nil {
 			return nil, err
 		}
-		heartbeat, err := attempt.Heartbeat(databaseNow, databaseNow.Add(input.LeaseDuration))
+		// A concurrent heartbeat may have committed a later transaction start.
+		heartbeatAt := latestTime(attempt.HeartbeatAt, databaseNow)
+		heartbeat, err := attempt.Heartbeat(heartbeatAt, heartbeatAt.Add(input.LeaseDuration))
 		if err != nil {
 			return nil, store.NewErrConflict("job_attempt", "not_running", err)
 		}
@@ -315,7 +319,7 @@ func (s SQLJobStore) Checkpoint(ctx context.Context, input *store.JobCheckpoint)
 		if err != nil {
 			return nil, err
 		}
-		updated, err := job.UpdateProgress(input.Progress, input.CheckpointVersion, input.Checkpoint, databaseNow)
+		updated, err := job.UpdateProgress(input.Progress, input.CheckpointVersion, input.Checkpoint, latestTime(job.UpdatedAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job", "checkpoint", err)
 		}
@@ -371,35 +375,39 @@ func (s SQLJobStore) Complete(ctx context.Context, input *store.JobCompletion) (
 		if err != nil {
 			return nil, err
 		}
+		// The lease fence above used CURRENT_TIMESTAMP. The recorded transition
+		// never precedes the Job's enqueueing node clock or a transition that a
+		// later-starting transaction committed before this one locked the rows.
+		jobAt := latestTime(job.UpdatedAt, databaseNow)
 		var attemptStatus model.JobAttemptStatus
 		var updated *model.Job
 		switch input.Kind {
 		case store.JobCompletionSucceeded:
 			attemptStatus = model.JobAttemptStatusSucceeded
-			updated, err = job.Succeed(input.ResultVersion, input.Result, databaseNow)
+			updated, err = job.Succeed(input.ResultVersion, input.Result, jobAt)
 		case store.JobCompletionRetryableFailure:
 			attemptStatus = model.JobAttemptStatusFailed
 			if job.AttemptCount < job.MaximumAttempts {
-				updated, err = job.Retry(input.PublicErrorCode, databaseNow.Add(input.RetryDelay), databaseNow)
+				updated, err = job.Retry(input.PublicErrorCode, jobAt.Add(input.RetryDelay), jobAt)
 			} else {
-				updated, err = job.Fail(input.PublicErrorCode, databaseNow)
+				updated, err = job.Fail(input.PublicErrorCode, jobAt)
 			}
 		case store.JobCompletionRelinquished:
 			attemptStatus = model.JobAttemptStatusIncompatible
-			updated, err = job.Relinquish(input.PublicErrorCode, databaseNow.Add(input.RetryDelay), databaseNow)
+			updated, err = job.Relinquish(input.PublicErrorCode, jobAt.Add(input.RetryDelay), jobAt)
 		case store.JobCompletionPermanentFailure:
 			attemptStatus = model.JobAttemptStatusFailed
-			updated, err = job.Fail(input.PublicErrorCode, databaseNow)
+			updated, err = job.Fail(input.PublicErrorCode, jobAt)
 		case store.JobCompletionCanceled:
 			attemptStatus = model.JobAttemptStatusCanceled
-			updated, err = job.Cancel(input.PublicErrorCode, databaseNow)
+			updated, err = job.Cancel(input.PublicErrorCode, jobAt)
 		default:
 			err = fmt.Errorf("unknown completion kind %q", input.Kind)
 		}
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job", "completion", err)
 		}
-		completedAttempt, err := attempt.Complete(attemptStatus, input.PublicErrorCode, databaseNow)
+		completedAttempt, err := attempt.Complete(attemptStatus, input.PublicErrorCode, latestTime(attempt.HeartbeatAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrInvalidInput("job_attempt", "completion", err)
 		}
@@ -548,7 +556,7 @@ func (s SQLJobStore) mutateOperatorJob(ctx context.Context, input *store.JobMuta
 		if job.Revision != input.ExpectedRevision {
 			return nil, store.NewErrConflict("job", "job_changed", nil)
 		}
-		updated, err := mutate(job, databaseNow)
+		updated, err := mutate(job, latestTime(job.UpdatedAt, databaseNow))
 		if err != nil {
 			return nil, store.NewErrConflict("job", operation+"_unsupported", err)
 		}

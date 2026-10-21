@@ -327,7 +327,7 @@ func (s SQLClassStore) archiveClass(ctx context.Context, id model.ClassID, archi
 		if dependent {
 			return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 		}
-		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
+		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive class: %w", err)
 		}

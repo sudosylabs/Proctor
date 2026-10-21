@@ -393,7 +393,9 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 				return updated, nil
 			}
 		}
-		startAt := at
+		// Operator and fenced transitions record PostgreSQL time; the worker's
+		// clock never moves the delivery's modification time backwards.
+		startAt := latestTime(current.UpdatedAt, at)
 		if credential || invitationCredential || sittingFence != nil || retentionMail {
 			startAt = databaseNow
 			if startAt.Before(current.UpdatedAt) {
@@ -617,23 +619,26 @@ func (s SQLMailStore) CompleteDelivery(ctx context.Context, input *store.MailDel
 		return nil, store.NewErrInvalidInput("mail_delivery", "complete", nil)
 	}
 	return s.mutateDelivery(ctx, input.DeliveryID, input.ExpectedRevision, func(current *model.MailDelivery) (*model.MailDelivery, error) {
+		// The reporting node's clock never records an outcome before a
+		// transition stamped at PostgreSQL time or by another node.
+		at := latestTime(current.UpdatedAt, input.At)
 		switch input.Kind {
 		case store.MailDeliveryCompletionAccepted:
 			if input.PublicFailureCode != "" {
 				return nil, errors.New("accepted mail has a failure code")
 			}
-			return current.Accept(input.At)
+			return current.Accept(at)
 		case store.MailDeliveryCompletionRetry:
-			return current.Retry(input.PublicFailureCode, input.At)
+			return current.Retry(input.PublicFailureCode, at)
 		case store.MailDeliveryCompletionFailed:
-			return current.Fail(input.PublicFailureCode, input.At)
+			return current.Fail(input.PublicFailureCode, at)
 		case store.MailDeliveryCompletionExpired:
 			if input.PublicFailureCode != "" {
 				return nil, errors.New("expired mail completion selects its fixed failure code")
 			}
-			return current.Expire(input.At)
+			return current.Expire(at)
 		case store.MailDeliveryCompletionSuppress:
-			return current.Suppress(input.PublicFailureCode, input.At)
+			return current.Suppress(input.PublicFailureCode, at)
 		default:
 			return nil, errors.New("unknown mail completion")
 		}

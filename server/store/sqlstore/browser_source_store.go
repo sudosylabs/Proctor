@@ -291,8 +291,9 @@ func closeBrowserSource(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 		Allocated int64     `db:"allocated_through_sequence"`
 		Seen      int64     `db:"highest_seen"`
 		Lease     time.Time `db:"lease_expires_at"`
+		Started   time.Time `db:"started_at"`
 	}
-	if err := tx.Get(ctx, &row, `SELECT s.closure_canonical,s.allocated_through_sequence,s.highest_seen,p.lease_expires_at FROM browser_activity_sources s JOIN exam_attempt_participations p ON p.id=s.participation_id WHERE s.id=?::uuid FOR UPDATE OF s`, string(id)); err != nil {
+	if err := tx.Get(ctx, &row, `SELECT s.closure_canonical,s.allocated_through_sequence,s.highest_seen,p.lease_expires_at,s.started_at FROM browser_activity_sources s JOIN exam_attempt_participations p ON p.id=s.participation_id WHERE s.id=?::uuid FOR UPDATE OF s`, string(id)); err != nil {
 		return err
 	}
 	var closure model.DeliveryClosure
@@ -303,7 +304,9 @@ func closeBrowserSource(ctx context.Context, tx *sqlxTxWrapper, id model.Browser
 		at = row.Lease
 		reason = model.DeliveryClosedParticipation
 	}
-	closure, err := closure.Close(false, reason, max(row.Allocated, row.Seen), at.UTC().Truncate(time.Millisecond), nil)
+	// The millisecond closure instant never precedes the microsecond start,
+	// whose clock may lead the closing lifecycle's instant.
+	closure, err := closure.Close(false, reason, max(row.Allocated, row.Seen), transitionInstant(at, row.Started), nil)
 	if err != nil {
 		return err
 	}

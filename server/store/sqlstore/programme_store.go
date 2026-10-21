@@ -276,7 +276,7 @@ func (s SQLProgrammeStore) archiveProgramme(ctx context.Context, id model.Progra
 			return nil, store.NewErrConflict("programme", "programme_has_active_levels", nil)
 		}
 		result, err := tx.Exec(ctx, `
-			UPDATE programmes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
+			UPDATE programmes SET updated_at = GREATEST(updated_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
 			 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive programme: %w", err)
