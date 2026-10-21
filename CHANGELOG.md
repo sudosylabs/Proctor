@@ -118,5 +118,8 @@ module when a change is not server-only. No module has been released yet.
   the VFS root instead of listing, so a large local tree no longer times out
   readiness or stalls writes.
 - VFS: S3 part size is bounded for unsized writes.
+- VFS: delimited S3 listings return common prefixes in key order among
+  objects, so a page and its cursor no longer skip prefixes that sort before
+  the page's last object.
 
 [Unreleased]: https://github.com/sudosylabs/proctor/commits/main

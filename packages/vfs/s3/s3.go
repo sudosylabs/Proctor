@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -247,7 +248,12 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 	}
 	listContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	entries := make([]vfs.Info, 0, options.Limit+1)
+	// minio-go yields each response page's objects before its common
+	// prefixes, so a prefix can arrive after objects that sort after it. A
+	// page holds at most MaxKeys entries; after reading twice that many, the
+	// smallest MaxKeys entries read are the true first ones.
+	wanted := 2 * listOptions.MaxKeys
+	entries := make([]vfs.Info, 0, wanted)
 	enough := false
 	for info := range f.client.ListObjects(listContext, f.bucket, listOptions) {
 		if info.Err != nil {
@@ -270,12 +276,14 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 			entry.Revision = ""
 		}
 		entries = append(entries, entry)
-		if len(entries) > options.Limit {
+		if len(entries) >= wanted {
 			enough = true
 			cancel()
 		}
 	}
 
+	slices.SortFunc(entries, func(a, b vfs.Info) int { return strings.Compare(a.Path, b.Path) })
+	entries = entries[:min(len(entries), options.Limit+1)]
 	page := vfs.Page{Entries: entries}
 	if len(page.Entries) > options.Limit {
 		page.Entries = page.Entries[:options.Limit]

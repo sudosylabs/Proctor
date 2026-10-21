@@ -203,3 +203,37 @@ func TestCheckRootReportsMissingBucket(t *testing.T) {
 		})
 	}
 }
+
+// S3 returns a page's common prefixes separately from its objects, and
+// minio-go yields them last; the page must still be in full-key order.
+func TestDelimitedListOrdersPrefixesAmongObjects(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(response, `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+<Name>bucket</Name><Prefix></Prefix><KeyCount>3</KeyCount><MaxKeys>3</MaxKeys><Delimiter>/</Delimiter><IsTruncated>false</IsTruncated>
+<Contents><Key>a-c.txt</Key><Size>1</Size><ETag>"1"</ETag></Contents>
+<Contents><Key>a0.txt</Key><Size>1</Size><ETag>"2"</ETag></Contents>
+<CommonPrefixes><Prefix>a.d/</Prefix></CommonPrefixes>
+</ListBucketResult>`)
+	}))
+	defer server.Close()
+	client, err := minio.New(strings.TrimPrefix(server.URL, "http://"), &minio.Options{
+		Creds:  credentials.NewStaticV4("access", "secret", ""),
+		Region: "us-east-1",
+	})
+	require.NoError(t, err)
+	filesystem, err := NewWithClient(client, "bucket", "")
+	require.NoError(t, err)
+
+	page, err := filesystem.List(t.Context(), vfs.ListOptions{Delimiter: "/", Limit: 2})
+	require.NoError(t, err)
+	paths := make([]string, 0, len(page.Entries))
+	for _, entry := range page.Entries {
+		paths = append(paths, entry.Path)
+	}
+	require.Equal(t, []string{"a-c.txt", "a.d/"}, paths)
+	require.Equal(t, "a.d/", page.NextCursor)
+}
