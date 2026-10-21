@@ -10,6 +10,7 @@ package architecture_test
 import (
 	"fmt"
 	"go/ast"
+	"go/types"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -60,6 +61,15 @@ var scheduledWireInstants = []string{
 	"ready_at",     // entry into the Ready state, named for the state
 }
 
+// wireTimestampExemptions are DTO members that name an instant but are not a
+// wire timestamp, keyed by "<package>.<type>.<member>".
+var wireTimestampExemptions = map[string]string{
+	// The membership page cursor is an opaque, versioned keyset envelope that
+	// mirrors the application's millisecond query; the public active_at query
+	// parameter and Link header carry RFC 3339.
+	serverModule + "/httpapi.membershipPageCursor.active_at": "opaque cursor keyset",
+}
+
 type wireMember struct {
 	pkg     *packages.Package
 	owner   string
@@ -71,11 +81,11 @@ type wireMember struct {
 
 // TestTransportWireMembersFollowTheNamingDialect keeps every HTTP and realtime
 // DTO member in one dialect: explicit snake_case json names, no retired
-// millisecond-era names, and instants named <verb>ed_at for a lifecycle event
-// or by a scheduled noun form.
+// millisecond-era names, and instants carried as RFC 3339 strings under a
+// <verb>ed_at lifecycle name or a scheduled noun form.
 func TestTransportWireMembersFollowTheNamingDialect(t *testing.T) {
 	t.Parallel()
-	violations := wireMemberViolations(typedServerPackages(t), wireTransportPackages)
+	violations := wireMemberViolations(typedServerPackages(t), wireTransportPackages, wireTimestampExemptions)
 	for _, violation := range violations {
 		assert.Fail(t, violation)
 	}
@@ -102,16 +112,23 @@ type examResponse struct {
 	Unnamed     string            ` + "`json:\",omitempty\"`" + `
 	ReleasedAt  time.Time         ` + "`json:\"released_at\"`" + `
 	StartAt     Optional[string]  ` + "`json:\"start_at\"`" + `
+	CursorAt    int64             ` + "`json:\"cursor_at\"`" + `
 	Secret      string            ` + "`json:\"-\"`" + `
 	internal    string
 }
 `,
 	})
-	violations := wireMemberViolations(loaded, map[string]bool{"fixture/httpapi": true})
+	violations := wireMemberViolations(loaded, map[string]bool{"fixture/httpapi": true}, map[string]string{
+		"fixture/httpapi.examResponse.cursor_at": "planted exemption",
+	})
 	expected := []string{
 		`dto.go:8: fixture/httpapi.examResponse.ID json member "examId" must be snake_case`,
 		`dto.go:9: fixture/httpapi.examResponse.UserID json member "user_Id" must be snake_case`,
 		`dto.go:10: fixture/httpapi.examResponse.CreateAt json member "create_at" is retired; use created_at`,
+		`dto.go:10: fixture/httpapi.examResponse.CreateAt json member "create_at" names an instant but has Go type int64; carry an RFC 3339 string`,
+		`dto.go:11: fixture/httpapi.examResponse.UpdatedAt json member "updated_at" names an instant but has Go type int64; carry an RFC 3339 string`,
+		`dto.go:12: fixture/httpapi.examResponse.ArchivedAt json member "archived_at" names an instant but has Go type int64; carry an RFC 3339 string`,
+		`dto.go:13: fixture/httpapi.examResponse.ExpiresAt json member "expires_at" names an instant but has Go type int64; carry an RFC 3339 string`,
 		`dto.go:14: fixture/httpapi.examResponse.PublishAt json member "publish_at" names an instant; use a <verb>ed_at lifecycle name or a scheduled noun form`,
 		`dto.go:15: fixture/httpapi.examResponse.Untagged has no json tag; name the wire member explicitly or tag it "-"`,
 		`dto.go:16: fixture/httpapi.examResponse.Unnamed has no json member name; name the wire member explicitly`,
@@ -119,7 +136,7 @@ type examResponse struct {
 	require.Equal(t, expected, violations)
 }
 
-func wireMemberViolations(loaded []*packages.Package, transports map[string]bool) []string {
+func wireMemberViolations(loaded []*packages.Package, transports map[string]bool, exemptions map[string]string) []string {
 	var violations []string
 	for _, pkg := range loaded {
 		if !transports[pkg.PkgPath] {
@@ -149,7 +166,7 @@ func wireMemberViolations(loaded []*packages.Package, transports map[string]bool
 					return true
 				}
 				for _, member := range members {
-					violations = append(violations, checkWireMember(member)...)
+					violations = append(violations, checkWireMember(member, exemptions)...)
 				}
 				return true
 			})
@@ -185,7 +202,7 @@ func anyTagged(members []wireMember) bool {
 	return false
 }
 
-func checkWireMember(member wireMember) []string {
+func checkWireMember(member wireMember, exemptions map[string]string) []string {
 	field := member.field
 	embedded := len(field.Names) == 0
 	goName := ""
@@ -216,6 +233,13 @@ func checkWireMember(member wireMember) []string {
 	if !isWireInstantName(member.name) {
 		return violations
 	}
+	if _, exempt := exemptions[member.pkg.PkgPath+"."+member.owner+"."+member.name]; exempt {
+		return violations
+	}
+	if goType := member.pkg.TypesInfo.TypeOf(field.Type); goType != nil && !isWireTimestampType(goType) {
+		violations = append(violations, fmt.Sprintf("%s json member %q names an instant but has Go type %s; carry an RFC 3339 string",
+			location, member.name, types.TypeString(wireTimestampValue(goType), types.RelativeTo(member.pkg.Types))))
+	}
 	if _, retired := retiredWireTimestampNames[member.name]; !retired && strings.HasSuffix(member.name, "_at") && !conformingInstantName(member.name) {
 		violations = append(violations, fmt.Sprintf("%s json member %q names an instant; use a <verb>ed_at lifecycle name or a scheduled noun form", location, member.name))
 	}
@@ -245,4 +269,34 @@ func conformingInstantName(name string) bool {
 		}
 	}
 	return false
+}
+
+// wireTimestampValue strips pointers and single-argument generic wrappers
+// such as httpapi.Optional[T], which encode as their value.
+func wireTimestampValue(goType types.Type) types.Type {
+	for {
+		goType = types.Unalias(goType)
+		if pointer, ok := goType.(*types.Pointer); ok {
+			goType = pointer.Elem()
+			continue
+		}
+		if named, ok := goType.(*types.Named); ok && named.TypeArgs().Len() == 1 {
+			goType = named.TypeArgs().At(0)
+			continue
+		}
+		return goType
+	}
+}
+
+// isWireTimestampType accepts a string, which transports format with
+// model.FormatRFC3339, and time.Time, which encoding/json writes as RFC 3339
+// for the canonical document mirrors that keep it.
+func isWireTimestampType(goType types.Type) bool {
+	value := wireTimestampValue(goType)
+	if named, ok := value.(*types.Named); ok && named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == "time" && named.Obj().Name() == "Time" {
+		return true
+	}
+	basic, ok := value.Underlying().(*types.Basic)
+	return ok && basic.Info()&types.IsString != 0
 }
