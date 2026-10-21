@@ -1436,15 +1436,15 @@ func (s *timedExamAttemptStore) ListSessionRevocationInvalidationTargets(arg0 co
 	})
 }
 
-func (s *timedExamAttemptStore) UpdateSecurityCoverage(arg0 context.Context, arg1 *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodUpdateSecurityCoverage), func() (model.SecurityCoverageResult, error) {
-		return s.next.UpdateSecurityCoverage(arg0, arg1)
-	})
-}
-
 func (s *timedExamAttemptStore) RenewParticipation(arg0 context.Context, arg1 *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodRenewParticipation), func() (*store.ExamAttemptParticipationRenewalResult, error) {
 		return s.next.RenewParticipation(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) UpdateSecurityCoverage(arg0 context.Context, arg1 *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodUpdateSecurityCoverage), func() (model.SecurityCoverageResult, error) {
+		return s.next.UpdateSecurityCoverage(arg0, arg1)
 	})
 }
 

@@ -971,8 +971,8 @@ type ExamAttemptStore interface {
 	// mutates or revives the generation. Stable conflict constraints are
 	// attempt_participation_credential, attempt_participation_generation,
 	// attempt_participation_sequence, and attempt_participation_expired.
-	UpdateSecurityCoverage(context.Context, *ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error)
 	RenewParticipation(context.Context, *ExamAttemptParticipationRenewal) (*ExamAttemptParticipationRenewalResult, error)
+	UpdateSecurityCoverage(context.Context, *ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error)
 	// ResolveFocusLossTarget resolves safe audit/effect scope after checking the
 	// established access selector. It also resolves the exact retained
 	// policy_suspended causal selector for duplicate-audit preflight only; it
@@ -1013,13 +1013,13 @@ type ExamAttemptStore interface {
 	// Exact selector/generation mismatches and a current unexpired lease fail
 	// with stable not-found/conflict errors rather than exposing another record.
 	ResolveParticipationExpiry(context.Context, model.ExamAttemptID, model.AttemptParticipationID, int64) (*ExamAttemptParticipationExpiryDue, error)
-	// ListExpiredParticipations returns at most limit active generations whose
-	// expiry is at or before PostgreSQL's current time, ordered by
-	// (LeaseExpiresAt, ParticipationID). Limit is 1..200.
 	DeliveryBudget(context.Context, DeliveryBudgetAccess) (*model.DeliveryBudgetSnapshot, error)
 	StopDeliveryDetails(context.Context, *DeliveryDetailsStop, *CommandIdempotency) (*model.StopDeliveryDetailsResult, error)
 	ListExpiredDeliveries(context.Context, int) ([]DeliveryExpiryDue, error)
 	ExpireDelivery(context.Context, *DeliveryExpiry) (bool, error)
+	// ListExpiredParticipations returns at most limit active generations whose
+	// expiry is at or before PostgreSQL's current time, ordered by
+	// (LeaseExpiresAt, ParticipationID). Limit is 1..200.
 	ListExpiredParticipations(context.Context, int) ([]ExamAttemptParticipationExpiryDue, error)
 	// ExpireParticipation is the single conditional operation shared by late
 	// renewal and the recurring scan. It locks the exact generation and, when
