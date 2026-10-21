@@ -128,16 +128,11 @@ func (s SQLMailStore) suppressDeliveryPage(ctx context.Context, code string, lim
 			if modelErr != nil {
 				return nil, invalidPersistedState("mail_delivery", "suppression", modelErr)
 			}
-			if _, err = tx.Exec(ctx, `UPDATE mail_deliveries SET state=?,updated_at=?,accepted_at=NULL,failed_at=NULL,public_failure_code=?,payload_key_id=NULL,encrypted_payload=NULL,revision=? WHERE id=? AND revision=?`,
-				string(updated.State), updated.UpdatedAt, updated.PublicFailureCode, updated.Revision, updated.ID.String(), current.Revision); err != nil {
+			// The shared transition keeps dependent projections, such as a
+			// Retention Notice's delivery state, and payload-key references in
+			// step with the delivery.
+			if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
 				return nil, fmt.Errorf("suppress mail delivery: %w", err)
-			}
-			payloadKeyID, keyErr := mailPayloadKeyID(current.EncryptedPayload)
-			if keyErr != nil {
-				return nil, invalidPersistedState("mail_delivery", "payload_key_id", keyErr)
-			}
-			if err = decrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
 			}
 			if job.Status == model.JobStatusQueued || job.Status == model.JobStatusRunning {
 				canceled, cancelErr := job.RequestCancellation(transitionAt)

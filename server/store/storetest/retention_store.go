@@ -187,6 +187,33 @@ func TestRetentionStore(t *testing.T, ss store.Store, probe RetentionSQLProbe) {
 	page, err = ss.Retention().ListRecords(ctx, store.RetentionRecordListOptions{Limit: 1})
 	require.NoError(t, err)
 	require.NotEqual(t, firstRetirement, page.Items[0].Retirement.ID, "released hold reused old grace")
+	// Bulk suppression keeps the notice projection in step with its delivery.
+	notices, err = ss.Retention().ListNotices(ctx, principal.UserID, "", 100)
+	require.NoError(t, err)
+	var pendingNotice *model.RetentionNotice
+	for index := range notices {
+		if notices[index].DeliveryState == "pending" && !notices[index].CanceledAt.Valid {
+			pendingNotice = &notices[index]
+			break
+		}
+	}
+	require.NotNil(t, pendingNotice, "rescheduled grace has no pending notice")
+	bulkOccurrence, bulkDelivery, bulkJob := userTokenMailFixture(t, principal.UserID, model.NewMailOccurrenceID(), model.MailOccurrenceExamManagement, model.MailTemplateExamRetentionScheduled, model.JobTypeMailDeliver, model.NowUTC(), pendingNotice.RetireAfter)
+	require.NoError(t, ss.Retention().CompleteNotice(ctx, &store.RetentionNoticeMail{RetirementID: pendingNotice.RetirementID, RecipientUserID: principal.UserID,
+		Mail: &store.PreparedMail{Occurrence: bulkOccurrence, Delivery: bulkDelivery, Job: bulkJob}}))
+	_, err = ss.Mail().SuppressOutstanding(ctx, model.MailDeliveryDisabledCode, 500)
+	require.NoError(t, err)
+	notices, err = ss.Retention().ListNotices(ctx, principal.UserID, "", 100)
+	require.NoError(t, err)
+	bulkChecked := false
+	for _, n := range notices {
+		if n.RetirementID == pendingNotice.RetirementID {
+			require.Equal(t, string(model.MailDeliverySuppressed), n.DeliveryState, "bulk suppression left the notice projection stale")
+			require.Equal(t, model.MailDeliveryDisabledCode, n.DeliveryErrorCode, "bulk suppression left the notice projection stale")
+			bulkChecked = true
+		}
+	}
+	require.True(t, bulkChecked, "suppressed notice disappeared")
 	settings.SubmissionRetentionDays = 2
 	settings.CandidateNotices = true
 	replace("longer-policy")
