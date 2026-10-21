@@ -53,6 +53,9 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	if err != nil || (format != "png" && format != "jpeg" && format != "webp") || configuration.Width <= 0 || configuration.Height <= 0 || configuration.Width > 4096 || configuration.Height > 4096 {
 		return nil, app.ErrInvalidProfilePicture
 	}
+	if format == "jpeg" && checkJPEGScanCount(bytes.NewReader(raw)) != nil {
+		return nil, app.ErrInvalidProfilePicture
+	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}

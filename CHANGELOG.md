@@ -84,6 +84,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: a Let's Encrypt renewal attempt that times out is retried instead of
   ending renewal for the life of the process, and each failed attempt is
   logged.
+- Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
+  rejected before decoding, so a small progressive file can no longer hold a
+  content permit for minutes.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a failed audit completion is joined with, not substituted for, the

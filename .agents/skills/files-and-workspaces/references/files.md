@@ -239,7 +239,9 @@ changes, and current user-profile visibility governs reads. There is no public
 unauthenticated object URL.
 
 Verified PNG, JPEG, and WebP input is bounded to 5 MiB and 4096 by 4096 source
-pixels, decoded to defeat malformed or decompression-bomb input, stripped of
+pixels, and a JPEG to 32 scans before decoding (the standard decoder costs one
+full pass per scan and imposes no limit; Exam Resource images share the scan
+bound), decoded to defeat malformed or decompression-bomb input, stripped of
 metadata, and re-encoded as non-animated square WebP variants at 128, 256, and
 512 pixels. Non-square images use a deterministic center crop and are not
 upscaled beyond their decoded source. The original upload is not retained by

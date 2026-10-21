@@ -325,6 +325,14 @@ func validateExamResourceImage(file io.ReadSeeker, mediaType model.ExamResourceM
 	if err != nil || format != want || config.Width <= 0 || config.Height <= 0 || config.Width > maximumExamResourcePixels/config.Height {
 		return ErrInvalidExamResourceContent
 	}
+	if format == "jpeg" {
+		if _, err = file.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		if checkJPEGScanCount(file) != nil {
+			return ErrInvalidExamResourceContent
+		}
+	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
