@@ -10,6 +10,7 @@ package jobhandler
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -193,4 +194,32 @@ func (f *sittingMailExpansionStoreFake) CompleteMailExpansion(_ context.Context,
 ) (*store.ExamSittingMailFanoutSnapshot, error) {
 	f.completed = input.OccurrenceID
 	return f.fanout, nil
+}
+
+func TestSittingMailExpansionSkipsAnUnaddressableRecipientAndReachesLaterOnes(t *testing.T) {
+	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	preparer, err := appmail.NewSittingComposer(sittingMailRendererFake{}, &mailSenderFake{enabled: true,
+		from: appmail.Address{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
+	require.NoError(t, err)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
+		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
+	require.NoError(t, err)
+	prepared, err := preparer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
+		appmail.SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
+	require.NoError(t, err)
+	users := []*model.User{mailTestUser(mailTestPrincipal(at), at), mailTestUser(mailTestPrincipal(at), at), mailTestUser(mailTestPrincipal(at), at)}
+	users[0].DisplayName = "Operator\r\nBcc: other@example.test"
+	persistence := &sittingMailExpansionStoreFake{fanout: &store.ExamSittingMailFanoutSnapshot{Occurrence: prepared.Occurrence,
+		Bundle: prepared.Bundle, SittingID: sitting.ID, SittingRevision: sitting.Revision,
+		ChangeKind: store.ExamSittingMailScheduled, Deadline: at.Add(72 * time.Hour)}, users: users}
+	outcome := (sittingMailExpansionHandler{sittings: persistence, mail: preparer}).Run(context.Background(),
+		jobengine.NewExecution(prepared.ExpansionJob, nil, func(context.Context, jobengine.CheckpointValue) error { return nil }, nil))
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v", outcome)
+	require.Equal(t, prepared.Occurrence.ID, persistence.completed)
+	require.False(t, persistence.inserted[users[0].ID])
+	require.True(t, persistence.inserted[users[1].ID])
+	require.True(t, persistence.inserted[users[2].ID])
+	var result model.SittingMailExpansionResultV1
+	require.NoError(t, json.Unmarshal(outcome.Result, &result))
+	require.Equal(t, model.SittingMailExpansionResultV1{Expanded: 2, Undeliverable: 1}, result)
 }

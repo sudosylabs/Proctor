@@ -72,6 +72,12 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 				SittingRevision: fanout.SittingRevision, Recipient: recipient.User}
 			if recipient.TemplateKey.IsValid() {
 				commit.Delivery, commit.DeliveryJob, err = h.mail.PrepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
+				if errors.Is(err, appmail.ErrSittingMailRecipientInvalid) {
+					// One unaddressable account must not stop mail to every
+					// later recipient; it is counted in the Job result.
+					checkpoint.Undeliverable++
+					continue
+				}
 				if err != nil {
 					return jobengine.RetryableFailure("mail.sitting.recipient_unavailable", err)
 				}
@@ -97,8 +103,8 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 				return jobengine.PermanentFailure("job.checkpoint.invalid", encodeErr)
 			}
 			if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1,
-				Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed,
-					Total: checkpoint.Expanded + checkpoint.Suppressed, Stage: "expanding"}, Document: document}); checkpointErr != nil {
+				Progress: &model.JobProgress{Current: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable,
+					Total: checkpoint.Expanded + checkpoint.Suppressed + checkpoint.Undeliverable, Stage: "expanding"}, Document: document}); checkpointErr != nil {
 				return jobengine.RetryableFailure("mail.sitting.unavailable", checkpointErr)
 			}
 		}
@@ -114,7 +120,7 @@ func (h sittingMailExpansionHandler) Run(ctx context.Context, execution jobengin
 
 func sittingMailExpansionSucceeded(checkpoint model.SittingMailExpansionCheckpointV1) jobengine.Outcome {
 	document, err := model.EncodeSittingMailExpansionResult(model.SittingMailExpansionResultV1{
-		Expanded: checkpoint.Expanded, Suppressed: checkpoint.Suppressed})
+		Expanded: checkpoint.Expanded, Suppressed: checkpoint.Suppressed, Undeliverable: checkpoint.Undeliverable})
 	return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: err}
 }
 

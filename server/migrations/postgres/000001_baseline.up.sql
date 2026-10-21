@@ -325,7 +325,14 @@ CREATE TABLE users (
     default_profile_picture_file_id varchar(26) REFERENCES file_entries(id),
     custom_profile_picture_file_id varchar(26) REFERENCES file_entries(id),
     profile_picture_changed_at timestamptz,
-    CONSTRAINT users_lifecycle_check CHECK (updated_at >= created_at)
+    CONSTRAINT users_lifecycle_check CHECK (updated_at >= created_at),
+    -- Profile names are single-line text that mail embeds; Unicode Cc is
+    -- rejected (model.ContainsControlCharacter).
+    CONSTRAINT users_profile_names_check CHECK (
+        display_name !~ '[\x01-\x1f\x7f-\x9f]'
+        AND first_name !~ '[\x01-\x1f\x7f-\x9f]'
+        AND last_name !~ '[\x01-\x1f\x7f-\x9f]'
+    )
 );
 
 CREATE UNIQUE INDEX users_username_key ON users (username) WHERE archived_at IS NULL;
@@ -404,6 +411,11 @@ CREATE TABLE invitations (
             AND scope_type = 'institution')
     ),
     CONSTRAINT invitations_effective_bounds_check CHECK (intended_end_at IS NULL OR intended_end_at > intended_start_at),
+    CONSTRAINT invitations_suggested_names_check CHECK (
+        suggested_display_name !~ '[\x01-\x1f\x7f-\x9f]'
+        AND suggested_first_name !~ '[\x01-\x1f\x7f-\x9f]'
+        AND suggested_last_name !~ '[\x01-\x1f\x7f-\x9f]'
+    ),
     CONSTRAINT invitations_lifetime_check CHECK (expires_at = created_at + interval '7 days'),
     CONSTRAINT invitations_lifecycle_check CHECK (
         updated_at >= created_at AND

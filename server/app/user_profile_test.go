@@ -286,3 +286,18 @@ func (s *userProfileSearchStoreFake) List(_ context.Context, options store.UserL
 	s.listOptions = options
 	return s.values, nil
 }
+
+func TestUserProfileUpdateRejectsControlCharacterNamesBeforeAudit(t *testing.T) {
+	t.Parallel()
+	events := []string{}
+	current := &model.User{ID: model.NewUserID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100), Revision: 3, Username: "student", Email: "old@example.edu", EmailVerified: true, DisplayName: "Student", Locale: "en", Timezone: "UTC"}
+	persistence := &userProfileStoreFake{events: &events, current: current}
+	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
+	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
+	displayName := "Student\r\nBcc: other@example.test"
+	_, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
+	failure, ok := apperror.As(err)
+	require.True(t, ok)
+	require.Equal(t, "user.invalid", failure.Code())
+	require.NotContains(t, events, "store-update")
+}

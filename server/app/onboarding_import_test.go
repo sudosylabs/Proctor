@@ -412,3 +412,26 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind)
 	require.Equal(t, "job.checkpoint.invalid", outcome.PublicErrorCode)
 }
+
+func TestOnboardingImportCSVMarksControlCharacterNamesInvalid(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	period, err := model.NewAcademicPeriod(model.NewAcademicPeriodID(), model.NewInstitutionAcademicPeriodOwner(model.NewInstitutionID()),
+		"2026", "2026", "", at, at.AddDate(1, 0, 0), at)
+	require.NoError(t, err)
+	class, err := model.NewClass(model.NewClassID(), model.NewProgrammeLevelID(), period.ID, "a", "A", "", at)
+	require.NoError(t, err)
+	service := &onboardingImportService{classes: onboardingImportClassStoreFake{value: class}, periods: onboardingImportPeriodStoreFake{value: period}, now: func() time.Time { return at }}
+	current := &store.OnboardingImport{ID: model.NewOnboardingImportID(), Mode: model.OnboardingImportStudentClass, ScopeType: model.RoleScopeClass,
+		ScopeID: class.ID.String(), ActorUserID: model.NewUserID()}
+	csv := "email,display_name,first_name\r\n" +
+		"one@example.edu,\"Student\r\nBcc: other@example.test\",One\r\n" +
+		"two@example.edu,Student Two,\"Tab\tName\"\r\n" +
+		"three@example.edu,Student Three,Three\r\n"
+	rows, _, _, err := service.parseCSV(context.Background(), Invocation{}, current, strings.NewReader(csv))
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	require.Equal(t, model.OnboardingImportRowInvalid, rows[0].PreviewStatus)
+	require.Equal(t, model.OnboardingImportRowInvalid, rows[1].PreviewStatus)
+	require.Equal(t, model.OnboardingImportRowValid, rows[2].PreviewStatus)
+}

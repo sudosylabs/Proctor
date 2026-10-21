@@ -197,15 +197,23 @@ func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSitt
 	return result, nil
 }
 
+// ErrSittingMailRecipientInvalid reports that one recipient's own account
+// cannot be addressed, so retrying the same recipient cannot succeed. Fan-out
+// skips that recipient rather than stopping mail to everyone after it.
+var ErrSittingMailRecipientInvalid = errors.New("sitting mail recipient is invalid")
+
 func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSnapshot, recipient *model.User,
 	key model.MailTemplateKey, bundle FrozenSittingBundleV2,
 ) (*model.MailDelivery, *model.Job, error) {
+	if recipient == nil || recipient.Validate() != nil || ValidateAddress(Address{Name: recipient.DisplayName, Address: recipient.Email}) != nil {
+		return nil, nil, ErrSittingMailRecipientInvalid
+	}
 	definition, defined := definitionFor(key)
 	content, ok := bundle.contentFor(recipient.Locale, key)
-	if p == nil || p.sealer == nil || fanout == nil || fanout.Occurrence == nil || recipient == nil || !defined ||
+	if p == nil || p.sealer == nil || fanout == nil || fanout.Occurrence == nil || !defined ||
 		definition.presentation != presentationSittingSchedule || !ok ||
-		recipient.Validate() != nil || content.Subject == "" || content.Text == "" || content.HTML == "" {
-		return nil, nil, errors.New("sitting mail recipient is invalid")
+		content.Subject == "" || content.Text == "" || content.HTML == "" {
+		return nil, nil, errors.New("sitting mail fan-out is invalid")
 	}
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})

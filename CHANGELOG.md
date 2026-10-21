@@ -116,6 +116,12 @@ module when a change is not server-only. No module has been released yet.
   shutdown no longer reports closed-listener errors.
 - Server: administrator MFA reset notices and retention grace notices are
   delivered instead of failing every attempt.
+- Server: profile names containing control characters (including CR, LF and
+  tab) are rejected as invalid input on profile update, external identity
+  provisioning, onboarding import, and invitation suggestions, instead of later
+  blocking every mail-preparing mutation for that User; the pre-release SQL
+  baseline enforces the same rule (**breaking** for development databases). A
+  Sitting mail fan-out skips an unaddressable recipient instead of stopping.
 - Cache: counter expirations are fixed windows.
 - VFS: a local listing stops once its page is full instead of walking and
   sorting the whole tree under the lock, and the server readiness probe checks

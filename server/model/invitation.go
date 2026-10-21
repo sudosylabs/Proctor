@@ -589,6 +589,9 @@ func validateInvitationSuggestions(value InvitationProfileSuggestions) error {
 		utf8.RuneCountInString(value.LastName) > UserPersonalNameMaxRunes {
 		return invalidModelError("validateInvitationSuggestions", "invitation", "", "profile name is too long", "")
 	}
+	if ContainsControlCharacter(value.DisplayName) || ContainsControlCharacter(value.FirstName) || ContainsControlCharacter(value.LastName) {
+		return invalidModelError("validateInvitationSuggestions", "invitation", "", "profile name must not contain control characters", "")
+	}
 	if value.Locale != "" && (len(value.Locale) > UserLocaleMaxLength || !validLocale.MatchString(value.Locale)) {
 		return invalidModelError("validateInvitationSuggestions", "invitation", "", "locale has an invalid format", "")
 	}

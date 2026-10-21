@@ -30,11 +30,15 @@ type SittingMailExpansionCheckpointV1 struct {
 	AfterUserID UserID `json:"after_user_id,omitempty"`
 	Expanded    int64  `json:"expanded"`
 	Suppressed  int64  `json:"suppressed"`
+	// Undeliverable counts recipients whose own account cannot be addressed;
+	// they are skipped so later recipients still receive mail.
+	Undeliverable int64 `json:"undeliverable"`
 }
 
 type SittingMailExpansionResultV1 struct {
-	Expanded   int64 `json:"expanded"`
-	Suppressed int64 `json:"suppressed"`
+	Expanded      int64 `json:"expanded"`
+	Suppressed    int64 `json:"suppressed"`
+	Undeliverable int64 `json:"undeliverable"`
 }
 
 func EncodeSittingMailExpansionCommand(value SittingMailExpansionCommandV1) (json.RawMessage, error) {
@@ -53,7 +57,7 @@ func DecodeSittingMailExpansionCommand(version int, raw json.RawMessage) (Sittin
 }
 
 func EncodeSittingMailExpansionCheckpoint(value SittingMailExpansionCheckpointV1) (json.RawMessage, error) {
-	if (!value.AfterUserID.IsZero() && !value.AfterUserID.IsValid()) || value.Expanded < 0 || value.Suppressed < 0 {
+	if (!value.AfterUserID.IsZero() && !value.AfterUserID.IsValid()) || value.Expanded < 0 || value.Suppressed < 0 || value.Undeliverable < 0 {
 		return nil, invalidModelError("EncodeSittingMailExpansionCheckpoint", "sitting_mail_job", "", "invalid Sitting mail expansion checkpoint", "")
 	}
 	return json.Marshal(value)
@@ -62,14 +66,14 @@ func EncodeSittingMailExpansionCheckpoint(value SittingMailExpansionCheckpointV1
 func DecodeSittingMailExpansionCheckpoint(version int, raw json.RawMessage) (SittingMailExpansionCheckpointV1, error) {
 	var value SittingMailExpansionCheckpointV1
 	if version != 1 || decodeStrictSittingMail(raw, &value) != nil ||
-		(!value.AfterUserID.IsZero() && !value.AfterUserID.IsValid()) || value.Expanded < 0 || value.Suppressed < 0 {
+		(!value.AfterUserID.IsZero() && !value.AfterUserID.IsValid()) || value.Expanded < 0 || value.Suppressed < 0 || value.Undeliverable < 0 {
 		return SittingMailExpansionCheckpointV1{}, invalidModelError("DecodeSittingMailExpansionCheckpoint", "sitting_mail_job", "", "invalid Sitting mail expansion checkpoint", "")
 	}
 	return value, nil
 }
 
 func EncodeSittingMailExpansionResult(value SittingMailExpansionResultV1) (json.RawMessage, error) {
-	if value.Expanded < 0 || value.Suppressed < 0 {
+	if value.Expanded < 0 || value.Suppressed < 0 || value.Undeliverable < 0 {
 		return nil, invalidModelError("EncodeSittingMailExpansionResult", "sitting_mail_job", "", "invalid Sitting mail expansion result", "")
 	}
 	return json.Marshal(value)

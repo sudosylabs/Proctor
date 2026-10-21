@@ -247,7 +247,11 @@ membership contains the Sitting's scheduled start. The implemented transition
 aggregate records one encrypted render bundle and an ordinary, bounded
 expansion Job atomically with the Sitting revision and audit. The worker pages
 the authoritative roster, commits each unique recipient independently, and
-destroys the bundle after completion. Bounded periodic reconciliation detects
+destroys the bundle after completion. A recipient whose own account cannot be
+addressed is skipped and counted as `undeliverable` in the expansion Job
+result instead of stopping mail to later recipients. User profile names reject
+Unicode control characters (Cc) in the model, at every entry path, and in the
+baseline, because mail embeds them in headers and bodies. Bounded periodic reconciliation detects
 enrollment, ending, transfer, and other audience drift for upcoming Sittings;
 multiple nodes converge through the same one-active-fan-out and recipient
 projection fences. Moving a Sitting between Classes sends removal to the

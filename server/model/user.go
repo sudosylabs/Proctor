@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -159,6 +160,16 @@ func (u *User) ApplyProfileChanges(changes *UserProfileChanges) {
 	}
 }
 
+// ContainsControlCharacter reports whether value holds a Unicode control
+// character (general category Cc: C0 including tab, CR and LF, DEL, and C1).
+// Profile names are single-line presentation text that mail headers and
+// bodies embed, so they reject these outright. Format characters (Cf) such as
+// the zero-width joiner stay legal because some scripts need them; the
+// directional overrides among them are removed by SanitizeUnicode.
+func ContainsControlCharacter(value string) bool {
+	return strings.IndexFunc(value, unicode.IsControl) >= 0
+}
+
 func (u *User) normalize() {
 	if u == nil {
 		return
@@ -200,11 +211,20 @@ func (u *User) Validate() error {
 	if utf8.RuneCountInString(u.DisplayName) > UserDisplayNameMaxRunes {
 		return invalidModelError(where, "user", "display_name", "is too long", details)
 	}
+	if ContainsControlCharacter(u.DisplayName) {
+		return invalidModelError(where, "user", "display_name", "must not contain control characters", details)
+	}
 	if utf8.RuneCountInString(u.FirstName) > UserPersonalNameMaxRunes {
 		return invalidModelError(where, "user", "first_name", "is too long", details)
 	}
+	if ContainsControlCharacter(u.FirstName) {
+		return invalidModelError(where, "user", "first_name", "must not contain control characters", details)
+	}
 	if utf8.RuneCountInString(u.LastName) > UserPersonalNameMaxRunes {
 		return invalidModelError(where, "user", "last_name", "is too long", details)
+	}
+	if ContainsControlCharacter(u.LastName) {
+		return invalidModelError(where, "user", "last_name", "must not contain control characters", details)
 	}
 	if len(u.Locale) == 0 || len(u.Locale) > UserLocaleMaxLength || !validLocale.MatchString(u.Locale) {
 		return invalidModelError(where, "user", "locale", "has an invalid format", details)
