@@ -17,6 +17,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ListExpiredDeliveries returns up to limit (1..200) native and Browser
+// Activity delivery sources whose upload deadline has passed by the database
+// clock and that are not yet marked expired, oldest deadline first.
 func (s *SQLExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit int) ([]store.DeliveryExpiryDue, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("delivery_expiry", "limit", nil)
@@ -48,6 +51,10 @@ func (s *SQLExamAttemptStore) ListExpiredDeliveries(ctx context.Context, limit i
 	}
 	return result, nil
 }
+
+// ExpireDelivery marks the due delivery source expired using the database clock
+// and completes its audit event. It reports whether this call changed the
+// source.
 func (s *SQLExamAttemptStore) ExpireDelivery(ctx context.Context, input *store.DeliveryExpiry) (bool, error) {
 	if input == nil || !input.Due.Valid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return false, store.NewErrInvalidInput("delivery_expiry", "input", nil)

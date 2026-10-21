@@ -164,6 +164,7 @@ func createAcademicUnit(ctx context.Context, tx *sqlxTxWrapper, candidate *model
 	return candidate, nil
 }
 
+// Get returns the unarchived Academic Unit with id, or a not-found error.
 func (s SQLAcademicUnitStore) Get(ctx context.Context, id model.AcademicUnitID) (*model.AcademicUnit, error) {
 	var row academicUnitRow
 	query := s.academicUnitsQuery.Where(sq.Eq{
@@ -215,6 +216,8 @@ func (s SQLAcademicUnitStore) ListAncestors(ctx context.Context, id model.Academ
 	return units, nil
 }
 
+// ListChildren returns the unarchived Academic Units of the Institution whose
+// parent is parentID, ordered by name; an empty parentID lists the root units.
 func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID model.InstitutionID, parentID model.AcademicUnitID) ([]*model.AcademicUnit, error) {
 	query := s.academicUnitsQuery.
 		Where(sq.Eq{
@@ -239,6 +242,9 @@ func (s SQLAcademicUnitStore) ListChildren(ctx context.Context, institutionID mo
 	return units, nil
 }
 
+// Search returns up to limit unarchived Academic Units of the Institution whose
+// name or display name contains term, case-insensitively. A limit outside
+// 1..200 is invalid input.
 func (s SQLAcademicUnitStore) Search(ctx context.Context, institutionID model.InstitutionID, term string, limit int) ([]*model.AcademicUnit, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("academic_unit", "limit", limit)
@@ -267,6 +273,8 @@ func (s SQLAcademicUnitStore) Search(ctx context.Context, institutionID model.In
 	return units, nil
 }
 
+// GetByName returns the unarchived Academic Unit of the Institution with the
+// exact name, or a not-found error.
 func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID model.InstitutionID, name string) (*model.AcademicUnit, error) {
 	if !institutionID.IsValid() || name == "" {
 		return nil, store.NewErrInvalidInput("academic_unit", "name", nil)
@@ -279,6 +287,9 @@ func (s SQLAcademicUnitStore) GetByName(ctx context.Context, institutionID model
 	return row.model()
 }
 
+// Update validates input.Unit, including its parent placement, and writes it in
+// one audited transaction fenced on the stored revision immediately preceding
+// the candidate's Revision.
 func (s SQLAcademicUnitStore) Update(
 	ctx context.Context,
 	input *store.AcademicUnitUpdate,
@@ -349,6 +360,9 @@ func (s SQLAcademicUnitStore) updateAcademicUnit(
 	})
 }
 
+// Archive archives the Academic Unit and completes its audit event. A positive
+// ExpectedRevision must match the stored revision, and active dependents make
+// it a conflict.
 func (s SQLAcademicUnitStore) Archive(
 	ctx context.Context,
 	input *store.AcademicUnitArchive,

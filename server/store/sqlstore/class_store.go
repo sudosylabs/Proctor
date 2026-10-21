@@ -116,6 +116,7 @@ func (s SQLClassStore) createClass(ctx context.Context, candidate *model.Class, 
 	})
 }
 
+// Get returns the unarchived Class with id, or a not-found error.
 func (s SQLClassStore) Get(ctx context.Context, id model.ClassID) (*model.Class, error) {
 	var row classRow
 	query := s.classesQuery.Where(sq.Eq{
@@ -128,6 +129,8 @@ func (s SQLClassStore) Get(ctx context.Context, id model.ClassID) (*model.Class,
 	return row.model()
 }
 
+// GetByName returns the unarchived Class with name in the given Programme Level
+// and Academic Period, or a not-found error.
 func (s SQLClassStore) GetByName(ctx context.Context, programmeLevelID model.ProgrammeLevelID, academicPeriodID model.AcademicPeriodID, name string) (*model.Class, error) {
 	var row classRow
 	query := s.classesQuery.Where(sq.Eq{
@@ -143,6 +146,8 @@ func (s SQLClassStore) GetByName(ctx context.Context, programmeLevelID model.Pro
 	return row.model()
 }
 
+// ListByProgrammeLevel returns the unarchived Classes of the Programme Level,
+// ordered by Academic Period start and then name.
 func (s SQLClassStore) ListByProgrammeLevel(ctx context.Context, programmeLevelID model.ProgrammeLevelID) ([]*model.Class, error) {
 	query := s.classesQuery.
 		Join("academic_periods ON academic_periods.id = classes.academic_period_id").
@@ -154,6 +159,8 @@ func (s SQLClassStore) ListByProgrammeLevel(ctx context.Context, programmeLevelI
 	return s.selectClasses(ctx, query, "list classes by programme level")
 }
 
+// ListByAcademicPeriod returns the unarchived Classes of the Academic Period,
+// ordered by Programme Level and name.
 func (s SQLClassStore) ListByAcademicPeriod(ctx context.Context, academicPeriodID model.AcademicPeriodID) ([]*model.Class, error) {
 	query := s.classesQuery.
 		Where(sq.Eq{
@@ -164,6 +171,9 @@ func (s SQLClassStore) ListByAcademicPeriod(ctx context.Context, academicPeriodI
 	return s.selectClasses(ctx, query, "list classes by academic period")
 }
 
+// SearchByAcademicUnit returns up to limit unarchived Classes under the
+// Academic Unit's unarchived Programmes whose name or display name contains
+// term, case-insensitively. A limit outside 1..200 is invalid input.
 func (s SQLClassStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, term string, limit int) ([]*model.Class, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("class", "limit", limit)
@@ -184,6 +194,9 @@ func (s SQLClassStore) SearchByAcademicUnit(ctx context.Context, academicUnitID 
 	return s.selectClasses(ctx, query, "search classes by academic unit")
 }
 
+// GetAcademicUnitID returns the Academic Unit that owns the Class through its
+// Programme Level and Programme, or a not-found error when any link is absent
+// or archived.
 func (s SQLClassStore) GetAcademicUnitID(ctx context.Context, id model.ClassID) (model.AcademicUnitID, error) {
 	var academicUnitID string
 	if err := s.GetMaster().Get(ctx, &academicUnitID, `
@@ -224,6 +237,9 @@ func (s SQLClassStore) selectClasses(
 	return classes, nil
 }
 
+// Update writes input.Class as revision ExpectedRevision+1 in one audited
+// transaction. The Class must still be at ExpectedRevision and owned by
+// ExpectedAcademicUnitID; otherwise the update conflicts or is not found.
 func (s SQLClassStore) Update(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
 	if input == nil || input.Class == nil || !input.ExpectedAcademicUnitID.IsValid() ||
 		input.ExpectedRevision <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
@@ -288,6 +304,8 @@ func (s SQLClassStore) updateClass(ctx context.Context, candidate *model.Class, 
 	})
 }
 
+// Archive archives the Class at input.ArchiveAt and completes its audit event,
+// fenced on ExpectedRevision and ExpectedAcademicUnitID.
 func (s SQLClassStore) Archive(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
 	if input == nil || !input.ID.IsValid() || !input.ExpectedAcademicUnitID.IsValid() ||
 		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {

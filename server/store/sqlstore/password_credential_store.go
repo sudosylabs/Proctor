@@ -105,6 +105,8 @@ func insertPasswordCredential(
 	return nil
 }
 
+// GetByUser returns the User's unarchived password credential, or a not-found
+// error.
 func (s SQLPasswordCredentialStore) GetByUser(ctx context.Context, userID model.UserID) (*model.PasswordCredential, error) {
 	var row passwordCredentialRow
 	query := s.credentialsQuery.Where(sq.Eq{

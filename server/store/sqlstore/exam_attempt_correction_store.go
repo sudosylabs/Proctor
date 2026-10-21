@@ -44,6 +44,8 @@ func hasPendingCandidateCorrectionCapability(ctx context.Context, executor sqlxE
 	return pending, nil
 }
 
+// ResolveCorrectionAcknowledgementTarget validates the acknowledgement and
+// resolves its audit scope without mutating anything.
 func (s *SQLExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
 	if err := validateCorrectionAcknowledgement(&input, false); err != nil {
 		return nil, err
@@ -53,6 +55,9 @@ func (s *SQLExamAttemptStore) ResolveCorrectionAcknowledgementTarget(ctx context
 	})
 }
 
+// AcknowledgeCorrection records the Candidate's acknowledgement of an Exam
+// correction under command. Replays recheck the target and return the retained
+// result with Replayed set.
 func (s *SQLExamAttemptStore) AcknowledgeCorrection(ctx context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
 	if err := validateCorrectionAcknowledgement(input, true); err != nil || command == nil {
 		if err != nil {

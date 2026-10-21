@@ -364,6 +364,7 @@ func validateSystemAdministratorScope(
 	return nil
 }
 
+// Get returns the unarchived role binding with id, or a not-found error.
 func (s SQLRoleBindingStore) Get(ctx context.Context, id model.RoleBindingID) (*model.RoleBinding, error) {
 	var row roleBindingRow
 	query := s.bindingsQuery.Where(sq.Eq{
@@ -375,12 +376,17 @@ func (s SQLRoleBindingStore) Get(ctx context.Context, id model.RoleBindingID) (*
 	return row.model()
 }
 
+// ListByUser returns every unarchived role binding of userID, ended or not,
+// ordered by start.
 func (s SQLRoleBindingStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.RoleBinding, error) {
 	return s.selectBindings(ctx, s.bindingsQuery.
 		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by user")
 }
 
+// ListVisibleByUser returns the unarchived role bindings of userID whose scope
+// lies within visibility: everything when InstitutionWide, otherwise bindings
+// on the listed Academic Unit subtrees or Classes (at most 256 IDs in total).
 func (s SQLRoleBindingStore) ListVisibleByUser(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) ([]*model.RoleBinding, error) {
 	if !userID.IsValid() ||
 		len(visibility.AcademicUnitRootIDs)+len(visibility.ClassIDs) > 256 ||
@@ -427,6 +433,7 @@ func (s SQLRoleBindingStore) ListByScope(
 		OrderBy("role_bindings.start_at", "role_bindings.id"), "list role bindings by scope")
 }
 
+// ListActiveByUser returns the unarchived role bindings of userID active at at.
 func (s SQLRoleBindingStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.RoleBinding, error) {
 	at = model.TimeUTC(at)
 	return s.selectBindings(ctx, s.bindingsQuery.

@@ -509,6 +509,7 @@ func (s SQLClassMemberStore) enrollInTransaction(ctx context.Context, tx *sqlxTx
 	return &classMemberMutationResult{Enrollment: result}, nil
 }
 
+// Get returns the unarchived Class Member with id, or a not-found error.
 func (s SQLClassMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*model.ClassMember, error) {
 	var row classMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
@@ -519,12 +520,17 @@ func (s SQLClassMemberStore) Get(ctx context.Context, id model.ClassMemberID) (*
 	return row.model()
 }
 
+// ListByUser returns every unarchived Class membership of userID, ended or not,
+// newest start first.
 func (s SQLClassMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ClassMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"class_members.user_id": userID, "class_members.archived_at": nil,
 	}).OrderBy("class_members.start_at DESC", "class_members.id"))
 }
 
+// ListByClass returns the unarchived Class Members of classID. A positive at
+// (Unix milliseconds) restricts the result to memberships active at that
+// instant; zero returns all of them.
 func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.ClassID, at int64) ([]*model.ClassMember, error) {
 	query := s.query.Where(sq.Eq{
 		"class_members.class_id": classID, "class_members.archived_at": nil,
@@ -537,6 +543,8 @@ func (s SQLClassMemberStore) ListByClass(ctx context.Context, classID model.Clas
 	return s.selectMembers(ctx, query.OrderBy("class_members.user_id", "class_members.id"))
 }
 
+// ListActiveByUser returns the unarchived Class memberships of userID active at
+// at (Unix milliseconds).
 func (s SQLClassMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.ClassMember, error) {
 	activeAt := model.TimeFromMillis(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{

@@ -51,6 +51,8 @@ func newSQLMFAStore(sqlStore *SQLStore) store.MFAStore {
 	return &SQLMFAStore{SQLStore: sqlStore}
 }
 
+// GetByUser returns the User's unarchived MFA credential, pending or active, or
+// a not-found error.
 func (s SQLMFAStore) GetByUser(ctx context.Context, userID model.UserID) (*model.MFACredential, error) {
 	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "user_id", userID)
@@ -195,6 +197,10 @@ func (s SQLMFAStore) Activate(
 	}, nil
 }
 
+// ConsumeSecondFactor records a used second factor for the active MFA
+// credential: exactly one of a TOTP timeStep later than the last one used or an
+// unconsumed recovery-code hash. A replayed time step or unknown code yields a
+// not-found error.
 func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserID, timeStep int64, recoveryCodeHash string, now int64) error {
 	if !userID.IsValid() || now <= 0 ||
 		((timeStep <= 0) == (recoveryCodeHash == "")) ||
@@ -247,6 +253,8 @@ func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserI
 	return err
 }
 
+// UpgradeSession marks the unexpired Session as multi-factor authenticated at
+// now and returns the hashes of its active access tokens.
 func (s SQLMFAStore) UpgradeSession(ctx context.Context, sessionID model.SessionID, userID model.UserID, now time.Time) ([]string, error) {
 	now = model.TimeUTC(now)
 	if !sessionID.IsValid() || !userID.IsValid() || !now.After(time.Unix(0, 0)) {
@@ -342,6 +350,7 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 	return err
 }
 
+// CountRecoveryCodes returns how many unconsumed recovery codes the User has.
 func (s SQLMFAStore) CountRecoveryCodes(ctx context.Context, userID model.UserID) (int, error) {
 	if !userID.IsValid() {
 		return 0, store.NewErrInvalidInput("mfa_recovery_code", "user_id", userID)

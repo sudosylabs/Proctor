@@ -19,6 +19,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ReauthenticatePassword records a fresh password proof on the User's unexpired
+// password Session whose access credential is current, using database time, and
+// completes the audit event.
 func (s SQLSessionStore) ReauthenticatePassword(
 	ctx context.Context,
 	input *store.SessionPasswordReauthentication,
@@ -95,6 +98,11 @@ func commitSessionReauthentication(ctx context.Context, tx *sqlxTxWrapper, sessi
 	return &store.SessionReauthenticationResult{Session: session, AccessTokenHashes: hashes}, nil
 }
 
+// ReauthenticateExternal records a fresh external identity provider proof on
+// the Session named by the consumed reauthentication login state. A state that
+// predates the User's last MFA reset yields
+// store.ErrAuthenticationGenerationChanged, and a proof outside the state's
+// lifetime is a reauthentication_time conflict.
 func (s SQLSessionStore) ReauthenticateExternal(ctx context.Context, input *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
 	if input == nil || !input.StateID.IsValid() || !model.IsValidIdentityProviderID(input.ProviderID) || input.Subject == "" || utf8.RuneCountInString(input.Subject) > model.IdentitySubjectMaxRunes || input.AuthenticatedAt.IsZero() {
 		return nil, store.NewErrInvalidInput("session", "reauthentication", nil)

@@ -506,6 +506,9 @@ func invitationOnboardingOutcome(result *store.InvitationCommandResult) (onboard
 	return onboardingImportCommandResult{Status: model.OnboardingImportRowSucceeded, InvitationID: result.Invitation.ID}, nil
 }
 
+// ReplayIssue returns the retained outcome of an earlier Invitation issue
+// command and completes the replay audit event; it never issues an Invitation
+// itself.
 func (s SQLInvitationStore) ReplayIssue(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
 	if input == nil {
 		return nil, store.NewErrInvalidInput("invitation", "replay", nil)
@@ -545,6 +548,9 @@ func (s SQLInvitationStore) FindCommandOutcome(ctx context.Context, command *sto
 	return result.Value, nil
 }
 
+// ReplayAdministration returns the retained outcome of an earlier Invitation
+// administration command and completes the replay audit event; it never mutates
+// the Invitation itself.
 func (s SQLInvitationStore) ReplayAdministration(ctx context.Context, input *store.InvitationReplay, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
 	if input == nil {
 		return nil, store.NewErrInvalidInput("invitation", "replay", nil)

@@ -24,6 +24,9 @@ import (
 
 const examAttemptConnectOutcomeMaximumBytes = 2 * 1024
 
+// SQLExamAttemptStore is the PostgreSQL store.ExamAttemptStore, which owns
+// Attempt admission, Participation leases, delivery, Focus Loss, and suspension
+// transitions.
 type SQLExamAttemptStore struct{ *SQLStore }
 
 func newSQLExamAttemptStore(sqlStore *SQLStore) store.ExamAttemptStore {
@@ -73,6 +76,9 @@ type examAttemptStarterRow struct {
 	SHA256         sql.NullString `db:"sha256"`
 }
 
+// Connect admits the Candidate to the Attempt under command, creating the first
+// Attempt and Workspace when needed. Replays recheck current eligibility and
+// return the stored outcome.
 func (s *SQLExamAttemptStore) Connect(ctx context.Context, input *store.ExamAttemptConnect, command *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
 	if err := validateExamAttemptConnect(input, command); err != nil {
 		return nil, err
@@ -179,6 +185,8 @@ type attemptParticipationRenewalRow struct {
 	SessionExpiresAt     time.Time      `db:"session_expires_at"`
 }
 
+// RenewParticipation extends the lease of the Candidate's active Participation
+// generation; see store.ExamAttemptStore for the sequence and expiry contract.
 func (s *SQLExamAttemptStore) RenewParticipation(ctx context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
 	return s.changeParticipationControl(ctx, input, true)
 }
@@ -337,6 +345,9 @@ const participationExpiryDueSelect = `SELECT a.exam_id,a.exam_sitting_id,s.class
 	FROM exam_attempt_participations p JOIN exam_attempts a ON a.id=p.exam_attempt_id
 	JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id`
 
+// ResolveParticipationExpiry returns the active Participation generation only
+// when its lease has expired by the database clock. An unexpired or
+// non-matching generation is an attempt_participation_expired conflict.
 func (s *SQLExamAttemptStore) ResolveParticipationExpiry(ctx context.Context, attemptID model.ExamAttemptID,
 	participationID model.AttemptParticipationID, generation int64,
 ) (*store.ExamAttemptParticipationExpiryDue, error) {
@@ -356,6 +367,9 @@ func (s *SQLExamAttemptStore) ResolveParticipationExpiry(ctx context.Context, at
 	return row.expiryDue()
 }
 
+// ListExpiredParticipations returns up to limit (1..200) active Participation
+// generations whose lease has expired by the database clock, oldest expiry
+// first.
 func (s *SQLExamAttemptStore) ListExpiredParticipations(ctx context.Context, limit int) ([]store.ExamAttemptParticipationExpiryDue, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("attempt_participation", "expiry_limit", limit)
@@ -426,6 +440,11 @@ type participationExpiryLockRow struct {
 	DatabaseNow            time.Time      `db:"database_now"`
 }
 
+// ExpireParticipation implements store.ExamAttemptStore: it ends the expired
+// Participation generation as lease_expired, closes its Connection, records
+// Connection Loss evidence and a Flag, and suspends the Attempt in one
+// transaction. A later call for the same generation returns the retained
+// outcome.
 func (s *SQLExamAttemptStore) ExpireParticipation(ctx context.Context, input *store.ExamAttemptParticipationExpiry) (*store.ExamAttemptParticipationExpiryResult, error) {
 	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || input.Generation < 1 ||
 		!input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
@@ -743,6 +762,10 @@ type examAttemptReallowOutcomeV1 struct {
 	FocusLossWindowReset                                             bool
 }
 
+// ReallowAttempt implements store.ExamAttemptStore: it closes the Attempt's
+// active Suspension and returns the Attempt to active under an
+// ExamAttemptReallowOperation command. Exact retries return the retained result
+// after rechecking authority.
 func (s *SQLExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.ExamAttemptReallow,
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptReallowResult, error) {
@@ -1790,6 +1813,10 @@ func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, out
 	return nil
 }
 
+// CloseConnection closes the Candidate's open Attempt Connection with
+// input.Reason at database time and completes the audit event. Closing an
+// already-closed Connection changes nothing and reports Changed false; a
+// Connection of another Candidate or Session is not found.
 func (s *SQLExamAttemptStore) CloseConnection(ctx context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {
 	if input == nil || !input.ConnectionID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || !input.Reason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("attempt_connection", "close", nil)
@@ -1961,6 +1988,8 @@ const examAttemptManagerSelect = `SELECT a.id AS attempt_id,a.exam_id,a.exam_sit
 	LEFT JOIN LATERAL (SELECT id,participation_id,integrity_flag_id,generation,state,source,candidate_reason,started_at,ended_at,reallowed_by_user_id,
 		suspended_by_user_id FROM exam_attempt_suspensions WHERE exam_attempt_id=a.id AND state='active' LIMIT 1) su ON true`
 
+// Get returns the Exam Manager's snapshot of the Attempt within examID, or a
+// not-found error.
 func (s *SQLExamAttemptStore) Get(ctx context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
 	if !examID.IsValid() || !attemptID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_attempt", "identity", nil)
@@ -1972,6 +2001,9 @@ func (s *SQLExamAttemptStore) Get(ctx context.Context, examID model.ExamID, atte
 	return row.snapshot()
 }
 
+// List returns one page of the Sitting's Attempts for an Exam Manager, newest
+// first, excluding ExcludeCandidateUserID and optionally filtered by state.
+// Limit is 1..201 and the Before cursor fields must be set together.
 func (s *SQLExamAttemptStore) List(ctx context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
 	if !options.ExamID.IsValid() || !options.SittingID.IsValid() || options.Limit < 1 || options.Limit > 201 ||
 		!options.ExcludeCandidateUserID.IsValid() || (options.BeforeCreatedAt.IsZero() != options.BeforeAttemptID.IsZero()) {
@@ -2198,6 +2230,9 @@ func (s *SQLExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTx
 	return row.candidateAttemptGuard, nil
 }
 
+// GetCandidatePresentation returns the sealed Exam content, policies, capacity
+// limits, and frozen Attempt Configuration the Candidate sees for the live
+// Attempt named by access.
 func (s *SQLExamAttemptStore) GetCandidatePresentation(ctx context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "get candidate Exam presentation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.CandidateExamPresentation, error) {
 		guard, err := s.lockCandidateGuard(ctx, tx, access)
@@ -2383,6 +2418,9 @@ func listCandidateWorkspaceSnapshot(ctx context.Context, tx *sqlxTxWrapper, opti
 	return &store.CandidateAttemptWorkspacePage{WorkspaceID: workspaceID, Cursor: workspace.Cursor, Items: result, HasMore: hasMore}, nil
 }
 
+// ResolveCandidateResource returns the metadata and stored file rendition of an
+// Exam Resource in the Candidate's admitted Exam Revision, or a not-found
+// error.
 func (s *SQLExamAttemptStore) ResolveCandidateResource(ctx context.Context, access store.CandidateAttemptAccess, resourceID model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	guard, err := s.candidateGuard(ctx, access)
 	if err != nil {

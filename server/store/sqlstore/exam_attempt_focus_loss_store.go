@@ -120,6 +120,9 @@ func validateFocusLossSignal(input *store.ExamAttemptFocusLossSignal) error {
 	return nil
 }
 
+// ResolveFocusLossTarget implements store.ExamAttemptStore: it resolves the
+// audit scope of a live Focus Loss report without evaluating or mutating
+// anything.
 func (s *SQLExamAttemptStore) ResolveFocusLossTarget(ctx context.Context, access store.ExamAttemptFocusLossAccess) (*store.ExamAttemptFocusLossTarget, error) {
 	if err := validateFocusLossAccess(access); err != nil {
 		return nil, err
@@ -139,6 +142,10 @@ func (s *SQLExamAttemptStore) ResolveFocusLossTarget(ctx context.Context, access
 	})
 }
 
+// RecordFocusLoss implements store.ExamAttemptStore: it evaluates the next
+// Focus Loss sequence against the Exam policy using database time and applies
+// any Flag or suspension. Exact duplicates return the retained result; other
+// replays of an accepted sequence conflict.
 func (s *SQLExamAttemptStore) RecordFocusLoss(ctx context.Context, input *store.ExamAttemptFocusLossSignal) (*store.ExamAttemptFocusLossResult, error) {
 	if err := validateFocusLossSignal(input); err != nil {
 		return nil, err

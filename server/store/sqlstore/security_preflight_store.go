@@ -36,6 +36,11 @@ func (s *SQLExamAttemptStore) lockPreflightEligibility(ctx context.Context, tx *
 	return s.lockExamAttemptEligibility(ctx, tx, preflightConnectSelector(access), false)
 }
 
+// PrepareSecurityPreflight issues a security preflight challenge for the
+// Candidate's desktop build against the Sitting's current policy under command.
+// A replay returns the original challenge with a refreshed Browser Activity
+// disclosure, and a policy change since preparation is a policy_changed
+// conflict.
 func (s *SQLExamAttemptStore) PrepareSecurityPreflight(ctx context.Context, input *store.SecurityPreflightPrepare, command *store.CommandIdempotency) (*store.SecurityPreflightPrepared, error) {
 	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.AttemptID != "" && !input.AttemptID.IsValid() {
 		return nil, store.NewErrInvalidInput("security_preflight", "prepare", nil)
@@ -263,6 +268,9 @@ func lockCurrentSecurityPreflight(ctx context.Context, tx *sqlxTxWrapper, access
 	return row, nil
 }
 
+// ReportSecurityPreflight evaluates the desktop's report against the prepared
+// preflight challenge at database time and records the result under command. A
+// policy change since preparation is a policy_changed conflict.
 func (s *SQLExamAttemptStore) ReportSecurityPreflight(ctx context.Context, input *store.SecurityPreflightReport, command *store.CommandIdempotency) (*model.SecurityPreflightResult, error) {
 	if input == nil || command == nil || !validSecurityPreflightAccess(input.Access) || !model.IsValidAgreementID(input.PreflightID) || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || input.Report.Validate() != nil {
 		return nil, store.NewErrInvalidInput("security_preflight", "report", nil)

@@ -632,6 +632,10 @@ func (s SQLFileStore) GetProfilePictureState(ctx context.Context, userID model.U
 	return state, nil
 }
 
+// RemoveProfilePicture archives the User's custom profile picture and clears it
+// from the User in one audited transaction. The User revision, file entry,
+// current file revision, and checksum must all still match the input; otherwise
+// it is a conflict with no partial change.
 func (s SQLFileStore) RemoveProfilePicture(ctx context.Context, input *store.ProfilePictureRemoval) (*model.User, error) {
 	if input == nil || !input.ActorID.IsValid() || !input.UserID.IsValid() || input.ExpectedUserRevision <= 0 || !input.EntryID.IsValid() || !input.ExpectedCurrentRevisionID.IsValid() || len(input.ExpectedSHA256) != 64 || input.ChangedAt.IsZero() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("file", "profile_picture_removal", nil)

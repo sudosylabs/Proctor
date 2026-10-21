@@ -81,6 +81,10 @@ func currentMFASession(ctx context.Context, tx *sqlxTxWrapper, principal model.P
 	return session, at, nil
 }
 
+// SavePending replaces any pending MFA credential of the recently authenticated
+// User with input.Credential, expiring after input.Lifetime (at most an hour)
+// from database time. A User with active MFA gets an mfa_already_enabled
+// conflict.
 func (s SQLMFAStore) SavePending(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || input.Credential.UserID != input.Principal.UserID || input.Lifetime <= 0 || input.Lifetime > time.Hour || input.RecentAuthenticationTTL <= 0 || !input.AuditEventID.IsValid() {
 		return nil, store.NewErrInvalidInput("mfa_credential", "enrollment", nil)
@@ -123,6 +127,10 @@ func (s SQLMFAStore) SavePending(ctx context.Context, input *store.MFAPendingEnr
 	})
 }
 
+// Challenge verifies and consumes exactly one TOTP time step or recovery code
+// of the active MFA credential, upgrades the caller's Session to multi-factor,
+// and returns the Session with its active access token hashes. VerifiedAt more
+// than a minute from database time is a verification_expired conflict.
 func (s SQLMFAStore) Challenge(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
 	if input == nil || !input.CredentialID.IsValid() || !input.AuditEventID.IsValid() || input.VerifiedAt.IsZero() || ((input.TimeStep <= 0) == (input.RecoveryCodeHash == "")) || (input.RecoveryCodeHash != "" && !model.IsValidTokenHash(input.RecoveryCodeHash)) {
 		return nil, store.NewErrInvalidInput("mfa_credential", "challenge", nil)

@@ -61,6 +61,8 @@ func LocalSchemaVersion() (int, error) {
 	return latest, nil
 }
 
+// GetDBSchemaVersion returns the newest applied migration version, or 0 when
+// the database has no migrations or no migration table.
 func (ss *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
 	var version int
 	err := ss.GetMaster().Get(ctx, &version, "SELECT version FROM db_migrations ORDER BY version DESC LIMIT 1")
@@ -77,10 +79,14 @@ func (ss *SQLStore) GetDBSchemaVersion(ctx context.Context) (int, error) {
 	return version, nil
 }
 
+// GetLocalSchemaVersion returns the newest migration version embedded in this
+// binary.
 func (ss *SQLStore) GetLocalSchemaVersion() (int, error) {
 	return LocalSchemaVersion()
 }
 
+// ValidateSchema compares the database and embedded schema versions, returning
+// *ErrSchemaBehind or *ErrSchemaAhead when they differ.
 func (ss *SQLStore) ValidateSchema(ctx context.Context) error {
 	databaseVersion, err := ss.GetDBSchemaVersion(ctx)
 	if err != nil {

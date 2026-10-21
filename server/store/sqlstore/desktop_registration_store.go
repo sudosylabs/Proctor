@@ -60,6 +60,8 @@ func newSQLDesktopRegistrationStore(sqlStore *SQLStore) store.DesktopRegistratio
 	return value
 }
 
+// Get returns the Desktop Registration with id, revoked or not, or a not-found
+// error.
 func (s SQLDesktopRegistrationStore) Get(ctx context.Context, id model.DesktopRegistrationID) (*model.DesktopRegistration, error) {
 	var row desktopRegistrationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{"id": id})); err != nil {
@@ -68,6 +70,8 @@ func (s SQLDesktopRegistrationStore) Get(ctx context.Context, id model.DesktopRe
 	return row.model()
 }
 
+// ListByUser returns every Desktop Registration of userID, revoked or not, most
+// recently used first.
 func (s SQLDesktopRegistrationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.DesktopRegistration, error) {
 	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("desktop_registration", "user_id", userID)
@@ -160,6 +164,9 @@ func getOrCreateDesktopRegistration(
 	return candidate, nil
 }
 
+// Revoke revokes the User's Desktop Registration together with its Sessions and
+// their credentials, and completes the audit event. Revoking an already-revoked
+// registration changes nothing and sets AlreadyRevoked.
 func (s SQLDesktopRegistrationStore) Revoke(
 	ctx context.Context,
 	input *store.DesktopRegistrationRevocation,

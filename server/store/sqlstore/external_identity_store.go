@@ -80,6 +80,7 @@ func (s SQLExternalIdentityStore) Save(
 	return &candidate, nil
 }
 
+// Get returns the unarchived external identity with id, or a not-found error.
 func (s SQLExternalIdentityStore) Get(ctx context.Context, id model.ExternalIdentityID) (*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.Where(sq.Eq{
 		"external_identities.id":          id,
@@ -102,6 +103,8 @@ func (s SQLExternalIdentityStore) GetByProviderSubject(
 	return s.get(ctx, query, provider)
 }
 
+// ListByUser returns the unarchived external identities linked to userID,
+// ordered by provider.
 func (s SQLExternalIdentityStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.ExternalIdentity, error) {
 	query := s.identitiesQuery.
 		Where(sq.Eq{

@@ -112,6 +112,8 @@ func (s SQLPersonalAccessTokenStore) Create(
 	})
 }
 
+// Get returns the unarchived personal access token with id, or a not-found
+// error.
 func (s SQLPersonalAccessTokenStore) Get(ctx context.Context, id model.PersonalAccessTokenID) (*model.PersonalAccessToken, error) {
 	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "id", id)
@@ -130,6 +132,8 @@ func (s SQLPersonalAccessTokenStore) Get(ctx context.Context, id model.PersonalA
 	return row.model()
 }
 
+// ListByUser returns the User's unarchived personal access tokens, newest
+// first.
 func (s SQLPersonalAccessTokenStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.PersonalAccessToken, error) {
 	if !userID.IsValid() {
 		return nil, store.NewErrInvalidInput("personal_access_token", "user_id", userID)
@@ -326,6 +330,9 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 	})
 }
 
+// Revoke revokes the User's personal access token at the creation time of the
+// consumed revoke preparation. Revoking an already-revoked token returns it
+// with Fresh false.
 func (s SQLPersonalAccessTokenStore) Revoke(
 	ctx context.Context,
 	input *store.PersonalAccessTokenRevocation,

@@ -123,6 +123,7 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 	})
 }
 
+// Get returns the unarchived Institution with id, or a not-found error.
 func (s SQLInstitutionStore) Get(ctx context.Context, id model.InstitutionID) (*model.Institution, error) {
 	var row institutionRow
 	query := s.institutionsQuery.Where(sq.Eq{
@@ -147,6 +148,8 @@ func (s SQLInstitutionStore) GetSingleton(ctx context.Context) (*model.Instituti
 	return row.model()
 }
 
+// Update validates input.Institution and writes it in one audited transaction
+// fenced on the stored revision immediately preceding the candidate's Revision.
 func (s SQLInstitutionStore) Update(
 	ctx context.Context,
 	input *store.InstitutionUpdate,
@@ -215,6 +218,8 @@ func (s SQLInstitutionStore) updateInstitution(
 	})
 }
 
+// Archive archives the Institution at archiveAt (Unix milliseconds), or returns
+// a not-found error when it is absent or already archived.
 func (s SQLInstitutionStore) Archive(ctx context.Context, id model.InstitutionID, archiveAt int64) error {
 	if archiveAt <= 0 {
 		return store.NewErrInvalidInput("institution", "archived_at", archiveAt)

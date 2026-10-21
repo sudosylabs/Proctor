@@ -19,6 +19,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// ListSessionRevocationInvalidationTargets returns the distinct Exams and
+// Sittings of the Candidate's Attempts suspended by a policy-suspended
+// Participation bound to one of sessionIDs (1..1000).
 func (s *SQLExamAttemptStore) ListSessionRevocationInvalidationTargets(
 	ctx context.Context,
 	candidateID model.UserID,
@@ -99,6 +102,10 @@ type candidateExamActivityRow struct {
 	ReleasedAt              sql.NullTime   `db:"released_at"`
 }
 
+// ListCandidateActivity returns one page of the Candidate's Sittings with their
+// Attempt state and desktop eligibility, evaluated at database time. Limit is
+// 1..201, the Before cursor fields must be set together, and the desktop
+// selector fields must be all set or all empty.
 func (s *SQLExamAttemptStore) ListCandidateActivity(ctx context.Context,
 	options store.CandidateExamActivityListOptions,
 ) (*store.CandidateExamActivityPage, error) {
@@ -380,6 +387,9 @@ type sittingCandidateStatusRow struct {
 	IntegrityAttention       int64          `db:"integrity_attention_count"`
 }
 
+// ListSittingCandidateStatuses returns one page of the Sitting's Candidates,
+// ordered by User ID after AfterCandidateUserID, with their Attempt, presence,
+// suspension, and integrity state at database time. Limit is 1..201.
 func (s *SQLExamAttemptStore) ListSittingCandidateStatuses(ctx context.Context,
 	options store.SittingCandidateStatusListOptions,
 ) (*store.SittingCandidateStatusPage, error) {

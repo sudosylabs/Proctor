@@ -44,6 +44,11 @@ func (r browserSourceRefusalRecord) Validate() error {
 	return nil
 }
 
+// StartBrowserActivity starts the Browser Activity source declared by input for
+// the Candidate's active Participation generation and open connection. Retrying
+// the same declaration returns the original source status or refusal; a
+// different declaration under the same source ID is a conflict, and a refusal
+// is returned as *store.BrowserSourceRefusal.
 func (s *SQLExamAttemptStore) StartBrowserActivity(ctx context.Context, input *store.BrowserActivitySourceStart) (*model.BrowserSourceStatus, error) {
 	if input == nil || input.Declaration().Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_activity", "source_start", nil)
@@ -466,6 +471,8 @@ func closeParticipationBrowserSources(ctx context.Context, tx *sqlxTxWrapper, pa
 	return nil
 }
 
+// BrowserSourceStatus returns the current delivery status of the source named
+// by access, after verifying the caller's delivery access.
 func (s *SQLExamAttemptStore) BrowserSourceStatus(ctx context.Context, access store.BrowserDeliveryAccess) (*model.BrowserSourceStatus, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "get Browser source status", func(ctx context.Context, tx *sqlxTxWrapper) (*model.BrowserSourceStatus, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
@@ -474,6 +481,9 @@ func (s *SQLExamAttemptStore) BrowserSourceStatus(ctx context.Context, access st
 		return browserSourceStatus(ctx, tx, access.SourceSessionID)
 	})
 }
+
+// BrowserSourceList returns the delivery status of every Browser Activity
+// source of the Participation, in start order.
 func (s *SQLExamAttemptStore) BrowserSourceList(ctx context.Context, access store.BrowserDeliveryAccess) ([]model.BrowserSourceStatus, error) {
 	if !access.ParticipationID.IsValid() {
 		return nil, store.NewErrInvalidInput("browser_activity", "participation_id", nil)
@@ -592,6 +602,8 @@ func closeSittingBrowserSources(ctx context.Context, tx *sqlxTxWrapper, sittingI
 	}
 }
 
+// ResolveLiveDeliveryTarget returns the Sitting and Class that own the
+// Candidate's live Attempt, after locking its Candidate guard.
 func (s *SQLExamAttemptStore) ResolveLiveDeliveryTarget(ctx context.Context, access store.CandidateAttemptAccess) (*store.DeliveryOwnerTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve Browser source owner", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DeliveryOwnerTarget, error) {
 		guard, err := s.lockCandidateGuard(ctx, tx, access)

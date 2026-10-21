@@ -106,6 +106,7 @@ func (s SQLProgrammeLevelStore) createProgrammeLevel(ctx context.Context, candid
 	})
 }
 
+// Get returns the unarchived Programme Level with id, or a not-found error.
 func (s SQLProgrammeLevelStore) Get(ctx context.Context, id model.ProgrammeLevelID) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
@@ -118,6 +119,8 @@ func (s SQLProgrammeLevelStore) Get(ctx context.Context, id model.ProgrammeLevel
 	return row.model()
 }
 
+// GetByName returns the unarchived Programme Level of the Programme with the
+// exact name, or a not-found error.
 func (s SQLProgrammeLevelStore) GetByName(ctx context.Context, programmeID model.ProgrammeID, name string) (*model.ProgrammeLevel, error) {
 	var row programmeLevelRow
 	query := s.programmeLevelsQuery.Where(sq.Eq{
@@ -131,6 +134,8 @@ func (s SQLProgrammeLevelStore) GetByName(ctx context.Context, programmeID model
 	return row.model()
 }
 
+// ListByProgramme returns the unarchived Programme Levels of the Programme,
+// ordered by name.
 func (s SQLProgrammeLevelStore) ListByProgramme(ctx context.Context, programmeID model.ProgrammeID) ([]*model.ProgrammeLevel, error) {
 	query := s.programmeLevelsQuery.
 		Where(sq.Eq{
@@ -154,6 +159,9 @@ func (s SQLProgrammeLevelStore) ListByProgramme(ctx context.Context, programmeID
 	return levels, nil
 }
 
+// SearchByProgramme returns up to limit unarchived Programme Levels of the
+// Programme whose name or display name contains term, case-insensitively. A
+// limit outside 1..200 is invalid input.
 func (s SQLProgrammeLevelStore) SearchByProgramme(ctx context.Context, programmeID model.ProgrammeID, term string, limit int) ([]*model.ProgrammeLevel, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("programme_level", "limit", limit)
@@ -224,6 +232,8 @@ func (s SQLProgrammeLevelStore) updateProgrammeLevel(ctx context.Context, candid
 	})
 }
 
+// Update validates input.Level and writes it in one audited transaction fenced
+// on the stored revision immediately preceding the candidate's Revision.
 func (s SQLProgrammeLevelStore) Update(ctx context.Context, input *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error) {
 	if input == nil || input.Level == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "update", nil)
@@ -235,6 +245,9 @@ func (s SQLProgrammeLevelStore) Update(ctx context.Context, input *store.Program
 	return s.updateProgrammeLevel(ctx, &candidate, candidate.ProgrammeID.String(), &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
 }
 
+// Archive archives the Programme Level and completes its audit event. A
+// positive ExpectedRevision must match the stored revision, and active Classes
+// make it a conflict.
 func (s SQLProgrammeLevelStore) Archive(ctx context.Context, input *store.ProgrammeLevelArchive) (*model.ProgrammeLevel, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("programme_level", "archive", nil)

@@ -235,6 +235,10 @@ func validateSecurityResume(ctx context.Context, tx *sqlxTxWrapper, input *store
 	return nil
 }
 
+// RecoverSecurityPolicy returns the admitted security policy, frozen Attempt
+// Configuration, and native control state for the Candidate's active
+// Participation, so a desktop can recover after losing a Connect response. It
+// needs no open Connection, but an expired Participation lease is a conflict.
 func (s *SQLExamAttemptStore) RecoverSecurityPolicy(ctx context.Context, access store.SecurityPreflightAccess, attemptID model.ExamAttemptID) (*store.SecurityPolicyRecovery, error) {
 	if !attemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() || !access.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) || access.DesktopBuild.Validate() != nil || access.DesktopBuild.NativeAgreement == nil || access.DesktopCompatibilityPolicyRevision < 1 {
 		return nil, store.NewErrInvalidInput("security_owner", "recovery", nil)

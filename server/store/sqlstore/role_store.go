@@ -59,6 +59,8 @@ func newSQLRoleStore(sqlStore *SQLStore) store.RoleStore {
 	return s
 }
 
+// Save creates input.Role as a new custom role and completes its audit event in
+// the same transaction.
 func (s SQLRoleStore) Save(ctx context.Context, input *store.RoleCreation) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsZero() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
@@ -106,10 +108,13 @@ func insertRole(ctx context.Context, executor sqlxExecutor, role *model.Role) (r
 	return row, nil
 }
 
+// Get returns the unarchived role with id, or a not-found error.
 func (s SQLRoleStore) Get(ctx context.Context, id model.RoleID) (*model.Role, error) {
 	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id, "roles.archived_at": nil}), id.String())
 }
 
+// GetIncludingArchived returns the role with id even when archived, or a
+// not-found error.
 func (s SQLRoleStore) GetIncludingArchived(ctx context.Context, id model.RoleID) (*model.Role, error) {
 	return s.get(ctx, s.rolesQuery.Where(sq.Eq{"roles.id": id}), id.String())
 }
@@ -130,6 +135,8 @@ func (s SQLRoleStore) get(ctx context.Context, query sq.SelectBuilder, key strin
 	return row.model()
 }
 
+// GetByIDs returns the unarchived roles among ids, ordered by name; absent or
+// archived IDs are omitted.
 func (s SQLRoleStore) GetByIDs(ctx context.Context, ids []model.RoleID) ([]*model.Role, error) {
 	if len(ids) == 0 {
 		return []*model.Role{}, nil
@@ -171,6 +178,9 @@ func (s SQLRoleStore) selectRoles(
 	return roles, nil
 }
 
+// Update writes input.Role in one audited transaction, fenced on the role's
+// UpdatedAt. Built-in roles are protected, and changing the permissions of a
+// role with current bindings is a conflict.
 func (s SQLRoleStore) Update(ctx context.Context, input *store.RoleUpdate) (*model.Role, error) {
 	if input == nil || input.Role == nil || !input.Role.ID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
@@ -244,6 +254,8 @@ func updateRole(ctx context.Context, executor sqlxExecutor, role *model.Role, ex
 	return requireRevisionAffected(ctx, executor, result, "role", "roles", role.ID.String())
 }
 
+// Archive archives the custom role at input.ArchiveAt and completes its audit
+// event; built-in roles are protected.
 func (s SQLRoleStore) Archive(ctx context.Context, input *store.RoleArchive) (*model.Role, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {

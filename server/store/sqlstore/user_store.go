@@ -266,6 +266,7 @@ func insertUser(ctx context.Context, executor sqlxExecutor, user *model.User) er
 	return nil
 }
 
+// Get returns the unarchived User with id, or a not-found error.
 func (s SQLUserStore) Get(ctx context.Context, id model.UserID) (*model.User, error) {
 	return s.get(ctx, s.usersQuery.Where(sq.Eq{
 		"users.id":          id,
@@ -606,6 +607,10 @@ func validVisibilityIDs[T interface{ IsValid() bool }](ids []T) bool {
 	return true
 }
 
+// MatchVisibility returns the highest-priority scope in visibility through
+// which the active User is visible at visibility.ActiveAt. A zero match means
+// the User is not visible; institution-wide visibility is invalid input because
+// it needs no match.
 func (s SQLUserStore) MatchVisibility(ctx context.Context, userID model.UserID, visibility store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	if !userID.IsValid() || visibility.InstitutionWide || visibility.ActiveAt.IsZero() ||
 		len(visibility.ClassIDs)+len(visibility.AcademicUnitRootIDs)+len(visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
@@ -735,6 +740,9 @@ func (s SQLUserStore) get(
 	return row.model()
 }
 
+// UpdateProfile applies input.Changes to the User as revision
+// ExpectedRevision+1 in one audited transaction. A User no longer at
+// ExpectedRevision is a user_changed conflict.
 func (s SQLUserStore) UpdateProfile(ctx context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	if input == nil || !input.UserID.IsValid() || input.ExpectedRevision <= 0 ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 {
@@ -845,6 +853,11 @@ func requireUserRevisionAffected(ctx context.Context, executor sqlxExecutor, res
 	return store.NewErrNotFound("user", id).Wrap(sql.ErrNoRows)
 }
 
+// SetDisabled disables or re-enables the User, fenced on ExpectedRevision, and
+// enqueues the account Notice mail. Disabling revokes the User's Sessions and
+// refuses to remove the last System Administrator. A change to the current
+// state is a conflict without input.Command, and an audited no-op under a
+// command idempotency key.
 func (s SQLUserStore) SetDisabled(
 	ctx context.Context,
 	input *store.UserDisabledStateChange,
@@ -1119,6 +1132,8 @@ func setUserDisabled(
 	return &row, nil
 }
 
+// UpdateLastLogin advances the User's last login and activity times to at (Unix
+// milliseconds) without moving them backwards.
 func (s SQLUserStore) UpdateLastLogin(ctx context.Context, id model.UserID, at int64) error {
 	loginAt := model.TimeFromMillis(at)
 	result, err := s.GetMaster().Exec(ctx, `

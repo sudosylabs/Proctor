@@ -197,6 +197,8 @@ func (s SQLAcademicUnitMemberStore) Save(
 	})
 }
 
+// Get returns the unarchived Academic Unit membership with id, or a not-found
+// error.
 func (s SQLAcademicUnitMemberStore) Get(ctx context.Context, id model.AcademicUnitMemberID) (*model.AcademicUnitMember, error) {
 	var row academicUnitMemberRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
@@ -208,6 +210,8 @@ func (s SQLAcademicUnitMemberStore) Get(ctx context.Context, id model.AcademicUn
 	return row.model()
 }
 
+// ListByUser returns every unarchived Academic Unit membership of userID, ended
+// or not, newest start first.
 func (s SQLAcademicUnitMemberStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.AcademicUnitMember, error) {
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"academic_unit_members.user_id":     userID,
@@ -215,6 +219,9 @@ func (s SQLAcademicUnitMemberStore) ListByUser(ctx context.Context, userID model
 	}).OrderBy("academic_unit_members.start_at DESC", "academic_unit_members.id"))
 }
 
+// ListByAcademicUnit returns the unarchived memberships of unitID. A positive
+// at (Unix milliseconds) restricts the result to memberships active at that
+// instant; zero returns all of them.
 func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, unitID model.AcademicUnitID, at int64) ([]*model.AcademicUnitMember, error) {
 	query := s.query.Where(sq.Eq{
 		"academic_unit_members.academic_unit_id": unitID,
@@ -228,6 +235,8 @@ func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(ctx context.Context, unit
 	return s.selectMembers(ctx, query.OrderBy("academic_unit_members.user_id", "academic_unit_members.id"))
 }
 
+// ListActiveByUser returns the unarchived Academic Unit memberships of userID
+// that are active at at.
 func (s SQLAcademicUnitMemberStore) ListActiveByUser(ctx context.Context, userID model.UserID, at time.Time) ([]*model.AcademicUnitMember, error) {
 	activeAt := model.TimeUTC(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
@@ -238,6 +247,11 @@ func (s SQLAcademicUnitMemberStore) ListActiveByUser(ctx context.Context, userID
 		OrderBy("academic_unit_members.academic_unit_id", "academic_unit_members.id"))
 }
 
+// End ends the Academic Unit membership at input.EndAt, fenced on
+// ExpectedRevision, and may enqueue an assignment-ended Notice mail in the same
+// transaction. Ending an already-ended membership is a conflict without
+// input.Command, and an audited no-op (input.NoOp set) under a command
+// idempotency key.
 func (s SQLAcademicUnitMemberStore) End(ctx context.Context, input *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "end", nil)

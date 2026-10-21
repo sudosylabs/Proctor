@@ -347,6 +347,9 @@ func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mo
 	return result, nil
 }
 
+// UpdateSecurityCoverage records the security coverage reported over the
+// Candidate's open Connection, applying the same Participation, Connection, and
+// credential checks as RenewParticipation without extending the lease.
 func (s *SQLExamAttemptStore) UpdateSecurityCoverage(ctx context.Context, input *store.ExamAttemptSecurityCoverageUpdate) (model.SecurityCoverageResult, error) {
 	if input == nil {
 		return model.SecurityCoverageResult{}, store.NewErrInvalidInput("security_control", "update", nil)

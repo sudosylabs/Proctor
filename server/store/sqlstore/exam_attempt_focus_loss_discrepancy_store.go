@@ -63,6 +63,9 @@ const endedFocusLossAccessSelect = `SELECT a.exam_id,a.exam_sitting_id AS sittin
 	JOIN sessions se ON se.id=co.session_id JOIN users u ON u.id=se.user_id
 	WHERE a.id=? AND a.candidate_user_id=?`
 
+// ResolveEndedFocusLossTarget implements store.ExamAttemptStore: it resolves
+// the audit scope for a Focus Loss report against an ended, sealed Submission
+// without mutating anything.
 func (s *SQLExamAttemptStore) ResolveEndedFocusLossTarget(ctx context.Context,
 	access store.ExamAttemptFocusLossAccess,
 ) (*store.ExamAttemptFocusLossDiscrepancyTarget, error) {
@@ -90,6 +93,10 @@ func validateEndedFocusLoss(input *store.ExamAttemptFocusLossDiscrepancy) error 
 	return nil
 }
 
+// RecordEndedFocusLoss implements store.ExamAttemptStore: it retains a late
+// Focus Loss report as a bounded Integrity Discrepancy on the sealed
+// Submission. A matching same-sequence report is a duplicate; a differing one
+// is a focus_loss_sequence conflict.
 func (s *SQLExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 	input *store.ExamAttemptFocusLossDiscrepancy,
 ) (*store.ExamAttemptFocusLossDiscrepancyResult, error) {

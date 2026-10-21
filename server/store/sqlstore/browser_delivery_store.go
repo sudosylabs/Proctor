@@ -83,6 +83,9 @@ type browserDeclarationOutcome struct {
 	Capacity *model.DeliveryMetadataCapacity `json:"capacity"`
 }
 
+// DeclareBrowserDeliveryGaps records the source's declared delivery gaps. A
+// refused declaration returns *store.BrowserDeliveryRefusal and exhausted
+// delivery capacity returns its capacity error.
 func (s *SQLExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, input *store.BrowserDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.BrowserDeliveryGapResult, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("browser_delivery", "gaps", nil)
@@ -103,6 +106,10 @@ func (s *SQLExamAttemptStore) DeclareBrowserDeliveryGaps(ctx context.Context, in
 	}
 	return &model.BrowserDeliveryGapResult{Receipt: result.Receipt, Status: *result.Status}, nil
 }
+
+// SealBrowserDelivery records the source's final delivery declaration and
+// returns the resulting source status, with the same refusal and capacity
+// errors as DeclareBrowserDeliveryGaps.
 func (s *SQLExamAttemptStore) SealBrowserDelivery(ctx context.Context, input *store.BrowserDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.BrowserSourceStatus, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("browser_delivery", "final", nil)
@@ -358,6 +365,9 @@ func browserDeliveryRanges(ctx context.Context, tx *sqlxTxWrapper, source model.
 	}
 	return received, mergeNativeDeliveryRanges(gaps), nil
 }
+
+// ResolveBrowserDeliveryTarget returns the Sitting and Class that own the
+// Browser delivery's Attempt, after verifying the caller's delivery access.
 func (s *SQLExamAttemptStore) ResolveBrowserDeliveryTarget(ctx context.Context, access store.BrowserDeliveryAccess) (*store.DeliveryOwnerTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve browser delivery owner", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DeliveryOwnerTarget, error) {
 		if err := s.lockBrowserDelivery(ctx, tx, access); err != nil {
@@ -373,6 +383,10 @@ func (s *SQLExamAttemptStore) ResolveBrowserDeliveryTarget(ctx context.Context, 
 		return &store.DeliveryOwnerTarget{SittingID: model.ExamSittingID(row.Sitting), ClassID: model.ClassID(row.Class)}, nil
 	})
 }
+
+// BrowserDeliveryReceipts returns up to limit (1..64) stored event receipts of
+// the source from sequence first onward, with NextSequence set when more
+// remain.
 func (s *SQLExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, access store.BrowserDeliveryAccess, first int64, limit int) (*model.BrowserReceiptPage, error) {
 	if first < 1 || first > model.BrowserParticipationPositionLimit || limit < 1 || limit > 64 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "receipt_page", nil)
@@ -408,6 +422,11 @@ func (s *SQLExamAttemptStore) BrowserDeliveryReceipts(ctx context.Context, acces
 		return value, nil
 	})
 }
+
+// UpdateBrowserDeliverySummary records the source's unretained-delivery summary
+// under a BrowserDeliverySummaryOperation command. An equal resubmission is a
+// replay; a changed summary within five seconds of the previous one is a
+// conflict unless it is the final one after closure.
 func (s *SQLExamAttemptStore) UpdateBrowserDeliverySummary(ctx context.Context, input *store.BrowserDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.BrowserDeliverySummaryResult, error) {
 	if input == nil || input.Summary.Validate() != nil || command == nil || command.Operation != store.BrowserDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_delivery", "summary", nil)

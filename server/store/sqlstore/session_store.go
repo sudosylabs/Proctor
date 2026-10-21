@@ -302,6 +302,8 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	return nil
 }
 
+// Get returns the unarchived Session with id, revoked or expired or not, or a
+// not-found error.
 func (s SQLSessionStore) Get(ctx context.Context, id model.SessionID) (*model.Session, error) {
 	var row sessionRow
 	query := s.sessionsQuery.Where(sq.Eq{
@@ -314,6 +316,8 @@ func (s SQLSessionStore) Get(ctx context.Context, id model.SessionID) (*model.Se
 	return row.model()
 }
 
+// ListByUser returns every unarchived Session of userID, revoked or expired or
+// not, newest first.
 func (s SQLSessionStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Session, error) {
 	query := s.sessionsQuery.
 		Where(sq.Eq{
@@ -336,6 +340,8 @@ func (s SQLSessionStore) ListByUser(ctx context.Context, userID model.UserID) ([
 	return sessions, nil
 }
 
+// ListActiveByUser returns the User's unrevoked Sessions that are neither
+// idle-expired nor expired at now, most recently active first.
 func (s SQLSessionStore) ListActiveByUser(ctx context.Context, userID model.UserID, now time.Time) ([]*model.Session, error) {
 	at := model.TimeUTC(now)
 	query := s.sessionsQuery.
@@ -366,6 +372,9 @@ func (s SQLSessionStore) ListActiveByUser(ctx context.Context, userID model.User
 	return sessions, nil
 }
 
+// UpdateActivity records activity on a live Session and moves its idle expiry
+// to idleExpiresAt, capped at the absolute expiry. An absent, revoked, or
+// already expired Session yields a not-found error.
 func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID, lastActivityAt, idleExpiresAt time.Time) error {
 	activityAt := model.TimeUTC(lastActivityAt)
 	idleAt := model.TimeUTC(idleExpiresAt)
@@ -392,6 +401,8 @@ func (s SQLSessionStore) UpdateActivity(ctx context.Context, id model.SessionID,
 	return requireAffected(result, "session", id.String())
 }
 
+// Withdraw revokes one Session of the User for a system withdrawal reason and
+// returns the hashes of its revoked credentials.
 func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userID model.UserID, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
 	if !reason.IsSystemWithdrawal() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
@@ -404,6 +415,9 @@ func (s SQLSessionStore) Withdraw(ctx context.Context, id model.SessionID, userI
 	})
 }
 
+// EnforceExpiry revokes the User's unrevoked Session as expired when it has
+// expired at at, returning its revoked credential hashes with Expired set. An
+// unexpired Session is returned unchanged.
 func (s SQLSessionStore) EnforceExpiry(ctx context.Context, id model.SessionID, userID model.UserID, at time.Time) (*store.SessionExpiryEnforcementResult, error) {
 	at = model.TimeUTC(at)
 	if !id.IsValid() || !userID.IsValid() || !at.After(time.Unix(0, 0)) {
@@ -452,6 +466,10 @@ func (s SQLSessionStore) EnforceExpiry(ctx context.Context, id model.SessionID, 
 	})
 }
 
+// Revoke revokes the User's Session in an audited transaction and returns it
+// with its revoked credential hashes. Revocation by someone other than the User
+// also enqueues the security Notice mail; logging out of an already-revoked
+// Session is an audited no-op with an empty result.
 func (s SQLSessionStore) Revoke(
 	ctx context.Context,
 	input *store.SessionRevocation,

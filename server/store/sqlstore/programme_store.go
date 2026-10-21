@@ -110,6 +110,7 @@ func (s SQLProgrammeStore) createProgramme(ctx context.Context, candidate *model
 	})
 }
 
+// Get returns the unarchived Programme with id, or a not-found error.
 func (s SQLProgrammeStore) Get(ctx context.Context, id model.ProgrammeID) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
@@ -122,6 +123,8 @@ func (s SQLProgrammeStore) Get(ctx context.Context, id model.ProgrammeID) (*mode
 	return row.model()
 }
 
+// GetByName returns the unarchived Programme of the Academic Unit with the
+// exact name, or a not-found error.
 func (s SQLProgrammeStore) GetByName(ctx context.Context, academicUnitID model.AcademicUnitID, name string) (*model.Programme, error) {
 	var row programmeRow
 	query := s.programmesQuery.Where(sq.Eq{
@@ -135,6 +138,8 @@ func (s SQLProgrammeStore) GetByName(ctx context.Context, academicUnitID model.A
 	return row.model()
 }
 
+// ListByAcademicUnit returns the unarchived Programmes of the Academic Unit,
+// ordered by name.
 func (s SQLProgrammeStore) ListByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID) ([]*model.Programme, error) {
 	query := s.programmesQuery.
 		Where(sq.Eq{
@@ -158,6 +163,9 @@ func (s SQLProgrammeStore) ListByAcademicUnit(ctx context.Context, academicUnitI
 	return programmes, nil
 }
 
+// SearchByAcademicUnit returns up to limit unarchived Programmes of the
+// Academic Unit whose name or display name contains term, case-insensitively. A
+// limit outside 1..200 is invalid input.
 func (s SQLProgrammeStore) SearchByAcademicUnit(ctx context.Context, academicUnitID model.AcademicUnitID, term string, limit int) ([]*model.Programme, error) {
 	if limit < 1 || limit > 200 {
 		return nil, store.NewErrInvalidInput("programme", "limit", limit)
@@ -225,6 +233,8 @@ func (s SQLProgrammeStore) updateProgramme(ctx context.Context, candidate *model
 	})
 }
 
+// Update validates input.Programme and writes it in one audited transaction
+// fenced on the stored revision immediately preceding the candidate's Revision.
 func (s SQLProgrammeStore) Update(
 	ctx context.Context,
 	input *store.ProgrammeUpdate,

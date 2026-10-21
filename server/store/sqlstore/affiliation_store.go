@@ -189,6 +189,7 @@ func (s SQLAffiliationStore) Save(
 	})
 }
 
+// Get returns the unarchived Affiliation with id, or a not-found error.
 func (s SQLAffiliationStore) Get(ctx context.Context, id model.AffiliationID) (*model.Affiliation, error) {
 	var row affiliationRow
 	if err := s.GetMaster().GetBuilder(ctx, &row, s.query.Where(sq.Eq{
@@ -199,12 +200,16 @@ func (s SQLAffiliationStore) Get(ctx context.Context, id model.AffiliationID) (*
 	return row.model()
 }
 
+// ListByUser returns every unarchived Affiliation of userID, ended or not,
+// newest start first.
 func (s SQLAffiliationStore) ListByUser(ctx context.Context, userID model.UserID) ([]*model.Affiliation, error) {
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
 		"affiliations.user_id": userID, "affiliations.archived_at": nil,
 	}).OrderBy("affiliations.start_at DESC", "affiliations.id"))
 }
 
+// ListActiveByUser returns the unarchived Affiliations of userID active at at
+// (Unix milliseconds).
 func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.UserID, at int64) ([]*model.Affiliation, error) {
 	activeAt := model.TimeFromMillis(at)
 	return s.selectAffiliations(ctx, s.query.Where(sq.Eq{
@@ -214,6 +219,10 @@ func (s SQLAffiliationStore) ListActiveByUser(ctx context.Context, userID model.
 		OrderBy("affiliations.kind", "affiliations.id"))
 }
 
+// End ends the Affiliation at input.EndAt, fenced on ExpectedRevision, and
+// completes its audit event. Ending an already-ended Affiliation is a conflict
+// without input.Command, and an audited no-op (input.NoOp set) under a command
+// idempotency key.
 func (s SQLAffiliationStore) End(ctx context.Context, input *store.AffiliationEnd) (*model.Affiliation, error) {
 	if input == nil || !input.ID.IsValid() || input.ExpectedRevision <= 0 || input.EndAt <= 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("affiliation", "end", nil)

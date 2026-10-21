@@ -142,6 +142,7 @@ func insertAuditEventBetween(
 	return candidate, nil
 }
 
+// Get returns the audit event with id, or a not-found error.
 func (s SQLAuditStore) Get(ctx context.Context, id model.AuditEventID) (*model.AuditEvent, error) {
 	var row auditRow
 	if err := s.GetMaster().GetBuilder(
@@ -152,6 +153,9 @@ func (s SQLAuditStore) Get(ctx context.Context, id model.AuditEventID) (*model.A
 	return row.model()
 }
 
+// Complete moves the attempted audit event id to its final success or fail
+// status with errorCode and result. An event that is absent or already
+// completed yields a not-found error.
 func (s SQLAuditStore) Complete(ctx context.Context, id model.AuditEventID, status model.AuditStatus, errorCode string, result []byte, updateAt int64) (*model.AuditEvent, error) {
 	return completeAuditEvent(
 		ctx, s.GetMaster(), id, status, errorCode, result, updateAt,

@@ -137,6 +137,10 @@ func browserActivityAcknowledgement(ctx context.Context, tx *sqlxTxWrapper, sour
 		MissingRanges: ranges, MissingRangesTruncated: truncated, ServerTime: model.TimeUTC(serverTime)}, nil
 }
 
+// ListBrowserActivity returns one page of the Attempt's Browser Activity events
+// ordered by receipt time, source, and sequence, continuing after the optional
+// keyset cursor. Limit must be 1..201, and the cursor fields must be set
+// together.
 func (s *SQLExamAttemptStore) ListBrowserActivity(ctx context.Context, options store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
 	if !options.ExamID.IsValid() || !options.SittingID.IsValid() || !options.AttemptID.IsValid() || options.Limit < 1 || options.Limit > 201 ||
 		(options.AfterReceivedAt.IsZero() != !options.AfterSourceID.IsValid()) ||

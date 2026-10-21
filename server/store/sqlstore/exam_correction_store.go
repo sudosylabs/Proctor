@@ -230,6 +230,10 @@ func reserveExamCorrectionResourceStage(ctx context.Context, tx *sqlxTxWrapper, 
 	return err
 }
 
+// MarkResourceStageReady records the uploaded rendition of the actor's pending
+// correction Resource stage and marks the stage ready. Repeating it with the
+// same rendition returns the stage unchanged; a different rendition, or an
+// upload lease that is no longer eligible, is a conflict.
 func (s SQLExamCorrectionStore) MarkResourceStageReady(ctx context.Context, input *store.ExamCorrectionResourceStageReadiness) (*store.ExamCorrectionResourceStage, error) {
 	if input == nil || !input.StageID.IsValid() || !input.ActorUserID.IsValid() || input.Rendition == nil || input.ReadyAt.IsZero() {
 		return nil, store.NewErrInvalidInput("exam_correction", "resource_stage_ready", nil)

@@ -532,10 +532,15 @@ func (s SQLJobStore) CancellationRequested(ctx context.Context, attemptID model.
 	})
 }
 
+// Cancel requests cancellation of the Job for an operator and completes the
+// operator audit event. The Job must still be at ExpectedRevision, and a Job
+// whose status cannot be canceled is a conflict.
 func (s SQLJobStore) Cancel(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
 	return s.mutateOperatorJob(ctx, input, "cancel", func(job *model.Job, at time.Time) (*model.Job, error) { return job.RequestCancellation(at) })
 }
 
+// Retry explicitly retries the Job for an operator and completes the operator
+// audit event, with the same revision fencing as Cancel.
 func (s SQLJobStore) Retry(ctx context.Context, input *store.JobMutation) (*model.Job, error) {
 	return s.mutateOperatorJob(ctx, input, "retry", func(job *model.Job, at time.Time) (*model.Job, error) { return job.ExplicitRetry(at) })
 }

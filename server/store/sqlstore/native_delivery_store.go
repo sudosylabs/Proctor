@@ -291,6 +291,8 @@ func projectNativeDeliveryStatus(ctx context.Context, tx *sqlxTxWrapper, owner n
 	return status, nil
 }
 
+// NativeDeliveryStatus returns the current native delivery status of the stream
+// named by access, after verifying ownership.
 func (s *SQLExamAttemptStore) NativeDeliveryStatus(ctx context.Context, access store.NativeDeliveryAccess) (*model.NativeSecurityStreamStatus, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "native delivery status", func(ctx context.Context, tx *sqlxTxWrapper) (*model.NativeSecurityStreamStatus, error) {
 		owner, err := s.nativeDeliveryOwner(ctx, tx, access, false)
@@ -300,6 +302,9 @@ func (s *SQLExamAttemptStore) NativeDeliveryStatus(ctx context.Context, access s
 		return projectNativeDeliveryStatus(ctx, tx, owner, access.StreamID)
 	})
 }
+
+// NativeDeliveryReceipt returns the stored receipt of native batch sequence, or
+// model.ErrDeliveryExpired once the upload deadline has passed.
 func (s *SQLExamAttemptStore) NativeDeliveryReceipt(ctx context.Context, access store.NativeDeliveryAccess, sequence int64) (*model.NativeBatchReceipt, error) {
 	if sequence < 1 || sequence > model.NativeParticipationPositionLimit {
 		return nil, store.NewErrInvalidInput("native_delivery", "sequence", nil)
@@ -357,6 +362,9 @@ type nativeDeclarationOutcome struct {
 	Capacity *model.DeliveryMetadataCapacity   `json:"capacity"`
 }
 
+// DeclareNativeDeliveryGaps records the stream's declared delivery gaps. A
+// refused declaration returns *store.NativeDeliveryRefusal and exhausted
+// delivery capacity returns its capacity error.
 func (s *SQLExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, input *store.NativeDeliveryGapDeclaration, command *store.CommandIdempotency) (*model.DeliveryGapReceipt, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("native_delivery", "gaps", nil)
@@ -377,6 +385,10 @@ func (s *SQLExamAttemptStore) DeclareNativeDeliveryGaps(ctx context.Context, inp
 	}
 	return &result.Receipt, nil
 }
+
+// SealNativeDelivery records the stream's final delivery declaration and
+// returns the resulting status, with the same refusal and capacity errors as
+// DeclareNativeDeliveryGaps.
 func (s *SQLExamAttemptStore) SealNativeDelivery(ctx context.Context, input *store.NativeDeliveryFinalDeclaration, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	if input == nil || input.Declaration.Validate() != nil {
 		return nil, store.NewErrInvalidInput("native_delivery", "final", nil)
@@ -603,6 +615,10 @@ func completeNativeDeliveryAudit(ctx context.Context, tx *sqlxTxWrapper, id mode
 	return err
 }
 
+// UpdateNativeDeliverySummary records the stream's unretained-delivery summary
+// under a NativeDeliverySummaryOperation command. An equal resubmission is a
+// replay; a changed summary within five seconds of the previous one is a
+// conflict unless it is the final one after closure.
 func (s *SQLExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, input *store.NativeDeliverySummaryUpdate, command *store.CommandIdempotency) (*model.NativeSecurityStreamStatus, error) {
 	if input == nil || input.Summary.Validate() != nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 || command == nil || command.Operation != store.NativeDeliverySummaryOperation || command.UserID != input.Access.Access.CandidateUserID {
 		return nil, store.NewErrInvalidInput("native_delivery", "summary", nil)
@@ -680,6 +696,8 @@ func (s *SQLExamAttemptStore) UpdateNativeDeliverySummary(ctx context.Context, i
 	return result.Value, nil
 }
 
+// ResolveNativeDeliveryTarget returns the Sitting, Class, and admitted security
+// binding that own the native delivery stream, after verifying ownership.
 func (s *SQLExamAttemptStore) ResolveNativeDeliveryTarget(ctx context.Context, access store.NativeDeliveryAccess) (*store.NativeDeliveryTarget, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve native delivery target", func(ctx context.Context, tx *sqlxTxWrapper) (*store.NativeDeliveryTarget, error) {
 		owner, err := s.nativeDeliveryOwner(ctx, tx, access, false)

@@ -65,9 +65,16 @@ func (s *SQLExamAttemptStore) debitBrowserAppend(ctx context.Context, access sto
 	return nil
 }
 
+// AppendBrowserActivity appends live Browser Activity events for the caller's
+// open connection and returns their acknowledgement.
 func (s *SQLExamAttemptStore) AppendBrowserActivity(ctx context.Context, input *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
 	return s.appendBrowserActivity(ctx, input, nil)
 }
+
+// AppendHistoricalBrowserDelivery appends Browser Activity delivered after the
+// live connection ended. It requires a BrowserDeliveryAppendOperation command
+// owned by the Candidate and an access without connection or continuity
+// credential.
 func (s *SQLExamAttemptStore) AppendHistoricalBrowserDelivery(ctx context.Context, input *store.BrowserActivityAppend, command *store.CommandIdempotency) (*model.BrowserActivityAcknowledgement, error) {
 	if input == nil || command == nil || command.Operation != store.BrowserDeliveryAppendOperation || command.UserID != input.Access.CandidateUserID || input.Access.ConnectionID != "" || input.Access.ContinuityCredentialHash != "" {
 		return nil, store.NewErrInvalidInput("browser_delivery", "historical_append", nil)

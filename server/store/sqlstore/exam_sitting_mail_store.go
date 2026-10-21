@@ -19,6 +19,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// GetMailFanout returns the Sitting mail fan-out of the mail occurrence,
+// including its encrypted bundle while expansion is incomplete, or a not-found
+// error.
 func (s SQLExamSittingStore) GetMailFanout(ctx context.Context, occurrenceID model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
 	if !occurrenceID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "id", nil)
@@ -80,6 +83,9 @@ func (s SQLExamSittingStore) GetMailFanout(ctx context.Context, occurrenceID mod
 	return snapshot, nil
 }
 
+// ListMailRecipients returns the fan-out together with one page of candidate
+// recipients after AfterUserID. A completed fan-out, or one without a bundle,
+// returns no recipients.
 func (s SQLExamSittingStore) ListMailRecipients(ctx context.Context, request store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
 	if !request.OccurrenceID.IsValid() || request.Limit < 1 || request.Limit > model.SittingMailExpansionPageSize ||
 		(!request.AfterUserID.IsZero() && !request.AfterUserID.IsValid()) {
@@ -201,6 +207,10 @@ func sittingMailRecipientTemplate(fanout *store.ExamSittingMailFanoutSnapshot, s
 	return ""
 }
 
+// CommitMailRecipient decides and records one recipient's Sitting mail delivery
+// for the fan-out, fenced on SittingRevision. An existing delivery is returned
+// without inserting another, and an ineligible or completed recipient is
+// reported as Suppressed.
 func (s SQLExamSittingStore) CommitMailRecipient(ctx context.Context, input *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
 	if input == nil || !input.OccurrenceID.IsValid() || input.SittingRevision < 1 || input.Recipient == nil ||
 		input.Recipient.Validate() != nil {
@@ -671,6 +681,9 @@ func clearExactSittingDesiredDelivery(ctx context.Context, tx *sqlxTxWrapper, fe
 	return nil
 }
 
+// CompleteMailExpansion marks the fan-out completed using database time and
+// destroys its encrypted bundle. Completing an already-completed fan-out
+// returns it unchanged.
 func (s SQLExamSittingStore) CompleteMailExpansion(ctx context.Context, input *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
 	if input == nil || !input.OccurrenceID.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "completion", nil)
@@ -715,6 +728,10 @@ func (s SQLExamSittingStore) CompleteMailExpansion(ctx context.Context, input *s
 	return result, nil
 }
 
+// MaintainMailExpansions terminalizes up to limit incomplete fan-outs whose
+// deadline passed or whose expansion Job is missing or finished, then
+// suppresses deliveries left behind by terminal fan-outs. More reports that
+// work remains.
 func (s SQLExamSittingStore) MaintainMailExpansions(ctx context.Context, limit int) (*store.ExamSittingMailMaintenanceResult, error) {
 	if limit < 1 || limit > mailMaintenanceMaximumBatch {
 		return nil, store.NewErrInvalidInput("exam_sitting_mail_fanout", "maintenance", nil)
@@ -928,6 +945,9 @@ func suppressTerminalSittingMailChildren(ctx context.Context, tx *sqlxTxWrapper,
 	return suppressed, more, nil
 }
 
+// ListMailReconciliationDue returns one page of scheduled future Sittings whose
+// mail needs reconciliation and that have no active fan-out, each with the Exam
+// Manager to act as, ordered by scheduled start and Sitting ID.
 func (s SQLExamSittingStore) ListMailReconciliationDue(ctx context.Context,
 	options store.ExamSittingMailReconciliationOptions,
 ) ([]store.ExamSittingMailReconciliationCandidate, error) {
@@ -1005,6 +1025,9 @@ func sittingMailReconciliationDueSQL(alias string) string {
 			AND u.archived_at IS NULL AND u.disabled_at IS NULL AND u.email_verified=TRUE))`
 }
 
+// ReconcileMail starts a new mail fan-out for the scheduled Sitting as the
+// given actor. The Sitting must still be at ExpectedRevision, due for
+// reconciliation, and without an active fan-out; otherwise it is a conflict.
 func (s SQLExamSittingStore) ReconcileMail(ctx context.Context,
 	input *store.ExamSittingMailReconciliation,
 ) (*store.ExamSittingMailFanoutSnapshot, error) {

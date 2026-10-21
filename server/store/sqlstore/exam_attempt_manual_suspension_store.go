@@ -27,6 +27,9 @@ type examAttemptManualSuspensionOutcomeV1 struct {
 	ConnectionClosed                                                                  bool
 }
 
+// SuspendAttempt implements store.ExamAttemptStore: it applies an Exam
+// Manager's kick to the Attempt under an ExamAttemptSuspendOperation command,
+// and returns the retained result with Replayed set on exact retries.
 func (s *SQLExamAttemptStore) SuspendAttempt(ctx context.Context, input *store.ExamAttemptManualSuspension,
 	command *store.CommandIdempotency,
 ) (*store.ExamAttemptManualSuspensionResult, error) {

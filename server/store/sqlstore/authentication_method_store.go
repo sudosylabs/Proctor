@@ -21,6 +21,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+// Link links a new external identity to an active User when its provider is
+// enabled and current, rejecting the link when MFA re-enrollment is pending or
+// the external login state predates the User's last MFA reset.
 func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.ExternalIdentityLink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Identity == nil || !input.Identity.ID.IsZero() ||
 		!input.Identity.UserID.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
@@ -78,6 +81,10 @@ func (s SQLExternalIdentityStore) Link(ctx context.Context, input *store.Externa
 	})
 }
 
+// Unlink archives the User's external identity and revokes the Sessions it
+// authenticated, using the database clock. It refuses with
+// store.ErrLastUsableAuthenticationMethod when the identity is the User's last
+// usable authentication path.
 func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt <= 0 ||
 		!input.RevocationReason.IsValid() || !input.AuditEventID.IsValid() || input.AuditAt <= 0 ||
@@ -136,6 +143,8 @@ func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.Exter
 	})
 }
 
+// Enroll creates the first password credential for an active User when local
+// login is enabled, completing the audit event in the same transaction.
 func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.PasswordCredentialEnrollment) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || input.Credential == nil || !input.Credential.ID.IsZero() || !input.Credential.UserID.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
@@ -172,6 +181,11 @@ func (s SQLPasswordCredentialStore) Enroll(ctx context.Context, input *store.Pas
 	})
 }
 
+// Remove archives the User's password credential at input.ChangedAt,
+// invalidates outstanding password-reset tokens, and revokes
+// password-authenticated Sessions. It refuses with
+// store.ErrLastUsableAuthenticationMethod when no other usable authentication
+// path remains.
 func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !input.RevocationReason.IsValid() ||
 		!input.AuditEventID.IsValid() || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {

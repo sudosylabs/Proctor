@@ -158,6 +158,8 @@ func createAcademicPeriod(ctx context.Context, tx *sqlxTxWrapper, candidate *mod
 	return candidate, nil
 }
 
+// Get returns the unarchived Academic Period with id, or a not-found error when
+// it is absent or archived.
 func (s SQLAcademicPeriodStore) Get(ctx context.Context, id model.AcademicPeriodID) (*model.AcademicPeriod, error) {
 	var row academicPeriodRow
 	query := s.academicPeriodsQuery.Where(sq.Eq{
@@ -249,6 +251,9 @@ func (s SQLAcademicPeriodStore) ListVisible(
 	return result, nil
 }
 
+// Update validates input.Period and writes it in one audited transaction,
+// fenced on the stored revision immediately preceding the candidate's Revision;
+// a concurrent change yields a conflict.
 func (s SQLAcademicPeriodStore) Update(ctx context.Context, input *store.AcademicPeriodUpdate) (*model.AcademicPeriod, error) {
 	if input == nil || input.Period == nil || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "update", nil)
@@ -292,6 +297,9 @@ func (s SQLAcademicPeriodStore) updateAcademicPeriod(ctx context.Context, candid
 	})
 }
 
+// Archive archives the Academic Period and completes its audit event. A
+// positive ExpectedRevision must match the stored revision, and Classes or
+// Class Members still active in the period make it a conflict.
 func (s SQLAcademicPeriodStore) Archive(ctx context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
 	if input == nil || !input.ID.IsValid() || input.ArchiveAt <= 0 || input.ExpectedRevision < 0 || !input.AuditEventID.IsValid() || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("academic_period", "archive", nil)
