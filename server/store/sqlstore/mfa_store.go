@@ -231,7 +231,7 @@ func (s SQLMFAStore) ConsumeSecondFactor(ctx context.Context, userID model.UserI
 			}
 			result, err := tx.Exec(ctx, `
 			UPDATE mfa_recovery_codes
-			   SET updated_at = GREATEST(updated_at, ?), consumed_at = ?
+			   SET updated_at = GREATEST(updated_at, ?), consumed_at = GREATEST(created_at, ?)
 			 WHERE user_id = ? AND code_hash = ?
 			   AND archived_at IS NULL AND consumed_at IS NULL`,
 				at, at, userID, recoveryCodeHash)
@@ -552,7 +552,7 @@ func upgradeSessionAuthentication(
 		UPDATE sessions
 		   SET updated_at = GREATEST(updated_at, ?),
 		       authentication_strength = 'multi_factor',
-		       mfa_completed_at = ?
+		       mfa_completed_at = GREATEST(authenticated_at, ?)
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		   AND idle_expires_at > ? AND expires_at > ?
 		 RETURNING id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,

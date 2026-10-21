@@ -106,7 +106,10 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 						&store.ErrDesktopCompatibilityPolicyRevisionConflict{CurrentRevision: current.Revision}
 				}
 				candidate := current.Clone()
-				if err := candidate.Replace(input.ExpectedRevision, input.Settings, databaseNow); err != nil {
+				// The recorded change never precedes a policy lifecycle stamped
+				// by a leading node clock; PostgreSQL time decided authority.
+				at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
+				if err := candidate.Replace(input.ExpectedRevision, input.Settings, at); err != nil {
 					return desktopCompatibilityPolicyReplacementOutcome{}, store.NewErrInvalidInput(
 						"desktop_compatibility_policy",
 						"replacement",

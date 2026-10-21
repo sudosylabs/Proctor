@@ -117,10 +117,10 @@ func (s SQLExternalIdentityStore) Unlink(ctx context.Context, input *store.Exter
 			return nil, fmt.Errorf("read external identity unlink time: %w", err)
 		}
 		at = model.TimeUTC(at)
-		if _, err := tx.Exec(ctx, `UPDATE external_identities SET updated_at=GREATEST(updated_at, ?), archived_at=? WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, identity.ID.String(), input.UserID.String()); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE external_identities SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(created_at, ?) WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, identity.ID.String(), input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("archive external identity: %w", err)
 		}
-		identity.UpdatedAt, identity.ArchivedAt = at, model.OptionalTimeFrom(at)
+		identity.UpdatedAt, identity.ArchivedAt = latestTime(identity.UpdatedAt, at), model.OptionalTimeFrom(latestTime(identity.CreatedAt, at))
 		rows, hashes, err := revokeUserSessionsForAuthenticationMethod(ctx, tx, input.UserID.String(), "", identity.ID, at, input.RevocationReason)
 		if err != nil {
 			return nil, err
@@ -206,11 +206,11 @@ func (s SQLPasswordCredentialStore) Remove(ctx context.Context, input *store.Pas
 			return nil, store.ErrLastUsableAuthenticationMethod
 		}
 		at := model.TimeFromMillis(input.ChangedAt)
-		if _, err := tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, ?), archived_at=? WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, credential.ID.String(), input.UserID.String()); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(created_at, ?) WHERE id=? AND user_id=? AND archived_at IS NULL`, at, at, credential.ID.String(), input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("archive password credential: %w", err)
 		}
-		credential.UpdatedAt, credential.ArchivedAt = at, model.OptionalTimeFrom(at)
-		if _, err := tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at, ?), archived_at=? WHERE user_id=? AND purpose='password_reset' AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String()); err != nil {
+		credential.UpdatedAt, credential.ArchivedAt = latestTime(credential.UpdatedAt, at), model.OptionalTimeFrom(latestTime(credential.CreatedAt, at))
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at, ?), archived_at=GREATEST(created_at, ?) WHERE user_id=? AND purpose='password_reset' AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("invalidate password recovery state: %w", err)
 		}
 		rows, hashes, err := revokeUserSessionsForAuthenticationMethod(ctx, tx, input.UserID.String(), "password", "", at, input.RevocationReason)

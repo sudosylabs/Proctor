@@ -529,7 +529,8 @@ func (s SQLSessionStore) Revoke(
 		if session.UpdatedAt.Before(revokedAt) {
 			session.UpdatedAt = revokedAt
 		}
-		session.RevokedAt = model.OptionalTimeFrom(revokedAt)
+		// Revocation SQL clamps the instant to the Session's creation.
+		session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, revokedAt))
 		session.RevocationReason = reason
 		if !selfRevocation {
 			if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {

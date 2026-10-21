@@ -204,25 +204,27 @@ func (s SQLDesktopRegistrationStore) Revoke(
 				return nil, fmt.Errorf("select Desktop Registration credentials: %w", err)
 			}
 			if _, err = tx.Exec(ctx, `UPDATE session_credentials credential
-			   SET updated_at=GREATEST(credential.updated_at,?),revoked_at=?
+			   SET updated_at=GREATEST(credential.updated_at,?),revoked_at=GREATEST(credential.created_at,?)
 			  FROM sessions session
 			 WHERE session.id=credential.session_id AND session.desktop_registration_id=? AND session.user_id=?
 			   AND credential.archived_at IS NULL AND credential.revoked_at IS NULL`,
 				at, at, input.RegistrationID.String(), input.UserID.String()); err != nil {
 				return nil, fmt.Errorf("revoke Desktop Registration credentials: %w", err)
 			}
-			if _, err = tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at,?),revoked_at=?,
+			if _, err = tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at,?),revoked_at=GREATEST(created_at,?),
 				revocation_reason=? WHERE desktop_registration_id=? AND user_id=? AND archived_at IS NULL AND revoked_at IS NULL`,
 				at, at, model.SessionRevocationDesktopRegistration, input.RegistrationID.String(), input.UserID.String()); err != nil {
 				return nil, fmt.Errorf("revoke Desktop Registration Sessions: %w", err)
 			}
 			if _, err = tx.Exec(ctx, `UPDATE desktop_registrations SET updated_at=GREATEST(updated_at,?),
-				revoked_at=? WHERE id=? AND user_id=? AND revoked_at IS NULL`,
+				revoked_at=GREATEST(created_at,?) WHERE id=? AND user_id=? AND revoked_at IS NULL`,
 				at, at, input.RegistrationID.String(), input.UserID.String()); err != nil {
 				return nil, fmt.Errorf("revoke Desktop Registration: %w", err)
 			}
-			registration.UpdatedAt = at
-			registration.RevokedAt = model.OptionalTimeFrom(at)
+			// The revocation instant never precedes rows stamped by PostgreSQL
+			// time or another node's clock; the model mirrors the stored values.
+			registration.UpdatedAt = latestTime(registration.UpdatedAt, at)
+			registration.RevokedAt = model.OptionalTimeFrom(latestTime(registration.CreatedAt, at))
 		}
 		encoded, err := model.EncodeAuditData(registration.Auditable())
 		if err != nil {

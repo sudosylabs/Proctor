@@ -238,7 +238,7 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 			if session.UpdatedAt.Before(now) {
 				session.UpdatedAt = now
 			}
-			session.RevokedAt = model.OptionalTimeFrom(now)
+			session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, now))
 			session.RevocationReason = model.SessionRevocationExpired
 			return &store.SessionRotation{
 				Session: session, RevokedAccessHashes: hashes, Expired: true,
@@ -276,7 +276,7 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
-		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = GREATEST(created_at, ?)
 		 WHERE session_id = ?
 		   AND kind = ?
 		   AND archived_at IS NULL
@@ -297,7 +297,7 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		if _, err := tx.Exec(ctx, `
 		UPDATE session_credentials
 		   SET updated_at = GREATEST(updated_at, ?),
-		       used_at = ?,
+		       used_at = GREATEST(created_at, ?),
 		       replaced_by_id = ?
 		 WHERE id = ? AND used_at IS NULL AND replaced_by_id IS NULL`,
 			now,
@@ -348,7 +348,7 @@ func revokeReplayedSession(
 	}
 	if _, err := executor.Exec(ctx, `
 		UPDATE session_credentials
-		   SET updated_at = GREATEST(updated_at, ?), revoked_at = ?
+		   SET updated_at = GREATEST(updated_at, ?), revoked_at = GREATEST(created_at, ?)
 		 WHERE session_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		now,
 		now,
@@ -359,7 +359,7 @@ func revokeReplayedSession(
 	if _, err := executor.Exec(ctx, `
 		UPDATE sessions
 		   SET updated_at = GREATEST(updated_at, ?),
-		       revoked_at = ?,
+		       revoked_at = GREATEST(created_at, ?),
 		       revocation_reason = ?
 		 WHERE id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		now,
@@ -372,7 +372,7 @@ func revokeReplayedSession(
 	if session.UpdatedAt.Before(now) {
 		session.UpdatedAt = now
 	}
-	session.RevokedAt = model.OptionalTimeFrom(now)
+	session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, now))
 	session.RevocationReason = model.SessionRevocationRefreshReplay
 	return hashes, nil
 }

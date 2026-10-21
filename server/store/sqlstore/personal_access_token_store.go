@@ -192,7 +192,7 @@ func (s SQLPersonalAccessTokenStore) Resolve(
 		if !tokenRow.LastUsedAt.Valid || at.Sub(tokenRow.LastUsedAt.Time) >= updateInterval {
 			if _, err := tx.Exec(ctx, `
 			UPDATE personal_access_tokens
-			   SET updated_at = GREATEST(updated_at, ?), last_used_at = ?
+			   SET updated_at = GREATEST(updated_at, ?), last_used_at = GREATEST(created_at, ?)
 			 WHERE id = ?`,
 				at, at, tokenRow.ID); err != nil {
 				return nil, fmt.Errorf("update personal access token usage: %w", err)
@@ -200,7 +200,7 @@ func (s SQLPersonalAccessTokenStore) Resolve(
 			if tokenRow.UpdatedAt.Before(at) {
 				tokenRow.UpdatedAt = at
 			}
-			tokenRow.LastUsedAt = sql.NullTime{Time: at, Valid: true}
+			tokenRow.LastUsedAt = sql.NullTime{Time: latestTime(tokenRow.CreatedAt, at), Valid: true}
 		}
 		var userRow userRow
 		if err := tx.Get(ctx, &userRow, `

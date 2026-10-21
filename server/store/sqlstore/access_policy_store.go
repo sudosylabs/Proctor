@@ -119,7 +119,10 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 				return accessPolicyReplacementOutcome{}, &store.ErrAccessPolicyBlocked{Blockers: blockers}
 			}
 			candidate := current.Clone()
-			transition, err := candidate.Replace(current.Revision, input.Preflight.Settings, input.ActorID, databaseNow)
+			// PostgreSQL time decided the blockers; the recorded transition never
+			// precedes a policy lifecycle stamped by a leading node clock.
+			at := transitionInstant(databaseNow, current.CreatedAt, current.UpdatedAt)
+			transition, err := candidate.Replace(current.Revision, input.Preflight.Settings, input.ActorID, at)
 			if err != nil {
 				return accessPolicyReplacementOutcome{}, store.NewErrInvalidInput("access_policy", "replacement", nil).Wrap(err)
 			}

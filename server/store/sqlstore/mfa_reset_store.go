@@ -120,7 +120,8 @@ func resetMFAUserAccess(ctx context.Context, tx *sqlxTxWrapper, userID model.Use
 		if err != nil {
 			return nil, err
 		}
-		session.RevokedAt = model.OptionalTimeFrom(at)
+		// Revocation SQL clamps PostgreSQL time to the node-clock creation.
+		session.RevokedAt = model.OptionalTimeFrom(latestTime(session.CreatedAt, at))
 		session.RevocationReason = model.SessionRevocationMFAReset
 		if session.UpdatedAt.Before(at) {
 			session.UpdatedAt = at
@@ -139,7 +140,7 @@ func resetMFAUserAccess(ctx context.Context, tx *sqlxTxWrapper, userID model.Use
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at,?),archived_at=? WHERE user_id=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, userID.String()); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at,?),archived_at=GREATEST(created_at,?) WHERE user_id=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, userID.String()); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE audit_events a SET updated_at=GREATEST(a.updated_at,?),status='fail',error_code='authentication.mfa.reenrollment_required' FROM external_login_states s WHERE s.target_user_id=? AND s.audit_event_id=a.id AND a.status='attempt'`, at, userID.String()); err != nil {

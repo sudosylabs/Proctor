@@ -57,6 +57,9 @@ func (s SQLSessionStore) ReauthenticatePassword(
 		if err != nil {
 			return nil, err
 		}
+		// PostgreSQL time decided validity above. The recorded proof never
+		// precedes the Session's node-clock authentication history.
+		at = transitionInstant(at, session.AuthenticatedAt, session.ReauthenticatedAt.Time)
 		return commitSessionReauthentication(ctx, tx, session, at, input.AuditEventID)
 	})
 }
