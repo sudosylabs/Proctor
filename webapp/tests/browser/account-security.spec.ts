@@ -351,6 +351,10 @@ test("pending enrollment restarts explicitly and invalid codes keep the setup ke
   await expect(page.getByText("Restarting replaces its setup key", { exact: false })).toBeVisible();
   expect(mutations(state, "/setup")).toHaveLength(0);
   await page.getByRole("button", { name: "Restart authenticator setup" }).click();
+  // Restarting re-renders the form with the new setup key; type the code only
+  // after that render so it cannot clear the field under load.
+  await expect.poll(() => mutations(state, "/setup").length).toBe(1);
+  await expect(page.getByLabel("Setup key", { exact: true })).toHaveValue(setupKey);
   await page.getByLabel("Authenticator code", { exact: false }).fill("000000");
   await page.getByRole("button", { name: "Activate authenticator" }).click();
   await expect(page.getByText("That code could not be verified.", { exact: false })).toBeVisible();
