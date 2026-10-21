@@ -136,12 +136,14 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 		err    error
 	}
 	disableResult := make(chan disableOutcome, 1)
+	// The fixture asserts, so it is built on the test goroutine.
+	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+	})
 	go func() {
-		result, disableErr := persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
-			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		}))
+		result, disableErr := persistence.User().SetDisabled(ctx, disable)
 		disableResult <- disableOutcome{result: result, err: disableErr}
 	}()
 	_ = waitForBlockedMailQuery(t, ctx, persistence, exchangePID, "pg_advisory_xact_lock")
@@ -202,12 +204,14 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 		err    error
 	}
 	disableResult := make(chan disableOutcome, 1)
+	// The fixture asserts, so it is built on the test goroutine.
+	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+	})
 	go func() {
-		result, disableErr := secondary.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID, ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID, AuditAt: model.GetMillis(),
-			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		}))
+		result, disableErr := secondary.User().SetDisabled(ctx, disable)
 		disableResult <- disableOutcome{result: result, err: disableErr}
 	}()
 	disablePID := waitForBlockedMailQuery(t, ctx, primary, controllerPID, "FROM users WHERE id")
