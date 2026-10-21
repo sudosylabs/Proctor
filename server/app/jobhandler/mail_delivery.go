@@ -130,6 +130,12 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	if !relevant {
 		return h.suppress(ctx, delivery, model.MailDeliveryObsoleteCode, now)
 	}
+	if delivery.State == model.MailDeliverySending && delivery.AttemptCount >= model.MailMaximumAttempts {
+		// The last send attempt lost its worker mid-send. Its outcome is
+		// unknown and no attempt remains, so the delivery fails visibly for an
+		// operator instead of waiting Sending for its deadline.
+		return h.failAt(ctx, delivery, "mail.transport.acceptance_uncertain", errors.New("mail delivery attempts are exhausted"), now)
+	}
 	sending, err := h.deliveries.StartDelivery(ctx, delivery.ID, delivery.Revision, now)
 	if err != nil {
 		return mailDeliveryDependencyOutcome(err)
@@ -155,7 +161,11 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 		if h.health != nil && classification != appmail.TransportPermanent {
 			h.health.SetJobMailHealth("mail.smtp_outage")
 		}
-		if classification == appmail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts {
+		// The delivery and its Job count attempts separately. On the Job's last
+		// attempt a requeued delivery would be left Queued with no Job, so it
+		// fails now and stays available to an operator retry.
+		lastJobAttempt := execution.Job.AttemptCount >= execution.Job.MaximumAttempts
+		if classification == appmail.TransportPermanent || sending.AttemptCount >= model.MailMaximumAttempts || lastJobAttempt {
 			return h.failAt(ctx, sending, code, err, completedAt)
 		}
 		if _, transitionErr := h.deliveries.CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID, ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionRetry, PublicFailureCode: code, At: completedAt}); transitionErr != nil {

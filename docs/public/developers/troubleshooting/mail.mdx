@@ -98,7 +98,7 @@ ordinary logs.
 | Finding | Recovery |
 | --- | --- |
 | Business state committed but no delivery intent exists | Fix the owning aggregate transaction and add a regression test |
-| Delivery is queued but no attempt starts | Diagnose the durable Job runner |
+| Delivery is queued but no attempt starts | Diagnose the durable Job runner; if its Job already failed, use the authorized operator retry |
 | Rendering fails | Correct the server-owned template, locale data, or frozen payload contract |
 | SMTP is temporarily unavailable | Preserve durable work and let bounded retry policy operate |
 | Delivery is terminally failed | Use the authorized operator retry only after correcting the cause |

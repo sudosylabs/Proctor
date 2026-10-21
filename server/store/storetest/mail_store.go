@@ -309,6 +309,36 @@ func testMailOperatorStore(t *testing.T, ctx context.Context, ss store.Store, us
 	retriedJob, err := ss.Job().Get(ctx, retried.JobID)
 	require.NoError(t, err)
 	require.Equal(t, model.JobStatusQueued, retriedJob.Status)
+
+	// A delivery whose Job ran out of attempts while it was still Sending is
+	// not stranded: the operator retry requeues both.
+	orphanTarget, err := ss.Mail().EnqueueTest(ctx, mailTestEnqueueFixture(t, user, institution, at.Add(3*time.Second)))
+	require.NoError(t, err)
+	var orphan *model.MailDelivery
+	for attempts := 0; attempts < 20; attempts++ {
+		token := mustClaimToken(t)
+		claim, claimErr := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailDeliver}, NodeID: "mail-operator-test", ClaimToken: token, LeaseDuration: time.Minute})
+		require.NoError(t, claimErr)
+		if claim.Job.ID != orphanTarget.JobID {
+			_, claimErr = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)})
+			require.NoError(t, claimErr)
+			continue
+		}
+		orphan, err = ss.Mail().StartDelivery(ctx, orphanTarget.ID, orphanTarget.Revision, model.NowUTC())
+		require.NoError(t, err)
+		_, err = ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID, ClaimToken: token, Kind: store.JobCompletionPermanentFailure, PublicErrorCode: "job.lease_expired"})
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, orphan, "did not claim orphaned delivery Job")
+	require.Equal(t, model.MailDeliverySending, orphan.State)
+	orphanAudit := saveMailMutationAudit(t, ctx, ss, institution, orphan, "retry")
+	recovered, err := ss.Mail().RetryDelivery(ctx, &store.MailDeliveryMutation{ID: orphan.ID, ExpectedRevision: orphan.Revision, AuditEventID: orphanAudit.ID, AuditAt: model.GetMillis()})
+	require.NoError(t, err, "operator retry of a Sending delivery whose Job failed")
+	require.Equal(t, model.MailDeliveryQueued, recovered.State)
+	recoveredJob, err := ss.Job().Get(ctx, recovered.JobID)
+	require.NoError(t, err)
+	require.Equal(t, model.JobStatusQueued, recoveredJob.Status)
 }
 
 func saveMailMutationAudit(t *testing.T, ctx context.Context, ss store.Store, institution *model.Institution, delivery *model.MailDelivery, operation string) *model.AuditEvent {

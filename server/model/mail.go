@@ -440,12 +440,17 @@ func (d *MailDelivery) Cancel(at time.Time) (*MailDelivery, error) {
 	return result, result.Validate()
 }
 
-// OperatorRetry requeues a failed delivery in place. The immutable recipient,
-// payload and Message-ID remain frozen; the prior public failure stays in Job
-// attempt history while the delivery records a closed operator-retry marker.
+// OperatorRetry requeues a failed delivery in place. A Queued or Sending
+// delivery whose Job already failed (its Job attempts ran out before its
+// delivery attempts, or its worker died mid-send) is requeued the same way;
+// the caller proves the Job failed. The immutable recipient, payload and
+// Message-ID remain frozen; the prior public failure stays in Job attempt
+// history while a delivery that was attempted records a closed operator-retry
+// marker.
 func (d *MailDelivery) OperatorRetry(at time.Time) (*MailDelivery, error) {
 	at = TimeUTC(at)
-	if d == nil || d.State != MailDeliveryFailed || d.AttemptCount >= MailMaximumAttempts ||
+	if d == nil || (d.State != MailDeliveryFailed && d.State != MailDeliveryQueued && d.State != MailDeliverySending) ||
+		d.AttemptCount >= MailMaximumAttempts ||
 		at.Before(d.UpdatedAt) || !at.Before(d.Deadline) || len(d.EncryptedPayload) == 0 {
 		return nil, invalidModelError("MailDelivery.OperatorRetry", "mail_delivery", "", "mail delivery cannot be retried by an operator", "")
 	}
@@ -453,7 +458,10 @@ func (d *MailDelivery) OperatorRetry(at time.Time) (*MailDelivery, error) {
 	result.State = MailDeliveryQueued
 	result.UpdatedAt = at
 	result.FailedAt = OptionalTime{}
-	result.PublicFailureCode = MailDeliveryOperatorRetryCode
+	result.PublicFailureCode = ""
+	if result.AttemptCount > 0 {
+		result.PublicFailureCode = MailDeliveryOperatorRetryCode
+	}
 	result.Revision++
 	return result, result.Validate()
 }

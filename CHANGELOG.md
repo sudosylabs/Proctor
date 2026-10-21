@@ -103,6 +103,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: a mail delivery left Queued or Sending after its Job failed can be
+  retried by an operator, and the last Job attempt fails its delivery instead
+  of requeuing it with no Job left.
 - Server: a Job whose lease expired is requeued behind a backoff, and a Job
   canceled while its handler failed retryably completes as canceled instead of
   staying running until its lease expires.

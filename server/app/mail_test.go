@@ -719,6 +719,35 @@ func TestMailDeliveryHandlerClassifiesRetryableAndPermanentFailures(t *testing.T
 	}
 }
 
+func TestMailDeliveryHandlerFailsTemporaryFailureOnLastJobAttempt(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	job.AttemptCount = job.MaximumAttempts
+	persistence := &mailStoreFake{delivery: delivery}
+	sender := &mailSenderFake{enabled: true, outcome: MailTransportTemporary, err: errors.New("try later")}
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v", outcome)
+	require.Equal(t, model.MailDeliveryFailed, persistence.delivery.State, "delivery left without a Job")
+	require.Equal(t, "mail.transport.temporary", persistence.delivery.PublicFailureCode)
+}
+
+func TestMailDeliveryHandlerFailsExhaustedSendingDeliveryWithoutSending(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	sending, err := delivery.Start(at)
+	require.NoError(t, err)
+	sending.AttemptCount = model.MailMaximumAttempts
+	persistence := &mailStoreFake{delivery: sending}
+	sender := &mailSenderFake{enabled: true}
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v", outcome)
+	require.Equal(t, "mail.transport.acceptance_uncertain", outcome.PublicErrorCode)
+	require.Equal(t, model.MailDeliveryFailed, persistence.delivery.State, "exhausted delivery stayed Sending")
+	require.Empty(t, sender.messages, "exhausted delivery was sent again")
+}
+
 func TestMailDeliveryHandlerFailsUnavailablePayloadWithoutSending(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)

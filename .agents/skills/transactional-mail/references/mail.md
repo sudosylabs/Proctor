@@ -185,7 +185,11 @@ binds the Review ID and approved Review revision. A later re-finalization after
 accepted delivery invalidation can create its own availability notice, while
 exact release retries preserve the original occurrence and delivery. PostgreSQL uniqueness prevents
 duplicate children after process loss. Operator retry reuses the same delivery
-and Message-ID; it does not clone or edit a frozen recipient.
+and Message-ID; it does not clone or edit a frozen recipient. Job attempts and
+delivery attempts are counted separately: a delivery whose Job fails while it
+is still Queued or Sending stays operator-retryable, the last Job attempt fails
+a delivery rather than requeuing it, and a Sending delivery with no attempt
+left fails as acceptance-uncertain instead of waiting for its deadline.
 
 One user-visible command normally creates one semantic notification even when
 it has internal side effects. Account disable does not also send a session

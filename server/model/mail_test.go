@@ -180,6 +180,23 @@ func TestMailDeliveryOperatorControlCancelsQueuedAndRetriesFailedInPlace(t *test
 	require.Equal(t, failed.Revision+1, retried.Revision)
 	_, err = failed.OperatorRetry(failed.Deadline)
 	require.Error(t, err, "OperatorRetry() accepted an expired delivery")
+
+	// A delivery whose Job failed while it was still Queued or Sending is
+	// requeued the same way; only an attempted delivery carries the marker.
+	orphanedQueued, err := queued.OperatorRetry(at.Add(time.Second))
+	require.NoError(t, err, "OperatorRetry(queued)")
+	require.Equal(t, MailDeliveryQueued, orphanedQueued.State)
+	require.Empty(t, orphanedQueued.PublicFailureCode)
+	sending, err := queued.Start(at.Add(time.Second))
+	require.NoError(t, err)
+	orphanedSending, err := sending.OperatorRetry(at.Add(2 * time.Second))
+	require.NoError(t, err, "OperatorRetry(sending)")
+	require.Equal(t, MailDeliveryQueued, orphanedSending.State)
+	require.Equal(t, MailDeliveryOperatorRetryCode, orphanedSending.PublicFailureCode)
+	exhausted := sending.Clone()
+	exhausted.AttemptCount = MailMaximumAttempts
+	_, err = exhausted.OperatorRetry(at.Add(2 * time.Second))
+	require.Error(t, err, "OperatorRetry() accepted a delivery without attempts left")
 }
 
 func TestMailDeliverySuppressionDestroysRecoverablePayload(t *testing.T) {
