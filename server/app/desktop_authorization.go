@@ -307,7 +307,7 @@ func (s *desktopAuthorizationService) DesktopAuthorizationContext(ctx context.Co
 	}
 	result.LocalLoginEnabled = local
 	for _, configured := range s.capabilities.Snapshot().Providers {
-		allowed, allowErr := s.accessPolicy.AllowsDesktopAuthorization(ctx, configured.Descriptor.Type, configured.Descriptor.Id)
+		allowed, allowErr := s.accessPolicy.AllowsDesktopAuthorization(ctx, configured.Descriptor.Type, configured.Descriptor.ID)
 		if allowErr != nil {
 			return nil, apperror.New("authentication.desktop_authorization.unavailable").Wrap(allowErr)
 		}
@@ -820,7 +820,7 @@ func (s *desktopAuthorizationService) hasAuthenticationChoice(ctx context.Contex
 		return allowed, err
 	}
 	for _, provider := range s.capabilities.Snapshot().Providers {
-		allowed, err = s.accessPolicy.AllowsDesktopAuthorization(ctx, provider.Descriptor.Type, provider.Descriptor.Id)
+		allowed, err = s.accessPolicy.AllowsDesktopAuthorization(ctx, provider.Descriptor.Type, provider.Descriptor.ID)
 		if err != nil || allowed {
 			return allowed, err
 		}

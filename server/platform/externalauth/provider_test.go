@@ -66,7 +66,7 @@ func (f fakeFactory) New(
 	}
 	return fakeProvider{
 		descriptor: model.ExternalAuthenticationProvider{
-			Id: settings.ID, Type: settings.Type,
+			ID: settings.ID, Type: settings.Type,
 		},
 	}, nil
 }

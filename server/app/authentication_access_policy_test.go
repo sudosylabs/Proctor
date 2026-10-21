@@ -71,7 +71,7 @@ func (p authenticationAccessPolicyFake) AvailableExternalProviders(_ context.Con
 	}
 	available := make([]model.ExternalAuthenticationProvider, 0, len(configured))
 	for _, provider := range configured {
-		if p.providers[provider.Id] {
+		if p.providers[provider.ID] {
 			available = append(available, provider)
 		}
 	}

@@ -14,6 +14,12 @@ import (
 	"time"
 )
 
+// The types in this file are documents of the desktop native delivery
+// agreement. Batches are decoded closed and canonically re-encoded; receipts,
+// progress and stream status are persisted as replay outcomes and returned
+// verbatim. Their json tags are that one canonical spelling (see the package
+// documentation on serialization).
+
 var ErrNativeDeliveryInvalid = errors.New("native delivery is invalid")
 
 type NativeSourceRange struct {
@@ -253,7 +259,7 @@ type NativeDeliveryProgress struct {
 	ServerTime                     time.Time       `json:"server_time"`
 }
 type NativeSecurityAcknowledgement struct {
-	Receipt NativeBatchReceipt `json:"receipt"`
+	Receipt NativeBatchReceipt
 	NativeDeliveryProgress
 }
 

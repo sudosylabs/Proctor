@@ -29,7 +29,7 @@ func TestNativeDeliveryOpenAPIAgreesWithRuntime(t *testing.T) {
 		{Name: "NativeSourceReset", DTO: reflect.TypeOf(model.NativeSourceReset{}), Required: []string{"kind", "reset_id", "source_id", "previous_source_instance_id", "previous_final_sequence", "new_source_instance_id", "reason", "occurred_at"}},
 		{Name: "NativeSourceGap", DTO: reflect.TypeOf(model.NativeSourceGap{}), Required: []string{"kind", "source_id", "source_instance_id", "first_missing_sequence", "last_missing_sequence", "reason", "occurred_at"}},
 		{Name: "NativeCoverageTransition", DTO: reflect.TypeOf(model.NativeCoverageTransition{}), Required: []string{"kind", "source", "occurred_at", "reason"}},
-		{Name: "NativeSecurityAcknowledgement", DTO: reflect.TypeOf(model.NativeSecurityAcknowledgement{}), Required: []string{"receipt", "highest_contiguous_batch_sequence", "settled_through_batch_sequence", "highest_seen_batch_sequence", "missing_batch_ranges", "missing_ranges_truncated", "server_time"}},
+		{Name: "NativeSecurityAcknowledgement", DTO: reflect.TypeOf(nativeDeliveryAcknowledgementResponse{}), Required: []string{"receipt", "highest_contiguous_batch_sequence", "settled_through_batch_sequence", "highest_seen_batch_sequence", "missing_batch_ranges", "missing_ranges_truncated", "server_time"}},
 
 		{Name: "NativeBatchReceipt", DTO: reflect.TypeOf(model.NativeBatchReceipt{}), Required: []string{"stream_id", "batch_sequence", "request_digest", "received_at"}},
 		{Name: "DeclareDeliveryGaps", DTO: reflect.TypeOf(model.DeclareDeliveryGaps{}), Required: []string{"declaration_id", "expected_declaration_revision", "allocated_through_sequence", "ranges", "reason"}},

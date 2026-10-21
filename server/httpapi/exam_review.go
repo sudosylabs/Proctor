@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -198,7 +199,7 @@ type examSubmissionReviewResponse struct {
 type examIntegrityReviewResponse struct {
 	NativeConditions          model.NativeConditionInventory        `json:"native_conditions"`
 	DeliveryInventoryRevision int64                                 `json:"delivery_inventory_revision"`
-	BrowserEvidenceOverflow   *model.BrowserIntegrityOverflow       `json:"browser_evidence_overflow,omitempty"`
+	BrowserEvidenceOverflow   *browserIntegrityOverflowResponse     `json:"browser_evidence_overflow,omitempty"`
 	BrowserActivity           model.BrowserSubmissionSettlement     `json:"browser_activity"`
 	SubmissionID              string                                `json:"submission_id"`
 	ExamID                    string                                `json:"exam_id"`
@@ -219,17 +220,51 @@ type examIntegrityReviewMutationResponse struct {
 	Decision        *examIntegrityReviewDecisionResponse `json:"decision,omitempty"`
 }
 
+// browserIntegrityGroupResponse identifies the Browser Activity rule group
+// behind an Integrity Flag.
+type browserIntegrityGroupResponse struct {
+	ParticipationID         model.AttemptParticipationID `json:"participation_id"`
+	PolicyRevisionID        model.ExamRevisionID         `json:"policy_revision_id"`
+	RuleID                  string                       `json:"rule_id"`
+	OverflowFirstReceivedAt *time.Time                   `json:"overflow_first_received_at"`
+	OverflowLastReceivedAt  *time.Time                   `json:"overflow_last_received_at"`
+}
+
+func browserIntegrityGroupFrom(value *model.BrowserIntegrityGroup) *browserIntegrityGroupResponse {
+	if value == nil {
+		return nil
+	}
+	return &browserIntegrityGroupResponse{ParticipationID: value.ParticipationID, PolicyRevisionID: value.PolicyRevisionID, RuleID: value.RuleID,
+		OverflowFirstReceivedAt: value.OverflowFirstReceivedAt, OverflowLastReceivedAt: value.OverflowLastReceivedAt}
+}
+
+// browserIntegrityOverflowResponse counts validated Browser Activity events
+// that exceeded retained Integrity Evidence.
+type browserIntegrityOverflowResponse struct {
+	ValidatedEventCount int64     `json:"validated_event_count"`
+	FirstReceivedAt     time.Time `json:"first_received_at"`
+	LastReceivedAt      time.Time `json:"last_received_at"`
+	Reason              string    `json:"reason"`
+}
+
+func browserIntegrityOverflowFrom(value *model.BrowserIntegrityOverflow) *browserIntegrityOverflowResponse {
+	if value == nil {
+		return nil
+	}
+	return &browserIntegrityOverflowResponse{ValidatedEventCount: value.ValidatedEventCount, FirstReceivedAt: value.FirstReceivedAt, LastReceivedAt: value.LastReceivedAt, Reason: value.Reason}
+}
+
 type examIntegrityFlagResponse struct {
-	Browser                *model.BrowserIntegrityGroup `json:"browser,omitempty"`
-	ID                     string                       `json:"id"`
-	ExamAttemptID          string                       `json:"exam_attempt_id"`
-	Generation             int64                        `json:"generation"`
-	PolicyKind             string                       `json:"policy_kind"`
-	State                  string                       `json:"state"`
-	CreatedAt              string                       `json:"created_at"`
-	EvidenceCount          int                          `json:"evidence_count"`
-	EvidenceOverflowCount  int64                        `json:"evidence_overflow_count"`
-	UnresolvedMissingCount int64                        `json:"unresolved_missing_count"`
+	Browser                *browserIntegrityGroupResponse `json:"browser,omitempty"`
+	ID                     string                         `json:"id"`
+	ExamAttemptID          string                         `json:"exam_attempt_id"`
+	Generation             int64                          `json:"generation"`
+	PolicyKind             string                         `json:"policy_kind"`
+	State                  string                         `json:"state"`
+	CreatedAt              string                         `json:"created_at"`
+	EvidenceCount          int                            `json:"evidence_count"`
+	EvidenceOverflowCount  int64                          `json:"evidence_overflow_count"`
+	UnresolvedMissingCount int64                          `json:"unresolved_missing_count"`
 }
 
 type examIntegrityFlagListResponse struct {
@@ -360,7 +395,7 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 	}
 	response := examIntegrityFlagListResponse{Items: make([]examIntegrityFlagResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
-		response.Items = append(response.Items, examIntegrityFlagResponse{Browser: item.Browser, ID: item.Flag.ID.String(),
+		response.Items = append(response.Items, examIntegrityFlagResponse{Browser: browserIntegrityGroupFrom(item.Browser), ID: item.Flag.ID.String(),
 			ExamAttemptID: item.Flag.AttemptID.String(), Generation: item.Flag.Generation, PolicyKind: string(item.Flag.Kind),
 			State: string(item.Flag.State), CreatedAt: model.FormatRFC3339(item.Flag.CreatedAt),
 			EvidenceCount: item.EvidenceCount, EvidenceOverflowCount: item.OverflowCount,
@@ -598,7 +633,7 @@ func examIntegrityReviewSnapshotResponse(snapshot *application.ExamSubmissionRev
 	if snapshot == nil || snapshot.Submission == nil {
 		return examIntegrityReviewResponse{}, errors.New("Integrity Review application returned an empty snapshot")
 	}
-	response := examIntegrityReviewResponse{NativeConditions: snapshot.NativeConditions, DeliveryInventoryRevision: snapshot.DeliveryInventoryRevision, BrowserEvidenceOverflow: snapshot.BrowserEvidenceOverflow, BrowserActivity: snapshot.Submission.BrowserActivity, SubmissionID: snapshot.Authorization.SubmissionID.String(),
+	response := examIntegrityReviewResponse{NativeConditions: snapshot.NativeConditions, DeliveryInventoryRevision: snapshot.DeliveryInventoryRevision, BrowserEvidenceOverflow: browserIntegrityOverflowFrom(snapshot.BrowserEvidenceOverflow), BrowserActivity: snapshot.Submission.BrowserActivity, SubmissionID: snapshot.Authorization.SubmissionID.String(),
 		ExamID: snapshot.Authorization.ExamID.String(), ExamSittingID: snapshot.Authorization.SittingID.String(),
 		ExamAttemptID: snapshot.Authorization.AttemptID.String(), CandidateUserID: snapshot.Authorization.CandidateUserID.String(),
 		IntegrityState:           string(snapshot.Submission.IntegrityState),

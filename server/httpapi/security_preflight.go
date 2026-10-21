@@ -59,11 +59,57 @@ func (r *prepareSecurityPreflightRequest) UnmarshalJSON(data []byte) error {
 type securityPolicyRecoveryResponse struct {
 	CurrentSources             []model.NativeSourceCoverage `json:"current_sources"`
 	CurrentCoverage            []model.NativeCoverageClaim  `json:"current_coverage"`
-	SourceResetReceipts        []model.SourceResetReceipt   `json:"source_reset_receipts"`
-	SecurityCoverage           model.SecurityCoverageResult `json:"security_coverage"`
+	SourceResetReceipts        []sourceResetReceiptResponse `json:"source_reset_receipts"`
+	SecurityCoverage           securityCoverageResponse     `json:"security_coverage"`
 	ServerTime                 time.Time                    `json:"server_time"`
 	Security                   model.AdmittedSecurity       `json:"security"`
 	FrozenAttemptConfiguration model.AttemptConfiguration   `json:"frozen_attempt_configuration"`
+}
+
+// securityCoverageResponse reports how the server processed one native
+// security coverage control.
+type securityCoverageResponse struct {
+	ProcessedControlSequence    int64                                `json:"processed_control_sequence"`
+	ProcessedControlDigest      *string                              `json:"processed_control_digest"`
+	CoverageResult              string                               `json:"coverage_result"`
+	SourceResetReceipts         []sourceResetReceiptResponse         `json:"source_reset_receipts"`
+	SecurityInteractionAllowed  bool                                 `json:"security_interaction_allowed"`
+	DeliveryWatermarkRejections []deliveryWatermarkRejectionResponse `json:"delivery_watermark_rejections"`
+}
+
+type sourceResetReceiptResponse struct {
+	ResetID     string `json:"reset_id"`
+	ResetDigest string `json:"reset_digest"`
+}
+
+type deliveryWatermarkRejectionResponse struct {
+	Family   string `json:"family"`
+	SourceID string `json:"source_id"`
+	Reason   string `json:"reason"`
+}
+
+func securityCoverageFrom(value model.SecurityCoverageResult) securityCoverageResponse {
+	response := securityCoverageResponse{ProcessedControlSequence: value.ProcessedControlSequence, ProcessedControlDigest: value.ProcessedControlDigest,
+		CoverageResult: value.CoverageResult, SourceResetReceipts: sourceResetReceiptsFrom(value.SourceResetReceipts),
+		SecurityInteractionAllowed: value.SecurityInteractionAllowed}
+	if value.DeliveryWatermarkRejections != nil {
+		response.DeliveryWatermarkRejections = make([]deliveryWatermarkRejectionResponse, 0, len(value.DeliveryWatermarkRejections))
+	}
+	for _, rejection := range value.DeliveryWatermarkRejections {
+		response.DeliveryWatermarkRejections = append(response.DeliveryWatermarkRejections, deliveryWatermarkRejectionResponse{Family: rejection.Family, SourceID: rejection.SourceID, Reason: rejection.Reason})
+	}
+	return response
+}
+
+func sourceResetReceiptsFrom(values []model.SourceResetReceipt) []sourceResetReceiptResponse {
+	if values == nil {
+		return nil
+	}
+	receipts := make([]sourceResetReceiptResponse, 0, len(values))
+	for _, receipt := range values {
+		receipts = append(receipts, sourceResetReceiptResponse{ResetID: receipt.ResetID, ResetDigest: receipt.ResetDigest})
+	}
+	return receipts
 }
 
 type securityPolicyResponse struct {
@@ -143,8 +189,8 @@ func (m examAttemptHTTPModule) recoverSecurityPolicy(request operationRequest) (
 		return operationResult{}, errUnpresentableResult
 	}
 	result := securityPolicyRecoveryResponse{
-		CurrentSources: recovered.CurrentSources, CurrentCoverage: recovered.CurrentCoverage, SourceResetReceipts: recovered.SourceResetReceipts,
-		SecurityCoverage: recovered.SecurityCoverage, ServerTime: recovered.ServerTime, Security: recovered.Security, FrozenAttemptConfiguration: recovered.FrozenAttemptConfiguration,
+		CurrentSources: recovered.CurrentSources, CurrentCoverage: recovered.CurrentCoverage, SourceResetReceipts: sourceResetReceiptsFrom(recovered.SourceResetReceipts),
+		SecurityCoverage: securityCoverageFrom(recovered.SecurityCoverage), ServerTime: recovered.ServerTime, Security: recovered.Security, FrozenAttemptConfiguration: recovered.FrozenAttemptConfiguration,
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil || len(encoded) > model.SecurityPolicyResponseMaxBytes {

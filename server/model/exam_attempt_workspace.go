@@ -353,7 +353,7 @@ type AttemptWorkspaceJournalEntry struct {
 	ContentVersion WorkspaceContentVersion
 	ChangedAt      time.Time
 	// Recursive deletes OldPath and every descendant separated by a slash.
-	Recursive bool `json:",omitempty"`
+	Recursive bool
 }
 
 func (entry AttemptWorkspaceJournalEntry) Validate() error {

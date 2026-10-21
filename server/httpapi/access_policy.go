@@ -249,7 +249,7 @@ func accessPolicyResponseFromView(view application.AccessPolicyView) accessPolic
 		}
 	}
 	for _, provider := range view.AvailableProviders {
-		response.AvailableProviders = append(response.AvailableProviders, externalAuthenticationProviderResponse{ID: provider.Id, DisplayName: provider.DisplayName, Type: provider.Type})
+		response.AvailableProviders = append(response.AvailableProviders, externalAuthenticationProviderResponse{ID: provider.ID, DisplayName: provider.DisplayName, Type: provider.Type})
 	}
 	return response
 }
@@ -265,7 +265,7 @@ func publicAccessDiscoveryResponseFromView(view application.PublicAccessDiscover
 		response.Institution = &publicInstitutionPresentationResponse{ID: view.Institution.ID.String(), Name: view.Institution.Name, DisplayName: view.Institution.DisplayName}
 	}
 	for _, provider := range view.Providers {
-		response.Providers = append(response.Providers, externalAuthenticationProviderResponse{ID: provider.Id, DisplayName: provider.DisplayName, Type: provider.Type})
+		response.Providers = append(response.Providers, externalAuthenticationProviderResponse{ID: provider.ID, DisplayName: provider.DisplayName, Type: provider.Type})
 	}
 	sort.Slice(response.Providers, func(i, j int) bool { return response.Providers[i].ID < response.Providers[j].ID })
 	return response

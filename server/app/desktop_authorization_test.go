@@ -235,7 +235,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 	service, err := newDesktopAuthorizationService(
 		persistence, desktopAuthorizationInstitutionStoreFake{institution: institution},
 		desktopAuthorizationAccessPolicyFake{enabled: true},
-		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus"}}}}},
+		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}},
 		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
 		func() string { value := generated[0]; generated = generated[1:]; return value }, func() time.Time { return at },

@@ -84,7 +84,7 @@ func TestPublicAccessDiscoveryDTOContainsNoPrivatePolicyOrDestinations(t *testin
 		DiscoveryVersion: 1, CanonicalOrigin: "https://proctor.example.edu", InstallationID: institutionID.String(), Initialized: true,
 		Institution:    &application.PublicInstitutionPresentation{ID: institutionID, Name: "northbridge", DisplayName: "Northbridge"},
 		PolicyRevision: 4, Capabilities: application.PublicAccessCapabilities{LocalLogin: true, DesktopAuthorization: true},
-		Providers:            []model.ExternalAuthenticationProvider{{Id: "campus", DisplayName: "Campus", Type: "oidc"}},
+		Providers:            []model.ExternalAuthenticationProvider{{ID: "campus", DisplayName: "Campus", Type: "oidc"}},
 		DesktopAuthorization: application.DesktopAuthorizationCompatibility{Protocol: "proctor-desktop-authorization", MinimumVersion: 1, MaximumVersion: 1},
 	})
 	encoded, err := json.Marshal(response)

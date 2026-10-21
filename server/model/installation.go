@@ -20,7 +20,7 @@ type InstallationState struct {
 
 // InstallationStatus is the public bootstrap readiness projection.
 type InstallationStatus struct {
-	Initialized bool `json:"initialized"`
+	Initialized bool
 }
 
 // Validate checks rehydrated installation-marker state.

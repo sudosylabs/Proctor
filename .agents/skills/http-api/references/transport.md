@@ -23,7 +23,12 @@ Mutable domain entities never double as wire DTOs. Command decoding:
 
 Dedicated DTOs prevent domain/persistence evolution from silently changing the
 public API or exposing a newly added sensitive field. This is a deliberate
-boundary even when an upstream design serializes shared model objects.
+boundary even when an upstream design serializes shared model objects. The one
+exception is a canonical document whose single spelling the `model` package
+owns (a digest-bound policy, a closed delivery-agreement document, or a
+persisted replay outcome returned verbatim); a DTO may embed it as a field.
+Any other result shape, even one the transport passes through unchanged, gets
+its own DTO in the transport that presents it.
 
 Every HTTP and realtime timestamp, in bodies and query parameters alike, is an
 RFC 3339 string. Responses format it with `model.FormatRFC3339` (UTC,

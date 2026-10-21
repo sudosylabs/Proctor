@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+// The types in this file are documents of the browser delivery agreement.
+// Batches and start transitions are decoded closed; receipts, progress and
+// source status are persisted as replay outcomes and returned verbatim. Their
+// json tags are that one canonical spelling (see the package documentation on
+// serialization).
+
 const BrowserCorrectionStartLimit = 32
 const BrowserRuntimeResetStartLimit = 16
 
@@ -319,8 +325,8 @@ func (value *BrowserActivityBatch) UnmarshalJSON(raw []byte) error {
 
 // BrowserDeliveryGapResult preserves the declaration receipt alongside current progress.
 type BrowserDeliveryGapResult struct {
-	Receipt DeliveryGapReceipt  `json:"receipt"`
-	Status  BrowserSourceStatus `json:"status"`
+	Receipt DeliveryGapReceipt
+	Status  BrowserSourceStatus
 }
 type BrowserDeliverySummaryResult struct {
 	Summary UnretainedDeliverySummary `json:"summary"`

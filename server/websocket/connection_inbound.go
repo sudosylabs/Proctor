@@ -448,7 +448,7 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
 	}
-	encoded, err := json.Marshal(examAttemptRenewResponse{SecurityCoverage: result.SecurityCoverage, Generation: result.Generation, AcceptedSequence: result.AcceptedSequence,
+	encoded, err := json.Marshal(examAttemptRenewResponse{SecurityCoverage: securityCoverageFrom(result.SecurityCoverage), Generation: result.Generation, AcceptedSequence: result.AcceptedSequence,
 		DatabaseTime: model.FormatRFC3339(result.DatabaseTime), LeaseExpiresAt: model.FormatRFC3339(result.LeaseExpiresAt), Duplicate: result.Duplicate})
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
@@ -622,7 +622,7 @@ func (c *connectionRuntime) handleExamAttemptSecurityUpdate(ctx context.Context,
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
 	}
-	encoded, err := json.Marshal(result)
+	encoded, err := json.Marshal(securityCoverageFrom(result))
 	if err != nil {
 		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return

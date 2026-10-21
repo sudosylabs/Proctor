@@ -162,7 +162,14 @@ func (m examAttemptHTTPModule) appendNativeDelivery(request operationRequest) (o
 	if value == nil || value.Receipt.Validate() != nil {
 		return operationResult{}, errUnpresentableResult
 	}
-	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
+	return jsonResult(http.StatusOK, nativeDeliveryAcknowledgementResponse{Receipt: value.Receipt, NativeDeliveryProgress: value.NativeDeliveryProgress}).withHeaders(noStoreHeaders()), nil
+}
+
+// nativeDeliveryAcknowledgementResponse acknowledges one native security batch
+// with its receipt and the stream's delivery progress.
+type nativeDeliveryAcknowledgementResponse struct {
+	Receipt model.NativeBatchReceipt `json:"receipt"`
+	model.NativeDeliveryProgress
 }
 
 func boundedNativeDeliveryRoute(limit int64, definition routeDefinition) routeDefinition {

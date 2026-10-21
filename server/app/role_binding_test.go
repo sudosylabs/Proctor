@@ -194,7 +194,7 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
-			Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
+			Descriptor: model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"},
 		}}}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
 		mail,

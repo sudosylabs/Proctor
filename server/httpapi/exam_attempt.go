@@ -287,8 +287,37 @@ type sittingCandidateStatusListResponse struct {
 	NextCursor      string                               `json:"next_cursor,omitempty"`
 }
 
+// nativeSecuritySummaryResponse presents a Candidate's live native coverage
+// to the Sitting manager without detector or occurrence identities.
+type nativeSecuritySummaryResponse struct {
+	RetainedConditionRecords int64                               `json:"retained_condition_records"`
+	LiveCoverageAvailable    bool                                `json:"live_coverage_available"`
+	Sources                  []nativeSourceHealthSummaryResponse `json:"sources"`
+}
+
+type nativeSourceHealthSummaryResponse struct {
+	SourceID   model.NativeSourceID `json:"source_id"`
+	Health     string               `json:"health"`
+	Permission string               `json:"permission"`
+	Complete   bool                 `json:"complete"`
+}
+
+func nativeSecuritySummaryFrom(value *model.NativeSecuritySummary) *nativeSecuritySummaryResponse {
+	if value == nil {
+		return nil
+	}
+	response := &nativeSecuritySummaryResponse{RetainedConditionRecords: value.RetainedConditionRecords, LiveCoverageAvailable: value.LiveCoverageAvailable}
+	if value.Sources != nil {
+		response.Sources = make([]nativeSourceHealthSummaryResponse, 0, len(value.Sources))
+	}
+	for _, source := range value.Sources {
+		response.Sources = append(response.Sources, nativeSourceHealthSummaryResponse{SourceID: source.SourceID, Health: source.Health, Permission: source.Permission, Complete: source.Complete})
+	}
+	return response
+}
+
 type sittingCandidateStatusItemResponse struct {
-	NativeSecurity          *model.NativeSecuritySummary        `json:"native_security,omitempty"`
+	NativeSecurity          *nativeSecuritySummaryResponse      `json:"native_security,omitempty"`
 	Candidate               sittingCandidateIdentityResponse    `json:"candidate"`
 	CurrentClassMembership  bool                                `json:"current_class_membership"`
 	Attempt                 *sittingCandidateAttemptResponse    `json:"attempt"`
@@ -893,7 +922,7 @@ func (module examAttemptHTTPModule) listCandidateStatuses(request operationReque
 			Username: item.Candidate.Username, DisplayName: item.Candidate.DisplayName},
 			CurrentClassMembership: item.CurrentClassMembership,
 			Presence:               sittingCandidatePresenceResponse{State: item.Presence.State},
-			NativeSecurity:         item.NativeSecurity, IntegrityAttentionCount: item.IntegrityAttentionCount}
+			NativeSecurity:         nativeSecuritySummaryFrom(item.NativeSecurity), IntegrityAttentionCount: item.IntegrityAttentionCount}
 		if item.Presence.LastLeaseRenewedAt.Valid {
 			value := model.FormatRFC3339(item.Presence.LastLeaseRenewedAt.Time)
 			mapped.Presence.LastLeaseRenewedAt = &value

@@ -128,7 +128,7 @@ func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testin
 	identities := &authenticationMethodIdentityStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
 	hasher, _ := newPasswordHasher(testPasswordPolicy(), nil)
-	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus"}}}}}
+	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}}
 	service, err := newAuthenticationMethodService(&authenticationMethodPasswordStoreFake{}, identities,
 		externalProviderSourceSet{}, capabilities, hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
 	if err != nil {

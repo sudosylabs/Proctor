@@ -50,17 +50,17 @@ func BrowserIntegrityRule(event BrowserActivityEvent, policy BrowserPolicy) *Bro
 }
 
 type BrowserIntegrityGroup struct {
-	ParticipationID         AttemptParticipationID `json:"participation_id"`
-	PolicyRevisionID        ExamRevisionID         `json:"policy_revision_id"`
-	RuleID                  string                 `json:"rule_id"`
-	OverflowFirstReceivedAt *time.Time             `json:"overflow_first_received_at"`
-	OverflowLastReceivedAt  *time.Time             `json:"overflow_last_received_at"`
+	ParticipationID         AttemptParticipationID
+	PolicyRevisionID        ExamRevisionID
+	RuleID                  string
+	OverflowFirstReceivedAt *time.Time
+	OverflowLastReceivedAt  *time.Time
 }
 type BrowserIntegrityOverflow struct {
-	ValidatedEventCount int64     `json:"validated_event_count"`
-	FirstReceivedAt     time.Time `json:"first_received_at"`
-	LastReceivedAt      time.Time `json:"last_received_at"`
-	Reason              string    `json:"reason"`
+	ValidatedEventCount int64
+	FirstReceivedAt     time.Time
+	LastReceivedAt      time.Time
+	Reason              string
 }
 
 func (v BrowserIntegrityGroup) Validate() error {

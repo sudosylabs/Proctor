@@ -49,9 +49,9 @@ type Role struct {
 // RolePatch contains the mutable fields of a custom role. Role names are
 // stable identifiers and built-in roles are managed by server code.
 type RolePatch struct {
-	DisplayName *string   `json:"display_name,omitempty"`
-	Description *string   `json:"description,omitempty"`
-	Permissions *[]string `json:"permissions,omitempty"`
+	DisplayName *string
+	Description *string
+	Permissions *[]string
 }
 
 // Patch applies non-nil fields from patch.

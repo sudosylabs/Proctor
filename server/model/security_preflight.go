@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+// Security preflight challenges, reports and results are canonical documents
+// of the native security agreement: reports are decoded closed and bound by
+// digest, and results are persisted as replay outcomes and returned verbatim.
+
 const (
 	SecurityPreflightLifetime           = 120 * time.Second
 	SecurityPreflightAdmissionFreshness = 30 * time.Second

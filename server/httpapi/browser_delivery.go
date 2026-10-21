@@ -144,8 +144,16 @@ func (m examAttemptHTTPModule) declareBrowserDeliveryGaps(request operationReque
 	if value == nil || value.Status.Validate() != nil {
 		return operationResult{}, errUnpresentableResult
 	}
-	return jsonResult(http.StatusOK, value).withHeaders(noStoreHeaders()), nil
+	return jsonResult(http.StatusOK, browserDeliveryGapResponse{Receipt: value.Receipt, Status: value.Status}).withHeaders(noStoreHeaders()), nil
 }
+
+// browserDeliveryGapResponse acknowledges a Browser delivery gap declaration
+// with its receipt and the resulting source status.
+type browserDeliveryGapResponse struct {
+	Receipt model.DeliveryGapReceipt  `json:"receipt"`
+	Status  model.BrowserSourceStatus `json:"status"`
+}
+
 func (m examAttemptHTTPModule) sealBrowserDelivery(request operationRequest) (operationResult, error) {
 	query, err := browserSourceQuery(request, false)
 	if err != nil {

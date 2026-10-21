@@ -462,8 +462,8 @@ func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t
 	t.Parallel()
 
 	configured := []model.ExternalAuthenticationProvider{
-		{Id: "campus-a", DisplayName: "Campus A", Type: "oidc"},
-		{Id: "campus-b", DisplayName: "Campus B", Type: "cas"},
+		{ID: "campus-a", DisplayName: "Campus A", Type: "oidc"},
+		{ID: "campus-b", DisplayName: "Campus B", Type: "cas"},
 	}
 	service := &externalAuthenticationService{
 		registry:     externalProviderSourceSet{descriptors: configured},
@@ -723,7 +723,7 @@ func (s externalProviderSourceSet) Provider(id string) (ExternalIdentityProvider
 type recordingExternalProvider struct{ beginCalls int }
 
 func (*recordingExternalProvider) Descriptor() model.ExternalAuthenticationProvider {
-	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+	return model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"}
 }
 func (*recordingExternalProvider) AutoProvision() bool { return false }
 func (p *recordingExternalProvider) Begin(
@@ -769,7 +769,7 @@ func (s externalProviderSourceFake) Provider(id string) (ExternalIdentityProvide
 type externalProviderFake struct{}
 
 func (externalProviderFake) Descriptor() model.ExternalAuthenticationProvider {
-	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+	return model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"}
 }
 func (externalProviderFake) AutoProvision() bool { return false }
 func (externalProviderFake) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {
@@ -872,7 +872,7 @@ type providerConnectionProvider struct {
 }
 
 func (p providerConnectionProvider) Descriptor() model.ExternalAuthenticationProvider {
-	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+	return model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"}
 }
 func (providerConnectionProvider) AutoProvision() bool { return false }
 func (providerConnectionProvider) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {
@@ -960,7 +960,7 @@ func (s *externalLoginStateStoreFake) Consume(context.Context, string, string, s
 type desktopCallbackExternalProvider struct{ state string }
 
 func (desktopCallbackExternalProvider) Descriptor() model.ExternalAuthenticationProvider {
-	return model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"}
+	return model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"}
 }
 func (desktopCallbackExternalProvider) AutoProvision() bool { return false }
 func (desktopCallbackExternalProvider) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {

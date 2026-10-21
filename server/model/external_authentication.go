@@ -48,18 +48,18 @@ var ErrInvalidExternalAuthenticationCallback = errors.New(
 // operator-configured identity provider. Protocol endpoints and claim mapping
 // remain deployment configuration and are never exposed here.
 type ExternalAuthenticationProvider struct {
-	Id          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	Type        string `json:"type"`
+	ID          string
+	DisplayName string
+	Type        string
 }
 
 // ExternalAuthenticationStart carries the provider redirect plus the raw
 // browser-binding value that the HTTP boundary places in an HttpOnly cookie.
 // The binding is never serialized or persisted in recoverable form.
 type ExternalAuthenticationStart struct {
-	RedirectURL string `json:"redirect_url"`
+	RedirectURL string
 	Binding     string `json:"-"`
-	ExpiresAt   int64  `json:"expires_at"`
+	ExpiresAt   int64
 }
 
 // ExternalAuthenticationCompletion is returned internally after a successful

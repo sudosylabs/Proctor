@@ -76,12 +76,12 @@ func (s *authenticationMethodService) AuthenticationMethods(ctx context.Context,
 	}
 	descriptors := map[string]model.ExternalAuthenticationProvider{}
 	for _, descriptor := range s.providers.Descriptors() {
-		descriptors[descriptor.Id] = descriptor
+		descriptors[descriptor.ID] = descriptor
 	}
 	for _, identity := range identities {
 		descriptor, ok := descriptors[identity.Provider]
 		if !ok {
-			descriptor = model.ExternalAuthenticationProvider{Id: identity.Provider, DisplayName: identity.Provider}
+			descriptor = model.ExternalAuthenticationProvider{ID: identity.Provider, DisplayName: identity.Provider}
 		}
 		view.Providers = append(view.Providers, AuthenticationProviderMethodView{IdentityID: identity.ID,
 			ProviderID: identity.Provider, DisplayName: descriptor.DisplayName, Type: descriptor.Type})

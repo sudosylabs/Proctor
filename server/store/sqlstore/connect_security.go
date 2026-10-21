@@ -165,7 +165,7 @@ func persistConnectSecurity(ctx context.Context, tx *sqlxTxWrapper, input *store
 	if err != nil {
 		return err
 	}
-	ledger, err := canonicalPreflightValue(model.NewNativeControlLedger())
+	ledger, err := canonicalPreflightValue(newNativeControlLedger())
 	if err != nil {
 		return err
 	}

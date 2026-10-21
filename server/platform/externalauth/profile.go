@@ -28,7 +28,7 @@ func NewProfileMapper(
 ) *ProfileMapper {
 	return &ProfileMapper{
 		descriptor: model.ExternalAuthenticationProvider{
-			Id: settings.ID, DisplayName: settings.DisplayName,
+			ID: settings.ID, DisplayName: settings.DisplayName,
 			Type: settings.Type,
 		},
 		autoProvision: settings.AutoProvision,
@@ -89,7 +89,7 @@ func (m *ProfileMapper) Assertion(
 		strength = model.AuthenticationMultiFactor
 	}
 	assertion := &model.ExternalAuthenticationAssertion{
-		ProviderId:       m.descriptor.Id,
+		ProviderId:       m.descriptor.ID,
 		Subject:          subject,
 		Username:         first(m.claims.Username),
 		Email:            first(m.claims.Email),

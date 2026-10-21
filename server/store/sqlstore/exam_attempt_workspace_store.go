@@ -471,13 +471,37 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 	return page, nil
 }
 
+// attemptWorkspaceJournalOutcomeV1 is the persisted spelling of the
+// acknowledged journal change inside a version-1 mutation outcome. Field names
+// are the JSON keys; Recursive is omitted when false.
+type attemptWorkspaceJournalOutcomeV1 struct {
+	WorkspaceID    model.ExamAttemptWorkspaceID
+	Cursor         int64
+	EntryID        model.AttemptWorkspaceEntryID
+	EntryKind      model.StarterWorkspaceEntryKind
+	Operation      model.AttemptWorkspaceMutationKind
+	OldPath        string
+	NewPath        string
+	ContentVersion model.WorkspaceContentVersion
+	ChangedAt      time.Time
+	Recursive      bool `json:",omitempty"`
+}
+
+func attemptWorkspaceJournalOutcomeFrom(entry model.AttemptWorkspaceJournalEntry) attemptWorkspaceJournalOutcomeV1 {
+	return attemptWorkspaceJournalOutcomeV1(entry)
+}
+
+func (outcome attemptWorkspaceJournalOutcomeV1) entry() model.AttemptWorkspaceJournalEntry {
+	return model.AttemptWorkspaceJournalEntry(outcome)
+}
+
 type attemptWorkspaceMutationOutcomeV1 struct {
 	SittingID          string                               `json:"s"`
 	ClassID            string                               `json:"c"`
 	CandidateID        string                               `json:"u"`
 	WorkspaceID        string                               `json:"w"`
 	Entry              *store.CandidateAttemptWorkspaceItem `json:"e,omitempty"`
-	Change             model.AttemptWorkspaceJournalEntry   `json:"j"`
+	Change             attemptWorkspaceJournalOutcomeV1     `json:"j"`
 	ProtectedObjectIDs []string                             `json:"o,omitempty"`
 }
 
@@ -788,7 +812,7 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 	}
 	outcome := attemptWorkspaceMutationOutcomeV1{SittingID: target.SittingID.String(), ClassID: target.ClassID.String(),
 		CandidateID: target.CandidateUserID.String(), WorkspaceID: target.WorkspaceID.String(), Entry: entry,
-		Change: *change, ProtectedObjectIDs: protected}
+		Change: attemptWorkspaceJournalOutcomeFrom(*change), ProtectedObjectIDs: protected}
 	if err = completeAttemptWorkspaceMutationAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return zero, err
 	}
@@ -1040,19 +1064,20 @@ func attemptWorkspaceMutationResult(outcome attemptWorkspaceMutationOutcomeV1) (
 		return nil, err
 	}
 	workspaceID, err := model.ParseExamAttemptWorkspaceID(outcome.WorkspaceID)
-	if err != nil || outcome.Change.Validate() != nil || outcome.Change.WorkspaceID != workspaceID ||
-		(outcome.Entry == nil) != (outcome.Change.Operation == model.AttemptWorkspaceMutationDeleteEntry) {
+	change := outcome.Change.entry()
+	if err != nil || change.Validate() != nil || change.WorkspaceID != workspaceID ||
+		(outcome.Entry == nil) != (change.Operation == model.AttemptWorkspaceMutationDeleteEntry) {
 		return nil, fmt.Errorf("invalid Attempt Workspace mutation result")
 	}
 	if outcome.Entry != nil {
-		if !outcome.Entry.EntryID.IsValid() || outcome.Entry.EntryID != outcome.Change.EntryID || outcome.Entry.Kind != outcome.Change.EntryKind ||
-			outcome.Entry.Path != outcome.Change.NewPath || outcome.Entry.Kind == model.StarterWorkspaceEntryFile &&
-			(!outcome.Entry.ContentVersion.IsValid() || outcome.Entry.ContentVersion != outcome.Change.ContentVersion) {
+		if !outcome.Entry.EntryID.IsValid() || outcome.Entry.EntryID != change.EntryID || outcome.Entry.Kind != change.EntryKind ||
+			outcome.Entry.Path != change.NewPath || outcome.Entry.Kind == model.StarterWorkspaceEntryFile &&
+			(!outcome.Entry.ContentVersion.IsValid() || outcome.Entry.ContentVersion != change.ContentVersion) {
 			return nil, fmt.Errorf("invalid Attempt Workspace mutation entry")
 		}
 	}
 	return &store.ExamAttemptWorkspaceMutationResult{SittingID: sittingID, ClassID: classID, CandidateUserID: candidateID,
-		WorkspaceID: workspaceID, Entry: outcome.Entry, Change: outcome.Change}, nil
+		WorkspaceID: workspaceID, Entry: outcome.Entry, Change: change}, nil
 }
 
 func translateAttemptWorkspaceMutationError(operation string, err error) error {

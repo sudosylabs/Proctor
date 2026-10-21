@@ -280,14 +280,19 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create PAT status = %d: %s", create.Code, create.Body.String())
 	}
-	var created model.PersonalAccessTokenCreation
+	var created struct {
+		Token *struct {
+			ID        model.PersonalAccessTokenID `json:"id"`
+			TokenHash *string                     `json:"token_hash"`
+		} `json:"token"`
+		Credential string `json:"credential"`
+	}
 	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.Token == nil || created.Credential == "" ||
-		created.Token.TokenHash != "" ||
+	if created.Token == nil || created.Credential == "" || created.Token.TokenHash != nil ||
 		create.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("create PAT response = %#v", created)
+		t.Fatalf("create PAT response = %s", create.Body.String())
 	}
 	me := performJSONRequest(
 		helper.Handler(),

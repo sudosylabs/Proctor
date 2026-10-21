@@ -130,20 +130,20 @@ func (r *Registry) Configure(
 			)
 		}
 		descriptor := provider.Descriptor()
-		if descriptor.Id != definition.ID ||
+		if descriptor.ID != definition.ID ||
 			descriptor.Type != definition.Type {
 			return fmt.Errorf(
 				"external authentication provider %q returned a mismatched descriptor",
 				definition.ID,
 			)
 		}
-		if _, exists := configured[descriptor.Id]; exists {
+		if _, exists := configured[descriptor.ID]; exists {
 			return fmt.Errorf(
 				"external authentication provider %q is duplicated",
-				descriptor.Id,
+				descriptor.ID,
 			)
 		}
-		configured[descriptor.Id] = provider
+		configured[descriptor.ID] = provider
 	}
 	r.mutex.Lock()
 	r.providers = configured
@@ -170,7 +170,7 @@ func (r *Registry) Descriptors() []model.ExternalAuthenticationProvider {
 		descriptors = append(descriptors, provider.Descriptor())
 	}
 	sort.Slice(descriptors, func(left, right int) bool {
-		return descriptors[left].Id < descriptors[right].Id
+		return descriptors[left].ID < descriptors[right].ID
 	})
 	return descriptors
 }

@@ -46,12 +46,12 @@ func (revision UserSettingsRevision) String() string { return string(revision) }
 // presentation-preference source for one User. Source is deliberately omitted
 // from generic JSON so logs and audit helpers cannot expose it accidentally.
 type UserSettingsDocument struct {
-	UserID        UserID               `json:"user_id"`
-	Source        string               `json:"-"`
-	FormatVersion int                  `json:"format_version"`
-	Revision      UserSettingsRevision `json:"revision"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
+	UserID        UserID
+	Source        string `json:"-"`
+	FormatVersion int
+	Revision      UserSettingsRevision
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func NewUserSettingsDocument(userID UserID, revision UserSettingsRevision, at time.Time) (*UserSettingsDocument, error) {

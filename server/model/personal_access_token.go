@@ -49,8 +49,8 @@ type PersonalAccessToken struct {
 // PersonalAccessTokenCreation contains the raw credential returned exactly
 // once. Credential must never be persisted, logged, or audited.
 type PersonalAccessTokenCreation struct {
-	Token      *PersonalAccessToken `json:"token"`
-	Credential string               `json:"credential"`
+	Token      *PersonalAccessToken
+	Credential string `json:"-"`
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.

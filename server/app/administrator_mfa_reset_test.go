@@ -53,7 +53,7 @@ func TestAdministratorMFAResetPassesCurrentDeploymentAndRequiresDurableEvidence(
 		UserID: userID, Generation: 2, ResetAt: model.OptionalTimeFrom(at), UpdatedAt: at, ReenrollmentRequired: true,
 	}}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{
-		{Descriptor: model.ExternalAuthenticationProvider{Id: "existing-provider"}},
+		{Descriptor: model.ExternalAuthenticationProvider{ID: "existing-provider"}},
 	}}}
 	for _, test := range []struct {
 		name   string

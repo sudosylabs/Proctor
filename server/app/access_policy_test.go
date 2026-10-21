@@ -97,7 +97,7 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
 	persistence := &accessPolicyStoreFake{snapshot: &store.AccessPolicySnapshot{Policy: policy}}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
-		Providers:   []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus-oidc", DisplayName: "Campus", Type: "oidc"}, AutoProvision: true}},
+		Providers:   []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus-oidc", DisplayName: "Campus", Type: "oidc"}, AutoProvision: true}},
 		DurableMail: true,
 	}}
 	effects := &accessPolicyEffectsFake{}
@@ -155,14 +155,14 @@ func TestDeploymentAccessPolicyCapabilitiesUseOnlyLiveProvidersAndMailAvailabili
 	snapshot := (deploymentAccessPolicyCapabilities{
 		providers: accessPolicyProviderSourceFake{
 			descriptors: []model.ExternalAuthenticationProvider{
-				{Id: "removed", DisplayName: "Removed", Type: "oidc"},
-				{Id: "campus", DisplayName: "Campus", Type: "oidc"},
+				{ID: "removed", DisplayName: "Removed", Type: "oidc"},
+				{ID: "campus", DisplayName: "Campus", Type: "oidc"},
 			},
 			providers: map[string]ExternalIdentityProvider{"campus": provider},
 		},
 		mail: accessPolicyMailSenderFake{enabled: true}, health: accessPolicyMailHealthFake{code: MailHealthHealthy},
 	}).Snapshot()
-	if !snapshot.DurableMail || len(snapshot.Providers) != 1 || snapshot.Providers[0].Descriptor.Id != "campus" ||
+	if !snapshot.DurableMail || len(snapshot.Providers) != 1 || snapshot.Providers[0].Descriptor.ID != "campus" ||
 		!snapshot.Providers[0].AutoProvision {
 		t.Fatalf("capability snapshot = %#v", snapshot)
 	}
@@ -207,7 +207,7 @@ func TestDeploymentAccessPolicyCapabilitiesTrackAuthoritativeMailHealth(t *testi
 type accessPolicyExternalProviderFake struct{ autoProvision bool }
 
 func (p *accessPolicyExternalProviderFake) Descriptor() model.ExternalAuthenticationProvider {
-	return model.ExternalAuthenticationProvider{Id: "campus", DisplayName: "Campus", Type: "oidc"}
+	return model.ExternalAuthenticationProvider{ID: "campus", DisplayName: "Campus", Type: "oidc"}
 }
 func (p *accessPolicyExternalProviderFake) AutoProvision() bool { return p.autoProvision }
 func (*accessPolicyExternalProviderFake) Begin(context.Context, ExternalProviderBeginRequest) (*ExternalProviderBeginResponse, error) {
@@ -456,9 +456,9 @@ func TestPublicAccessDiscoveryFiltersUnavailableProvidersAndRestoresByStableID(t
 	if discovery.CanonicalOrigin != "https://proctor.example.edu" || len(discovery.Providers) != 0 || !discovery.Initialized {
 		t.Fatalf("removed-provider discovery = %#v", discovery)
 	}
-	capabilities.snapshot.Providers = []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus-oidc", DisplayName: "Campus", Type: "oidc"}}}
+	capabilities.snapshot.Providers = []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus-oidc", DisplayName: "Campus", Type: "oidc"}}}
 	discovery, err = service.DiscoverAccess(context.Background())
-	if err != nil || len(discovery.Providers) != 1 || discovery.Providers[0].Id != "campus-oidc" {
+	if err != nil || len(discovery.Providers) != 1 || discovery.Providers[0].ID != "campus-oidc" {
 		t.Fatalf("restored-provider discovery = %#v, %v", discovery, err)
 	}
 }

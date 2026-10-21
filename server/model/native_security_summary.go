@@ -11,15 +11,15 @@ import "slices"
 // NativeSecuritySummary excludes detector, condition, source-instance and
 // occurrence identities. Health is live coverage, never evidence of misconduct.
 type NativeSecuritySummary struct {
-	RetainedConditionRecords int64                       `json:"retained_condition_records"`
-	LiveCoverageAvailable    bool                        `json:"live_coverage_available"`
-	Sources                  []NativeSourceHealthSummary `json:"sources"`
+	RetainedConditionRecords int64
+	LiveCoverageAvailable    bool
+	Sources                  []NativeSourceHealthSummary
 }
 type NativeSourceHealthSummary struct {
-	SourceID   NativeSourceID `json:"source_id"`
-	Health     string         `json:"health"`
-	Permission string         `json:"permission"`
-	Complete   bool           `json:"complete"`
+	SourceID   NativeSourceID
+	Health     string
+	Permission string
+	Complete   bool
 }
 
 func (s NativeSecuritySummary) Validate() error {

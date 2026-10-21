@@ -108,7 +108,7 @@ func (p *Provider) Begin(
 	oauthConfig := p.oauthConfig(discovered, request.CallbackURL)
 	options := []oauth2.AuthCodeOption{
 		oauth2.S256ChallengeOption(request.Proof),
-		oauth2.SetAuthURLParam("nonce", transactionNonce(p.mapper.Descriptor().Id, request.Proof)),
+		oauth2.SetAuthURLParam("nonce", transactionNonce(p.mapper.Descriptor().ID, request.Proof)),
 	}
 	if request.FreshAuthentication {
 		options = append(options, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
@@ -200,7 +200,7 @@ func (p *Provider) Complete(
 		)
 	}
 	expectedNonce := transactionNonce(
-		p.mapper.Descriptor().Id,
+		p.mapper.Descriptor().ID,
 		request.Proof,
 	)
 	if subtle.ConstantTimeCompare(

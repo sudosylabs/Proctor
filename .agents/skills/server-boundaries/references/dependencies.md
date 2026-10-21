@@ -42,7 +42,7 @@ inside `app/` are application-owned modules, not transports.
 | Package | Allowed production dependencies | Forbidden examples |
 | --- | --- | --- |
 | `identityprovider` | Standard library | Domain models, deployment configuration, application, persistence, transports |
-| `model` | Standard library, `identityprovider`, `internal/canonicaljson`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
+| `model` | Standard library, `identityprovider`, `internal/canonicaljson`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket, and any transport DTO or adapter-only persisted spelling |
 | `internal/canonicaljson` | Standard-library bounded JSON validation and encoding | Domain models, schema ownership, application, persistence, transports, infrastructure |
 | `config` | Standard library, `identityprovider`, and narrowly scoped IDNA hostname validation | Domain models, application, persistence, transports |
 | `store` | `model` | `sqlstore`, HTTP, application services |

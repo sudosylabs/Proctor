@@ -664,7 +664,7 @@ func TestServiceAtomicallyReconfiguresExternalProviders(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = service.Close() })
-	if descriptors := providers.Descriptors(); len(descriptors) != 1 || descriptors[0].Id != "campus-cas" {
+	if descriptors := providers.Descriptors(); len(descriptors) != 1 || descriptors[0].ID != "campus-cas" {
 		t.Fatalf("initial external providers = %#v", descriptors)
 	}
 

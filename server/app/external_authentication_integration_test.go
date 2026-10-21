@@ -132,7 +132,11 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		nil,
 		"",
 	)
-	var providerList []model.ExternalAuthenticationProvider
+	var providerList []struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+		Type        string `json:"type"`
+	}
 	if providers.Code != http.StatusOK ||
 		json.Unmarshal(providers.Body.Bytes(), &providerList) != nil ||
 		len(providerList) != 3 ||

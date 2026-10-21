@@ -169,7 +169,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	if err != nil {
 		return zero, err
 	}
-	var ledger model.NativeControlLedger
+	var ledger nativeControlLedger
 	if err := json.Unmarshal(owner.Ledger, &ledger); err != nil || ledger.Validate() != nil {
 		return zero, invalidPersistedState("security_owner", "control_ledger", model.ErrSecurityControlInvalid)
 	}
@@ -249,7 +249,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 			budget.Metadata = next
 		}
 	}
-	outcome := model.SecurityControlReceipt{Sequence: control.ControlSequence, Digest: digest, Result: continuity.Result, ResetIDs: continuity.ReceiptIDs, Rejections: [][2]int64{}}
+	outcome := securityControlReceipt{Sequence: control.ControlSequence, Digest: digest, Result: continuity.Result, ResetIDs: continuity.ReceiptIDs, Rejections: [][2]int64{}}
 	for _, watermark := range control.DeliveryWatermarks {
 		if watermark.Family == "browser" {
 			rejection, err := applyBrowserControlWatermark(ctx, tx, input, watermark, browserSources[watermark.SourceID])
@@ -314,7 +314,7 @@ func (s *sqlExamAttemptStore) processSecurityCoverage(ctx context.Context, tx *s
 	}
 	return projectSecurityControl(ctx, tx, input.AttemptID, input.ParticipationID, admitted.DeliveryStreamID, ledger, &outcome, owner.Allowed, sittingOpen)
 }
-func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, ledger model.NativeControlLedger, receipt *model.SecurityControlReceipt, allowed, sittingOpen bool) (model.SecurityCoverageResult, error) {
+func projectSecurityControl(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID, participationID model.AttemptParticipationID, streamID string, ledger nativeControlLedger, receipt *securityControlReceipt, allowed, sittingOpen bool) (model.SecurityCoverageResult, error) {
 	result := model.SecurityCoverageResult{ProcessedControlSequence: ledger.ProcessedSequence, ProcessedControlDigest: ledger.ProcessedDigest, CoverageResult: "stale_control", SourceResetReceipts: []model.SourceResetReceipt{}, SecurityInteractionAllowed: allowed && sittingOpen, DeliveryWatermarkRejections: []model.DeliveryWatermarkRejection{}}
 	if receipt != nil {
 		result.CoverageResult = receipt.Result
@@ -367,11 +367,11 @@ func recoverNativeControl(ctx context.Context, tx *sqlxTxWrapper, attemptID mode
 	if err != nil {
 		return nil, err
 	}
-	var ledger model.NativeControlLedger
+	var ledger nativeControlLedger
 	if err := json.Unmarshal(owner.Ledger, &ledger); err != nil || ledger.Validate() != nil {
 		return nil, invalidPersistedState("security_owner", "control_ledger", model.ErrSecurityControlInvalid)
 	}
-	var latest *model.SecurityControlReceipt
+	var latest *securityControlReceipt
 	if len(ledger.Receipts) > 0 {
 		value := ledger.Receipts[len(ledger.Receipts)-1]
 		latest = &value

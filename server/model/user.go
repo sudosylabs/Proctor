@@ -126,12 +126,12 @@ func (u *User) PrepareUpdate(at time.Time) {
 // owns. Mailbox and verification state intentionally have no representation
 // here; they change only through the named UserToken aggregates.
 type UserProfileChanges struct {
-	Username    *string `json:"username,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
-	FirstName   *string `json:"first_name,omitempty"`
-	LastName    *string `json:"last_name,omitempty"`
-	Locale      *string `json:"locale,omitempty"`
-	Timezone    *string `json:"timezone,omitempty"`
+	Username    *string
+	DisplayName *string
+	FirstName   *string
+	LastName    *string
+	Locale      *string
+	Timezone    *string
 }
 
 // ApplyProfileChanges applies the non-nil generic profile fields from changes.

@@ -10,8 +10,8 @@ package model
 // ClassEnrollment reports the membership created by an enrollment or transfer
 // and the prior membership closed by the same transaction, when one existed.
 type ClassEnrollment struct {
-	Membership *ClassMember `json:"membership"`
-	Previous   *ClassMember `json:"previous,omitempty"`
+	Membership *ClassMember
+	Previous   *ClassMember
 }
 
 func (e *ClassEnrollment) Auditable() map[string]any {

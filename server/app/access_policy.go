@@ -58,7 +58,7 @@ func (c deploymentAccessPolicyCapabilities) Snapshot() AccessPolicyCapabilitySna
 		return result
 	}
 	for _, descriptor := range c.providers.Descriptors() {
-		provider, available := c.providers.Provider(descriptor.Id)
+		provider, available := c.providers.Provider(descriptor.ID)
 		if !available || provider == nil {
 			continue
 		}
@@ -67,7 +67,7 @@ func (c deploymentAccessPolicyCapabilities) Snapshot() AccessPolicyCapabilitySna
 		})
 	}
 	sort.Slice(result.Providers, func(i, j int) bool {
-		return result.Providers[i].Descriptor.Id < result.Providers[j].Descriptor.Id
+		return result.Providers[i].Descriptor.ID < result.Providers[j].Descriptor.ID
 	})
 	return result
 }
@@ -292,8 +292,8 @@ func (s *accessPolicyService) preflightInput(expected int64, settings model.Acce
 func accessDeploymentCapabilities(snapshot AccessPolicyCapabilitySnapshot) store.AccessDeploymentCapabilities {
 	providers := make(map[string]store.AccessProviderCapability, len(snapshot.Providers))
 	for _, provider := range snapshot.Providers {
-		if provider.Descriptor.Id != "" {
-			providers[provider.Descriptor.Id] = store.AccessProviderCapability{AutoProvision: provider.AutoProvision}
+		if provider.Descriptor.ID != "" {
+			providers[provider.Descriptor.ID] = store.AccessProviderCapability{AutoProvision: provider.AutoProvision}
 		}
 	}
 	return store.AccessDeploymentCapabilities{Providers: providers, DurableMail: snapshot.DurableMail}
@@ -356,11 +356,11 @@ func (s *accessPolicyService) DiscoverAccess(ctx context.Context) (PublicAccessD
 	result.Capabilities = PublicAccessCapabilities{LocalLogin: policy.LocalLoginEnabled, PublicRegistration: policy.PublicRegistrationEnabled,
 		InvitationAdmission: policy.InvitationAdmissionEnabled, DesktopAuthorization: policy.DesktopAuthorizationEnabled}
 	for _, provider := range s.capabilities.Snapshot().Providers {
-		if _, enabled := policy.ProviderAdmissions[provider.Descriptor.Id]; enabled {
+		if _, enabled := policy.ProviderAdmissions[provider.Descriptor.ID]; enabled {
 			result.Providers = append(result.Providers, provider.Descriptor)
 		}
 	}
-	sort.Slice(result.Providers, func(i, j int) bool { return result.Providers[i].Id < result.Providers[j].Id })
+	sort.Slice(result.Providers, func(i, j int) bool { return result.Providers[i].ID < result.Providers[j].ID })
 	return result, nil
 }
 

@@ -15,6 +15,12 @@ import (
 	"time"
 )
 
+// Native security controls are canonical, digest-bound documents: a renewal
+// is accepted only when its bytes are already canonical, its digest is the
+// replay identity, and reset edges are retained by digest. The adapter's compact control ledger is a persistence
+// spelling and lives in sqlstore; transports present results through their own
+// DTOs.
+
 const SecurityControlMaxBytes = 64 * 1024
 
 var (
@@ -130,140 +136,21 @@ func (c *SecurityCoverageRenewal) UnmarshalJSON(raw []byte) error {
 }
 
 type SourceResetReceipt struct {
-	ResetID     string `json:"reset_id"`
-	ResetDigest string `json:"reset_digest"`
+	ResetID     string
+	ResetDigest string
 }
 type DeliveryWatermarkRejection struct {
-	Family   string `json:"family"`
-	SourceID string `json:"source_id"`
-	Reason   string `json:"reason"`
+	Family   string
+	SourceID string
+	Reason   string
 }
 type SecurityCoverageResult struct {
-	ProcessedControlSequence    int64                        `json:"processed_control_sequence"`
-	ProcessedControlDigest      *string                      `json:"processed_control_digest"`
-	CoverageResult              string                       `json:"coverage_result"`
-	SourceResetReceipts         []SourceResetReceipt         `json:"source_reset_receipts"`
-	SecurityInteractionAllowed  bool                         `json:"security_interaction_allowed"`
-	DeliveryWatermarkRejections []DeliveryWatermarkRejection `json:"delivery_watermark_rejections"`
-}
-
-// SecurityControlReceipt is compact persistence, not a transport response.
-// Reset IDs refer to separately charged immutable reset facts. Rejections use
-// immutable owner-slot indexes (native=0, browser=1..49) and reason 0=closed,
-// 1=position_limit. The owning aggregate resolves these references on replay.
-type SecurityControlReceipt struct {
-	Sequence   int64      `json:"sequence"`
-	Digest     string     `json:"digest"`
-	Result     string     `json:"result"`
-	ResetIDs   []string   `json:"resets"`
-	Rejections [][2]int64 `json:"rejections"`
-}
-
-func (r SecurityControlReceipt) Validate() error {
-	if r.Sequence <= 0 || !securitySafeInt(r.Sequence) || !IsValidSHA256Fingerprint(r.Digest) || !slices.Contains([]string{"accepted", "reset_required", "reset_conflict"}, r.Result) || r.ResetIDs == nil || len(r.ResetIDs) > 11 || r.Rejections == nil || len(r.Rejections) > 50 {
-		return ErrSecurityControlInvalid
-	}
-	for i, id := range r.ResetIDs {
-		if !IsValidAgreementID(id) || slices.Contains(r.ResetIDs[:i], id) {
-			return ErrSecurityControlInvalid
-		}
-	}
-	for i, rejection := range r.Rejections {
-		if rejection[0] < 0 || rejection[0] > 49 || rejection[1] < 0 || rejection[1] > 1 {
-			return ErrSecurityControlInvalid
-		}
-		for _, prior := range r.Rejections[:i] {
-			if prior[0] == rejection[0] {
-				return ErrSecurityControlInvalid
-			}
-		}
-	}
-	raw, err := encodeCanonicalExamDocument(r)
-	if err != nil || len(raw) > SecurityControlReceiptMaxBytes {
-		return ErrSecurityControlInvalid
-	}
-	return nil
-}
-func (r SecurityControlReceipt) clone() SecurityControlReceipt {
-	r.ResetIDs = slices.Clone(r.ResetIDs)
-	r.Rejections = slices.Clone(r.Rejections)
-	return r
-}
-
-// NativeControlLedger keeps processed ordering independently of usable coverage.
-// Only authenticated, structurally valid, owner-bound controls reach this owner.
-// Its receipt does not grant authority: callers always project current gates.
-type NativeControlLedger struct {
-	ProcessedSequence int64                    `json:"processed_sequence"`
-	ProcessedDigest   *string                  `json:"processed_digest"`
-	Receipts          []SecurityControlReceipt `json:"receipts"`
-}
-
-func NewNativeControlLedger() NativeControlLedger {
-	return NativeControlLedger{Receipts: []SecurityControlReceipt{}}
-}
-func (l NativeControlLedger) Validate() error {
-	if !securitySafeInt(l.ProcessedSequence) || l.Receipts == nil || len(l.Receipts) > SecurityControlReceiptLimit || (l.ProcessedSequence == 0) != (l.ProcessedDigest == nil) {
-		return ErrSecurityControlInvalid
-	}
-	if l.ProcessedSequence == 0 {
-		if len(l.Receipts) != 0 {
-			return ErrSecurityControlInvalid
-		}
-		return nil
-	}
-	if !IsValidSHA256Fingerprint(*l.ProcessedDigest) || len(l.Receipts) == 0 {
-		return ErrSecurityControlInvalid
-	}
-	previous := int64(0)
-	for _, receipt := range l.Receipts {
-		if receipt.Validate() != nil || receipt.Sequence <= previous || receipt.Sequence > l.ProcessedSequence {
-			return ErrSecurityControlInvalid
-		}
-		previous = receipt.Sequence
-	}
-	last := l.Receipts[len(l.Receipts)-1]
-	if last.Sequence != l.ProcessedSequence || last.Digest != *l.ProcessedDigest {
-		return ErrSecurityControlInvalid
-	}
-	return nil
-}
-
-// Lookup runs before interpreting reset edges or watermarks. A retained replay
-// returns its original bounded outcome; an evicted older sequence is stale.
-func (l NativeControlLedger) Lookup(sequence int64, digest string) (*SecurityControlReceipt, bool, error) {
-	if l.Validate() != nil || sequence <= 0 || !securitySafeInt(sequence) || !IsValidSHA256Fingerprint(digest) {
-		return nil, false, ErrSecurityControlInvalid
-	}
-	for _, receipt := range l.Receipts {
-		if receipt.Sequence == sequence {
-			if receipt.Digest != digest {
-				return nil, false, ErrSecurityControlConflict
-			}
-			copy := receipt.clone()
-			return &copy, true, nil
-		}
-	}
-	return nil, sequence <= l.ProcessedSequence, nil
-}
-
-// Record advances every processed outcome, including reset faults. It cannot
-// modify a previously processed boundary, even after cache eviction or restart.
-func (l NativeControlLedger) Record(receipt SecurityControlReceipt) (NativeControlLedger, error) {
-	if l.Validate() != nil || receipt.Validate() != nil || receipt.Sequence <= l.ProcessedSequence {
-		return l, ErrSecurityControlInvalid
-	}
-	digest := receipt.Digest
-	next := NativeControlLedger{ProcessedSequence: receipt.Sequence, ProcessedDigest: &digest, Receipts: make([]SecurityControlReceipt, 0, SecurityControlReceiptLimit)}
-	start := 0
-	if len(l.Receipts) == SecurityControlReceiptLimit {
-		start = 1
-	}
-	for _, prior := range l.Receipts[start:] {
-		next.Receipts = append(next.Receipts, prior.clone())
-	}
-	next.Receipts = append(next.Receipts, receipt.clone())
-	return next, nil
+	ProcessedControlSequence    int64
+	ProcessedControlDigest      *string
+	CoverageResult              string
+	SourceResetReceipts         []SourceResetReceipt
+	SecurityInteractionAllowed  bool
+	DeliveryWatermarkRejections []DeliveryWatermarkRejection
 }
 
 // NativeContinuityDecision is interpreted only inside the locked security owner.

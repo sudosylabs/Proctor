@@ -44,4 +44,15 @@
 //   - durable aggregate times are UTC time.Time values, with OptionalTime for
 //     nullable instants. Transport and legacy command boundaries perform any
 //     required integer-millisecond conversion explicitly.
+//
+// Serialization: a model type carries json tags only when the model owns its
+// one canonical serialization. That covers digest- or signature-bound
+// documents, the closed documents of the desktop and browser delivery
+// agreements, persisted replay outcomes that a transport returns verbatim, and
+// versioned durable Job payloads. Such a document has the same spelling in
+// PostgreSQL and on the wire, so it lives here, in the one package that both
+// persistence and transports import. A shape serialized by only one boundary
+// belongs to that boundary: request and response DTOs in httpapi or
+// websocket, persisted spellings in sqlstore. A json:"-" tag on a secret field
+// is a leak guard and is always allowed.
 package model

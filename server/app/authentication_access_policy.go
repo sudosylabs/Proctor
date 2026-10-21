@@ -90,7 +90,7 @@ func (p *currentAuthenticationAccessPolicy) AvailableExternalProviders(
 	}
 	available := make([]model.ExternalAuthenticationProvider, 0, len(configured))
 	for _, provider := range configured {
-		if _, allowed := policy.ProviderAdmissions[provider.Id]; allowed {
+		if _, allowed := policy.ProviderAdmissions[provider.ID]; allowed {
 			available = append(available, provider)
 		}
 	}

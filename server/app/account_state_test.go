@@ -91,7 +91,7 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	persistence := &accountStateStoreFake{events: &events, user: user, result: &store.UserDisabledStateResult{User: &updated, RevokedSessions: []*model.Session{{ID: model.NewSessionID()}}, RevokedTokenHashes: []string{"hash"}}}
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewId()}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
-		Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
+		Descriptor: model.ExternalAuthenticationProvider{ID: "campus", Type: "oidc"},
 	}}}}
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })

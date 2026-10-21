@@ -36,7 +36,7 @@ func externalAuthenticationProviderResponses(
 	responses := make([]externalAuthenticationProviderResponse, 0, len(providers))
 	for _, provider := range providers {
 		responses = append(responses, externalAuthenticationProviderResponse{
-			ID: provider.Id, DisplayName: provider.DisplayName, Type: provider.Type,
+			ID: provider.ID, DisplayName: provider.DisplayName, Type: provider.Type,
 		})
 	}
 	return responses

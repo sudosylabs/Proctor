@@ -268,7 +268,7 @@ func TestExternalAuthenticationProviderListFailsClosedWhenPolicyIsUnavailable(t 
 		t.Fatal(err)
 	}
 	applicationFake := &externalAuthenticationEntryHTTPApplication{
-		providers:      []model.ExternalAuthenticationProvider{{Id: "configured-but-unknown", Type: "oidc"}},
+		providers:      []model.ExternalAuthenticationProvider{{ID: "configured-but-unknown", Type: "oidc"}},
 		providersError: apperror.New("authentication.internal"),
 	}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
@@ -386,7 +386,7 @@ func TestExternalAuthenticationRedirectIsNamedKernelProtocolOperation(t *testing
 		t.Fatal(err)
 	}
 	externalAuthentication := &externalAuthenticationEntryHTTPApplication{
-		providers: []model.ExternalAuthenticationProvider{{Id: "oidc", DisplayName: "Institution Login", Type: "oidc"}},
+		providers: []model.ExternalAuthenticationProvider{{ID: "oidc", DisplayName: "Institution Login", Type: "oidc"}},
 		start: &model.ExternalAuthenticationStart{
 			RedirectURL: "https://identity.example.edu/authorize", Binding: "binding",
 			ExpiresAt: model.MillisFromTime(time.Now().Add(5 * time.Minute)),
