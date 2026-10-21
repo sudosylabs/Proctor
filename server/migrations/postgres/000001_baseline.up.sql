@@ -966,7 +966,7 @@ CREATE TABLE exam_starter_workspace_objects (
     claim_token varchar(128),
     claimed_at timestamptz,
     retired_by_audit_event_id varchar(26),
-    CONSTRAINT exam_starter_workspace_objects_retired_by_audit_event_id_canonical_check CHECK (
+    CONSTRAINT exam_starter_workspace_objects_retired_9cde8689_canonical_check CHECK (
         retired_by_audit_event_id IS NULL OR retired_by_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
     ),
     CONSTRAINT exam_starter_workspace_objects_retirement_check CHECK (
@@ -1750,7 +1750,7 @@ CREATE TABLE exam_attempt_workspace_objects (
     claim_token varchar(128),
     claimed_at timestamptz,
     retired_by_audit_event_id varchar(26),
-    CONSTRAINT exam_attempt_workspace_objects_retired_by_audit_event_id_canonical_check CHECK (
+    CONSTRAINT exam_attempt_workspace_objects_retired_1fe5b1b6_canonical_check CHECK (
         retired_by_audit_event_id IS NULL OR retired_by_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
     ),
     CONSTRAINT exam_attempt_workspace_objects_retirement_check CHECK (
@@ -2814,9 +2814,9 @@ CREATE TABLE submission_review_release_preparations (
     CONSTRAINT submission_review_release_preparations_review_submission_fkey
         FOREIGN KEY (submission_review_id, submission_id)
         REFERENCES submission_reviews(id, submission_id),
-    CONSTRAINT submission_review_release_preparations_submission_review_id_canonical_check
+    CONSTRAINT submission_review_release_preparations_12fe2934_canonical_check
         CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    CONSTRAINT submission_review_release_preparations_submission_id_canonical_check
+    CONSTRAINT submission_review_release_preparations_0fbd1888_canonical_check
         CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
 );
 
@@ -3224,7 +3224,7 @@ CREATE TABLE browser_authentication_transactions (
         (authentication_method IS DISTINCT FROM 'password' AND
          password_credential_id IS NULL AND password_credential_revision IS NULL)
     ),
-    CONSTRAINT browser_authentication_transactions_password_credential_id_canonical_check CHECK (
+    CONSTRAINT browser_authentication_transactions_pa_3658da5d_canonical_check CHECK (
         password_credential_id IS NULL OR password_credential_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
     ),
     CONSTRAINT browser_authentication_transactions_lifecycle_check CHECK (
@@ -3821,7 +3821,7 @@ ALTER TABLE onboarding_import_rows
     CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_import_rows_relationship_ref_canonical_check
     CHECK (relationship_ref IS NULL OR relationship_ref ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT onboarding_import_rows_destination_relationship_ref_canonical_check
+    ADD CONSTRAINT onboarding_import_rows_destination_rel_3204ac11_canonical_check
     CHECK (destination_relationship_ref IS NULL OR destination_relationship_ref ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_import_rows_invitation_id_canonical_check
     CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -3865,11 +3865,11 @@ ALTER TABLE exam_sitting_mail_recipients
     CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sitting_mail_recipients_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_mail_recipients_desired_occurrence_id_canonical_check
+    ADD CONSTRAINT exam_sitting_mail_recipients_desired_o_2c14ba34_canonical_check
     CHECK (desired_occurrence_id IS NULL OR desired_occurrence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_mail_recipients_desired_delivery_id_canonical_check
+    ADD CONSTRAINT exam_sitting_mail_recipients_desired_d_204ec195_canonical_check
     CHECK (desired_delivery_id IS NULL OR desired_delivery_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_mail_recipients_communicated_class_id_canonical_check
+    ADD CONSTRAINT exam_sitting_mail_recipients_communica_0a874c21_canonical_check
     CHECK (communicated_class_id IS NULL OR communicated_class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE mail_key_state
@@ -3959,7 +3959,7 @@ ALTER TABLE exam_starter_workspace_objects
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_starter_workspace_objects_exam_id_canonical_check
     CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_starter_workspace_objects_created_by_user_id_canonical_check
+    ADD CONSTRAINT exam_starter_workspace_objects_created_e2cda46c_canonical_check
     CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_starter_workspace_entries
@@ -3967,7 +3967,7 @@ ALTER TABLE exam_starter_workspace_entries
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_starter_workspace_entries_exam_id_canonical_check
     CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_starter_workspace_entries_current_object_id_canonical_check
+    ADD CONSTRAINT exam_starter_workspace_entries_current_e5b95fd7_canonical_check
     CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_revisions
@@ -3989,10 +3989,10 @@ ALTER TABLE exam_revision_resources
     ADD CONSTRAINT exam_revision_resources_rendition_id_canonical_check CHECK (rendition_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_revision_starter_workspace_entries
-    ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_revision_id_canonical_check CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_starter_workspace_entrie_d39de177_canonical_check CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_revision_starter_workspace_entries_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_revision_starter_workspace_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_revision_starter_workspace_entries_object_id_canonical_check CHECK (object_id IS NULL OR object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_revision_starter_workspace_entrie_639954d9_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_revision_starter_workspace_entrie_feda0714_canonical_check CHECK (object_id IS NULL OR object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempts
     ADD CONSTRAINT exam_attempts_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -4009,17 +4009,17 @@ ALTER TABLE exam_attempt_workspaces
 ALTER TABLE exam_attempt_workspace_objects
     ADD CONSTRAINT exam_attempt_workspace_objects_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_objects_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_objects_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_objects_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_objects_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_admissi_cc7a4f53_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_source__1409b040_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_objects_starter_23182de7_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_objects_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_workspace_entries
     ADD CONSTRAINT exam_attempt_workspace_entries_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_workspace_entries_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_entries_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_entries_source_starter_entry_id_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_workspace_entries_current_object_id_canonical_check CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_workspace_entries_admissi_91fbdf4d_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_source__3094bf20_canonical_check CHECK (source_starter_entry_id IS NULL OR source_starter_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_workspace_entries_current_ed134e32_canonical_check CHECK (current_object_id IS NULL OR current_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_workspace_journal
     ADD CONSTRAINT exam_attempt_workspace_journal_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -4049,16 +4049,16 @@ ALTER TABLE integrity_evidence
     ADD CONSTRAINT integrity_evidence_focus_loss_signal_id_canonical_check CHECK (focus_loss_signal_id IS NULL OR focus_loss_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_focus_loss_evaluations
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_signal_id_canonical_check CHECK (last_signal_id IS NULL OR last_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_connection_id_canonical_check CHECK (last_connection_id IS NULL OR last_connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_integrity_flag_id_canonical_check CHECK (integrity_flag_id IS NULL OR integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_last_suspension_id_canonical_check CHECK (last_suspension_id IS NULL OR last_suspension_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_ex_2e592912_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_pa_e573a304_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_la_69b16039_canonical_check CHECK (last_signal_id IS NULL OR last_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_la_e4053705_canonical_check CHECK (last_connection_id IS NULL OR last_connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_in_fcd00bce_canonical_check CHECK (integrity_flag_id IS NULL OR integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_evaluations_la_5b07f6f4_canonical_check CHECK (last_suspension_id IS NULL OR last_suspension_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_focus_loss_pending
     ADD CONSTRAINT exam_attempt_focus_loss_pending_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_focus_loss_pending_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_focus_loss_pending_partic_1d0eb929_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_focus_loss_pending_signal_id_canonical_check CHECK (signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_focus_loss_pending_evidence_id_canonical_check CHECK (evidence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
@@ -4089,7 +4089,7 @@ ALTER TABLE integrity_discrepancies
 
 ALTER TABLE exam_attempt_manager_end_actions
     ADD CONSTRAINT exam_attempt_manager_end_actions_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_manager_end_actions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_manager_end_actions_exam__e9c85f0f_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_manager_end_actions_actor_user_id_canonical_check CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempt_manager_end_actions_audit_event_id_canonical_check CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
@@ -4109,21 +4109,21 @@ ALTER TABLE browser_activity_events
     ADD CONSTRAINT browser_activity_events_policy_revision_id_canonical_check CHECK (policy_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_correction_acknowledgements
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_correction_revision_id_canonical_check CHECK (correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_current_revision_id_canonical_check CHECK (current_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_correction_acknowledgements_audit_event_id_canonical_check CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_899c5167_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_e2c2bde4_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_b0f103df_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_f8fe074f_canonical_check CHECK (correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_d850fc78_canonical_check CHECK (current_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgemen_a869e41d_canonical_check CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_submission_manifest_entries
     ADD CONSTRAINT exam_submission_manifest_entries_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submission_manifest_entries_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submission_manifest_entries_entry_id_canonical_check CHECK (entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_submission_manifest_entries_content_version_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_submission_manifest_entries_starter_object_id_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_submission_manifest_entries_attempt_object_id_canonical_check CHECK (attempt_object_id IS NULL OR attempt_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_submission_manifest_entries_workspace_object_id_canonical_check CHECK (workspace_object_id IS NULL OR workspace_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_submission_manifest_entries_conte_c510aed6_canonical_check CHECK (content_version IS NULL OR content_version ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_start_95c2de0d_canonical_check CHECK (starter_object_id IS NULL OR starter_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_attem_41913a30_canonical_check CHECK (attempt_object_id IS NULL OR attempt_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submission_manifest_entries_works_8eaa6bf0_canonical_check CHECK (workspace_object_id IS NULL OR workspace_object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE submission_reviews
     ADD CONSTRAINT submission_reviews_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -4141,22 +4141,22 @@ ALTER TABLE integrity_review_decisions
     ADD CONSTRAINT integrity_review_decisions_actor_user_id_canonical_check CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE submission_review_inventory_flags
-    ADD CONSTRAINT submission_review_inventory_flags_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_flags_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_flags_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_subm_8c5f034d_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_exam_36678cad_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_flags_inte_ddde5f0f_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT submission_review_inventory_flags_decision_id_canonical_check CHECK (decision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE submission_review_inventory_evidence
-    ADD CONSTRAINT submission_review_inventory_evidence_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_evidence_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_evidence_integrity_flag_id_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_evidence_integrity_evidence_id_canonical_check CHECK (integrity_evidence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT submission_review_inventory_evidence_s_721c4cb2_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_e_dd7ecb18_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_i_8bd62b0d_canonical_check CHECK (integrity_flag_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_evidence_i_87c355e5_canonical_check CHECK (integrity_evidence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE submission_review_inventory_discrepancies
-    ADD CONSTRAINT submission_review_inventory_discrepancies_submission_review_id_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_discrepancies_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_discrepancies_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT submission_review_inventory_discrepancies_integrity_discrepancy_id_canonical_check CHECK (integrity_discrepancy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT submission_review_inventory_discrepanc_b1e191ad_canonical_check CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepanc_ccfcf796_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepanc_f3df1f1d_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_inventory_discrepanc_a056df0a_canonical_check CHECK (integrity_discrepancy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_id_canonical_check
@@ -4177,19 +4177,19 @@ ALTER TABLE exam_correction_resource_stages
     CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_correction_resource_stages_exam_sitting_id_canonical_check
     CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_correction_resource_stages_base_revision_id_canonical_check
+    ADD CONSTRAINT exam_correction_resource_stages_base_r_022bfcdc_canonical_check
     CHECK (base_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_correction_resource_stages_resource_id_canonical_check
     CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_correction_resource_stages_file_entry_id_canonical_check
     CHECK (file_entry_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_correction_resource_stages_file_revision_id_canonical_check
+    ADD CONSTRAINT exam_correction_resource_stages_file_r_8972bc5b_canonical_check
     CHECK (file_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_correction_resource_stages_upload_lease_id_canonical_check
     CHECK (upload_lease_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_correction_resource_stages_rendition_id_canonical_check
     CHECK (rendition_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_correction_resource_stages_created_by_user_id_canonical_check
+    ADD CONSTRAINT exam_correction_resource_stages_create_25e338c6_canonical_check
     CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sitting_private_actions
@@ -4207,9 +4207,9 @@ ALTER TABLE exam_sitting_live_corrections
     CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sitting_live_corrections_exam_sitting_id_canonical_check
     CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_live_corrections_previous_revision_id_canonical_check
+    ADD CONSTRAINT exam_sitting_live_corrections_previous_6f2db4bf_canonical_check
     CHECK (previous_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_live_corrections_correction_revision_id_canonical_check
+    ADD CONSTRAINT exam_sitting_live_corrections_correcti_bf4e1e82_canonical_check
     CHECK (correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sitting_live_corrections_actor_user_id_canonical_check
     CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
@@ -4380,17 +4380,17 @@ ALTER TABLE personal_access_tokens
 ALTER TABLE personal_access_token_mutation_preparations
     ADD CONSTRAINT personal_access_token_mutation_preparations_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_user_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_883e9425_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_token_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_95e8efa6_canonical_check
     CHECK (token_id IS NULL OR token_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_actor_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_49c886ed_canonical_check
     CHECK (actor_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_session_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_351d5985_canonical_check
     CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_resource_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_72072941_canonical_check
     CHECK (resource_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT personal_access_token_mutation_preparations_scope_id_canonical_check
+    ADD CONSTRAINT personal_access_token_mutation_prepara_51dbb614_canonical_check
     CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE user_tokens
@@ -4418,7 +4418,7 @@ ALTER TABLE external_login_states
 	CHECK (target_user_id IS NULL OR target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_invitation_id_canonical_check
 	CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-	ADD CONSTRAINT external_login_states_browser_authentication_transaction_id_can
+	ADD CONSTRAINT external_login_states_browser_authenti_7db4dbf9_canonical_check
 	CHECK (browser_authentication_transaction_id IS NULL OR browser_authentication_transaction_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_audit_event_id_canonical_check
 	CHECK (audit_event_id IS NULL OR audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
@@ -4426,13 +4426,13 @@ ALTER TABLE external_login_states
 ALTER TABLE browser_authentication_transactions
     ADD CONSTRAINT browser_authentication_transactions_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT browser_authentication_transactions_institution_id_canonical_check
+    ADD CONSTRAINT browser_authentication_transactions_in_c92808d4_canonical_check
     CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT browser_authentication_transactions_user_id_canonical_check
     CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-	ADD CONSTRAINT browser_authentication_transactions_invitation_id_canonical_check
+	ADD CONSTRAINT browser_authentication_transactions_in_a7a2fe1d_canonical_check
 	CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-	ADD CONSTRAINT browser_authentication_transactions_external_identity_id_canonical_check
+	ADD CONSTRAINT browser_authentication_transactions_ex_ae8f9bc3_canonical_check
 	CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE audit_events
@@ -4781,9 +4781,9 @@ ALTER TABLE exam_exports
     CHECK (submission_id IS NULL OR submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_sitting_records_completions
-    ADD CONSTRAINT exam_sitting_records_completions_completed_by_user_id_canonical
+    ADD CONSTRAINT exam_sitting_records_completions_compl_085be38d_canonical_check
     CHECK (completed_by_user_id IS NULL OR completed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_sitting_records_completions_exam_sitting_id_canonical_chec
+    ADD CONSTRAINT exam_sitting_records_completions_exam__eeeff162_canonical_check
     CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE external_login_states
@@ -5152,7 +5152,7 @@ ALTER TABLE exam_native_source_resets
     CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_native_delivery_declarations
-    ADD CONSTRAINT exam_native_delivery_declarations_participation_id_canonical_check
+    ADD CONSTRAINT exam_native_delivery_declarations_part_45578e73_canonical_check
     CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_native_delivery_batches
@@ -5168,13 +5168,13 @@ ALTER TABLE exam_native_occurrences
     CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE browser_delivery_retired_sources
-    ADD CONSTRAINT browser_delivery_retired_sources_exam_attempt_id_canonical_check
+    ADD CONSTRAINT browser_delivery_retired_sources_exam__81bd8df3_canonical_check
     CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT browser_delivery_retired_sources_participation_id_canonical_check
+    ADD CONSTRAINT browser_delivery_retired_sources_parti_803b3df4_canonical_check
     CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT browser_delivery_retired_sources_candidate_user_id_canonical_check
+    ADD CONSTRAINT browser_delivery_retired_sources_candi_409f5e2b_canonical_check
     CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT browser_delivery_retired_sources_registration_id_canonical_check
+    ADD CONSTRAINT browser_delivery_retired_sources_regis_74321570_canonical_check
     CHECK (registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE browser_integrity_groups
@@ -5192,7 +5192,7 @@ ALTER TABLE browser_integrity_overflow
     CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE submission_review_finalizations
-    ADD CONSTRAINT submission_review_finalizations_submission_review_id_canonical_check
+    ADD CONSTRAINT submission_review_finalizations_submis_563ad917_canonical_check
     CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT submission_review_finalizations_exam_attempt_id_canonical_check
     CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');

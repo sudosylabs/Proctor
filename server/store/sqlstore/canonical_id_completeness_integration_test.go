@@ -11,7 +11,8 @@ package sqlstore
 
 import (
 	"context"
-	"fmt"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,12 +31,18 @@ type canonicalIDConstraint struct {
 
 const postgresIdentifierMaxBytes = 63
 
+// canonicalIDConstraintName is <table>_<column>_canonical_check. A name that
+// would exceed PostgreSQL's identifier limit keeps the first 38 bytes of
+// <table>_<column> and adds the first eight hex digits of its SHA-256, so it
+// stays unique instead of being silently truncated.
 func canonicalIDConstraintName(table, column string) string {
-	name := fmt.Sprintf("%s_%s_canonical_check", table, column)
-	if len(name) > postgresIdentifierMaxBytes {
-		return name[:postgresIdentifierMaxBytes]
+	const suffix = "_canonical_check"
+	prefix := table + "_" + column
+	if len(prefix)+len(suffix) <= postgresIdentifierMaxBytes {
+		return prefix + suffix
 	}
-	return name
+	digest := sha256.Sum256([]byte(prefix))
+	return prefix[:38] + "_" + hex.EncodeToString(digest[:])[:8] + suffix
 }
 
 func TestCanonicalIDConstraintCompleteness(t *testing.T) {

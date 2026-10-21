@@ -490,10 +490,10 @@ func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamS
 				'exam_submission_manifest_entries_submission_id_canonical_check',
 				'exam_submission_manifest_entries_workspace_id_canonical_check',
 				'exam_submission_manifest_entries_entry_id_canonical_check',
-				'exam_submission_manifest_entries_content_version_canonical_check',
-				'exam_submission_manifest_entries_starter_object_id_canonical_check',
-				'exam_submission_manifest_entries_attempt_object_id_canonical_check',
-				'exam_submission_manifest_entries_workspace_object_id_canonical_check'
+				'exam_submission_manifest_entries_conte_c510aed6_canonical_check',
+				'exam_submission_manifest_entries_start_95c2de0d_canonical_check',
+				'exam_submission_manifest_entries_attem_41913a30_canonical_check',
+				'exam_submission_manifest_entries_works_8eaa6bf0_canonical_check'
 			) ORDER BY conname`))
 			require.Len(t, constraints, 22)
 			for name, fragment := range map[string]string{
@@ -898,14 +898,14 @@ func examAttemptSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamAtte
 			'exam_attempt_focus_loss_evaluations_suspension_fkey',
 			'exam_attempt_focus_loss_pending_evaluation_fkey',
 			'exam_attempt_focus_loss_pending_participation_fkey',
-			'exam_attempt_focus_loss_evaluations_exam_attempt_id_canonical_check',
-			'exam_attempt_focus_loss_evaluations_participation_id_canonical_check',
-			'exam_attempt_focus_loss_evaluations_last_signal_id_canonical_check',
-			'exam_attempt_focus_loss_evaluations_last_connection_id_canonical_check',
-			'exam_attempt_focus_loss_evaluations_integrity_flag_id_canonical_check',
-			'exam_attempt_focus_loss_evaluations_last_suspension_id_canonical_check',
+			'exam_attempt_focus_loss_evaluations_ex_2e592912_canonical_check',
+			'exam_attempt_focus_loss_evaluations_pa_e573a304_canonical_check',
+			'exam_attempt_focus_loss_evaluations_la_69b16039_canonical_check',
+			'exam_attempt_focus_loss_evaluations_la_e4053705_canonical_check',
+			'exam_attempt_focus_loss_evaluations_in_fcd00bce_canonical_check',
+			'exam_attempt_focus_loss_evaluations_la_5b07f6f4_canonical_check',
 			'exam_attempt_focus_loss_pending_exam_attempt_id_canonical_check',
-			'exam_attempt_focus_loss_pending_participation_id_canonical_check',
+			'exam_attempt_focus_loss_pending_partic_1d0eb929_canonical_check',
 			'exam_attempt_focus_loss_pending_signal_id_canonical_check',
 			'exam_attempt_focus_loss_pending_evidence_id_canonical_check',
 			'integrity_evidence_focus_loss_signal_id_canonical_check') ORDER BY conname`))

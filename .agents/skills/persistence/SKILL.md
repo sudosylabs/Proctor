@@ -107,7 +107,7 @@ interception is prohibited.
 
 ## Schema and migrations
 
-SQL uses plural `snake_case` tables, `id` primary keys, `<entity>_id` foreign keys, meaning-specific `_at` columns, and deterministic constraint/index names. Vocabulary follows the repository `glossary` skill.
+SQL uses plural `snake_case` tables, `id` primary keys, `<entity>_id` foreign keys, meaning-specific `_at` columns, and deterministic constraint/index names. Identifiers fit PostgreSQL's 63-byte limit, which otherwise truncates them with only a notice; a canonical-ID check whose `<table>_<column>_canonical_check` name would exceed it keeps the first 38 bytes of `<table>_<column>`, then `_` and the first eight hex digits of its SHA-256. Vocabulary follows the repository `glossary` skill.
 
 Go uses UTC `time.Time` truncated to microsecond precision, PostgreSQL uses
 `timestamptz`, and HTTP uses RFC 3339. Normalize domain clock input with
