@@ -63,3 +63,32 @@ func TestServeReceivesContextAndConfigPath(t *testing.T) {
 	require.Empty(t, stderr, "code")
 	require.Equal(t, "/etc/proctor.json", gotPath, "code")
 }
+
+func TestServeHoldsSIGHUPReceivedDuringStartupUntilTheNodeExists(t *testing.T) {
+	// SIGHUP is process-wide; this test must not share its delivery window.
+	node := &reloadRecordingNode{reloaded: make(chan struct{}, 1)}
+	err := serveNode(context.Background(), func(context.Context) (servingNode, error) {
+		// A reload request arriving while the node is still constructing, for
+		// example during migration, must not terminate the process.
+		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
+		time.Sleep(100 * time.Millisecond)
+		return node, nil
+	})
+	require.NoError(t, err)
+}
+
+type reloadRecordingNode struct{ reloaded chan struct{} }
+
+func (n *reloadRecordingNode) Reload(context.Context) error {
+	n.reloaded <- struct{}{}
+	return nil
+}
+
+func (n *reloadRecordingNode) Run(context.Context) error {
+	select {
+	case <-n.reloaded:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("startup SIGHUP was not forwarded to the constructed node")
+	}
+}

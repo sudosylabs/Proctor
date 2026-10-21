@@ -44,13 +44,33 @@ func serve(ctx context.Context, configPath string) error {
 	if socketPath := os.Getenv("NOTIFY_SOCKET"); socketPath != "" {
 		options = append(options, server.WithReadyNotifier(systemdReadyNotifier(socketPath)))
 	}
-	node, err := server.New(ctx, options...)
-	if err != nil {
-		return err
-	}
+	return serveNode(ctx, func(ctx context.Context) (servingNode, error) {
+		node, err := server.New(ctx, options...)
+		if err != nil {
+			return nil, err
+		}
+		return node, nil
+	})
+}
+
+// servingNode is the part of *server.Server that serve drives.
+type servingNode interface {
+	Run(context.Context) error
+	Reload(context.Context) error
+}
+
+// serveNode constructs and runs one node, forwarding SIGHUP to its Reload.
+// The handler is registered before construction: the default SIGHUP action
+// terminates the process, and construction applies database migrations. A
+// reload requested before the node exists is held and runs once it does.
+func serveNode(ctx context.Context, construct func(context.Context) (servingNode, error)) error {
 	reloadSignals := make(chan os.Signal, 1)
 	signal.Notify(reloadSignals, syscall.SIGHUP)
 	defer signal.Stop(reloadSignals)
+	node, err := construct(ctx)
+	if err != nil {
+		return err
+	}
 	reloadCtx, stopReloads := context.WithCancel(ctx)
 	reloadsDone := make(chan struct{})
 	go func() {
