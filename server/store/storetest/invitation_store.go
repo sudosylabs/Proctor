@@ -1608,7 +1608,8 @@ func testInvitationIssueStudentClassTerminalizesElapsedPendingInvitation(
 	first := studentClassInvitationIssueFixture(t, ss, inviter, class, period, issuedAt)
 	first.Invitation.TargetEmail = "elapsed-" + model.NewId() + "@example.edu"
 	first.Invitation.IntendedStartsAt = issuedAt
-	first.Invitation.IntendedEndsAt = model.OptionalTimeFrom(model.NowUTC().Add(2 * time.Second))
+	// The window must outlast claiming and starting the delivery on a loaded host.
+	first.Invitation.IntendedEndsAt = model.OptionalTimeFrom(model.NowUTC().Add(6 * time.Second))
 	created, err := ss.Invitation().IssueStudentClass(ctx, first)
 	requireNoError(t, err)
 	claimed := false
