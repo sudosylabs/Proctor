@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -29,9 +31,8 @@ func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
 		Name:   "user.notification",
 		UserID: model.NewID(),
 	})
-	if err == nil || !apperror.Is(err, "websocket.internal") {
-		t.Fatalf("Publish() error = %v, want websocket.internal", err)
-	}
+	require.Error(t, err, "Publish() error")
+	require.True(t, apperror.Is(err, "websocket.internal"), "Publish() error")
 }
 
 func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
@@ -39,9 +40,8 @@ func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	err := service.PublishRealtimeEvent(context.Background(), apprealtime.RealtimeEvent{Name: "missing.target"})
-	if err == nil || !apperror.Is(err, "websocket.request.invalid") {
-		t.Fatalf("Publish() error = %v, want websocket.request.invalid", err)
-	}
+	require.Error(t, err, "Publish() error")
+	require.True(t, apperror.Is(err, "websocket.request.invalid"), "Publish() error")
 }
 
 func TestSessionRevocationPublishesAttemptProjectionInvalidations(t *testing.T) {
@@ -57,25 +57,22 @@ func TestSessionRevocationPublishesAttemptProjectionInvalidations(t *testing.T) 
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
 	service.attempts = attempts
 	sink := &recordingRealtimeSink{}
-	if err := service.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.AttachRealtimeSink(sink))
+	require.NoError(t, service.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 
 	service.SessionsRevoked(
 		context.Background(), candidateID.String(), []string{sessionID.String()}, nil,
 	)
-	if attempts.candidateID != candidateID || len(attempts.sessionIDs) != 1 || attempts.sessionIDs[0] != sessionID {
-		t.Fatalf("attempt invalidation query = candidate %q sessions %#v", attempts.candidateID, attempts.sessionIDs)
-	}
-	if len(sink.events) != 3 || sink.events[0].Name != "candidate.exam_activity.changed" ||
-		sink.events[0].UserID != candidateID.String() || sink.events[1].Name != "manager.sitting_board.changed" ||
-		sink.events[1].Resource.ID != target.SittingID.String() || sink.events[2].Name != "current_user.context.changed" ||
-		sink.events[2].UserID != candidateID.String() {
-		t.Fatalf("published invalidations = %#v", sink.events)
-	}
+	require.Equal(t, candidateID, attempts.candidateID, "attempt invalidation query = candidate")
+	require.Len(t, attempts.sessionIDs, 1, "attempt invalidation query = candidate")
+	require.Equal(t, sessionID, attempts.sessionIDs[0], "attempt invalidation query = candidate")
+	require.Len(t, sink.events, 3)
+	require.Equal(t, "candidate.exam_activity.changed", sink.events[0].Name)
+	require.Equal(t, candidateID.String(), sink.events[0].UserID)
+	require.Equal(t, "manager.sitting_board.changed", sink.events[1].Name)
+	require.Equal(t, target.SittingID.String(), sink.events[1].Resource.ID)
+	require.Equal(t, "current_user.context.changed", sink.events[2].Name)
+	require.Equal(t, candidateID.String(), sink.events[2].UserID)
 }
 
 type sessionRevocationAttemptProjectionFake struct {
@@ -114,15 +111,11 @@ func (noopAuthenticationCache) Add(context.Context, string, int64, time.Duration
 func newTestRealtimeService(t *testing.T, cache authenticationCache) *realtimeService {
 	t.Helper()
 	invalidator, err := newAuthenticationCacheInvalidator(cache, &securityEffectsDiagnosticsFake{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := newRealtimeService(
 		invalidator, &securityEffectsRealtimeDiagnosticsFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 

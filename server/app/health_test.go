@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type readinessClock struct {
@@ -36,9 +38,7 @@ func (c *readinessClock) Advance(d time.Duration) {
 func newProbedHealth(t *testing.T, probe DependencyProbe) (*Health, *readinessClock) {
 	t.Helper()
 	health, err := NewHealth(probe, time.Second, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	clock := &readinessClock{now: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)}
 	health.now = clock.Now
 	return health, clock
@@ -56,35 +56,21 @@ func TestHealthReadinessReportsDependencyOutageAndRecovery(t *testing.T) {
 		}
 		return nil
 	})
-	if health.Ready() {
-		t.Fatal("ready before lifecycle published readiness")
-	}
+	require.False(t, health.Ready(), "ready before lifecycle published readiness")
 	health.SetReady(true)
-	if !health.Ready() {
-		t.Fatal("not ready after startup")
-	}
+	require.True(t, health.Ready(), "not ready after startup")
 
 	outage.Store(true)
 	clock.Advance(time.Second)
-	if health.Ready() {
-		t.Fatal("ready during a dependency outage")
-	}
+	require.False(t, health.Ready(), "ready during a dependency outage")
 	outage.Store(false)
-	if health.Ready() {
-		t.Fatal("recovered before the probe interval elapsed")
-	}
+	require.False(t, health.Ready(), "recovered before the probe interval elapsed")
 	clock.Advance(time.Second)
-	if !health.Ready() {
-		t.Fatal("not ready after the dependency recovered")
-	}
-	if got := probes.Load(); got != 2 {
-		t.Fatalf("dependency probes = %d, want one per elapsed interval (2)", got)
-	}
+	require.True(t, health.Ready(), "not ready after the dependency recovered")
+	require.Equal(t, int32(2), probes.Load(), "dependency probes")
 
 	health.SetReady(false)
-	if health.Ready() {
-		t.Fatal("ready after lifecycle withdrew readiness")
-	}
+	require.False(t, health.Ready(), "ready after lifecycle withdrew readiness")
 }
 
 func TestHealthReadinessProbeIsBoundedAndNotQueued(t *testing.T) {
@@ -107,30 +93,19 @@ func TestHealthReadinessProbeIsBoundedAndNotQueued(t *testing.T) {
 	go func() { slow <- health.Ready() }()
 	<-started
 	// A concurrent caller observes the previous result instead of waiting.
-	if !health.Ready() {
-		t.Fatal("concurrent caller did not observe the previous healthy result")
-	}
+	require.True(t, health.Ready(), "concurrent caller did not observe the previous healthy result")
 	close(release)
-	if <-slow {
-		t.Fatal("failed probe reported ready")
-	}
-	if !deadlineSet.Load() {
-		t.Fatal("dependency probe context has no deadline")
-	}
+	require.False(t, <-slow, "failed probe reported ready")
+	require.True(t, deadlineSet.Load(), "dependency probe context has no deadline")
 }
 
 func TestHealthWithoutProbeReportsLifecycleFlag(t *testing.T) {
 	t.Parallel()
 
 	health := &Health{}
-	if health.Ready() {
-		t.Fatal("zero health is ready")
-	}
+	require.False(t, health.Ready(), "zero health is ready")
 	health.SetReady(true)
-	if !health.Ready() {
-		t.Fatal("flag-only health ignored SetReady")
-	}
-	if _, err := NewHealth(func(context.Context) error { return nil }, 0, time.Second); err == nil {
-		t.Fatal("probe without a timeout was accepted")
-	}
+	require.True(t, health.Ready(), "flag-only health ignored SetReady")
+	_, err := NewHealth(func(context.Context) error { return nil }, 0, time.Second)
+	require.Error(t, err, "probe without a timeout was accepted")
 }

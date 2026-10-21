@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -97,9 +99,7 @@ func newUserSettingsServiceForTest(
 	service, err := newUserSettingsService(
 		settings, audit, &userSettingsEffectsFake{}, &userSettingsEffectFailuresFake{}, now,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 
@@ -126,17 +126,14 @@ func TestUserSettingsReadOwnPreservesExactSource(t *testing.T) {
 	service := newUserSettingsServiceForTest(t, persistence, &userSettingsAuditFake{}, time.Now)
 
 	result, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.got != principal.UserID || persistence.reads != 1 {
-		t.Fatalf("Get() user=%s reads=%d", persistence.got, persistence.reads)
-	}
-	if result.Source != source || result.FormatVersion != model.UserSettingsFormatVersion1 ||
-		result.Revision != persistence.document.Revision || !result.Writable ||
-		!result.UpdatedAt.Equal(at) {
-		t.Fatalf("ReadOwn() = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, principal.UserID, persistence.got, "Get() user")
+	require.Equal(t, 1, persistence.reads, "Get() user")
+	require.Equal(t, source, result.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, result.FormatVersion)
+	require.Equal(t, persistence.document.Revision, result.Revision)
+	require.True(t, result.Writable)
+	require.True(t, result.UpdatedAt.Equal(at))
 }
 
 func TestUserSettingsReadOwnPreservesUnsupportedFormatAsOpaqueReadOnlySource(t *testing.T) {
@@ -153,16 +150,13 @@ func TestUserSettingsReadOwnPreservesUnsupportedFormatAsOpaqueReadOnlySource(t *
 	service := newUserSettingsServiceForTest(t, persistence, &userSettingsAuditFake{}, time.Now)
 
 	result, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Source != source || result.FormatVersion != 2 || result.Revision != persistence.document.Revision ||
-		result.Writable || !result.UpdatedAt.Equal(at) {
-		t.Fatalf("ReadOwn() = %#v", result)
-	}
-	if persistence.reads != 1 {
-		t.Fatalf("Get() reads = %d, want 1", persistence.reads)
-	}
+	require.NoError(t, err)
+	require.Equal(t, source, result.Source)
+	require.Equal(t, 2, result.FormatVersion)
+	require.Equal(t, persistence.document.Revision, result.Revision)
+	require.False(t, result.Writable)
+	require.True(t, result.UpdatedAt.Equal(at))
+	require.Equal(t, 1, persistence.reads, "Get() reads")
 }
 
 func TestUserSettingsReadOwnRequiresInteractiveSession(t *testing.T) {
@@ -179,14 +173,11 @@ func TestUserSettingsReadOwnRequiresInteractiveSession(t *testing.T) {
 		"system invocation":     {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
-				t.Fatalf("ReadOwn() error = %v", err)
-			}
+			_, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+			require.True(t, apperror.Is(err, "authentication.token_invalid"), "ReadOwn() error = %v", err)
 		})
 	}
-	if persistence.reads != 0 {
-		t.Fatalf("unauthorized calls performed %d reads", persistence.reads)
-	}
+	require.Equal(t, 0, persistence.reads, "unauthorized calls performed")
 }
 
 func TestUserSettingsReadOwnFailsClosedWithoutExposingSource(t *testing.T) {
@@ -209,11 +200,9 @@ func TestUserSettingsReadOwnFailsClosedWithoutExposingSource(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := newUserSettingsServiceForTest(t, test.store, &userSettingsAuditFake{}, time.Now)
 			_, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-			if !apperror.Is(err, "user_settings.unavailable") {
-				t.Fatalf("ReadOwn() error = %v", err)
-			}
-			if err != nil && containsSensitiveText(err.Error(), secret) {
-				t.Fatalf("error exposed source: %v", err)
+			require.True(t, apperror.Is(err, "user_settings.unavailable"), "ReadOwn() error = %v", err)
+			if err != nil {
+				require.False(t, containsSensitiveText(err.Error(), secret))
 			}
 		})
 	}
@@ -239,27 +228,24 @@ func TestUserSettingsReplaceOwnValidatesAndPreparesSafeAtomicMutation(t *testing
 		Source: source, FormatVersion: 1, ExpectedRevision: current.Revision,
 		IdempotencyKey: "settings-save-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Revision != nextRevision || !result.Changed || result.Replayed {
-		t.Fatalf("ReplaceOwn() = %#v", result)
-	}
-	if persistence.replaceInput == nil || persistence.replaceInput.UserID != principal.UserID ||
-		persistence.replaceInput.Source != source || persistence.replaceInput.FormatVersion != 1 ||
-		persistence.replaceInput.ExpectedRevision != current.Revision ||
-		!persistence.replaceInput.NextRevision.IsValid() || !persistence.replaceInput.UpdatedAt.Equal(at) {
-		t.Fatalf("replacement input = %#v", persistence.replaceInput)
-	}
-	if persistence.replaceCommand == nil || persistence.replaceCommand.Operation != "user_settings.replace" ||
-		persistence.replaceCommand.UserID != principal.UserID {
-		t.Fatalf("idempotency = %#v", persistence.replaceCommand)
-	}
-	if audit.calls != 1 || audit.input.SourceBytes != len(source) ||
-		audit.input.PreviousRevision != current.Revision ||
-		audit.input.ResultingRevision != persistence.replaceInput.NextRevision {
-		t.Fatalf("audit input = %#v calls=%d", audit.input, audit.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, nextRevision, result.Revision)
+	require.True(t, result.Changed)
+	require.False(t, result.Replayed)
+	require.NotNil(t, persistence.replaceInput)
+	require.Equal(t, principal.UserID, persistence.replaceInput.UserID)
+	require.Equal(t, source, persistence.replaceInput.Source)
+	require.Equal(t, 1, persistence.replaceInput.FormatVersion)
+	require.Equal(t, current.Revision, persistence.replaceInput.ExpectedRevision)
+	require.True(t, persistence.replaceInput.NextRevision.IsValid())
+	require.True(t, persistence.replaceInput.UpdatedAt.Equal(at))
+	require.NotNil(t, persistence.replaceCommand)
+	require.Equal(t, "user_settings.replace", persistence.replaceCommand.Operation)
+	require.Equal(t, principal.UserID, persistence.replaceCommand.UserID)
+	require.Equal(t, 1, audit.calls, "audit input = %#v calls", audit.input)
+	require.Len(t, source, audit.input.SourceBytes, "audit input = %#v calls", audit.input)
+	require.Equal(t, current.Revision, audit.input.PreviousRevision, "audit input = %#v calls", audit.input)
+	require.Equal(t, persistence.replaceInput.NextRevision, audit.input.ResultingRevision, "audit input = %#v calls", audit.input)
 }
 
 func TestUserSettingsReplaceOwnRejectsInvalidSourceWithoutLeakOrMutation(t *testing.T) {
@@ -274,16 +260,14 @@ func TestUserSettingsReplaceOwnRejectsInvalidSourceWithoutLeakOrMutation(t *test
 		Source: "{\"" + secret + "\": }", FormatVersion: 1,
 		ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "invalid-save",
 	})
-	if !apperror.Is(err, "user_settings.invalid") {
-		t.Fatalf("ReplaceOwn() error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "user_settings.invalid"), "ReplaceOwn() error = %v", err)
 	failure, ok := apperror.As(err)
-	if !ok || failure.Fields()["diagnostics"] == "" || containsSensitiveText(err.Error(), secret) {
-		t.Fatalf("invalid-source error = %#v", err)
-	}
-	if persistence.reads != 0 || persistence.replaceInput != nil || audit.calls != 0 {
-		t.Fatalf("invalid source effects reads=%d replace=%#v audits=%d", persistence.reads, persistence.replaceInput, audit.calls)
-	}
+	require.True(t, ok)
+	require.NotEmpty(t, failure.Fields()["diagnostics"])
+	require.False(t, containsSensitiveText(err.Error(), secret))
+	require.Equal(t, 0, persistence.reads, "invalid source effects reads")
+	require.Nil(t, persistence.replaceInput, "invalid source effects reads")
+	require.Equal(t, 0, audit.calls, "invalid source effects reads")
 }
 
 func TestUserSettingsReplaceOwnRejectsUnsupportedFormatsWithoutEffects(t *testing.T) {
@@ -312,19 +296,14 @@ func TestUserSettingsReplaceOwnRejectsUnsupportedFormatsWithoutEffects(t *testin
 				Source: "{}\n", FormatVersion: test.targetVersion,
 				ExpectedRevision: test.persisted.Revision, IdempotencyKey: "unsupported-format-save",
 			})
-			if !apperror.Is(err, "user_settings.format_unsupported") {
-				t.Fatalf("ReplaceOwn() error = %v", err)
-			}
-			if persistence.reads != test.wantReads || persistence.replaceInput != nil ||
-				persistence.replaceCommand != nil || audit.calls != 0 {
-				t.Fatalf("effects reads=%d replace=%#v command=%#v audits=%d",
-					persistence.reads, persistence.replaceInput, persistence.replaceCommand, audit.calls)
-			}
-			if persistence.document.Source != test.persisted.Source ||
-				persistence.document.Revision != test.persisted.Revision ||
-				!persistence.document.UpdatedAt.Equal(test.persisted.UpdatedAt) {
-				t.Fatalf("persisted document changed: %#v", persistence.document)
-			}
+			require.True(t, apperror.Is(err, "user_settings.format_unsupported"), "ReplaceOwn() error = %v", err)
+			require.Equal(t, test.wantReads, persistence.reads, "effects reads")
+			require.Nil(t, persistence.replaceInput, "effects reads")
+			require.Nil(t, persistence.replaceCommand, "effects reads")
+			require.Equal(t, 0, audit.calls, "effects reads")
+			require.Equal(t, test.persisted.Source, persistence.document.Source)
+			require.Equal(t, test.persisted.Revision, persistence.document.Revision)
+			require.True(t, persistence.document.UpdatedAt.Equal(test.persisted.UpdatedAt))
 		})
 	}
 }
@@ -356,14 +335,10 @@ func TestUserSettingsReplaceOwnMapsRevisionAndIdempotencyConflictsSafely(t *test
 			if name == "idempotency" {
 				want = "idempotency.conflict"
 			}
-			if !apperror.Is(err, want) {
-				t.Fatalf("ReplaceOwn() error = %v, want %s", err, want)
-			}
+			require.True(t, apperror.Is(err, want), "ReplaceOwn() error = %v, want %s", err, want)
 			if name == "revision" {
 				failure, _ := apperror.As(err)
-				if failure.Fields()["current_revision"] != current.Revision.String() {
-					t.Fatalf("revision hint = %#v", failure.Fields())
-				}
+				require.Equal(t, current.Revision.String(), failure.Fields()["current_revision"])
 			}
 		})
 	}
@@ -390,21 +365,16 @@ func TestUserSettingsReplaceOwnUnknownOutcomeIsResolvedByAuthoritativeRead(t *te
 		Source: source, FormatVersion: 1, ExpectedRevision: previous.Revision,
 		IdempotencyKey: "unknown-outcome",
 	})
-	if !apperror.Is(err, "user_settings.unavailable") {
-		t.Fatalf("ReplaceOwn() error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "user_settings.unavailable"), "ReplaceOwn() error = %v", err)
 	committed := *previous
 	committed.Source = source
 	committed.Revision = model.NewUserSettingsRevision()
 	committed.UpdatedAt = at
 	persistence.document = &committed
 	view, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if view.Source != source || view.Revision != committed.Revision {
-		t.Fatalf("authoritative read = %#v", view)
-	}
+	require.NoError(t, err)
+	require.Equal(t, source, view.Source)
+	require.Equal(t, committed.Revision, view.Revision)
 }
 
 func TestUserSettingsReplaceOwnPublishesOnePostCommitRefetchHint(t *testing.T) {
@@ -426,30 +396,25 @@ func TestUserSettingsReplaceOwnPublishesOnePostCommitRefetchHint(t *testing.T) {
 		persistence, &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}},
 		effects, failures, func() time.Time { return at },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	result, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{\"editor.fontSize\": 16}\n", FormatVersion: 1,
 		ExpectedRevision: current.Revision, IdempotencyKey: "notify-settings",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Changed || result.Replayed || len(effects.changes) != 1 {
-		t.Fatalf("result=%#v changes=%#v", result, effects.changes)
-	}
+	require.NoError(t, err)
+	require.True(t, result.Changed, "result=%#v changes", result)
+	require.False(t, result.Replayed, "result=%#v changes", result)
+	require.Len(t, effects.changes, 1, "result=%#v changes", result)
 	change := effects.changes[0]
-	if change.UserID != principal.UserID || change.Revision != next || change.FormatVersion != 1 || !change.ChangedAt.Equal(at) {
-		t.Fatalf("change = %#v", change)
-	}
-	if len(events) != 2 || events[0] != "store" || events[1] != "effect" {
-		t.Fatalf("effect order = %#v", events)
-	}
-	if len(failures.operations) != 0 {
-		t.Fatalf("failure reports = %#v", failures.operations)
-	}
+	require.Equal(t, principal.UserID, change.UserID)
+	require.Equal(t, next, change.Revision)
+	require.Equal(t, 1, change.FormatVersion)
+	require.True(t, change.ChangedAt.Equal(at))
+	require.Len(t, events, 2)
+	require.Equal(t, "store", events[0])
+	require.Equal(t, "effect", events[1])
+	require.Empty(t, failures.operations)
 }
 
 func TestUserSettingsReplaceOwnSuppressesNoOpReplayAndRejectedCommandEvents(t *testing.T) {
@@ -480,9 +445,7 @@ func TestUserSettingsReplaceOwnSuppressesNoOpReplayAndRejectedCommandEvents(t *t
 				persistence, audit,
 				effects, &userSettingsEffectFailuresFake{}, func() time.Time { return at.Add(time.Second) },
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			source := "{}\n"
 			if test.source != "" {
 				source = test.source
@@ -490,15 +453,11 @@ func TestUserSettingsReplaceOwnSuppressesNoOpReplayAndRejectedCommandEvents(t *t
 			_, replaceErr := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 				Source: source, FormatVersion: 1, ExpectedRevision: current.Revision, IdempotencyKey: "suppressed-event",
 			})
-			if (test.name == "no-op" || test.name == "replay") && replaceErr != nil {
-				t.Fatalf("ReplaceOwn() error = %v", replaceErr)
+			if test.name == "no-op" || test.name == "replay" {
+				require.NoError(t, replaceErr)
 			}
-			if audit.calls != 0 {
-				t.Fatalf("suppressed command prepared %d audit events", audit.calls)
-			}
-			if len(effects.changes) != 0 {
-				t.Fatalf("published changes = %#v", effects.changes)
-			}
+			require.Equal(t, 0, audit.calls, "suppressed command prepared")
+			require.Empty(t, effects.changes)
 		})
 	}
 }
@@ -510,9 +469,7 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 	service, err := newUserSettingsService(
 		persistence, &userSettingsAuditFake{}, effects, &userSettingsEffectFailuresFake{}, time.Now,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
@@ -521,9 +478,10 @@ func TestUserSettingsReplaceOwnRejectedPrincipalPublishesNothing(t *testing.T) {
 	_, err = service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: "{}\n", FormatVersion: 1, ExpectedRevision: model.NewUserSettingsRevision(), IdempotencyKey: "rejected",
 	})
-	if !apperror.Is(err, "authentication.token_invalid") || persistence.reads != 0 || persistence.replaceInput != nil || len(effects.changes) != 0 {
-		t.Fatalf("error=%v reads=%d replace=%#v changes=%#v", err, persistence.reads, persistence.replaceInput, effects.changes)
-	}
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "error=%v reads=%d replace=%#v changes", err, persistence.reads, persistence.replaceInput)
+	require.Equal(t, 0, persistence.reads, "error=%v reads=%d replace=%#v changes", err, persistence.reads, persistence.replaceInput)
+	require.Nil(t, persistence.replaceInput, "error=%v reads=%d replace=%#v changes", err, persistence.reads, persistence.replaceInput)
+	require.Empty(t, effects.changes, "error=%v reads=%d replace=%#v changes", err, persistence.reads, persistence.replaceInput)
 }
 
 func TestUserSettingsRealtimeFailureDoesNotChangeCommittedResultAndReadReconciles(t *testing.T) {
@@ -541,26 +499,23 @@ func TestUserSettingsRealtimeFailureDoesNotChangeCommittedResultAndReadReconcile
 		persistence, &userSettingsAuditFake{event: &model.AuditEvent{Action: "user.settings.replace"}},
 		&userSettingsEffectsFake{err: errors.New("peer delivery unavailable")}, failures, func() time.Time { return at },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const source = "{\"workbench.colorTheme\": \"Dark\"}\n"
 	result, err := service.ReplaceOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: current.Revision, IdempotencyKey: "delivery-fails",
 	})
-	if err != nil || result.Revision != next || !result.Changed {
-		t.Fatalf("ReplaceOwn() = %#v, %v", result, err)
-	}
-	if len(failures.operations) != 1 || failures.operations[0] != "user_settings_changed" {
-		t.Fatalf("failure reports = %#v", failures.operations)
-	}
+	require.NoError(t, err, "ReplaceOwn() = %#v", result)
+	require.Equal(t, next, result.Revision, "ReplaceOwn() = %#v", result)
+	require.True(t, result.Changed, "ReplaceOwn() = %#v", result)
+	require.Len(t, failures.operations, 1)
+	require.Equal(t, "user_settings_changed", failures.operations[0])
 	committed := *current
 	committed.Source, committed.Revision, committed.UpdatedAt = source, next, at
 	persistence.document = &committed
 	view, err := service.ReadOwnUserSettings(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil || view.Source != source || view.Revision != next {
-		t.Fatalf("authoritative read = %#v, %v", view, err)
-	}
+	require.NoError(t, err, "authoritative read = %#v", view)
+	require.Equal(t, source, view.Source, "authoritative read = %#v", view)
+	require.Equal(t, next, view.Revision, "authoritative read = %#v", view)
 }
 
 type userSettingsRaceStore struct {
@@ -605,9 +560,7 @@ func TestUserSettingsConcurrentWritersPublishOnlyTheCommittedWinner(t *testing.T
 	service, err := newUserSettingsService(
 		persistence, userSettingsConcurrentAudit{}, effects, &userSettingsEffectFailuresFake{}, func() time.Time { return at },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	start := make(chan struct{})
 	errorsByWriter := make(chan error, 2)
 	for index := 0; index < 2; index++ {
@@ -627,9 +580,8 @@ func TestUserSettingsConcurrentWritersPublishOnlyTheCommittedWinner(t *testing.T
 			successes++
 		}
 	}
-	if successes != 1 || effects.calls.Load() != 1 {
-		t.Fatalf("successes=%d published=%d", successes, effects.calls.Load())
-	}
+	require.Equal(t, 1, successes, "successes")
+	require.Equal(t, int32(1), effects.calls.Load(), "successes")
 }
 
 func userSettingsSessionPrincipal(at time.Time) model.Principal {

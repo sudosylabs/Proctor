@@ -9,12 +9,14 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type auditListingStoreFake struct {
@@ -60,20 +62,19 @@ func TestAcademicAuditListingPassesScopeToPersistenceAndRedactsSecurityMetadata(
 		},
 	})
 	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(persistence.input.Visibility.AcademicUnitRootIDs, []model.AcademicUnitID{model.AcademicUnitID(rootID)}) {
-		t.Fatalf("persistence visibility = %#v", persistence.input.Visibility)
-	}
-	if len(got) != 1 || got[0].ActorID != event.ActorID || got[0].SessionID.IsValid() ||
-		got[0].RequestID != "" || got[0].NodeID != "" || got[0].ClientType != "" ||
-		got[0].AuthMethod != "" || got[0].IPAddress != "" || got[0].UserAgent != "" {
-		t.Fatalf("academic audit projection = %#v", got)
-	}
-	if event.SessionID.IsZero() || event.IPAddress == "" {
-		t.Fatal("academic audit projection mutated persistence result")
-	}
+	require.NoError(t, err)
+	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.input.Visibility.AcademicUnitRootIDs)
+	require.Len(t, got, 1)
+	require.Equal(t, event.ActorID, got[0].ActorID)
+	require.False(t, got[0].SessionID.IsValid())
+	require.Empty(t, got[0].RequestID)
+	require.Empty(t, got[0].NodeID)
+	require.Empty(t, got[0].ClientType)
+	require.Empty(t, got[0].AuthMethod)
+	require.Empty(t, got[0].IPAddress)
+	require.Empty(t, got[0].UserAgent)
+	require.False(t, event.SessionID.IsZero(), "academic audit projection mutated persistence result")
+	require.NotEmpty(t, event.IPAddress, "academic audit projection mutated persistence result")
 }
 
 func TestInstitutionAcademicAuditListingRetainsAcademicOnlyConstraint(t *testing.T) {
@@ -96,16 +97,13 @@ func TestInstitutionAcademicAuditListingRetainsAcademicOnlyConstraint(t *testing
 		},
 	})
 	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !persistence.input.Visibility.AcademicInstitutionWide || persistence.input.Visibility.InstitutionWide ||
-		!reflect.DeepEqual(persistence.input.Visibility.AllowedActions, []string{string(model.ActionAcademicUnitManage)}) {
-		t.Fatalf("persistence visibility = %#v", persistence.input.Visibility)
-	}
-	if len(got) != 1 || got[0].SessionID.IsValid() || got[0].IPAddress != "" {
-		t.Fatalf("academic institution projection = %#v", got)
-	}
+	require.NoError(t, err)
+	require.True(t, persistence.input.Visibility.AcademicInstitutionWide)
+	require.False(t, persistence.input.Visibility.InstitutionWide)
+	require.Equal(t, []string{string(model.ActionAcademicUnitManage)}, persistence.input.Visibility.AllowedActions)
+	require.Len(t, got, 1)
+	require.False(t, got[0].SessionID.IsValid())
+	require.Empty(t, got[0].IPAddress)
 }
 
 func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
@@ -117,16 +115,11 @@ func TestAuditListingAuthorizesOnceThenReads(t *testing.T) {
 		events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true},
 	})
 	got, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10, ActorID: model.NewUserID().String()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || persistence.input.Limit != 10 {
-		t.Fatalf("result/input = %#v / %#v", got, persistence.input)
-	}
-	want := []string{"authorize-view", "list-audits"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 1, "result/input = %#v / %#v", got, persistence.input)
+	require.Equal(t, 10, persistence.input.Limit, "result/input = %#v / %#v", got, persistence.input)
+	// Contract: authorization precedes the read.
+	ordertest.RequireInOrder(t, events, "authorize-view", "list-audits")
 }
 
 func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testing.T) {
@@ -138,12 +131,8 @@ func TestAuditListingFailsClosedWhenAuthorizationReturnsZeroVisibility(t *testin
 	}
 	service := newAuditListingService(persistence, &auditListingAuthorizerFake{events: &events})
 	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 10})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("error = %v, want authorization.denied", err)
-	}
-	if want := []string{"authorize-view"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "error = %v, want authorization.denied", err)
+	require.Equal(t, []string{"authorize-view"}, events, "events")
 }
 
 func TestAuditListingRejectsInvalidQuery(t *testing.T) {
@@ -154,11 +143,7 @@ func TestAuditListingRejectsInvalidQuery(t *testing.T) {
 		&auditListingAuthorizerFake{events: &events, scope: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
 	_, err := service.ListAuditEvents(context.Background(), Invocation{}, ListAuditEventsQuery{Limit: 500})
-	if !apperror.Is(err, "audit.query.invalid") {
-		t.Fatalf("error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "audit.query.invalid"), "error = %v", err)
 	want := []string{"authorize-view"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, want, events, "events")
 }

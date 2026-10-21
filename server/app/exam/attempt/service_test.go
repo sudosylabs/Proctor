@@ -12,16 +12,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T) {
@@ -30,42 +32,37 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	credential := model.NewCredentialToken()
 	command := validConnectCommand(f, credential, "test-key")
 	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Attempt.AdmissionRevisionID != f.revision.ID || result.ClassID != f.sitting.ClassID ||
-		!result.FirstAdmission || !result.ConnectionOpened || f.effects.opened != 1 {
-		t.Fatalf("connection result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, f.revision.ID, result.Attempt.AdmissionRevisionID)
+	require.Equal(t, f.sitting.ClassID, result.ClassID)
+	require.True(t, result.FirstAdmission)
+	require.True(t, result.ConnectionOpened)
+	require.Equal(t, 1, f.effects.opened)
 	input := f.persistence.connect
-	if input == nil || input.ContinuityCredentialHash != model.HashToken(credential) ||
-		strings.Contains(input.ContinuityCredentialHash, credential) || input.InitialConfiguration == nil ||
-		input.InitialConfiguration.UserSettingsRevision != f.configuration.UserSettingsRevision || input.DesktopBuild != f.desktopBuild ||
-		input.DesktopCompatibilityPolicyRevision != 1 ||
-		input.ConfigurationManifestFingerprint != model.CurrentAttemptConfigurationManifestFingerprint() || result.Configuration.Digest != f.configuration.Digest ||
-		result.RuntimeCapabilities.AttemptConfiguration.Digest != f.configuration.Digest {
-		t.Fatalf("persistence credential = %#v", input)
-	}
-	if got := strings.Join(f.order, ","); got != "sitting,audit,connect,effect.open" {
-		t.Fatalf("order = %s", got)
-	}
-	if strings.Contains(strings.ToLower(fmt.Sprintf("%#v", result.Participation)), "credential") ||
-		strings.Contains(fmt.Sprintf("%#v", result.Participation), credential) ||
-		strings.Contains(fmt.Sprintf("%#v", result.Participation), model.HashToken(credential)) {
-		t.Fatalf("credential leaked through connection result: %#v", result.Participation)
-	}
-	if f.audit.values["continuity_credential"] != nil || f.audit.values["credential_hash"] != nil {
-		t.Fatalf("credential entered audit = %#v", f.audit.values)
-	}
+	require.NotNil(t, input)
+	require.Equal(t, model.HashToken(credential), input.ContinuityCredentialHash)
+	require.NotContains(t, input.ContinuityCredentialHash, credential)
+	require.NotNil(t, input.InitialConfiguration)
+	require.Equal(t, f.configuration.UserSettingsRevision, input.InitialConfiguration.UserSettingsRevision)
+	require.Equal(t, f.desktopBuild, input.DesktopBuild)
+	require.Equal(t, int64(1), input.DesktopCompatibilityPolicyRevision)
+	require.Equal(t, model.CurrentAttemptConfigurationManifestFingerprint(), input.ConfigurationManifestFingerprint)
+	require.Equal(t, f.configuration.Digest, result.Configuration.Digest)
+	require.Equal(t, f.configuration.Digest, result.RuntimeCapabilities.AttemptConfiguration.Digest)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "audit", "connect", "effect.open")
+	require.NotContains(t, strings.ToLower(fmt.Sprintf("%#v", result.Participation)), "credential")
+	require.NotContains(t, fmt.Sprintf("%#v", result.Participation), credential)
+	require.NotContains(t, fmt.Sprintf("%#v", result.Participation), model.HashToken(credential))
+	require.Nil(t, f.audit.values["continuity_credential"])
+	require.Nil(t, f.audit.values["credential_hash"])
 	wantIdempotency, prepareErr := prepareConnectIdempotency(f.invocation, command)
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
-	if strings.Contains(auditCapture, credential) || strings.Contains(auditCapture, model.HashToken(credential)) {
-		t.Fatalf("credential material entered audit = %s", auditCapture)
-	}
+	require.NotContains(t, auditCapture, credential)
+	require.NotContains(t, auditCapture, model.HashToken(credential))
 }
 
 func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(t *testing.T) {
@@ -98,24 +95,27 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 	}
 
 	result, err := f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := f.persistence.correctionAcknowledgement
 	principal := f.invocation.Principal()
-	if input == nil || input.Access.AttemptID != f.attemptID || input.Access.CandidateUserID != principal.UserID ||
-		input.Access.SessionID != principal.SessionID || input.Access.ConnectionID != f.connectionID ||
-		input.Access.DesktopRegistrationID != principal.DesktopRegistrationID || input.Access.DPoPKeyThumbprint != principal.DPoPKeyThumbprint ||
-		input.Access.ContinuityCredentialHash != model.HashToken(credential) || input.ParticipationID != participationID ||
-		input.Generation != 4 || input.CorrectionRevisionID != correctionRevisionID ||
-		input.ExpectedCurrentRevisionID != currentRevisionID || input.AuditEvent == nil || !input.AuditEvent.ID.IsZero() ||
-		input.AuditEvent.Status != model.AuditStatusAttempt {
-		t.Fatalf("acknowledgement input = %#v", input)
-	}
-	if result.CorrectionRevisionID != correctionRevisionID || result.CurrentRevisionID != currentRevisionID ||
-		result.AcknowledgedAt.Time != f.at {
-		t.Fatalf("acknowledgement result = %#v", result)
-	}
+	require.NotNil(t, input)
+	require.Equal(t, f.attemptID, input.Access.AttemptID)
+	require.Equal(t, principal.UserID, input.Access.CandidateUserID)
+	require.Equal(t, principal.SessionID, input.Access.SessionID)
+	require.Equal(t, f.connectionID, input.Access.ConnectionID)
+	require.Equal(t, principal.DesktopRegistrationID, input.Access.DesktopRegistrationID)
+	require.Equal(t, principal.DPoPKeyThumbprint, input.Access.DPoPKeyThumbprint)
+	require.Equal(t, model.HashToken(credential), input.Access.ContinuityCredentialHash)
+	require.Equal(t, participationID, input.ParticipationID)
+	require.Equal(t, int64(4), input.Generation)
+	require.Equal(t, correctionRevisionID, input.CorrectionRevisionID)
+	require.Equal(t, currentRevisionID, input.ExpectedCurrentRevisionID)
+	require.NotNil(t, input.AuditEvent)
+	require.True(t, input.AuditEvent.ID.IsZero())
+	require.Equal(t, model.AuditStatusAttempt, input.AuditEvent.Status)
+	require.Equal(t, correctionRevisionID, result.CorrectionRevisionID)
+	require.Equal(t, currentRevisionID, result.CurrentRevisionID)
+	require.Equal(t, f.at, result.AcknowledgedAt.Time)
 	wantIdempotency, prepareErr := applicationidempotency.Require(f.invocation, store.ExamAttemptCorrectionAcknowledgementOperation,
 		command.IdempotencyKey, struct {
 			AttemptID                 string `json:"exam_attempt_id"`
@@ -124,19 +124,17 @@ func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(
 			CorrectionRevisionID      string `json:"correction_revision_id"`
 			ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
 		}{f.attemptID.String(), participationID.String(), 4, correctionRevisionID.String(), currentRevisionID.String()})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
-	if got := strings.Join(f.order, ","); got != "correction.acknowledgement.resolve,audit.authorization,audit.prepare,correction.acknowledgement.commit" {
-		t.Fatalf("order = %s", got)
-	}
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
+	// Contract (guardrail 8): the authorization decision and the prepared audit
+	// precede the durable acknowledgement.
+	ordertest.RequireInOrder(t, f.order, "audit.authorization", "audit.prepare", "correction.acknowledgement.commit")
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
-	if strings.Contains(auditCapture, credential) || strings.Contains(auditCapture, model.HashToken(credential)) ||
-		strings.Contains(auditCapture, participationID.String()) || strings.Contains(auditCapture, principal.SessionID.String()) ||
-		strings.Contains(auditCapture, f.connectionID.String()) {
-		t.Fatalf("private acknowledgement material entered audit: %s", auditCapture)
-	}
+	require.NotContains(t, auditCapture, credential)
+	require.NotContains(t, auditCapture, model.HashToken(credential))
+	require.NotContains(t, auditCapture, participationID.String())
+	require.NotContains(t, auditCapture, principal.SessionID.String())
+	require.NotContains(t, auditCapture, f.connectionID.String())
 }
 
 func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorizationAudit(t *testing.T) {
@@ -162,13 +160,12 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		ExpectedCurrentRevisionID: currentRevisionID, IdempotencyKey: "replay-key"}
 
 	result, err := f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.AcknowledgedAt.Time != f.at.Add(-time.Minute) || f.persistence.correctionAcknowledgementCalls != 1 ||
-		strings.Join(f.order, ",") != "correction.acknowledgement.resolve,audit.authorization,audit.prepare,correction.acknowledgement.commit" {
-		t.Fatalf("result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
-	}
+	require.NoError(t, err)
+	require.Equal(t, f.at.Add(-time.Minute), result.AcknowledgedAt.Time, "result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
+	require.Equal(t, 1, f.persistence.correctionAcknowledgementCalls, "result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
+	// Contract (guardrail 8): the authorization decision and the prepared audit
+	// precede the durable acknowledgement.
+	ordertest.RequireInOrder(t, f.order, "audit.authorization", "audit.prepare", "correction.acknowledgement.commit")
 	// An exact replay retains its acknowledgement time while a later correction
 	// controls the fresh capability response.
 	laterRevisionID := model.NewExamRevisionID()
@@ -185,11 +182,12 @@ func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorization
 		AffectedCapabilities:    []model.CandidateCapability{model.CandidateCapabilityBrowser},
 		AcknowledgementRequired: true, AcknowledgementState: model.CorrectionAcknowledgementPending}}
 	result, err = f.service.AcknowledgeExamAttemptCorrection(context.Background(), f.invocation, command)
-	if err != nil || result.CurrentRevisionID != laterRevisionID || result.AcknowledgedAt.Time != f.at.Add(-time.Minute) ||
-		result.RuntimeCapabilities.Browser.State != store.CandidateBrowserAcknowledgementRequired ||
-		!result.RuntimeCapabilities.WorkspaceMutationAllowed || !result.RuntimeCapabilities.SubmissionAllowed {
-		t.Fatalf("stale acknowledgement reopened capability: %#v, %v", result, err)
-	}
+	require.NoError(t, err, "stale acknowledgement reopened capability: %#v", result)
+	require.Equal(t, laterRevisionID, result.CurrentRevisionID, "stale acknowledgement reopened capability: %#v", result)
+	require.Equal(t, f.at.Add(-time.Minute), result.AcknowledgedAt.Time, "stale acknowledgement reopened capability: %#v", result)
+	require.Equal(t, store.CandidateBrowserAcknowledgementRequired, result.RuntimeCapabilities.Browser.State, "stale acknowledgement reopened capability: %#v", result)
+	require.True(t, result.RuntimeCapabilities.WorkspaceMutationAllowed, "stale acknowledgement reopened capability: %#v", result)
+	require.True(t, result.RuntimeCapabilities.SubmissionAllowed, "stale acknowledgement reopened capability: %#v", result)
 
 }
 
@@ -213,35 +211,39 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
 		Path: "src", IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := f.invocation.Principal()
 	access := f.workspace.resolvedAccess
-	if access.AttemptID != f.attemptID || access.ParticipationID != participationID || access.Generation != 4 ||
-		access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID || access.ConnectionID != f.connectionID ||
-		access.ContinuityCredentialHash != model.HashToken(credential) || f.workspace.mutation == nil ||
-		f.workspace.mutation.EntryID != entryID || f.workspace.mutation.DestinationPath != "src" ||
-		f.workspace.mutation.Operation != model.AttemptWorkspaceMutationCreateDirectory || !f.workspace.mutation.AuditEventID.IsValid() ||
-		result.Change.Cursor != 9 || f.effects.workspaceChanged != 1 {
-		t.Fatalf("access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
-	}
+	require.Equal(t, f.attemptID, access.AttemptID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, participationID, access.ParticipationID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, int64(4), access.Generation, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, principal.UserID, access.CandidateUserID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, principal.SessionID, access.SessionID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, f.connectionID, access.ConnectionID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, model.HashToken(credential), access.ContinuityCredentialHash, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.NotNil(t, f.workspace.mutation, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, entryID, f.workspace.mutation.EntryID, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, "src", f.workspace.mutation.DestinationPath, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, model.AttemptWorkspaceMutationCreateDirectory, f.workspace.mutation.Operation, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.True(t, f.workspace.mutation.AuditEventID.IsValid(), "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, int64(9), result.Change.Cursor, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
+	require.Equal(t, 1, f.effects.workspaceChanged, "access=%#v mutation=%#v result=%#v effects=%#v", access, f.workspace.mutation, result, f.effects)
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
-	if len(f.audit.values) != 2 || f.audit.values["exam_attempt_id"] != f.attemptID.String() || f.audit.values["operation"] != string(model.AttemptWorkspaceMutationCreateDirectory) || strings.Contains(auditCapture, credential) ||
-		strings.Contains(auditCapture, model.HashToken(credential)) || strings.Contains(auditCapture, participationID.String()) {
-		t.Fatalf("private mutation material entered audit: %s", auditCapture)
-	}
-	if got := strings.Join(f.order, ","); got != "workspace.resolve,audit,workspace.apply,effect.workspace" {
-		t.Fatalf("order = %s", got)
-	}
+	require.Len(t, f.audit.values, 2)
+	require.Equal(t, f.attemptID.String(), f.audit.values["exam_attempt_id"])
+	require.Equal(t, string(model.AttemptWorkspaceMutationCreateDirectory), f.audit.values["operation"])
+	require.NotContains(t, auditCapture, credential)
+	require.NotContains(t, auditCapture, model.HashToken(credential))
+	require.NotContains(t, auditCapture, participationID.String())
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "audit", "workspace.apply", "effect.workspace")
 	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.invocation, "test-key", f.attemptID,
 		model.AttemptWorkspaceMutationCreateDirectory, struct {
 			Path string `json:"path"`
 		}{"src"})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.workspace.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.workspace.idempotency)
 }
 
 func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffects(t *testing.T) {
@@ -264,33 +266,34 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 		Path: "main.go", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4,
 		IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.workspace.reservation == nil || f.workspace.ready == nil || f.workspace.mutation == nil ||
-		f.workspace.reservation.ObjectID != f.content.attemptObjectID || f.workspace.ready.ObjectID != f.content.attemptObjectID ||
-		f.workspace.ready.ContentVersion != version || f.workspace.mutation.ObjectID != f.content.attemptObjectID ||
-		f.workspace.mutation.DestinationPath != "main.go" || result.Entry == nil || result.Entry.ContentVersion != version ||
-		f.effects.workspaceChanged != 1 {
-		t.Fatalf("reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, f.workspace.reservation, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.NotNil(t, f.workspace.ready, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.NotNil(t, f.workspace.mutation, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, f.content.attemptObjectID, f.workspace.reservation.ObjectID, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, f.content.attemptObjectID, f.workspace.ready.ObjectID, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, version, f.workspace.ready.ContentVersion, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, f.content.attemptObjectID, f.workspace.mutation.ObjectID, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, "main.go", f.workspace.mutation.DestinationPath, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.NotNil(t, result.Entry, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, version, result.Entry.ContentVersion, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
+	require.Equal(t, 1, f.effects.workspaceChanged, "reservation=%#v ready=%#v mutation=%#v result=%#v", f.workspace.reservation, f.workspace.ready, f.workspace.mutation, result)
 	capture := fmt.Sprintf("%#v", f.audit.values)
-	if strings.Contains(capture, "main.go") || strings.Contains(capture, checksum) || strings.Contains(capture, credential) ||
-		strings.Contains(capture, model.HashToken(credential)) {
-		t.Fatalf("private file material entered audit: %s", capture)
-	}
-	if got := strings.Join(f.order, ","); got != "workspace.resolve,workspace.reserve,content.stage,workspace.ready,audit,workspace.apply,effect.workspace" {
-		t.Fatalf("order = %s", got)
-	}
+	require.NotContains(t, capture, "main.go")
+	require.NotContains(t, capture, checksum)
+	require.NotContains(t, capture, credential)
+	require.NotContains(t, capture, model.HashToken(credential))
+	// Contract: bytes are staged only inside a reserved upload, the audit begins
+	// before the durable apply (guardrail 8), and the apply commits before its
+	// effect (guardrail 14).
+	ordertest.RequireInOrder(t, f.order, "workspace.reserve", "content.stage", "workspace.ready", "audit", "workspace.apply", "effect.workspace")
 	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.invocation, "test-key", f.attemptID,
 		model.AttemptWorkspaceMutationCreateFile, struct {
 			Path, MediaType, SHA256 string
 			Size                    int64
 		}{"main.go", "text/plain", checksum, 4})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.workspace.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.workspace.idempotency)
 }
 
 func TestReplaceWorkspaceFilePassesOwnedIdempotencyToStore(t *testing.T) {
@@ -307,18 +310,15 @@ func TestReplaceWorkspaceFilePassesOwnedIdempotencyToStore(t *testing.T) {
 	command := ReplaceWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "main.go", ExpectedContentVersion: currentVersion, MediaType: "text/plain",
 		ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4, IdempotencyKey: "replace-key"}
-	if _, err := f.service.ReplaceCandidateExamWorkspaceFile(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
+	_, err := f.service.ReplaceCandidateExamWorkspaceFile(context.Background(), f.invocation, command)
+	require.NoError(t, err)
 	want, err := prepareWorkspaceMutationIdempotency(f.invocation, "replace-key", f.attemptID,
 		model.AttemptWorkspaceMutationReplaceFile, struct {
 			EntryID, Path, Version, MediaType, SHA256 string
 			Size                                      int64
 		}{entryID.String(), "main.go", currentVersion.String(), "text/plain", checksum, 4})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, f.workspace.idempotency, want)
+	require.NoError(t, err)
+	require.Equal(t, want, f.workspace.idempotency)
 }
 
 func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T) {
@@ -336,11 +336,13 @@ func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T
 	_, err := f.service.CreateCandidateExamWorkspaceFile(context.Background(), f.invocation, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
 		Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
-	if err != nil || len(f.workspace.reclaimable) != 1 || f.effects.workspaceChanged != 0 ||
-		f.workspace.mutation.EntryID != f.workspace.proposedEntryID || f.workspace.mutation.EntryID == entryID ||
-		f.workspace.ready.ContentVersion != f.workspace.proposedVersion || resultVersion(f.workspace.mutationResult) != version {
-		t.Fatalf("error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
-	}
+	require.NoError(t, err, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.Len(t, f.workspace.reclaimable, 1, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.Equal(t, 0, f.effects.workspaceChanged, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.Equal(t, f.workspace.proposedEntryID, f.workspace.mutation.EntryID, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.NotEqual(t, entryID, f.workspace.mutation.EntryID, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.Equal(t, f.workspace.proposedVersion, f.workspace.ready.ContentVersion, "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
+	require.Equal(t, version, resultVersion(f.workspace.mutationResult), "error=%v reclaimable=%v effects=%#v", err, f.workspace.reclaimable, f.effects)
 }
 
 func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *testing.T) {
@@ -353,10 +355,12 @@ func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *t
 		model.AttemptWorkspaceMutationCreateDirectory, "", "src", "", true)
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
 	result, err := f.service.CreateCandidateExamWorkspaceDirectory(context.Background(), f.invocation, CreateWorkspaceDirectoryCommand{Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key"})
-	if err != nil || result.Entry == nil || result.Entry.EntryID != retainedID || f.workspace.mutation.EntryID != f.workspace.proposedEntryID ||
-		f.workspace.mutation.EntryID == retainedID || f.effects.workspaceChanged != 0 {
-		t.Fatalf("result=%#v mutation=%#v error=%v", result, f.workspace.mutation, err)
-	}
+	require.NoError(t, err, "result=%#v mutation=%#v error", result, f.workspace.mutation)
+	require.NotNil(t, result.Entry, "result=%#v mutation=%#v error", result, f.workspace.mutation)
+	require.Equal(t, retainedID, result.Entry.EntryID, "result=%#v mutation=%#v error", result, f.workspace.mutation)
+	require.Equal(t, f.workspace.proposedEntryID, f.workspace.mutation.EntryID, "result=%#v mutation=%#v error", result, f.workspace.mutation)
+	require.NotEqual(t, retainedID, f.workspace.mutation.EntryID, "result=%#v mutation=%#v error", result, f.workspace.mutation)
+	require.Equal(t, 0, f.effects.workspaceChanged, "result=%#v mutation=%#v error", result, f.workspace.mutation)
 }
 
 func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcomes(t *testing.T) {
@@ -384,9 +388,9 @@ func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcom
 				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key"})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != test.wantCode || len(f.workspace.reclaimable) != test.wantReclaim {
-				t.Fatalf("error=%v reclaimable=%v", err, f.workspace.reclaimable)
-			}
+			require.ErrorAs(t, err, &fault)
+			require.Equal(t, test.wantCode, fault.Code())
+			require.Len(t, f.workspace.reclaimable, test.wantReclaim)
 		})
 	}
 }
@@ -404,18 +408,16 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 				EntryID: id, ExpectedPath: "old", DestinationPath: "new", IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
-			if mutation.ExpectedPath != "old" || mutation.DestinationPath != "new" {
-				t.Fatalf("mutation=%#v", mutation)
-			}
+			require.Equal(t, "old", mutation.ExpectedPath)
+			require.Equal(t, "new", mutation.DestinationPath)
 		}},
 		{name: "delete_file", operation: model.AttemptWorkspaceMutationDeleteEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, version model.WorkspaceContentVersion) error {
 			_, err := f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
-			if mutation.ExpectedPath != "old" || mutation.ExpectedContentVersion.IsZero() {
-				t.Fatalf("mutation=%#v", mutation)
-			}
+			require.Equal(t, "old", mutation.ExpectedPath)
+			require.False(t, mutation.ExpectedContentVersion.IsZero())
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -429,9 +431,7 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 			if test.operation == model.AttemptWorkspaceMutationDeleteEntry {
 				f.workspace.mutationResult.Entry = nil
 			}
-			if err := test.invoke(f, entryID, version); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, test.invoke(f, entryID, version))
 			test.check(t, f.workspace.mutation)
 			var semantic any
 			switch test.operation {
@@ -441,10 +441,8 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 				semantic = struct{ EntryID, ExpectedPath, ExpectedContentVersion string }{entryID.String(), "old", version.String()}
 			}
 			want, prepareErr := prepareWorkspaceMutationIdempotency(f.invocation, "test-key", f.attemptID, test.operation, semantic)
-			if prepareErr != nil {
-				t.Fatal(prepareErr)
-			}
-			assertStoreBoundaryCommand(t, f.workspace.idempotency, want)
+			require.NoError(t, prepareErr)
+			require.Equal(t, want, f.workspace.idempotency)
 		})
 	}
 }
@@ -471,9 +469,8 @@ func TestConnectRejectsMalformedCredentialAndPATBeforeReads(t *testing.T) {
 		_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, ConnectCommand{
 			SittingID: f.sitting.ID, ContinuityCredential: "not-canonical", IdempotencyKey: "test-key",
 		})
-		if err == nil || len(f.order) != 0 {
-			t.Fatalf("error=%v order=%v", err, f.order)
-		}
+		require.Error(t, err)
+		require.Empty(t, f.order)
 	}
 }
 
@@ -492,18 +489,23 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 3, Sequence: 7, ContinuityCredential: credential,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := f.persistence.renew
 	principal := f.invocation.Principal()
-	if input == nil || input.AttemptID != f.attemptID || input.ParticipationID != participationID ||
-		input.ConnectionID != f.connectionID || input.CandidateUserID != principal.UserID || input.SessionID != principal.SessionID ||
-		input.Generation != 3 || input.Sequence != 7 || input.ContinuityCredentialHash != model.HashToken(credential) ||
-		result.AcceptedSequence != 7 || !result.DatabaseTime.Equal(databaseNow) || f.effects.renewed != 1 ||
-		strings.Contains(fmt.Sprintf("%#v", result), credential) || strings.Contains(fmt.Sprintf("%#v", result), model.HashToken(credential)) {
-		t.Fatalf("renewal input/result = %#v / %#v", input, result)
-	}
+	require.NotNil(t, input, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, f.attemptID, input.AttemptID, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, participationID, input.ParticipationID, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, f.connectionID, input.ConnectionID, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, principal.UserID, input.CandidateUserID, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, principal.SessionID, input.SessionID, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, int64(3), input.Generation, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, int64(7), input.Sequence, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, model.HashToken(credential), input.ContinuityCredentialHash, "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, int64(7), result.AcceptedSequence, "renewal input/result = %#v / %#v", input, result)
+	require.True(t, result.DatabaseTime.Equal(databaseNow), "renewal input/result = %#v / %#v", input, result)
+	require.Equal(t, 1, f.effects.renewed, "renewal input/result = %#v / %#v", input, result)
+	require.NotContains(t, fmt.Sprintf("%#v", result), credential, "renewal input/result = %#v / %#v", input, result)
+	require.NotContains(t, fmt.Sprintf("%#v", result), model.HashToken(credential), "renewal input/result = %#v / %#v", input, result)
 }
 
 func TestDuplicateParticipationRenewalDoesNotRepublishRenewal(t *testing.T) {
@@ -519,9 +521,8 @@ func TestDuplicateParticipationRenewalDoesNotRepublishRenewal(t *testing.T) {
 		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
 		Generation: 2, Sequence: 4, ContinuityCredential: model.NewCredentialToken(),
 	})
-	if err != nil || f.effects.renewed != 0 {
-		t.Fatalf("error=%v renewal effects=%d", err, f.effects.renewed)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, f.effects.renewed)
 }
 
 func TestRenewParticipationRejectsInvalidPrincipalAndFieldsBeforeStore(t *testing.T) {
@@ -541,9 +542,9 @@ func TestRenewParticipationRejectsInvalidPrincipalAndFieldsBeforeStore(t *testin
 		command := RenewParticipationCommand{SecurityCoverage: renewalCoverageFixture(), AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: f.connectionID, Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken()}
 		mutate(f, &command)
-		if _, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, command); err == nil || f.persistence.renew != nil {
-			t.Fatalf("RenewParticipation(%#v) error=%v input=%#v", command, err, f.persistence.renew)
-		}
+		_, err := f.service.RenewExamAttemptParticipation(context.Background(), f.invocation, command)
+		require.Error(t, err, "RenewParticipation(%#v) error=%v input", command, err)
+		require.Nil(t, f.persistence.renew, "RenewParticipation(%#v) error=%v input", command, err)
 	}
 }
 
@@ -559,9 +560,8 @@ func TestRenewParticipationRejectsInconsistentStoreProjection(t *testing.T) {
 		Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" {
-		t.Fatalf("error = %v", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.attempt.unavailable", fault.Code())
 }
 
 func TestRenewParticipationMapsStableCandidateFaults(t *testing.T) {
@@ -581,9 +581,7 @@ func TestRenewParticipationMapsStableCandidateFaults(t *testing.T) {
 				AttemptID: f.attemptID, ParticipationID: model.NewAttemptParticipationID(), ConnectionID: f.connectionID,
 				Generation: 1, Sequence: 1, ContinuityCredential: model.NewCredentialToken(),
 			})
-			if !chainHasCode(err, test.code) {
-				t.Fatalf("error = %v, want %s", err, test.code)
-			}
+			require.True(t, chainHasCode(err, test.code), "error = %v, want %s", err, test.code)
 		})
 	}
 }
@@ -600,10 +598,12 @@ func TestLateRenewalUsesExactExpiryTransitionAndReturnsSafeConnectionLoss(t *tes
 		Generation: due.Generation, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.expired != 1 ||
-		strings.Join(f.order, ",") != "renew,expiry.resolve,system.audit,expiry.commit,effect.expire" {
-		t.Fatalf("error=%v effects=%#v order=%v", err, f.effects, f.order)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	require.Equal(t, "exam.attempt.connection_lost", fault.Code(), "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	require.Equal(t, 1, f.effects.expired, "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "effect.expire")
 }
 
 func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
@@ -616,10 +616,12 @@ func TestLateRenewalConcealsScannerWinningBeforeTargetResolution(t *testing.T) {
 		Generation: 2, Sequence: 5, ContinuityCredential: model.NewCredentialToken(),
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.expired != 0 ||
-		strings.Join(f.order, ",") != "renew,expiry.resolve" {
-		t.Fatalf("error=%v effects=%#v order=%v", err, f.effects, f.order)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	require.Equal(t, "exam.attempt.connection_lost", fault.Code(), "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	require.Equal(t, 0, f.effects.expired, "error=%v effects=%#v order=%v", err, f.effects, f.order)
+	// An already ended Participation is neither audited nor expired again.
+	require.Nil(t, f.systemAudit.values, "an ended Participation was audited")
+	require.Nil(t, f.persistence.expireInput, "an ended Participation was expired again")
 }
 
 func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *testing.T) {
@@ -629,25 +631,29 @@ func TestScanExpiredParticipationsCommitsAuditedAggregateBeforeSafeEffect(t *tes
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{due}
 	f.persistence.expireResult = expiryResultFixture(t, f, due, false)
 	result, err := f.service.ScanExpiredParticipations(context.Background(), 200)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := f.persistence.expireInput
-	if result.Due != 1 || result.Completed != 1 || result.Replayed != 0 || input == nil ||
-		input.AttemptID != due.AttemptID || input.ParticipationID != due.ParticipationID || input.Generation != due.Generation ||
-		!input.EvidenceID.IsValid() || !input.FlagID.IsValid() || !input.SuspensionID.IsValid() ||
-		!input.AuditEventID.IsValid() || input.AuditAt < 1 || f.effects.expired != 1 ||
-		strings.Join(f.order, ",") != "expiry.list,system.audit,expiry.commit,effect.expire" {
-		t.Fatalf("scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
-	}
-	if f.systemAudit.values["continuity_credential"] != nil || f.systemAudit.values["credential_hash"] != nil ||
-		f.systemAudit.values["private_reason"] != nil {
-		t.Fatalf("sensitive expiry audit values = %#v", f.systemAudit.values)
-	}
+	require.Equal(t, 1, result.Due, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, 1, result.Completed, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, 0, result.Replayed, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.NotNil(t, input, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, due.AttemptID, input.AttemptID, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, due.ParticipationID, input.ParticipationID, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, due.Generation, input.Generation, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.True(t, input.EvidenceID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.True(t, input.FlagID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.True(t, input.SuspensionID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.True(t, input.AuditEventID.IsValid(), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.GreaterOrEqual(t, input.AuditAt, int64(1), "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	require.Equal(t, 1, f.effects.expired, "scan=%#v input=%#v order=%v effects=%#v", result, input, f.order, f.effects)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "effect.expire")
+	require.Nil(t, f.systemAudit.values["continuity_credential"])
+	require.Nil(t, f.systemAudit.values["credential_hash"])
+	require.Nil(t, f.systemAudit.values["private_reason"])
 	for _, forbidden := range []string{"continuity_credential", "credential_hash", "private_reason"} {
-		if strings.Contains(strings.ToLower(fmt.Sprintf("%#v", f.systemAudit.values)), forbidden) {
-			t.Fatalf("expiry audit capture contains %q: %#v", forbidden, f.systemAudit.values)
-		}
+		require.NotContains(t, strings.ToLower(fmt.Sprintf("%#v", f.systemAudit.values)), forbidden, "expiry audit capture contains %q: %#v", forbidden, f.systemAudit.values)
 	}
 }
 
@@ -661,9 +667,9 @@ func TestScanExpiredParticipationPublishesSuspensionAfterTransportAlreadyClosed(
 	f.persistence.expireResult.Connection.CloseReason = model.AttemptConnectionCloseTransport
 
 	result, err := f.service.ScanExpiredParticipations(context.Background(), 1)
-	if err != nil || result.Completed != 1 || f.effects.expired != 1 {
-		t.Fatalf("scan=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "scan=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 1, result.Completed, "scan=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 1, f.effects.expired, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestScanExpiredParticipationsSuppressesReplayEffectsAndRejectsUnboundedLimit(t *testing.T) {
@@ -673,14 +679,14 @@ func TestScanExpiredParticipationsSuppressesReplayEffectsAndRejectsUnboundedLimi
 	f.persistence.expiryDue = []store.ExamAttemptParticipationExpiryDue{due}
 	f.persistence.expireResult = expiryResultFixture(t, f, due, true)
 	result, err := f.service.ScanExpiredParticipations(context.Background(), 1)
-	if err != nil || result.Replayed != 1 || f.effects.expired != 0 {
-		t.Fatalf("scan=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "scan=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 1, result.Replayed, "scan=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.expired, "scan=%#v error=%v effects=%#v", result, err, f.effects)
 	for _, limit := range []int{0, 201} {
 		other := newFixture(t)
-		if _, err = other.service.ScanExpiredParticipations(context.Background(), limit); err == nil || len(other.order) != 0 {
-			t.Fatalf("limit=%d error=%v order=%v", limit, err, other.order)
-		}
+		_, err = other.service.ScanExpiredParticipations(context.Background(), limit)
+		require.Error(t, err, "limit=%d error=%v order", limit, err)
+		require.Empty(t, other.order, "limit=%d error=%v order", limit, err)
 	}
 }
 
@@ -691,11 +697,13 @@ func TestScanExpiredParticipationsFailsAuditAndPublishesNothingOnCommitFailure(t
 	f.persistence.expireErr = store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
 	_, err := f.service.ScanExpiredParticipations(context.Background(), 10)
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" ||
-		f.systemAudit.failedCode != fault.Code() || f.effects.expired != 0 ||
-		strings.Join(f.order, ",") != "expiry.list,system.audit,expiry.commit,system.audit.fail" {
-		t.Fatalf("error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
+	require.Equal(t, "exam.attempt.connection_closed", fault.Code(), "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
+	require.Equal(t, fault.Code(), f.systemAudit.failedCode, "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
+	require.Equal(t, 0, f.effects.expired, "error=%v audit=%#v effects=%#v order=%v", err, f.systemAudit, f.effects, f.order)
+	// Contract (guardrail 8): the audit begins before the durable write and
+	// records the failed commit; no effect follows.
+	ordertest.RequireInOrder(t, f.order, "system.audit", "expiry.commit", "system.audit.fail")
 }
 
 func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *testing.T) {
@@ -710,32 +718,32 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: reason, IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := f.persistence.reallow
-	if input == nil || input.SuspensionID != suspensionID || input.ExpectedAttemptRevision != 2 || input.PrivateReason != reason ||
-		input.ActorUserID != managerID || input.ManagerOverride || result.Attempt.State != model.ExamAttemptReady ||
-		result.Suspension.State != model.AttemptSuspensionClosed || f.effects.reallowed != 1 ||
-		strings.Join(f.order, ",") != "manager.manage,sitting,audit,manager.get,reallow,effect.reallow" {
-		t.Fatalf("result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
-	}
-	if f.audit.values["private_reason"] != nil || strings.Contains(fmt.Sprintf("%#v", result), reason) {
-		t.Fatalf("private reason escaped persistence input: audit=%#v result=%#v", f.audit.values, result)
-	}
+	require.NotNil(t, input, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, suspensionID, input.SuspensionID, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, int64(2), input.ExpectedAttemptRevision, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, reason, input.PrivateReason, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, managerID, input.ActorUserID, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.False(t, input.ManagerOverride, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, model.ExamAttemptReady, result.Attempt.State, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, model.AttemptSuspensionClosed, result.Suspension.State, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	require.Equal(t, 1, f.effects.reallowed, "result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
+	// Contract: the Manager authorization precedes the audit, the audit begins
+	// before the durable reallow (guardrail 8), and the reallow commits before
+	// its effect (guardrail 14).
+	ordertest.RequireInOrder(t, f.order, "manager.manage", "audit", "reallow", "effect.reallow")
+	require.Nil(t, f.audit.values["private_reason"], "private reason escaped persistence input: audit=%#v result=%#v", f.audit.values, result)
+	require.NotContains(t, fmt.Sprintf("%#v", result), reason, "private reason escaped persistence input: audit=%#v result=%#v", f.audit.values, result)
 	for _, capture := range []any{f.audit.values, result} {
-		if strings.Contains(fmt.Sprintf("%#v", capture), reason) {
-			t.Fatalf("private reason escaped persistence input: %#v", capture)
-		}
+		require.NotContains(t, fmt.Sprintf("%#v", capture), reason, "private reason escaped persistence input: %#v", capture)
 	}
 	wantIdempotency, prepareErr := prepareReallowIdempotency(f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: reason, IdempotencyKey: "test-key",
 	})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
@@ -750,15 +758,9 @@ func TestReallowAcceptsClosedFocusLossSuspension(t *testing.T) {
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: "manager reviewed the focus loss", IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatalf("Reallow() error = %v, want committed focus-loss re-allow to succeed", err)
-	}
-	if result.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonFocusLossPolicy {
-		t.Fatalf("Reallow() suspension reason = %q", result.Suspension.CandidateReason)
-	}
-	if f.effects.reallowed != 1 {
-		t.Fatalf("Reallow() effects = %d, want candidate reconnect effect", f.effects.reallowed)
-	}
+	require.NoError(t, err, "Reallow() error")
+	require.Equal(t, model.AttemptSuspensionCandidateReasonFocusLossPolicy, result.Suspension.CandidateReason)
+	require.Equal(t, 1, f.effects.reallowed, "Reallow() effects")
 }
 
 func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
@@ -810,17 +812,13 @@ func TestManagerAttemptOperationsAuthorizeBeforeReadingAttempts(t *testing.T) {
 				}
 				err := operation(f, attemptID)
 				var fault *apperror.Error
-				if !errors.As(err, &fault) {
-					t.Fatalf("existing=%t error = %v", existing, err)
-				}
+				require.ErrorAs(t, err, &fault, "existing=%t error", existing)
 				codes = append(codes, fault.Code())
-				if slices.Contains(f.order, "manager.get") || f.audit.values != nil {
-					t.Fatalf("existing=%t denied caller reached Attempt state: order=%v audit=%#v", existing, f.order, f.audit.values)
-				}
+				require.NotContains(t, f.order, "manager.get", "existing=%t denied caller reached Attempt state: order=%v audit", existing, f.order)
+				require.Nil(t, f.audit.values, "existing=%t denied caller reached Attempt state: order=%v audit", existing, f.order)
 			}
-			if codes[0] != codes[1] || codes[0] != "resource.not_found" {
-				t.Fatalf("denied responses distinguish Attempt existence: %v", codes)
-			}
+			require.Equal(t, codes[1], codes[0])
+			require.Equal(t, "resource.not_found", codes[0])
 		})
 	}
 }
@@ -835,10 +833,10 @@ func TestManagerAttemptMissingAfterAuthorizationCompletesFailedAudit(t *testing.
 	_, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: model.NewExamAttemptID(), SuspensionID: model.NewAttemptSuspensionID(),
 		ExpectedAttemptRevision: 2, PrivateReason: "probe", IdempotencyKey: "probe-key"})
-	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.audit.failedCode != "exam.attempt.not_found" ||
-		f.persistence.reallow != nil {
-		t.Fatalf("error=%v audit=%#v order=%v", err, f.audit, f.order)
-	}
+	require.True(t, apperror.Is(err, "resource.not_found"), "error=%v audit=%#v order=%v", err, f.audit, f.order)
+	require.True(t, chainHasCode(err, "exam.attempt.not_found"), "error=%v audit=%#v order=%v", err, f.audit, f.order)
+	require.Equal(t, "exam.attempt.not_found", f.audit.failedCode, "error=%v audit=%#v order=%v", err, f.audit, f.order)
+	require.Nil(t, f.persistence.reallow, "error=%v audit=%#v order=%v", err, f.audit, f.order)
 }
 
 func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
@@ -849,9 +847,9 @@ func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
 			ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: model.NewAttemptSuspensionID(),
 			ExpectedAttemptRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key",
 		})
-		if err == nil || len(f.order) != 0 || f.persistence.reallow != nil {
-			t.Fatalf("reason=%q error=%v order=%v", reason, err, f.order)
-		}
+		require.Error(t, err, "reason=%q error=%v order", reason, err)
+		require.Empty(t, f.order, "reason=%q error=%v order", reason, err)
+		require.Nil(t, f.persistence.reallow, "reason=%q error=%v order", reason, err)
 	}
 }
 
@@ -867,9 +865,10 @@ func TestReallowReplaySuppressesEffectAndPropagatesAuthorizedOverride(t *testing
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
 		ExpectedAttemptRevision: 2, PrivateReason: "authorized override review", IdempotencyKey: "test-key",
 	})
-	if err != nil || !result.Replayed || !f.persistence.reallow.ManagerOverride || f.effects.reallowed != 0 {
-		t.Fatalf("result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
+	require.True(t, result.Replayed, "result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
+	require.True(t, f.persistence.reallow.ManagerOverride, "result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
+	require.Equal(t, 0, f.effects.reallowed, "result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
 }
 
 func expiryDueFixture(f *fixture) store.ExamAttemptParticipationExpiryDue {
@@ -881,9 +880,7 @@ func expiryDueFixture(f *fixture) store.ExamAttemptParticipationExpiryDue {
 func expiryResultFixture(t *testing.T, f *fixture, due store.ExamAttemptParticipationExpiryDue, replayed bool) *store.ExamAttemptParticipationExpiryResult {
 	t.Helper()
 	attempt, err := model.NewExamAttempt(due.AttemptID, due.ExamID, due.SittingID, due.CandidateUserID, f.revision.ID, f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptSuspended, f.at, 2
 	participation := &store.ExamAttemptParticipationView{ID: due.ParticipationID, AttemptID: due.AttemptID,
 		State: model.AttemptParticipationEnded, Generation: due.Generation, RenewalSequence: 4,
@@ -892,14 +889,10 @@ func expiryResultFixture(t *testing.T, f *fixture, due store.ExamAttemptParticip
 	connection := &store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 		OpenedAt: f.at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(f.at), CloseReason: model.AttemptConnectionCloseLeaseExpired}
 	flag, err := model.NewIntegrityFlag(model.NewIntegrityFlagID(), due.AttemptID, due.Generation, model.IntegrityPolicyConnectionLoss, f.at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	evidence, err := model.NewConnectionLossEvidence(model.NewIntegrityEvidenceID(), due.AttemptID, due.ParticipationID,
 		flag.ID, due.Generation, due.LeaseExpiresAt, f.at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	suspension := &store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: due.AttemptID,
 		ParticipationID: due.ParticipationID, FlagID: flag.ID, Generation: due.Generation, State: model.AttemptSuspensionActive,
 		Source: model.AttemptSuspensionSourcePolicy, CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: f.at}
@@ -917,9 +910,7 @@ func reallowResultFixtureWithReason(t *testing.T, f *fixture, suspensionID model
 	reason model.AttemptSuspensionCandidateReason) *store.ExamAttemptReallowResult {
 	t.Helper()
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID, f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt.UpdatedAt, attempt.Revision = f.at, 3
 	attempt.State = model.ExamAttemptReady
 	suspension := &store.ExamAttemptSuspensionView{ID: suspensionID, AttemptID: f.attemptID,
@@ -939,9 +930,11 @@ func TestConnectReplayAfterCorrectionAndPauseSuppressesTransientOpenEvent(t *tes
 	f.sitting.State = model.ExamSittingPaused
 	f.sitting.ExamRevisionID = model.NewExamRevisionID()
 	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	if err != nil || !result.Replayed || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect" {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.Replayed, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	// Contract (guardrail 8): the audit begins before the durable write.
+	ordertest.RequireInOrder(t, f.order, "audit", "connect")
 }
 
 func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
@@ -949,9 +942,11 @@ func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
 	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	if err != nil || result.FirstAdmission || !result.ConnectionOpened || result.Replayed || f.effects.opened != 1 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.FirstAdmission, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.ConnectionOpened, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.Replayed, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 1, f.effects.opened, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestDifferentKeyConvergenceOnExistingOpenConnectionPublishesNoEffect(t *testing.T) {
@@ -960,9 +955,11 @@ func TestDifferentKeyConvergenceOnExistingOpenConnectionPublishesNoEffect(t *tes
 	f.persistence.firstAdmission = false
 	f.persistence.connectionOpened = false
 	result, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-	if err != nil || result.FirstAdmission || result.ConnectionOpened || result.Replayed || f.effects.opened != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.FirstAdmission, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.ConnectionOpened, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.Replayed, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
@@ -972,9 +969,9 @@ func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
 	f.persistence.connectClosed = true
 	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
-		t.Fatalf("error=%v effects=%#v", err, f.effects)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, "exam.attempt.connection_closed", fault.Code(), "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "error=%v effects=%#v", err, f.effects)
 }
 
 func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
@@ -984,9 +981,9 @@ func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
 	f.persistence.participationEnded = true
 	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_closed" || f.effects.opened != 0 {
-		t.Fatalf("error=%v effects=%#v", err, f.effects)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, "exam.attempt.connection_closed", fault.Code(), "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "error=%v effects=%#v", err, f.effects)
 }
 
 func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
@@ -995,9 +992,9 @@ func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
 	f.persistence.connectionSession = model.NewSessionID()
 	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.opened != 0 {
-		t.Fatalf("error=%v effects=%#v", err, f.effects)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, "exam.attempt.unavailable", fault.Code(), "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "error=%v effects=%#v", err, f.effects)
 }
 
 func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
@@ -1006,10 +1003,13 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.sitting_not_open" ||
-		f.audit.failedCode != fault.Code() || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
-		t.Fatalf("error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
+	require.Equal(t, "exam.attempt.sitting_not_open", fault.Code(), "error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
+	require.Equal(t, fault.Code(), f.audit.failedCode, "error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
+	require.Equal(t, 0, f.effects.opened, "error=%v audit=%q effects=%#v order=%v", err, f.audit.failedCode, f.effects, f.order)
+	// Contract (guardrail 8): the audit begins before the durable write and
+	// records the rejected commit.
+	ordertest.RequireInOrder(t, f.order, "audit", "connect", "audit.fail")
 }
 
 func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
@@ -1018,9 +1018,9 @@ func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
 	f.persistence.connectErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	_, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.connection_lost" || f.effects.opened != 0 {
-		t.Fatalf("error=%v effects=%#v", err, f.effects)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, "exam.attempt.connection_lost", fault.Code(), "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, 0, f.effects.opened, "error=%v effects=%#v", err, f.effects)
 }
 
 func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t *testing.T) {
@@ -1039,27 +1039,21 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	result, err := f.service.GetCandidateExamPresentation(context.Background(), f.invocation, CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: credential,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Capacity != f.persistence.presentation.Capacity ||
-		result.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != f.revision.ID ||
-		result.RuntimeCapabilities.ExamRevision.CurrentRevisionID != currentID ||
-		!result.RuntimeCapabilities.FocusLossCollectionEnabled ||
-		!strings.Contains(result.InstructionsMarkdown, "# Rules") || !strings.Contains(result.InstructionsMarkdown, "**Go**") ||
-		!strings.Contains(result.InstructionsMarkdown, "[handbook](https://example.test/handbook)") ||
-		!strings.Contains(result.Resources[0].DescriptionMarkdown, "_carefully_") {
-		t.Fatalf("presentation = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, f.persistence.presentation.Capacity, result.Capacity)
+	require.Equal(t, f.revision.ID, result.RuntimeCapabilities.ExamRevision.AdmissionRevisionID)
+	require.Equal(t, currentID, result.RuntimeCapabilities.ExamRevision.CurrentRevisionID)
+	require.True(t, result.RuntimeCapabilities.FocusLossCollectionEnabled)
+	require.Contains(t, result.InstructionsMarkdown, "# Rules")
+	require.Contains(t, result.InstructionsMarkdown, "**Go**")
+	require.Contains(t, result.InstructionsMarkdown, "[handbook](https://example.test/handbook)")
+	require.Contains(t, result.Resources[0].DescriptionMarkdown, "_carefully_")
 	for _, forbidden := range []string{"<script", "alert('x')", "javascript:", "![tracker]", "pixel.png", "<iframe", "evil.test", "data:text/html"} {
-		if strings.Contains(result.InstructionsMarkdown+result.Resources[0].DescriptionMarkdown, forbidden) {
-			t.Fatalf("unsafe Markdown survived %q: %#v", forbidden, result)
-		}
+		require.NotContains(t, result.InstructionsMarkdown+result.Resources[0].DescriptionMarkdown, forbidden, "unsafe Markdown survived %q: %#v", forbidden, result)
 	}
-	if f.persistence.candidateAccess.ContinuityCredentialHash != model.HashToken(credential) ||
-		f.persistence.candidateAccess.CandidateUserID != f.userID || f.persistence.candidateAccess.SessionID != f.invocation.Principal().SessionID {
-		t.Fatalf("candidate selector = %#v", f.persistence.candidateAccess)
-	}
+	require.Equal(t, model.HashToken(credential), f.persistence.candidateAccess.ContinuityCredentialHash)
+	require.Equal(t, f.userID, f.persistence.candidateAccess.CandidateUserID)
+	require.Equal(t, f.invocation.Principal().SessionID, f.persistence.candidateAccess.SessionID)
 }
 
 func TestProtectedPresentationRejectsInvalidFrozenCapacity(t *testing.T) {
@@ -1079,9 +1073,8 @@ func TestProtectedPresentationRejectsInvalidFrozenCapacity(t *testing.T) {
 			}
 			_, err := f.service.GetCandidateExamPresentation(context.Background(), f.invocation, CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" {
-				t.Fatalf("invalid capacity was not rejected: %v", err)
-			}
+			require.ErrorAs(t, err, &fault)
+			require.Equal(t, "exam.attempt.unavailable", fault.Code())
 		})
 	}
 }
@@ -1102,13 +1095,11 @@ func TestStarterOriginWorkspaceFileOpensPinnedStarterBytesWithAttemptObjectIdent
 	opened, err := f.service.OpenCandidateExamWorkspaceFile(context.Background(), f.invocation, OpenWorkspaceFileQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	}, EntryID: entryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer opened.Body.Close()
-	if f.content.starterID != starterID || opened.ContentVersion != version || opened.MediaType != "text/x-go" {
-		t.Fatalf("opened=%#v starter=%s", opened, f.content.starterID)
-	}
+	require.Equal(t, starterID, f.content.starterID, "opened=%#v starter", opened)
+	require.Equal(t, version, opened.ContentVersion, "opened=%#v starter", opened)
+	require.Equal(t, "text/x-go", opened.MediaType, "opened=%#v starter", opened)
 }
 
 func TestProtectedPresentationRejectsAConnectionFromAnotherSession(t *testing.T) {
@@ -1121,10 +1112,9 @@ func TestProtectedPresentationRejectsAConnectionFromAnotherSession(t *testing.T)
 	_, err := f.service.GetCandidateExamPresentation(context.Background(), otherSession, CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	})
-	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") ||
-		f.persistence.candidateAccess.SessionID != principal.SessionID {
-		t.Fatalf("error=%v access=%#v", err, f.persistence.candidateAccess)
-	}
+	require.True(t, apperror.Is(err, "resource.not_found"), "error=%v access=%#v", err, f.persistence.candidateAccess)
+	require.True(t, chainHasCode(err, "exam.attempt.not_found"), "error=%v access=%#v", err, f.persistence.candidateAccess)
+	require.Equal(t, principal.SessionID, f.persistence.candidateAccess.SessionID, "error=%v access=%#v", err, f.persistence.candidateAccess)
 }
 
 func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
@@ -1143,9 +1133,8 @@ func TestContentSelectorsPreserveCandidateAccessErrors(t *testing.T) {
 		},
 	} {
 		var fault *apperror.Error
-		if err := open(); !errors.As(err, &fault) || fault.Code() != "authentication.token_invalid" {
-			t.Fatalf("error=%v", err)
-		}
+		require.ErrorAs(t, open(), &fault)
+		require.Equal(t, "authentication.token_invalid", fault.Code())
 	}
 }
 
@@ -1159,13 +1148,14 @@ func TestWorkspaceListUsesPathFreeSnapshotCursor(t *testing.T) {
 	page, err := f.service.ListCandidateExamWorkspace(context.Background(), f.invocation, WorkspaceQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	}, ExpectedCursor: -1, Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.WorkspaceID != workspaceID || page.Cursor != 7 || len(page.Items) != 1 || !page.HasMore || page.RefreshRequired ||
-		f.workspace.options.ExpectedCursor != -1 || !f.workspace.options.AfterEntryID.IsZero() {
-		t.Fatalf("page=%#v options=%#v", page, f.workspace.options)
-	}
+	require.NoError(t, err)
+	require.Equal(t, workspaceID, page.WorkspaceID, "page=%#v options=%#v", page, f.workspace.options)
+	require.Equal(t, int64(7), page.Cursor, "page=%#v options=%#v", page, f.workspace.options)
+	require.Len(t, page.Items, 1, "page=%#v options=%#v", page, f.workspace.options)
+	require.True(t, page.HasMore, "page=%#v options=%#v", page, f.workspace.options)
+	require.False(t, page.RefreshRequired, "page=%#v options=%#v", page, f.workspace.options)
+	require.Equal(t, int64(-1), f.workspace.options.ExpectedCursor, "page=%#v options=%#v", page, f.workspace.options)
+	require.True(t, f.workspace.options.AfterEntryID.IsZero(), "page=%#v options=%#v", page, f.workspace.options)
 }
 
 func TestWorkspaceListRejectsUnboundedOrInvalidCursorsBeforeStore(t *testing.T) {
@@ -1181,9 +1171,9 @@ func TestWorkspaceListRejectsUnboundedOrInvalidCursorsBeforeStore(t *testing.T) 
 		query.Access.AttemptID, query.Access.ConnectionID = f.attemptID, f.connectionID
 		_, err := f.service.ListCandidateExamWorkspace(context.Background(), f.invocation, query)
 		var fault *apperror.Error
-		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" || f.workspace.lists != 0 {
-			t.Fatalf("query=%#v error=%v calls=%d", query, err, f.workspace.lists)
-		}
+		require.ErrorAs(t, err, &fault, "query=%#v error=%v calls", query, err)
+		require.Equal(t, "exam.attempt.invalid", fault.Code(), "query=%#v error=%v calls", query, err)
+		require.Equal(t, 0, f.workspace.lists, "query=%#v error=%v calls", query, err)
 	}
 }
 
@@ -1198,9 +1188,10 @@ func TestWorkspaceJournalReturnsOrderedRecoveryWithoutPathsInSelector(t *testing
 	page, err := f.service.ListCandidateExamWorkspaceJournal(context.Background(), f.invocation, WorkspaceJournalQuery{Access: CandidateAccess{
 		AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken(),
 	}, AfterCursor: 4, Limit: 20})
-	if err != nil || page.CurrentCursor != 5 || len(page.Entries) != 1 || f.workspace.journalOptions.AfterCursor != 4 {
-		t.Fatalf("page=%#v options=%#v error=%v", page, f.workspace.journalOptions, err)
-	}
+	require.NoError(t, err, "page=%#v options=%#v error", page, f.workspace.journalOptions)
+	require.Equal(t, int64(5), page.CurrentCursor, "page=%#v options=%#v error", page, f.workspace.journalOptions)
+	require.Len(t, page.Entries, 1, "page=%#v options=%#v error", page, f.workspace.journalOptions)
+	require.Equal(t, int64(4), f.workspace.journalOptions.AfterCursor, "page=%#v options=%#v error", page, f.workspace.journalOptions)
 }
 
 func TestOpenAttemptOriginWorkspaceFileUsesOpaqueAttemptObject(t *testing.T) {
@@ -1214,13 +1205,10 @@ func TestOpenAttemptOriginWorkspaceFileUsesOpaqueAttemptObject(t *testing.T) {
 	f.content.openAttemptBody = "work"
 	opened, err := f.service.OpenCandidateExamWorkspaceFile(context.Background(), f.invocation, OpenWorkspaceFileQuery{Access: CandidateAccess{AttemptID: f.attemptID,
 		ConnectionID: f.connectionID, ContinuityCredential: model.NewCredentialToken()}, EntryID: entryID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer opened.Body.Close()
-	if f.content.openAttemptID != objectID || opened.ContentVersion != version {
-		t.Fatalf("opened=%#v object=%s", opened, f.content.openAttemptID)
-	}
+	require.Equal(t, objectID, f.content.openAttemptID, "opened=%#v object", opened)
+	require.Equal(t, version, opened.ContentVersion, "opened=%#v object", opened)
 }
 
 func TestManagerListAuthorizesBeforeBoundedStoreRead(t *testing.T) {
@@ -1229,31 +1217,26 @@ func TestManagerListAuthorizesBeforeBoundedStoreRead(t *testing.T) {
 	rows := make([]store.ExamAttemptManagerSnapshot, 3)
 	for index := range rows {
 		attempt, err := model.NewExamAttempt(model.NewExamAttemptID(), f.sitting.ExamID, f.sitting.ID, model.NewUserID(), f.revision.ID, f.at.Add(time.Duration(index)*time.Second))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		rows[index].Attempt = attempt
 	}
 	f.persistence.managerRows = rows
 	page, err := f.service.ListExamAttempts(context.Background(), f.invocation, ListManagedAttemptsQuery{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, Limit: 2,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 2 || !page.HasMore || f.persistence.managerOptions.Limit != 3 ||
-		strings.Join(f.order, ",") != "manager.authorize,manager.list" {
-		t.Fatalf("page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2, "page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
+	require.True(t, page.HasMore, "page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
+	require.Equal(t, 3, f.persistence.managerOptions.Limit, "page=%#v options=%#v order=%v", page, f.persistence.managerOptions, f.order)
+	// Contract: authorization precedes reading the managed Attempts.
+	ordertest.RequireInOrder(t, f.order, "manager.authorize", "manager.list")
 }
 
 func TestManagerListValidatesAndDeepClonesActiveSuspension(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID, f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptSuspended, f.at, 2
 	suspension := &store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), AttemptID: attempt.ID,
 		ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 2,
@@ -1263,13 +1246,12 @@ func TestManagerListValidatesAndDeepClonesActiveSuspension(t *testing.T) {
 	page, err := f.service.ListExamAttempts(context.Background(), f.invocation, ListManagedAttemptsQuery{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, Limit: 1,
 	})
-	if err != nil || len(page.Items) != 1 || page.Items[0].ActiveSuspension == nil || page.Items[0].ActiveSuspension.ID != suspension.ID {
-		t.Fatalf("page=%#v error=%v", page, err)
-	}
+	require.NoError(t, err, "page=%#v error", page)
+	require.Len(t, page.Items, 1, "page=%#v error", page)
+	require.NotNil(t, page.Items[0].ActiveSuspension, "page=%#v error", page)
+	require.Equal(t, suspension.ID, page.Items[0].ActiveSuspension.ID, "page=%#v error", page)
 	suspension.ID = model.NewAttemptSuspensionID()
-	if page.Items[0].ActiveSuspension.ID == suspension.ID {
-		t.Fatal("manager page retained Store-owned Suspension pointer")
-	}
+	require.NotEqual(t, suspension.ID, page.Items[0].ActiveSuspension.ID, "manager page retained Store-owned Suspension pointer")
 }
 
 func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
@@ -1277,29 +1259,26 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
 	connected, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, credential, "test-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.order = nil
 	f.persistence.closeChanged = true
 	closed, err := f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
 		AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 	})
-	if err != nil || !closed.Changed || strings.Join(f.order, ",") != "audit,close,effect.close" {
-		t.Fatalf("closed=%#v error=%v order=%v", closed, err, f.order)
-	}
+	require.NoError(t, err, "closed=%#v error=%v order=%v", closed, err, f.order)
+	require.True(t, closed.Changed, "closed=%#v error=%v order=%v", closed, err, f.order)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "audit", "close", "effect.close")
 	f.order = nil
 	f.persistence.closeChanged = false
-	if _, err = f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
+	_, err = f.service.CloseExamAttemptConnection(context.Background(), f.invocation, CloseConnectionCommand{
 		AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if f.effects.closed != 1 {
-		t.Fatalf("close effects = %d", f.effects.closed)
-	}
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, f.effects.closed, "close effects")
 }
 
 func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
@@ -1310,18 +1289,16 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 	} {
 		f := newFixture(t)
 		connected, err := f.service.ConnectExamAttempt(context.Background(), f.invocation, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		principal := f.invocation.Principal()
 		mutate(&principal)
 		_, err = f.service.CloseExamAttemptConnection(context.Background(), invocation.New(principal, f.invocation.RequestMetadata()), CloseConnectionCommand{
 			AttemptID: connected.Attempt.ID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 			ConnectionID: connected.Connection.ID, Reason: model.AttemptConnectionCloseTransport,
 		})
-		if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.effects.closed != 0 {
-			t.Fatalf("error=%v effects=%#v", err, f.effects)
-		}
+		require.True(t, apperror.Is(err, "resource.not_found"), "error=%v effects=%#v", err, f.effects)
+		require.True(t, chainHasCode(err, "exam.attempt.not_found"), "error=%v effects=%#v", err, f.effects)
+		require.Equal(t, 0, f.effects.closed, "error=%v effects=%#v", err, f.effects)
 	}
 }
 
@@ -1333,9 +1310,9 @@ func TestTrustedCloseRejectsUnknownReasonBeforeAudit(t *testing.T) {
 		ConnectionID: model.NewAttemptConnectionID(), Reason: "unknown",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" || len(f.order) != 0 {
-		t.Fatalf("error=%v order=%v", err, f.order)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.attempt.invalid", fault.Code())
+	require.Empty(t, f.order)
 }
 
 type fixture struct {
@@ -1395,9 +1372,7 @@ func newFixture(t *testing.T) *fixture {
 	f.desktopBuild.NativeAgreement = syntheticNativeAgreement(t, f.desktopBuild)
 	var configurationErr error
 	f.configuration, configurationErr = (model.AttemptConfigurationCandidate{ManifestFingerprint: f.desktopBuild.AttemptConfigurationManifestFingerprint, RegistryFingerprint: f.desktopBuild.DesktopSettingsRegistryFingerprint, UserSettingsRevision: model.NewUserSettingsRevision(), DesktopBuild: f.desktopBuild.DesktopBuildID, DesktopTarget: f.desktopBuild.TargetTuple(), Presentation: model.AttemptConfigurationPresentation{ColorTheme: "dark", ZoomPercent: 100, EditorFontSizePX: 14, EditorLineHeightPX: 22, ScreenReaderMode: "auto", AnnouncementMode: "auto", CursorStyle: "line", CursorBlinking: "blink"}, ApprovedCommands: []string{}, ApprovedKeybindings: []string{}}).Freeze(model.NewID())
-	if configurationErr != nil {
-		t.Fatal(configurationErr)
-	}
+	require.NoError(t, configurationErr)
 	service, err := New(Dependencies{
 		Persistence: f.persistence, Workspace: f.workspace, Submissions: f.submissions, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
 		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content, Mail: f.mail,
@@ -1432,9 +1407,7 @@ func newFixture(t *testing.T) *fixture {
 			return model.NewSubmissionID()
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.service = service
 	f.invocation = invocation.New(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -1466,13 +1439,10 @@ func managerAttemptFixture(t *testing.T, f *fixture, state model.ExamAttemptStat
 	t.Helper()
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID,
 		f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt.State, attempt.UpdatedAt, attempt.Revision = state, f.at, revision
-	if err = attempt.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	err = attempt.Validate()
+	require.NoError(t, err)
 	if state != model.ExamAttemptSuspended {
 		return attempt, nil
 	}
@@ -2067,9 +2037,7 @@ func syntheticNativeAgreement(t *testing.T, build model.DesktopBuildTuple) *mode
 		matrix.Entries = append(matrix.Entries, model.NativeCapabilityMatrixEntry{CoverageKey: item.key, SourceSchemaDigest: digest, Claim: model.NativeClaimEnforce, ComponentID: "synthetic-component", AdapterVersion: "synthetic-adapter", RequiredPermissions: []string{}, Limitations: []string{}, Verification: "passed"})
 	}
 	agreement, err := model.NewDesktopNativeAgreement(model.NativeRegistryDigest, model.SHA256Fingerprint([]byte("synthetic-manifest")), model.SHA256Fingerprint([]byte("synthetic-matrix")), model.SHA256Fingerprint([]byte("synthetic-detectors")), definitions, matrix, []model.NativeDetectorDefinition{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return agreement
 }
 

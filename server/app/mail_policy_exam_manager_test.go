@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -34,11 +36,7 @@ func TestExamManagerNoticesRemainRelevantAsHistoricalFacts(t *testing.T) {
 			MessageID: "<mail." + model.NewID() + "@example.test>", EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1,
 		}
 		got, err := evaluateMailDeliveryRelevance(context.Background(), delivery)
-		if err != nil {
-			t.Fatalf("evaluateMailDeliveryRelevance(%q): %v", key, err)
-		}
-		if got != mailDeliveryRelevant {
-			t.Fatalf("evaluateMailDeliveryRelevance(%q) = %v", key, got)
-		}
+		require.NoError(t, err, "evaluateMailDeliveryRelevance(%q)", key)
+		require.Equal(t, mailDeliveryRelevant, got, "evaluateMailDeliveryRelevance(%q)", key)
 	}
 }

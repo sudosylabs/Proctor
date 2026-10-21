@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -30,28 +32,23 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "cmd/main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(body), Size: int64(len(body)), IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Entry.Path != "cmd/main.go" || result.DraftRevision != 2 || fixture.persistence.reservation == nil || fixture.persistence.mutation == nil {
-		t.Fatalf("result/store = %#v/%#v", result, fixture.persistence)
-	}
-	if fixture.content.stagedBeforeFinalize != true || fixture.effects.operation != "file_created" {
-		t.Fatalf("effect/content ordering = %#v/%#v", fixture.effects, fixture.content)
-	}
-	if fixture.effects.examID != fixture.examID || fixture.effects.entryID != result.Entry.ID || fixture.effects.revision != 2 ||
-		fixture.effects.changedAt != time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC) {
-		t.Fatalf("safe realtime projection = %#v", fixture.effects)
-	}
-	if fixture.auditor.values["path"] != nil || fixture.auditor.values["sha256"] != nil {
-		t.Fatalf("sensitive values entered audit: %#v", fixture.auditor.values)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "cmd/main.go", result.Entry.Path, "result/store = %#v/%#v", result, fixture.persistence)
+	require.Equal(t, int64(2), result.DraftRevision, "result/store = %#v/%#v", result, fixture.persistence)
+	require.NotNil(t, fixture.persistence.reservation, "result/store = %#v/%#v", result, fixture.persistence)
+	require.NotNil(t, fixture.persistence.mutation, "result/store = %#v/%#v", result, fixture.persistence)
+	require.True(t, fixture.content.stagedBeforeFinalize, "effect/content ordering = %#v/%#v", fixture.effects, fixture.content)
+	require.Equal(t, "file_created", string(fixture.effects.operation), "effect/content ordering = %#v/%#v", fixture.effects, fixture.content)
+	require.Equal(t, fixture.examID, fixture.effects.examID)
+	require.Equal(t, result.Entry.ID, fixture.effects.entryID)
+	require.Equal(t, int64(2), fixture.effects.revision)
+	require.Equal(t, time.Date(2026, 8, 14, 10, 0, 0, 0, time.UTC), fixture.effects.changedAt)
+	require.Nil(t, fixture.auditor.values["path"])
+	require.Nil(t, fixture.auditor.values["sha256"])
 	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.invocation, idempotencyOperationCreateFile,
 		"test-key", fixture.examID, 1, "", "", "cmd/main.go", "text/x-go", int64(len(body)), strings.Repeat("a", 64))
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, fixture.persistence.idempotency)
 }
 
 func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
@@ -63,14 +60,11 @@ func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "empty.txt", MediaType: "text/plain",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(nil), Size: 0, IdempotencyKey: "microsecond-file",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := model.TimeUTC(at)
-	if !fixture.persistence.reservation.Object.CreatedAt.Equal(want) ||
-		!fixture.persistence.mutation.ChangedAt.Equal(want) || !fixture.effects.changedAt.Equal(want) {
-		t.Fatal("reservation, finalization, and publication must preserve the same microsecond instant")
-	}
+	require.True(t, fixture.persistence.reservation.Object.CreatedAt.Equal(want), "reservation, finalization, and publication must preserve the same microsecond instant")
+	require.True(t, fixture.persistence.mutation.ChangedAt.Equal(want), "reservation, finalization, and publication must preserve the same microsecond instant")
+	require.True(t, fixture.effects.changedAt.Equal(want), "reservation, finalization, and publication must preserve the same microsecond instant")
 }
 
 func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
@@ -81,12 +75,11 @@ func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	_, err := fixture.service.CreateExamStarterWorkspaceDirectory(context.Background(), fixture.invocation, CreateDirectoryCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key",
 	})
-	if faultCode(err) != "exam.starter_workspace.unavailable" || !errors.Is(err, failure) {
-		t.Fatalf("error = %v, want unavailable membership failure", err)
-	}
-	if fixture.authorizer.called || fixture.auditor.values != nil || fixture.persistence.mutation != nil {
-		t.Fatalf("membership failure continued: authorizer=%#v audit=%#v mutation=%#v", fixture.authorizer, fixture.auditor, fixture.persistence.mutation)
-	}
+	require.Equal(t, "exam.starter_workspace.unavailable", faultCode(err))
+	require.ErrorIs(t, err, failure)
+	require.False(t, fixture.authorizer.called, "membership failure continued: authorizer=%#v audit=%#v mutation", fixture.authorizer, fixture.auditor)
+	require.Nil(t, fixture.auditor.values, "membership failure continued: authorizer=%#v audit=%#v mutation", fixture.authorizer, fixture.auditor)
+	require.Nil(t, fixture.persistence.mutation, "membership failure continued: authorizer=%#v audit=%#v mutation", fixture.authorizer, fixture.auditor)
 }
 
 func TestServiceDoesNotDeleteOrReclaimAStagedObjectAfterUnknownFinalize(t *testing.T) {
@@ -97,9 +90,8 @@ func TestServiceDoesNotDeleteOrReclaimAStagedObjectAfterUnknownFinalize(t *testi
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "main.go", MediaType: "text/x-go",
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
-	if faultCode(err) != "exam.starter_workspace.unavailable" || fixture.persistence.reclaimed {
-		t.Fatalf("error/reclaimed = %v/%v", err, fixture.persistence.reclaimed)
-	}
+	require.Equal(t, "exam.starter_workspace.unavailable", faultCode(err), "error/reclaimed")
+	require.False(t, fixture.persistence.reclaimed, "error/reclaimed")
 }
 
 func TestServiceExactCreateFileRetryReturnsCommittedOutcomeWithoutRepublishing(t *testing.T) {
@@ -109,21 +101,22 @@ func TestServiceExactCreateFileRetryReturnsCommittedOutcomeWithoutRepublishing(t
 		ExpectedSHA256: strings.Repeat("a", 64), Size: 1, IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
 	first, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command.Body = strings.NewReader("x")
 	replayed, err := fixture.service.CreateExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !replayed.Replayed || replayed.Entry.ID != first.Entry.ID || replayed.Object == nil || first.Object == nil || replayed.Object.ID != first.Object.ID || replayed.DraftRevision != first.DraftRevision {
-		t.Fatalf("first=%#v replayed=%#v", first, replayed)
-	}
-	if fixture.persistence.finalizeCalls != 2 || len(fixture.persistence.reservations) != 2 || len(fixture.content.stagedIDs) != 2 ||
-		len(fixture.persistence.reclaimedIDs) != 1 || fixture.persistence.reclaimedIDs[0] != fixture.content.stagedIDs[1] || fixture.effects.count != 1 {
-		t.Fatalf("store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.Entry.ID, replayed.Entry.ID, "first=%#v replayed=%#v", first, replayed)
+	require.NotNil(t, replayed.Object, "first=%#v replayed=%#v", first, replayed)
+	require.NotNil(t, first.Object, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.Object.ID, replayed.Object.ID, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.DraftRevision, replayed.DraftRevision, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, 2, fixture.persistence.finalizeCalls, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Len(t, fixture.persistence.reservations, 2, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Len(t, fixture.content.stagedIDs, 2, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Len(t, fixture.persistence.reclaimedIDs, 1, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Equal(t, fixture.content.stagedIDs[1], fixture.persistence.reclaimedIDs[0], "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Equal(t, 1, fixture.effects.count, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
 }
 
 func TestServiceExactReplaceFileRetryReturnsCommittedOutcomeWithoutRepublishing(t *testing.T) {
@@ -134,20 +127,19 @@ func TestServiceExactReplaceFileRetryReturnsCommittedOutcomeWithoutRepublishing(
 		IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("x")
 	first, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command.Body = strings.NewReader("x")
 	replayed, err := fixture.service.ReplaceExamStarterWorkspaceFile(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !replayed.Replayed || replayed.Entry.ID != first.Entry.ID || replayed.Object == nil || first.Object == nil || replayed.Object.ID != first.Object.ID || replayed.DraftRevision != first.DraftRevision {
-		t.Fatalf("first=%#v replayed=%#v", first, replayed)
-	}
-	if len(fixture.persistence.reclaimedIDs) != 1 || fixture.persistence.reclaimedIDs[0] != fixture.content.stagedIDs[1] || fixture.effects.count != 1 {
-		t.Fatalf("store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
-	}
+	require.NoError(t, err)
+	require.True(t, replayed.Replayed, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.Entry.ID, replayed.Entry.ID, "first=%#v replayed=%#v", first, replayed)
+	require.NotNil(t, replayed.Object, "first=%#v replayed=%#v", first, replayed)
+	require.NotNil(t, first.Object, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.Object.ID, replayed.Object.ID, "first=%#v replayed=%#v", first, replayed)
+	require.Equal(t, first.DraftRevision, replayed.DraftRevision, "first=%#v replayed=%#v", first, replayed)
+	require.Len(t, fixture.persistence.reclaimedIDs, 1, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Equal(t, fixture.content.stagedIDs[1], fixture.persistence.reclaimedIDs[0], "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
+	require.Equal(t, 1, fixture.effects.count, "store=%#v content=%#v effects=%#v", fixture.persistence, fixture.content, fixture.effects)
 }
 
 func TestServiceReplaceRequiresAndCarriesExpectedContentVersion(t *testing.T) {
@@ -159,15 +151,14 @@ func TestServiceReplaceRequiresAndCarriesExpectedContentVersion(t *testing.T) {
 		ExpectedContentVersion: expected, MediaType: "text/plain", ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 		IdempotencyKey: "test-key",
 	})
-	if err != nil || result.DraftRevision != 2 || fixture.persistence.mutation == nil || fixture.persistence.mutation.ExpectedContentVersion != expected {
-		t.Fatalf("result=%#v err=%v mutation=%#v", result, err, fixture.persistence.mutation)
-	}
+	require.NoError(t, err, "result=%#v err=%v mutation", result, err)
+	require.Equal(t, int64(2), result.DraftRevision, "result=%#v err=%v mutation", result, err)
+	require.NotNil(t, fixture.persistence.mutation, "result=%#v err=%v mutation", result, err)
+	require.Equal(t, expected, fixture.persistence.mutation.ExpectedContentVersion, "result=%#v err=%v mutation", result, err)
 	wantIdempotency, prepareErr := prepareWorkspaceIdempotency(fixture.invocation, idempotencyOperationReplaceFile,
 		"test-key", fixture.examID, 1, expected, "dddddddddddddddddddddddddd", "", "text/plain", 1, strings.Repeat("a", 64))
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, fixture.persistence.idempotency)
 }
 
 func TestMetadataWorkspaceMutationsPassOwnedIdempotencyToStore(t *testing.T) {
@@ -198,19 +189,15 @@ func TestMetadataWorkspaceMutationsPassOwnedIdempotencyToStore(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newServiceFixture(t)
 			entryID := model.NewStarterWorkspaceEntryID()
-			if err := test.invoke(fixture, entryID); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, test.invoke(fixture, entryID))
 			semanticEntryID := ""
 			if test.operation != idempotencyOperationCreateDirectory {
 				semanticEntryID = entryID.String()
 			}
 			want, err := prepareWorkspaceIdempotency(fixture.invocation, test.operation, "test-key", fixture.examID,
 				1, "", semanticEntryID, test.path, "", 0, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertStoreBoundaryCommand(t, fixture.persistence.idempotency, want)
+			require.NoError(t, err)
+			require.Equal(t, want, fixture.persistence.idempotency)
 		})
 	}
 }
@@ -225,9 +212,8 @@ func TestServiceMapsStaleContentVersionAndReclaimsNewObject(t *testing.T) {
 		ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 		IdempotencyKey: "test-key",
 	})
-	if faultCode(err) != "exam.starter_workspace.content_conflict" || !fixture.persistence.reclaimed {
-		t.Fatalf("error=%v reclaimed=%v", err, fixture.persistence.reclaimed)
-	}
+	require.Equal(t, "exam.starter_workspace.content_conflict", faultCode(err))
+	require.True(t, fixture.persistence.reclaimed)
 }
 
 func TestServiceClassifiesInvalidStagedBytesSeparatelyFromBackendFailure(t *testing.T) {
@@ -248,9 +234,8 @@ func TestServiceClassifiesInvalidStagedBytesSeparatelyFromBackendFailure(t *test
 				ExpectedSHA256: strings.Repeat("a", 64), Body: strings.NewReader("x"), Size: 1,
 				IdempotencyKey: "test-key",
 			})
-			if faultCode(err) != test.code || !fixture.persistence.reclaimed {
-				t.Fatalf("error=%v reclaimed=%v", err, fixture.persistence.reclaimed)
-			}
+			require.Equal(t, test.code, faultCode(err))
+			require.True(t, fixture.persistence.reclaimed)
 		})
 	}
 }
@@ -267,9 +252,9 @@ func TestServiceRejectsInvalidPathsBeforeAuthorizationOrStorage(t *testing.T) {
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "../escape",
 		IdempotencyKey: "test-key",
 	})
-	if faultCode(err) != "exam.starter_workspace.invalid" || fixture.authorizer.called || fixture.persistence.mutation != nil {
-		t.Fatalf("error/auth/store = %v/%v/%#v", err, fixture.authorizer.called, fixture.persistence.mutation)
-	}
+	require.Equal(t, "exam.starter_workspace.invalid", faultCode(err), "error/auth/store")
+	require.False(t, fixture.authorizer.called, "error/auth/store")
+	require.Nil(t, fixture.persistence.mutation, "error/auth/store")
 }
 
 type serviceFixture struct {
@@ -308,9 +293,7 @@ func newServiceFixture(t *testing.T) *serviceFixture {
 		NewObjectID:    model.NewStarterWorkspaceObjectID,
 		NewVersion:     model.NewWorkspaceContentVersion,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{UserID: userID, SessionID: model.SessionID("ssssssssssssssssssssssssss"),
 		CredentialID: model.PrincipalCredentialID("cccccccccccccccccccccccccc"), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb,

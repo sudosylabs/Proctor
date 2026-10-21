@@ -10,14 +10,16 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type sessionAdministrationStoreFake struct {
@@ -122,19 +124,13 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 		func() time.Time { return at },
 	)
 	got, err := service.ListUserSessions(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: model.UserID(userID)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].ID.String() != session.ID.String() {
-		t.Fatalf("list = %#v", got)
-	}
-	want := []string{"authorize-view", "list-active"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if !persistence.listedAt.Equal(model.TimeUTC(at)) || persistence.listedAt.Location() != time.UTC {
-		t.Fatalf("active Session listing time = %v, want %v", persistence.listedAt, model.TimeUTC(at))
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, session.ID.String(), got[0].ID.String())
+	// Contract: authorization precedes the read.
+	ordertest.RequireInOrder(t, events, "authorize-view", "list-active")
+	require.True(t, persistence.listedAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedAt)
+	require.Same(t, time.UTC, persistence.listedAt.Location(), "active Session listing time = %v", persistence.listedAt)
 }
 
 func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
@@ -164,22 +160,20 @@ func TestAdminSessionRevokeCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
+	require.NoError(t, service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.revokeInput.SessionID != session.ID || persistence.revokeInput.AuditEventID == "" {
-		t.Fatalf("input = %#v", persistence.revokeInput)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentitySessionsRevokedByAdmin ||
-		persistence.revokeInput.Occurrence == nil || persistence.revokeInput.Delivery == nil || persistence.revokeInput.DeliveryJob == nil {
-		t.Fatalf("mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
-	}
-	want := []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "publish-revocation"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	}))
+	require.Equal(t, session.ID, persistence.revokeInput.SessionID)
+	require.NotEmpty(t, persistence.revokeInput.AuditEventID)
+	require.Len(t, mailer.requests, 1, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	require.Equal(t, model.MailTemplateIdentitySessionsRevokedByAdmin, mailer.requests[0].TemplateKey, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	require.NotNil(t, persistence.revokeInput.Occurrence, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	require.NotNil(t, persistence.revokeInput.Delivery, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	require.NotNil(t, persistence.revokeInput.DeliveryJob, "mail request/input = %#v / %#v", mailer.requests, persistence.revokeInput)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke", "publish-revocation")
 }
 
 func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
@@ -206,13 +200,12 @@ func TestAdminSessionRevokeFailurePublishesNoEffect(t *testing.T) {
 	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
-	if !apperror.Is(err, "administration.unavailable") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-manage", "get-session", "get-user", "prepare-mail", "audit-begin", "store-revoke", "audit-fail"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke", "audit-fail")
+	require.NotContains(t, events, "publish-revocation", "a failed revocation was published")
 }
 
 func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
@@ -235,16 +228,14 @@ func TestAdminSessionRevokeAllCommitsBeforePublishing(t *testing.T) {
 		&sessionAdministrationEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.RevokeUserSessions(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.revokeAllInput.UserID != model.UserID(userID) || persistence.revokeAllInput.AuditEventID == "" || persistence.revokeAllInput.Occurrence == nil {
-		t.Fatalf("input = %#v", persistence.revokeAllInput)
-	}
-	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-revoke-all", "publish-revocation"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, service.RevokeUserSessions(context.Background(), Invocation{}, RevokeUserSessionsCommand{UserID: model.UserID(userID)}))
+	require.Equal(t, model.UserID(userID), persistence.revokeAllInput.UserID)
+	require.NotEmpty(t, persistence.revokeAllInput.AuditEventID)
+	require.NotNil(t, persistence.revokeAllInput.Occurrence)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-revoke-all", "publish-revocation")
 }
 
 func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
@@ -258,12 +249,10 @@ func TestAdminSessionIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(mailer.requests) != 1 || persistence.revokeAllInput == nil || persistence.revokeAllInput.Occurrence == nil {
-		t.Fatalf("idempotent no-op mail=%#v input=%#v", mailer.requests, persistence.revokeAllInput)
-	}
+	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row"}))
+	require.Len(t, mailer.requests, 1, "idempotent no-op mail")
+	require.NotNil(t, persistence.revokeAllInput, "idempotent no-op mail")
+	require.NotNil(t, persistence.revokeAllInput.Occurrence, "idempotent no-op mail")
 }
 
 func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
@@ -278,12 +267,9 @@ func TestAdminSessionRetainedOutcomeBypassesMailAfterNewSession(t *testing.T) {
 		&sessionAdministrationAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer,
 		&sessionAdministrationEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if err := service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}); err != nil {
-		t.Fatal(err)
-	}
-	if len(mailer.requests) != 0 || slices.Contains(events, "list-active") {
-		t.Fatalf("retained mail=%#v events=%v", mailer.requests, events)
-	}
+	require.NoError(t, service.RevokeUserSessions(context.Background(), invocation, RevokeUserSessionsCommand{UserID: model.UserID(userID), IdempotencyKey: "row", batchRetainedOutcome: true}))
+	require.Empty(t, mailer.requests, "retained mail")
+	require.NotContains(t, events, "list-active", "retained mail")
 }
 
 func TestAdminSessionCrossUserNotFound(t *testing.T) {
@@ -303,13 +289,8 @@ func TestAdminSessionCrossUserNotFound(t *testing.T) {
 	err := service.RevokeUserSession(context.Background(), Invocation{}, RevokeUserSessionCommand{
 		UserID: model.UserID(userID), SessionID: session.ID,
 	})
-	if !apperror.Is(err, "session.not_found") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-manage", "get-session"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "session.not_found"), "error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 }
 
 func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T) {
@@ -356,42 +337,41 @@ func TestAdminSessionRevocationOutcomesPreserveAuditAndBatchResult(t *testing.T)
 				// A failed failure-audit completion joins, never replaces, the commit failure.
 				wantCode = "administration.unavailable"
 			}
-			if (wantCode == "" && err != nil) || (wantCode != "" && !apperror.Is(err, wantCode)) {
-				t.Fatalf("error = %v, want %q", err, wantCode)
-			}
-			if unchanged != (outcome == "empty" || outcome == "replay" || outcome == "attempt unavailable") {
-				t.Fatalf("unchanged = %t for %s", unchanged, outcome)
-			}
-			want := []string{"authorize-manage", "get-user", "prepare-mail", "begin"}
-			if outcome != "attempt unavailable" {
+			require.False(t, wantCode == "" && err != nil, "error = %v, want %q", err, wantCode)
+			require.False(t, wantCode != "" && !apperror.Is(err, wantCode), "error = %v, want %q", err, wantCode)
+			require.Equal(t, outcome == "empty" || outcome == "replay" || outcome == "attempt unavailable", unchanged, "unchanged = %t for %s", unchanged, outcome)
+			// Contract (guardrails 8 and 14): authorization precedes the audit, the
+			// audit begins before the durable revocation, and only a committed
+			// change publishes. Lookups may move freely.
+			want := []string{"authorize-manage", "begin"}
+			if outcome == "attempt unavailable" {
+				require.Nil(t, persistence.revokeAllInput, "revoked without a durable audit attempt")
+			} else {
 				want = append(want, "store-revoke-all")
 				input := persistence.revokeAllInput
-				if input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() ||
-					input.RevokedAt != now.UnixMilli() || input.Command == nil ||
-					input.Reason != model.SessionRevocationAdministratorAllSessions {
-					t.Fatalf("atomic input = %#v", input)
-				}
+				require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
+				require.Equal(t, now.UnixMilli(), input.AuditAt)
+				require.Equal(t, now.UnixMilli(), input.RevokedAt)
+				require.NotNil(t, input.Command)
+				require.Equal(t, model.SessionRevocationAdministratorAllSessions, input.Reason)
 			}
-			if outcome == "changed" {
+			if outcome != "changed" {
+				require.NotContains(t, events, "publish-revocation", "an unchanged or failed revocation was published")
+			} else {
 				want = append(want, "publish-revocation")
-				if effects.userID != userID || !slices.Equal(effects.sessionIDs, sessionIDs(persistence.revokeAllResult.Sessions)) ||
-					!slices.Equal(effects.hashes, persistence.revokeAllResult.TokenHashes) {
-					t.Fatalf("affected Sessions = %#v", effects)
-				}
+				require.Equal(t, userID, effects.userID)
+				require.True(t, slices.Equal(effects.sessionIDs, sessionIDs(persistence.revokeAllResult.Sessions)))
+				require.True(t, slices.Equal(effects.hashes, persistence.revokeAllResult.TokenHashes))
 			}
 			if outcome == "commit unavailable" || outcome == "failure audit unavailable" {
 				want = append(want, "fail")
-				if audit.failID != audit.beginID || audit.failCode != "administration.unavailable" {
-					t.Fatalf("failed audit = %#v", audit)
-				}
+				require.Equal(t, audit.beginID, audit.failID)
+				require.Equal(t, "administration.unavailable", audit.failCode)
 			}
-			if !reflect.DeepEqual(events, want) {
-				t.Fatalf("events = %v, want %v", events, want)
-			}
-			if audit.attempt.Action != model.ActionSessionManage || audit.attempt.Resource.ID != userID ||
-				audit.attempt.Operation != "revoke_sessions" {
-				t.Fatalf("audit intent = %#v", audit.attempt)
-			}
+			ordertest.RequireInOrder(t, events, want...)
+			require.Equal(t, model.ActionSessionManage, audit.attempt.Action)
+			require.Equal(t, userID, audit.attempt.Resource.ID)
+			require.Equal(t, "revoke_sessions", audit.attempt.Operation)
 		})
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -23,26 +25,23 @@ func TestSubmissionReceiptMailPreparerCreatesBoundedReceipt(t *testing.T) {
 	renderer := &submissionReceiptRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	details := SubmissionReceiptMailDetails{ExamTitle: "Algorithms", SittingID: model.NewExamSittingID(),
 		SubmissionID: model.NewSubmissionID(), SealedAt: at}
 	prepared, err := preparer.PrepareSubmissionReceiptMail(SubmissionReceiptMailPreparation{Recipient: recipient,
 		OccurrenceID: model.MailOccurrenceID(details.SubmissionID.String()), TemplateKey: model.MailTemplateExamSubmissionReceived,
 		Details: details, ActionAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceSubmissionReceipt || prepared.Occurrence.ActorUserID != recipient.ID ||
-		prepared.Delivery.TargetUserID != recipient.ID || prepared.Delivery.TemplateKey != model.MailTemplateExamSubmissionReceived ||
-		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour || prepared.Job.Type != model.JobTypeMailDeliver ||
-		renderer.details != details {
-		t.Fatalf("prepared=%#v details=%#v", prepared, renderer.details)
-	}
-	if relevance, relevanceErr := evaluateMailDeliveryRelevance(context.Background(), prepared.Delivery); relevanceErr != nil || relevance != mailDeliveryRelevant {
-		t.Fatalf("receipt relevance=%v, %v", relevance, relevanceErr)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceSubmissionReceipt, prepared.Occurrence.Kind, "prepared=%#v details", prepared)
+	require.Equal(t, recipient.ID, prepared.Occurrence.ActorUserID, "prepared=%#v details", prepared)
+	require.Equal(t, recipient.ID, prepared.Delivery.TargetUserID, "prepared=%#v details", prepared)
+	require.Equal(t, model.MailTemplateExamSubmissionReceived, prepared.Delivery.TemplateKey, "prepared=%#v details", prepared)
+	require.Equal(t, 72*time.Hour, prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt), "prepared=%#v details", prepared)
+	require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type, "prepared=%#v details", prepared)
+	require.Equal(t, details, renderer.details, "prepared=%#v details", prepared)
+	relevance, relevanceErr := evaluateMailDeliveryRelevance(context.Background(), prepared.Delivery)
+	require.NoError(t, relevanceErr, "receipt relevance")
+	require.Equal(t, mailDeliveryRelevant, relevance, "receipt relevance")
 }
 
 func TestSubmissionReceiptMailPreparerSuppressesInactiveRecipient(t *testing.T) {
@@ -54,21 +53,16 @@ func TestSubmissionReceiptMailPreparerSuppressesInactiveRecipient(t *testing.T) 
 	renderer := &submissionReceiptRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	submissionID := model.NewSubmissionID()
 	prepared, err := preparer.PrepareSubmissionReceiptMail(SubmissionReceiptMailPreparation{Recipient: recipient,
 		OccurrenceID: model.MailOccurrenceID(submissionID.String()), TemplateKey: model.MailTemplateExamSubmissionAutomaticallySealed,
 		Details: SubmissionReceiptMailDetails{ExamTitle: "Algorithms", SittingID: model.NewExamSittingID(),
 			SubmissionID: submissionID, SealedAt: at}, ActionAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Delivery.State != model.MailDeliverySuppressed ||
-		prepared.Delivery.PublicFailureCode != model.MailDeliveryRecipientIneligibleCode || renderer.calls != 0 {
-		t.Fatalf("suppressed=%#v renderer calls=%d", prepared.Delivery, renderer.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, prepared.Delivery.State, "suppressed=%#v renderer calls", prepared.Delivery)
+	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, prepared.Delivery.PublicFailureCode, "suppressed=%#v renderer calls", prepared.Delivery)
+	require.Equal(t, 0, renderer.calls, "suppressed=%#v renderer calls", prepared.Delivery)
 }
 
 type submissionReceiptRendererFake struct {

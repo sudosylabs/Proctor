@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -66,9 +68,7 @@ func expiryWorkerFixture(t *testing.T) (retentionExpiryHandler, *expiryWorkerFak
 	queue := &jobHistoryCleanerFake{}
 	document, _ := json.Marshal(RetentionExpiryCommandV1{Kind: model.RetentionExpiryAudit, BatchSize: 2})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeRetentionExpire, 1, document, "expiry-test", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return retentionExpiryHandler{records: f, audit: f, jobs: queue, now: func() time.Time { return at }}, f, queue, job
 }
 
@@ -92,35 +92,34 @@ func TestRetentionExpiryWorkerBudgetContinuationAndUnknownCheckpoint(t *testing.
 		return nil
 	})
 	first := h.Run(context.Background(), e)
-	if first.Kind != jobengine.OutcomeRetryableFailure || len(f.reconciliations) != 2 || job.WorkReserved != 2 {
-		t.Fatalf("first=%#v calls=%d budget=%d", first, len(f.reconciliations), job.WorkReserved)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, first.Kind, "first=%#v calls=%d budget", first, len(f.reconciliations))
+	require.Len(t, f.reconciliations, 2, "first=%#v calls=%d budget", first, len(f.reconciliations))
+	require.Equal(t, 2, job.WorkReserved, "first=%#v calls=%d budget", first, len(f.reconciliations))
 	retry := h.Run(context.Background(), e)
-	if retry.Kind != jobengine.OutcomeSucceeded || len(f.reconciliations) != 2 || len(queue.enqueued) != 1 {
-		t.Fatalf("retry=%#v calls=%d continuations=%d", retry, len(f.reconciliations), len(queue.enqueued))
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, retry.Kind, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
+	require.Len(t, f.reconciliations, 2, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
+	require.Len(t, queue.enqueued, 1, "retry=%#v calls=%d continuations", retry, len(f.reconciliations))
 	var command RetentionExpiryCommandV1
-	if err := json.Unmarshal(queue.enqueued[0].Command, &command); err != nil {
-		t.Fatal(err)
-	}
-	if command.AfterID != f.page.Items[0].ID || !command.Before.Equal(f.page.Before) || command.Kind != model.RetentionExpiryAudit || command.BatchSize != 2 {
-		t.Fatalf("continuation lost safe cursor/snapshot=%#v", command)
-	}
+	require.NoError(t, json.Unmarshal(queue.enqueued[0].Command, &command))
+	require.Equal(t, f.page.Items[0].ID, command.AfterID)
+	require.True(t, command.Before.Equal(f.page.Before))
+	require.Equal(t, model.RetentionExpiryAudit, command.Kind)
+	require.Equal(t, 2, command.BatchSize)
 	// Another node receiving the same unknown enqueue result cannot create a
 	// second continuation or spend a fresh budget in the exhausted parent.
 	retry = h.Run(context.Background(), e)
-	if retry.Kind != jobengine.OutcomeSucceeded || len(queue.enqueued) != 1 || len(f.reconciliations) != 2 {
-		t.Fatal("unknown continuation repeated effects")
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, retry.Kind, "unknown continuation repeated effects")
+	require.Len(t, queue.enqueued, 1, "unknown continuation repeated effects")
+	require.Len(t, f.reconciliations, 2, "unknown continuation repeated effects")
 }
 
 func TestRetentionExpiryWorkerLeaseLossStopsBeforeAudit(t *testing.T) {
 	t.Parallel()
 	h, f, queue, job := expiryWorkerFixture(t)
 	o := h.Run(context.Background(), testJobExecution(job, func(context.Context, int, int) (bool, error) { return false, errors.New("lease lost") }, nil))
-	if o.Kind != jobengine.OutcomeRetryableFailure || len(f.reconciliations) != 0 || len(queue.enqueued) != 0 {
-		t.Fatalf("lease loss continued work=%#v", o)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind)
+	require.Empty(t, f.reconciliations)
+	require.Empty(t, queue.enqueued)
 }
 
 func TestRetentionExpiryWorkerPausedAndFailure(t *testing.T) {
@@ -128,15 +127,16 @@ func TestRetentionExpiryWorkerPausedAndFailure(t *testing.T) {
 	h, f, queue, job := expiryWorkerFixture(t)
 	f.control.State = model.RetentionControlPaused
 	o := h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if o.Kind != jobengine.OutcomeSucceeded || len(f.options) != 0 || len(f.reconciliations) != 0 || len(queue.enqueued) != 0 {
-		t.Fatal("paused workflow did work")
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "paused workflow did work")
+	require.Empty(t, f.options, "paused workflow did work")
+	require.Empty(t, f.reconciliations, "paused workflow did work")
+	require.Empty(t, queue.enqueued, "paused workflow did work")
 	f.control.State = model.RetentionControlEnabled
 	f.fail = true
 	o = h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	if o.Kind != jobengine.OutcomeRetryableFailure || f.failedAudits != 1 || len(queue.enqueued) != 0 {
-		t.Fatal("failed mutation lost audit or continued")
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind, "failed mutation lost audit or continued")
+	require.Equal(t, 1, f.failedAudits, "failed mutation lost audit or continued")
+	require.Empty(t, queue.enqueued, "failed mutation lost audit or continued")
 }
 
 func TestRetentionExpiryProposerDeduplicatesEachKindAndHour(t *testing.T) {
@@ -145,25 +145,18 @@ func TestRetentionExpiryProposerDeduplicatesEachKindAndHour(t *testing.T) {
 	at := model.NowUTC()
 	p := retentionExpiryProposer{jobs: queue, now: func() time.Time { return at }}
 	for range 2 {
-		if err := p.Propose(context.Background(), at); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, p.Propose(context.Background(), at))
 	}
-	if len(queue.enqueued) != 3 {
-		t.Fatal("duplicate or missing kind occurrence")
-	}
+	require.Len(t, queue.enqueued, 3, "duplicate or missing kind occurrence")
 	for _, j := range queue.enqueued {
 		var c RetentionExpiryCommandV1
-		if json.Unmarshal(j.Command, &c) != nil || !c.Kind.IsValid() || c.BatchSize != retentionJobMaximumBatch || j.DedupePolicy != model.JobDedupePermanent {
-			t.Fatal("invalid occurrence")
-		}
+		require.NoError(t, json.Unmarshal(j.Command, &c), "invalid occurrence")
+		require.True(t, c.Kind.IsValid(), "invalid occurrence")
+		require.Equal(t, retentionJobMaximumBatch, c.BatchSize, "invalid occurrence")
+		require.Equal(t, model.JobDedupePermanent, j.DedupePolicy, "invalid occurrence")
 	}
-	if err := p.Propose(context.Background(), at.Add(time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if len(queue.enqueued) != 6 {
-		t.Fatal("next hour was suppressed")
-	}
+	require.NoError(t, p.Propose(context.Background(), at.Add(time.Hour)))
+	require.Len(t, queue.enqueued, 6, "next hour was suppressed")
 }
 
 func (f *expiryWorkerFake) PrepareRetentionCleanupAudit(context.Context, model.InstitutionID) (*model.AuditEvent, error) {
@@ -190,17 +183,19 @@ func TestRetentionExpiryCleanupBatchUnknownOutcomeKeepsBudgetAndSnapshot(t *test
 		return nil
 	})
 	o := h.Run(context.Background(), e)
-	if o.Kind != jobengine.OutcomeRetryableFailure || f.cleanupCalls != 1 || units != 2 || len(f.reconciliations) != 0 {
-		t.Fatalf("batch outcome=%#v calls=%d reserved=%d", o, f.cleanupCalls, units)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, o.Kind, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
+	require.Equal(t, 1, f.cleanupCalls, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
+	require.Equal(t, 2, units, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
+	require.Empty(t, f.reconciliations, "batch outcome=%#v calls=%d reserved", o, f.cleanupCalls)
 	o = h.Run(context.Background(), e)
-	if o.Kind != jobengine.OutcomeSucceeded || f.cleanupCalls != 1 || len(queue.enqueued) != 1 {
-		t.Fatal("uncertain batch reset its budget")
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "uncertain batch reset its budget")
+	require.Equal(t, 1, f.cleanupCalls, "uncertain batch reset its budget")
+	require.Len(t, queue.enqueued, 1, "uncertain batch reset its budget")
 	var next RetentionExpiryCommandV1
-	if json.Unmarshal(queue.enqueued[0].Command, &next) != nil || !next.CleanupAudit || !next.Before.Equal(f.page.Before) || next.AfterID != "" {
-		t.Fatal("batch continuation widened its snapshot or skipped uncertain records")
-	}
+	require.NoError(t, json.Unmarshal(queue.enqueued[0].Command, &next), "batch continuation widened its snapshot or skipped uncertain records")
+	require.True(t, next.CleanupAudit, "batch continuation widened its snapshot or skipped uncertain records")
+	require.True(t, next.Before.Equal(f.page.Before), "batch continuation widened its snapshot or skipped uncertain records")
+	require.Empty(t, next.AfterID, "batch continuation widened its snapshot or skipped uncertain records")
 }
 
 func TestRetentionExpiryFutureGraceDoesNotCreateAnAudit(t *testing.T) {
@@ -212,7 +207,7 @@ func TestRetentionExpiryFutureGraceDoesNotCreateAnAudit(t *testing.T) {
 	}
 	f.page.HasMore = false
 	o := h.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	if o.Kind != jobengine.OutcomeSucceeded || len(f.reconciliations) != 0 || len(queue.enqueued) != 0 {
-		t.Fatal("future grace created repeated no-op audit")
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, o.Kind, "future grace created repeated no-op audit")
+	require.Empty(t, f.reconciliations, "future grace created repeated no-op audit")
+	require.Empty(t, queue.enqueued, "future grace created repeated no-op audit")
 }

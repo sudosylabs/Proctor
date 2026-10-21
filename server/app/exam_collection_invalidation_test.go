@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -21,12 +23,8 @@ func TestExamArchiveInvalidatesEveryAffectedCollection(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	examID, sittingID, candidateID := model.NewExamID(), model.NewExamSittingID(), model.NewUserID()
 	collections := examCollectionInvalidationEffects{
 		sittings: &examCollectionInvalidationStoreFake{
@@ -38,25 +36,17 @@ func TestExamArchiveInvalidatesEveryAffectedCollection(t *testing.T) {
 		realtime: realtime,
 	}
 	effects := examRealtimeEffects{realtime: realtime, collections: collections}
-	if err := effects.Archived(context.Background(), examID, 4, time.Unix(100, 0)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, effects.Archived(context.Background(), examID, 4, time.Unix(100, 0)))
 	sink.mu.Lock()
 	events := append([]string(nil), sinkEventNames(sink.events)...)
 	userID := sink.events[2].UserID
 	sink.mu.Unlock()
 	want := []string{"exam_archived", "manager.sitting_board.changed", "candidate.exam_activity.changed"}
-	if len(events) != len(want) {
-		t.Fatalf("archive invalidations = %#v", events)
-	}
+	require.Len(t, events, len(want))
 	for index := range want {
-		if events[index] != want[index] {
-			t.Fatalf("archive invalidations = %#v, want %#v", events, want)
-		}
+		require.Equal(t, want[index], events[index], "archive invalidations = %#v, want %#v", events, want)
 	}
-	if userID != candidateID.String() {
-		t.Fatalf("candidate target = %q, want %q", userID, candidateID)
-	}
+	require.Equal(t, candidateID.String(), userID, "candidate target = %q, want %q", userID, candidateID)
 }
 
 func sinkEventNames(events []apprealtime.RealtimeEvent) []string {

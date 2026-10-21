@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -27,30 +29,23 @@ func TestRegistryIsClosedImmutableAndVersionAware(t *testing.T) {
 		return Outcome{Kind: OutcomeSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`)}
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolved, err := registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1)
-	if err != nil || resolved.Type != descriptor.Type {
-		t.Fatalf("Resolve() = %#v, %v", resolved, err)
-	}
+	require.NoError(t, err, "Resolve() = %#v", resolved)
+	require.Equal(t, descriptor.Type, resolved.Type, "Resolve() = %#v", resolved)
 	descriptor.CommandVersions[0] = 9
-	if _, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1); err != nil {
-		t.Fatalf("registry retained caller-owned version slice: %v", err)
-	}
-	if _, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 2); err == nil {
-		t.Fatal("Resolve() accepted unsupported payload version")
-	}
+	_, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 1)
+	require.NoError(t, err)
+	_, err = registry.Resolve(model.JobTypeProfilePictureGenerateDefault, 2)
+	require.Error(t, err, "Resolve() accepted unsupported payload version")
 }
 
 func TestRegistryRejectsDuplicateTypesAndMissingHandlers(t *testing.T) {
 	t.Parallel()
 	valid := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
-	if _, err := NewRegistry([]Descriptor{valid, valid}); err == nil {
-		t.Fatal("NewRegistry() accepted duplicate type")
-	}
+	_, err := NewRegistry([]Descriptor{valid, valid})
+	require.Error(t, err, "NewRegistry() accepted duplicate type")
 	valid.Handler = nil
-	if _, err := NewRegistry([]Descriptor{valid}); err == nil {
-		t.Fatal("NewRegistry() accepted missing handler")
-	}
+	_, err = NewRegistry([]Descriptor{valid})
+	require.Error(t, err, "NewRegistry() accepted missing handler")
 }

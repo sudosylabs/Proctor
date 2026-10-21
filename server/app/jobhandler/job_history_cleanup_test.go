@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -58,9 +60,7 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":2}`), "cleanup:2026-08-10", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	firstCursorTime := at.Add(-100 * 24 * time.Hour)
 	firstCursorID := model.NewJobID()
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{
@@ -75,19 +75,20 @@ func TestJobHistoryCleanupDeletesBoundedPagesAndCheckpointsSafely(t *testing.T) 
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || len(cleaner.requests) != 1 || len(checkpoints) != 1 {
-		t.Fatalf("outcome=%#v requests=%#v checkpoints=%#v", outcome, cleaner.requests, checkpoints)
-	}
-	if cleaner.requests[0].ExcludeJobID != job.ID || cleaner.requests[0].Limit != 2 {
-		t.Fatalf("cleanup requests = %#v", cleaner.requests)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
+	require.NoError(t, outcome.Err, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
+	require.Len(t, cleaner.requests, 1, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
+	require.Len(t, checkpoints, 1, "outcome=%#v requests=%#v checkpoints", outcome, cleaner.requests)
+	require.Equal(t, job.ID, cleaner.requests[0].ExcludeJobID)
+	require.Equal(t, 2, cleaner.requests[0].Limit)
 	var final JobHistoryCleanupCheckpointV1
-	if err = json.Unmarshal(checkpoints[0].Document, &final); err != nil {
-		t.Fatal(err)
-	}
-	if final.Deleted != 2 || final.AfterJobID != firstCursorID || checkpoints[0].Progress.Current != 2 || checkpoints[0].Progress.Total != 2 || checkpoints[0].Progress.Stage != "completed" {
-		t.Fatalf("final=%#v progress=%#v", final, checkpoints[0].Progress)
-	}
+	err = json.Unmarshal(checkpoints[0].Document, &final)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), final.Deleted, "final")
+	require.Equal(t, firstCursorID, final.AfterJobID, "final")
+	require.Equal(t, int64(2), checkpoints[0].Progress.Current, "final")
+	require.Equal(t, int64(2), checkpoints[0].Progress.Total, "final")
+	require.Equal(t, "completed", checkpoints[0].Progress.Stage, "final")
 }
 
 func TestJobHistoryCleanupDoesNotDeleteAnotherBatchAfterCommittedCheckpoint(t *testing.T) {
@@ -95,45 +96,33 @@ func TestJobHistoryCleanupDoesNotDeleteAnotherBatchAfterCommittedCheckpoint(t *t
 
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	command, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommandV1{BatchSize: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, command, "cleanup:2026-08-10", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cursorTime := at.Add(-100 * 24 * time.Hour)
 	cursorID := model.NewJobID()
 	checkpoint, err := EncodeJobHistoryCleanupCheckpoint(JobHistoryCleanupCheckpointV1{AfterCompletedAt: cursorTime, AfterJobID: cursorID, Deleted: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job.CheckpointVersion = 1
 	job.Checkpoint = checkpoint
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Done: true}}}
 	handler := historyCleanupHandlerForTest(cleaner, []store.JobRetentionPolicy{{Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour}}, at)
 	outcome := handler.Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil }))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(cleaner.requests) != 0 {
-		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests", outcome)
+	require.Empty(t, cleaner.requests, "outcome=%#v requests", outcome)
 }
 
 func TestJobHistoryCleanupDoesNotRepeatReservedDeletionAfterCrash(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 10, 8, 0, 0, 0, time.UTC)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job.WorkReserved = 2
 	cleaner := &jobHistoryCleanerFake{}
 	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(cleaner.requests) != 0 {
-		t.Fatalf("outcome=%#v requests=%#v", outcome, cleaner.requests)
-	}
-	if len(cleaner.enqueued) != 1 {
-		t.Fatal("uncertain reserved work did not leave a continuation")
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v requests", outcome)
+	require.Empty(t, cleaner.requests, "outcome=%#v requests", outcome)
+	require.Len(t, cleaner.enqueued, 1, "uncertain reserved work did not leave a continuation")
 }
 
 func TestJobHistoryCleanupContinuesBeyondDailyBatchUntilExhausted(t *testing.T) {
@@ -145,91 +134,70 @@ func TestJobHistoryCleanupContinuesBeyondDailyBatchUntilExhausted(t *testing.T) 
 		{Deleted: 37, LastCompletedAt: at.Add(-98 * 24 * time.Hour), LastJobID: model.NewJobID(), Done: true},
 	}}
 	proposer := jobHistoryCleanupProposer{jobs: cleaner, now: func() time.Time { return at }}
-	if err := proposer.Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, proposer.Propose(context.Background(), at))
 	handler := historyCleanupHandlerForTest(cleaner, nil, at)
 	var deleted int64
 	for index := 0; index < len(cleaner.enqueued); index++ {
-		if index >= 3 {
-			t.Fatal("exhausted history continued creating work")
-		}
+		require.Less(t, index, 3, "exhausted history continued creating work")
 		current := cleaner.enqueued[index]
 		outcome := handler.Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 			current.CheckpointVersion, current.Checkpoint = value.Version, value.Document
 			return nil
 		}))
-		if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil {
-			t.Fatalf("pass %d outcome = %#v", index, outcome)
-		}
+		require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "pass %d outcome = %#v", index, outcome)
+		require.NoError(t, outcome.Err, "pass %d outcome = %#v", index, outcome)
 		var result JobHistoryCleanupResultV1
-		if err := json.Unmarshal(outcome.Result, &result); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, json.Unmarshal(outcome.Result, &result))
 		deleted += result.Deleted
-		if current.DedupePolicy != model.JobDedupePermanent || cleaner.requests[index].Limit != 100 {
-			t.Fatal("continuation changed the occurrence identity or work bound")
-		}
+		require.Equal(t, model.JobDedupePermanent, current.DedupePolicy, "continuation changed the occurrence identity or work bound")
+		require.Equal(t, 100, cleaner.requests[index].Limit, "continuation changed the occurrence identity or work bound")
 	}
-	if deleted != 237 || len(cleaner.requests) != 3 || len(cleaner.enqueued) != 3 {
-		t.Fatalf("deleted=%d requests=%d occurrences=%d", deleted, len(cleaner.requests), len(cleaner.enqueued))
-	}
-	if err := proposer.Propose(context.Background(), at); err != nil || len(cleaner.enqueued) != 3 {
-		t.Fatalf("another node repeated the daily occurrence: %v", err)
-	}
+	require.Equal(t, int64(237), deleted, "deleted")
+	require.Len(t, cleaner.requests, 3, "deleted")
+	require.Len(t, cleaner.enqueued, 3, "deleted")
+	require.NoError(t, proposer.Propose(context.Background(), at))
+	require.Len(t, cleaner.enqueued, 3)
 }
 
 func TestJobHistoryCleanupRetriesUnknownContinuationOutcomeWithoutRepeatingDeletion(t *testing.T) {
 	t.Parallel()
 	at := model.NowUTC()
 	current, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cleaner := &jobHistoryCleanerFake{results: []*store.JobHistoryCleanupResult{{Deleted: 2, LastCompletedAt: at.Add(-100 * 24 * time.Hour), LastJobID: model.NewJobID()}}, enqueueErr: errors.New("unknown commit outcome")}
 	handler := historyCleanupHandlerForTest(cleaner, nil, at)
 	execution := testJobExecution(current, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		current.CheckpointVersion, current.Checkpoint = value.Version, value.Document
 		return nil
 	})
-	if first := handler.Run(context.Background(), execution); first.Kind != jobengine.OutcomeRetryableFailure {
-		t.Fatalf("first outcome = %#v", first)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, handler.Run(context.Background(), execution).Kind)
 	cleaner.enqueueErr = nil
-	if retry := handler.Run(context.Background(), execution); retry.Kind != jobengine.OutcomeSucceeded {
-		t.Fatalf("retry outcome = %#v", retry)
-	}
-	if len(cleaner.requests) != 1 || len(cleaner.enqueued) != 1 {
-		t.Fatalf("retry repeated work: deletions=%d successors=%d", len(cleaner.requests), len(cleaner.enqueued))
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, handler.Run(context.Background(), execution).Kind)
+	require.Len(t, cleaner.requests, 1, "retry repeated work: deletions")
+	require.Len(t, cleaner.enqueued, 1, "retry repeated work: deletions")
 }
 
 func TestJobHistoryCleanupExhaustedCheckpointDoesNotEnqueueContinuation(t *testing.T) {
 	t.Parallel()
 	at := model.NowUTC()
 	current, err := model.NewJob(model.NewJobID(), model.JobTypeCleanup, 1, json.RawMessage(`{"batch_size":2}`), "daily", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	current.CheckpointVersion = 2
 	current.Checkpoint = json.RawMessage(`{"deleted":0,"done":true}`)
 	cleaner := &jobHistoryCleanerFake{}
 	outcome := historyCleanupHandlerForTest(cleaner, nil, at).Run(context.Background(), testJobExecution(current, allowJobWorkReservation(), nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(cleaner.requests) != 0 || len(cleaner.enqueued) != 0 {
-		t.Fatalf("exhausted retry outcome=%#v requests=%d continuations=%d", outcome, len(cleaner.requests), len(cleaner.enqueued))
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
+	require.Empty(t, cleaner.requests, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
+	require.Empty(t, cleaner.enqueued, "exhausted retry outcome=%#v requests=%d continuations", outcome, len(cleaner.requests))
 }
 
 func TestJobHistoryCleanupContractsRejectUnboundedOrUnsafeValues(t *testing.T) {
 	t.Parallel()
 
-	if _, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommandV1{BatchSize: 0}); err == nil {
-		t.Fatal("accepted zero batch")
-	}
-	if _, err := DecodeJobHistoryCleanupCommand(1, json.RawMessage(`{"batch_size":1,"payload":"unsafe"}`)); err == nil {
-		t.Fatal("accepted unknown command field")
-	}
-	if _, err := EncodeJobHistoryCleanupCheckpoint(JobHistoryCleanupCheckpointV1{AfterJobID: model.NewJobID()}); err == nil {
-		t.Fatal("accepted incomplete cursor")
-	}
+	_, err := EncodeJobHistoryCleanupCommand(JobHistoryCleanupCommandV1{BatchSize: 0})
+	require.Error(t, err, "accepted zero batch")
+	_, err = DecodeJobHistoryCleanupCommand(1, json.RawMessage(`{"batch_size":1,"payload":"unsafe"}`))
+	require.Error(t, err, "accepted unknown command field")
+	_, err = EncodeJobHistoryCleanupCheckpoint(JobHistoryCleanupCheckpointV1{AfterJobID: model.NewJobID()})
+	require.Error(t, err, "accepted incomplete cursor")
 }

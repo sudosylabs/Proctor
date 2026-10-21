@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -50,32 +52,28 @@ func TestBrowserHistoryExportRejectsOverrideAndRechecksBeforeOpeningBytes(t *tes
 			f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID, UserID: f.userID}}
 			persistence.value.Categories = []model.RetentionCategory{model.RetentionCategoryBrowserActivity}
 			query := ExportQuery{Scope: persistence.value.Scope, ExportID: persistence.value.ID}
-			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err != nil {
-				t.Fatal(err)
-			}
+			_, err := service.GetExamExport(context.Background(), f.invocation, query)
+			require.NoError(t, err)
 			// Unit membership is part of ordinary export authorization;
 			// the independently permitted export override leaves the exact
 			// Browser Activity Manager predicate and permission intact.
 			f.memberships.items = nil
-			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err != nil {
-				t.Fatal(err)
-			}
+			_, err = service.GetExamExport(context.Background(), f.invocation, query)
+			require.NoError(t, err)
 			f.persistence.actorIsManager = false
-			if _, err := service.GetExamExport(context.Background(), f.invocation, query); err == nil || !auth.self {
-				t.Fatal("export metadata retained removed Browser Activity access")
-			}
-			if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
-				t.Fatal("unauthorized history reached archive bytes")
-			}
-			_, err := service.CreateExamExport(context.Background(), f.invocation, CreateExportCommand{Scope: query.Scope, Categories: persistence.value.Categories, IdempotencyKey: "replay"})
-			if err == nil || persistence.create != nil {
-				t.Fatal("override created browser history export")
-			}
+			_, err = service.GetExamExport(context.Background(), f.invocation, query)
+			require.Error(t, err, "export metadata retained removed Browser Activity access")
+			require.True(t, auth.self, "export metadata retained removed Browser Activity access")
+			_, err = service.OpenExamExport(context.Background(), f.invocation, query)
+			require.Error(t, err, "unauthorized history reached archive bytes")
+			require.Equal(t, 0, content.opens, "unauthorized history reached archive bytes")
+			_, err = service.CreateExamExport(context.Background(), f.invocation, CreateExportCommand{Scope: query.Scope, Categories: persistence.value.Categories, IdempotencyKey: "replay"})
+			require.Error(t, err, "override created browser history export")
+			require.Nil(t, persistence.create, "override created browser history export")
 			auditErr := errors.New("denial audit unavailable")
 			auth.denyErr = auditErr
-			if _, err := service.GetExamExport(context.Background(), f.invocation, query); !errors.Is(err, auditErr) {
-				t.Fatalf("audit failure: %v", err)
-			}
+			_, err = service.GetExamExport(context.Background(), f.invocation, query)
+			require.ErrorIs(t, err, auditErr)
 		})
 	}
 }
@@ -203,9 +201,7 @@ func newExportFixture(t *testing.T) (authoringFixture, *Exports, *exportStoreFak
 		NewID:       model.NewExamExportID,
 		NewJobID:    model.NewJobID,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return f, service, s, auth, content
 }
 
@@ -241,14 +237,11 @@ func TestExamExportsRequireDedicatedAndEveryOrdinaryReadPermission(t *testing.T)
 			}
 			_, err := service.CreateExamExport(context.Background(), f.invocation, CreateExportCommand{Scope: scope, Categories: categories, IdempotencyKey: "export-key"})
 			if test.deny != "" {
-				if err == nil || s.create != nil {
-					t.Fatalf("denied action reached persistence: %v", err)
-				}
+				require.Error(t, err)
+				require.Nil(t, s.create)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			ordinary := test.manager && test.member
 			want := model.ActionExamRecordsExportOverride
 			read := model.ActionSubmissionViewOverride
@@ -256,9 +249,9 @@ func TestExamExportsRequireDedicatedAndEveryOrdinaryReadPermission(t *testing.T)
 				want = model.ActionExamRecordsExport
 				read = model.ActionSubmissionView
 			}
-			if s.create.Action != want || !slices.Contains(auth.actions, read) || !slices.Equal(s.create.SubmissionIDs, []model.SubmissionID{s.selected[0].SubmissionID}) {
-				t.Fatalf("authorization=%v creation=%#v", auth.actions, s.create)
-			}
+			require.Equal(t, want, s.create.Action, "authorization=%v creation=%#v", auth.actions, s.create)
+			require.Contains(t, auth.actions, read, "authorization=%v creation=%#v", auth.actions, s.create)
+			require.True(t, slices.Equal(s.create.SubmissionIDs, []model.SubmissionID{s.selected[0].SubmissionID}), "authorization=%v creation=%#v", auth.actions, s.create)
 		})
 	}
 }
@@ -267,14 +260,15 @@ func TestExamExportsSelfAccessAndMissingAuditFailClosed(t *testing.T) {
 	f, service, s, auth, _ := newExportFixture(t)
 	s.selected[0].CandidateUserID = f.userID
 	command := CreateExportCommand{Scope: s.value.Scope, Categories: s.value.Categories, IdempotencyKey: "export-key"}
-	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || !auth.self || s.create != nil {
-		t.Fatal("candidate exported own manager-only records")
-	}
+	_, err := service.CreateExamExport(context.Background(), f.invocation, command)
+	require.Error(t, err, "candidate exported own manager-only records")
+	require.True(t, auth.self, "candidate exported own manager-only records")
+	require.Nil(t, s.create, "candidate exported own manager-only records")
 	s.selected[0].CandidateUserID = model.NewUserID()
 	f.auditor.err = errors.New("audit unavailable")
-	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || s.create != nil {
-		t.Fatal("creation bypassed required audit")
-	}
+	_, err = service.CreateExamExport(context.Background(), f.invocation, command)
+	require.Error(t, err, "creation bypassed required audit")
+	require.Nil(t, s.create, "creation bypassed required audit")
 }
 
 func TestExamExportDownloadRechecksOrdinaryPermissionAndExpiry(t *testing.T) {
@@ -285,17 +279,17 @@ func TestExamExportDownloadRechecksOrdinaryPermissionAndExpiry(t *testing.T) {
 	s.value.ReadyAt = model.OptionalTimeFrom(s.value.CreatedAt)
 	query := ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID}
 	auth.deny = model.ActionSubmissionViewOverride
-	if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
-		t.Fatal("download bypassed ordinary read authority")
-	}
+	_, err := service.OpenExamExport(context.Background(), f.invocation, query)
+	require.Error(t, err, "download bypassed ordinary read authority")
+	require.Equal(t, 0, content.opens, "download bypassed ordinary read authority")
 	auth.deny = ""
 	s.value.CreatedAt = s.value.CreatedAt.Add(-48 * time.Hour)
 	s.value.ExpiresAt = s.value.ExpiresAt.Add(-48 * time.Hour)
 	s.value.SourceExpiresAt = s.value.SourceExpiresAt.Add(-48 * time.Hour)
 	s.value.ReadyAt = model.OptionalTimeFrom(s.value.CreatedAt)
-	if _, err := service.OpenExamExport(context.Background(), f.invocation, query); err == nil || content.opens != 0 {
-		t.Fatal("expired download reached content")
-	}
+	_, err = service.OpenExamExport(context.Background(), f.invocation, query)
+	require.Error(t, err, "expired download reached content")
+	require.Equal(t, 0, content.opens, "expired download reached content")
 }
 
 type exportClosingBody struct{ closed bool }
@@ -313,9 +307,9 @@ func TestExamExportDownloadExpiresDuringStorageOpen(t *testing.T) {
 	content.opened = func() { now = s.value.ExpiresAt }
 	_, err := service.OpenExamExport(context.Background(), f.invocation, ExportQuery{Scope: s.value.Scope, ExportID: s.value.ID})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.export.expired" || !body.closed {
-		t.Fatalf("late storage Open escaped expiry: %v, closed=%v", err, body.closed)
-	}
+	require.ErrorAs(t, err, &fault, "late storage Open escaped expiry")
+	require.Equal(t, "exam.export.expired", fault.Code(), "late storage Open escaped expiry")
+	require.True(t, body.closed, "late storage Open escaped expiry")
 }
 
 type exportUncertainWriteError struct{}
@@ -328,9 +322,10 @@ func TestExamExportBuildKeepsUnverifiedRemoteWriterReservation(t *testing.T) {
 	content.err = &exportUncertainWriteError{}
 	input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: s.value.ID, AttemptID: model.NewJobAttemptID()}, JobID: model.NewJobID()}
 	input.ClaimToken, _ = model.NewJobClaimToken()
-	if err := service.BuildFromJob(context.Background(), input); err == nil || s.finished != 0 || s.published != 0 || content.purges != 0 {
-		t.Fatal("unverified remote write lost its uncertain cleanup reservation")
-	}
+	require.Error(t, service.BuildFromJob(context.Background(), input), "unverified remote write lost its uncertain cleanup reservation")
+	require.Equal(t, 0, s.finished, "unverified remote write lost its uncertain cleanup reservation")
+	require.Equal(t, 0, s.published, "unverified remote write lost its uncertain cleanup reservation")
+	require.Equal(t, 0, content.purges, "unverified remote write lost its uncertain cleanup reservation")
 }
 
 func TestExamExportBuildKeepsUnknownPublicationAndFinishesWriterOutsideCancellation(t *testing.T) {
@@ -347,14 +342,13 @@ func TestExamExportBuildKeepsUnknownPublicationAndFinishesWriterOutsideCancellat
 			}
 			input := store.ExamExportBuild{ExamExportArtifact: store.ExamExportArtifact{ExportID: s.value.ID, AttemptID: model.NewJobAttemptID()}, JobID: model.NewJobID()}
 			input.ClaimToken, _ = model.NewJobClaimToken()
-			if err := service.BuildFromJob(ctx, input); err == nil {
-				t.Fatal("uncertain construction reported success")
-			}
-			if s.finished != 1 || s.finishCanceled || content.purges != 0 || !content.deadline.Equal(s.value.SourceExpiresAt) {
-				t.Fatalf("cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
-			}
-			if cancelDuringBuild && s.published != 0 {
-				t.Fatal("failed copy reached publication")
+			require.Error(t, service.BuildFromJob(ctx, input), "uncertain construction reported success")
+			require.Equal(t, 1, s.finished, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
+			require.False(t, s.finishCanceled, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
+			require.Equal(t, 0, content.purges, "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
+			require.True(t, content.deadline.Equal(s.value.SourceExpiresAt), "cleanup/expiry: finished=%d canceled=%v purges=%d deadline=%v", s.finished, s.finishCanceled, content.purges, content.deadline)
+			if cancelDuringBuild {
+				require.Equal(t, 0, s.published, "failed copy reached publication")
 			}
 		})
 	}
@@ -367,15 +361,16 @@ func TestExamExportReplayUsesCapturedScopeAfterSittingGrowsPastBound(t *testing.
 	s.selected = make([]store.ExamSubmissionAuthorization, model.ExamExportMaximumSubmissions+1)
 	s.value.Scope.SubmissionID = ""
 	command := CreateExportCommand{Scope: s.value.Scope, Categories: s.value.Categories, IdempotencyKey: "retained-export"}
-	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err != nil {
-		t.Fatalf("exact replay enumerated the grown Sitting: %v", err)
-	}
-	if s.creationCommand == nil || s.creationCommand.Operation != store.ExamExportCreateOperation || s.create == nil || len(s.create.SubmissionIDs) != 1 || s.create.SubmissionIDs[0] != original[0].SubmissionID {
-		t.Fatal("original captured scope was not preserved")
-	}
+	_, err := service.CreateExamExport(context.Background(), f.invocation, command)
+	require.NoError(t, err)
+	require.NotNil(t, s.creationCommand, "original captured scope was not preserved")
+	require.Equal(t, store.ExamExportCreateOperation, s.creationCommand.Operation, "original captured scope was not preserved")
+	require.NotNil(t, s.create, "original captured scope was not preserved")
+	require.Len(t, s.create.SubmissionIDs, 1, "original captured scope was not preserved")
+	require.Equal(t, original[0].SubmissionID, s.create.SubmissionIDs[0], "original captured scope was not preserved")
 	auth.deny = model.ActionSubmissionViewOverride
 	s.create = nil
-	if _, err := service.CreateExamExport(context.Background(), f.invocation, command); err == nil || s.create != nil {
-		t.Fatal("replay-aware scope skipped current ordinary read authority")
-	}
+	_, err = service.CreateExamExport(context.Background(), f.invocation, command)
+	require.Error(t, err, "replay-aware scope skipped current ordinary read authority")
+	require.Nil(t, s.create, "replay-aware scope skipped current ordinary read authority")
 }

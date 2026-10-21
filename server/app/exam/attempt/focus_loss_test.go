@@ -11,13 +11,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWarning(t *testing.T) {
@@ -29,13 +31,9 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 	receivedAt := f.at.Add(time.Second)
 	signal, err := model.NewFocusLossSignal(signalID, f.attemptID, participationID, 3, 11, 2500,
 		model.FocusLossSourceDocumentHidden, receivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	flag, err := model.NewIntegrityFlag(flagID, f.attemptID, 3, model.IntegrityPolicyFocusLoss, receivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.focusSignalID = signalID
 	f.focusFlagID = flagID
 	f.persistence.focusTarget = &store.ExamAttemptFocusLossTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
@@ -54,36 +52,44 @@ func TestEvaluateFocusLossHashesCredentialAuditsSafeScopeAndPublishesCommittedWa
 		Generation: 3, Sequence: 11, DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: credential,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.AttemptID != f.attemptID || result.Generation != 3 || result.AcceptedSequence != 11 ||
-		result.ReceivedAt != receivedAt || result.Duplicate || result.GapDetected || result.PolicyDisabled || !result.Qualified ||
-		!result.FlagCreated || !result.CandidateWarningCreated || result.SuspensionCreated || f.effects.focusLoss != 1 {
-		t.Fatalf("result=%#v effects=%#v", result, f.effects)
-	}
+	require.NoError(t, err)
+	require.Equal(t, f.attemptID, result.AttemptID, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, int64(3), result.Generation, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, int64(11), result.AcceptedSequence, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, receivedAt, result.ReceivedAt, "result=%#v effects=%#v", result, f.effects)
+	require.False(t, result.Duplicate, "result=%#v effects=%#v", result, f.effects)
+	require.False(t, result.GapDetected, "result=%#v effects=%#v", result, f.effects)
+	require.False(t, result.PolicyDisabled, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.Qualified, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.FlagCreated, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.CandidateWarningCreated, "result=%#v effects=%#v", result, f.effects)
+	require.False(t, result.SuspensionCreated, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, 1, f.effects.focusLoss, "result=%#v effects=%#v", result, f.effects)
 	principal := f.invocation.Principal()
 	access := f.persistence.focusAccess
-	if access.AttemptID != f.attemptID || access.ParticipationID != participationID || access.ConnectionID != f.connectionID ||
-		access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID || access.Generation != 3 ||
-		access.ContinuityCredentialHash != model.HashToken(credential) || f.persistence.focusSignal == nil ||
-		f.persistence.focusSignal.Access != access ||
-		f.persistence.focusSignal.SchemaVersion != model.FocusLossSignalSchemaVersion ||
-		f.persistence.focusSignal.SignalID != signalID ||
-		!f.persistence.focusSignal.EvidenceID.IsValid() || f.persistence.focusSignal.FlagID != flagID ||
-		!f.persistence.focusSignal.FlagID.IsValid() || !f.persistence.focusSignal.SuspensionID.IsValid() {
-		t.Fatalf("access=%#v signal=%#v", access, f.persistence.focusSignal)
-	}
+	require.Equal(t, f.attemptID, access.AttemptID, "access")
+	require.Equal(t, participationID, access.ParticipationID, "access")
+	require.Equal(t, f.connectionID, access.ConnectionID, "access")
+	require.Equal(t, principal.UserID, access.CandidateUserID, "access")
+	require.Equal(t, principal.SessionID, access.SessionID, "access")
+	require.Equal(t, int64(3), access.Generation, "access")
+	require.Equal(t, model.HashToken(credential), access.ContinuityCredentialHash, "access")
+	require.NotNil(t, f.persistence.focusSignal, "access")
+	require.Equal(t, access, f.persistence.focusSignal.Access, "access")
+	require.Equal(t, model.FocusLossSignalSchemaVersion, f.persistence.focusSignal.SchemaVersion, "access")
+	require.Equal(t, signalID, f.persistence.focusSignal.SignalID, "access")
+	require.True(t, f.persistence.focusSignal.EvidenceID.IsValid(), "access")
+	require.Equal(t, flagID, f.persistence.focusSignal.FlagID, "access")
+	require.True(t, f.persistence.focusSignal.FlagID.IsValid(), "access")
+	require.True(t, f.persistence.focusSignal.SuspensionID.IsValid(), "access")
 	capture := fmt.Sprintf("%#v", f.audit.values)
 	for _, forbidden := range []string{credential, model.HashToken(credential), principal.SessionID.String(),
 		string(model.FocusLossSourceDocumentHidden), "2500"} {
-		if strings.Contains(capture, forbidden) {
-			t.Fatalf("Focus Loss audit exposed %q: %s", forbidden, capture)
-		}
+		require.NotContains(t, capture, forbidden, "Focus Loss audit exposed")
 	}
-	if got := strings.Join(f.order, ","); got != "focus.resolve,audit,focus.record,effect.focus_loss" {
-		t.Fatalf("order=%s", got)
-	}
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "audit", "focus.record", "effect.focus_loss")
 }
 
 func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testing.T) {
@@ -103,9 +109,7 @@ func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testi
 		Generation: 3, Kind: model.IntegrityDiscrepancyLateFocusLoss, SchemaVersion: model.FocusLossSignalSchemaVersion,
 		SignalID: signalID, Sequence: 12, DurationMilliseconds: 2100, Source: model.FocusLossSourceDocumentHidden,
 		MissingBefore: 1, ReceivedAt: receivedAt})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.persistence.lateFocusTarget = target
 	f.persistence.lateFocusResult = &store.ExamAttemptFocusLossDiscrepancyResult{Target: *target,
 		Discrepancy: discrepancy}
@@ -113,21 +117,23 @@ func TestEvaluateFocusLossRetainsExplicitLateDiscrepancyAfterSubmission(t *testi
 		SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID, ParticipationID: participationID,
 		ConnectionID: f.connectionID, Generation: 3, Sequence: 12, DurationMilliseconds: 2100,
 		Source: model.FocusLossSourceDocumentHidden, ContinuityCredential: credential})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.DiscrepancyRecorded || result.SubmissionID != submissionID || result.DiscrepancyID != discrepancyID ||
-		result.AcceptedSequence != 12 || !result.GapDetected || result.ReceivedAt != receivedAt || f.effects.focusLoss != 1 {
-		t.Fatalf("result=%#v effects=%#v", result, f.effects)
-	}
-	if f.persistence.lateFocusInput == nil || f.persistence.lateFocusInput.Access.ContinuityCredentialHash != model.HashToken(credential) ||
-		f.persistence.lateFocusInput.DiscrepancyID.IsZero() || f.persistence.lateFocusInput.SignalID != signalID ||
-		f.persistence.lateFocusInput.Sequence != 12 || f.persistence.lateFocusInput.DurationMilliseconds != 2100 {
-		t.Fatalf("late input=%#v", f.persistence.lateFocusInput)
-	}
-	if got := strings.Join(f.order, ","); got != "focus.resolve,focus.late.resolve,audit,focus.late.record,effect.focus_loss" {
-		t.Fatalf("order=%s", got)
-	}
+	require.NoError(t, err)
+	require.True(t, result.DiscrepancyRecorded, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, submissionID, result.SubmissionID, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, discrepancyID, result.DiscrepancyID, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, int64(12), result.AcceptedSequence, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.GapDetected, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, receivedAt, result.ReceivedAt, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, 1, f.effects.focusLoss, "result=%#v effects=%#v", result, f.effects)
+	require.NotNil(t, f.persistence.lateFocusInput)
+	require.Equal(t, model.HashToken(credential), f.persistence.lateFocusInput.Access.ContinuityCredentialHash)
+	require.False(t, f.persistence.lateFocusInput.DiscrepancyID.IsZero())
+	require.Equal(t, signalID, f.persistence.lateFocusInput.SignalID)
+	require.Equal(t, int64(12), f.persistence.lateFocusInput.Sequence)
+	require.Equal(t, int64(2100), f.persistence.lateFocusInput.DurationMilliseconds)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, f.order, "audit", "focus.late.record", "effect.focus_loss")
 }
 
 func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t *testing.T) {
@@ -144,11 +150,11 @@ func TestEvaluateFocusLossRejectsMissingOrUnknownClaimSchemaBeforePersistence(t 
 				ContinuityCredential: model.NewCredentialToken(),
 			})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != "exam.attempt.invalid" ||
-				f.persistence.focusTarget != nil || f.persistence.focusSignal != nil || f.effects.focusLoss != 0 {
-				t.Fatalf("error=%v target=%#v signal=%#v effects=%#v", err,
-					f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
-			}
+			require.ErrorAs(t, err, &fault, "error=%v target=%#v signal=%#v effects=%#v", err, f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
+			require.Equal(t, "exam.attempt.invalid", fault.Code(), "error=%v target=%#v signal=%#v effects=%#v", err, f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
+			require.Nil(t, f.persistence.focusTarget, "error=%v target=%#v signal=%#v effects=%#v", err, f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
+			require.Nil(t, f.persistence.focusSignal, "error=%v target=%#v signal=%#v effects=%#v", err, f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
+			require.Equal(t, 0, f.effects.focusLoss, "error=%v target=%#v signal=%#v effects=%#v", err, f.persistence.focusTarget, f.persistence.focusSignal, f.effects)
 		})
 	}
 }
@@ -161,9 +167,7 @@ func TestEvaluateFocusLossDisabledPolicyReturnsDiagnosticAcknowledgementWithoutE
 	signalID := model.NewFocusLossSignalID()
 	signal, err := model.NewFocusLossSignal(signalID, f.attemptID, participationID, 1, 1, 700,
 		model.FocusLossSourceWindowBlur, f.at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.focusSignalID = signalID
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, 1)
 	f.persistence.focusResult = &store.ExamAttemptFocusLossResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
@@ -173,14 +177,18 @@ func TestEvaluateFocusLossDisabledPolicyReturnsDiagnosticAcknowledgementWithoutE
 	result, err := f.service.EvaluateExamAttemptFocusLoss(context.Background(), f.invocation, FocusLossCommand{SchemaVersion: model.FocusLossSignalSchemaVersion, AttemptID: f.attemptID,
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 1, Sequence: 1,
 		DurationMilliseconds: 700, Source: model.FocusLossSourceWindowBlur, ContinuityCredential: credential})
-	if err != nil || !result.PolicyDisabled || result.Qualified || result.FlagCreated || result.CandidateWarningCreated ||
-		result.SuspensionCreated || f.effects.focusLoss != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
-	if capture := fmt.Sprintf("%#v", result); strings.Contains(capture, "window_blur") || strings.Contains(capture, "700") ||
-		strings.Contains(capture, credential) || strings.Contains(capture, model.HashToken(credential)) {
-		t.Fatalf("disabled acknowledgement exposed claim/private data: %s", capture)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.PolicyDisabled, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.Qualified, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.FlagCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.CandidateWarningCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.SuspensionCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	capture := fmt.Sprintf("%#v", result)
+	require.NotContains(t, capture, "window_blur")
+	require.NotContains(t, capture, "700")
+	require.NotContains(t, capture, credential)
+	require.NotContains(t, capture, model.HashToken(credential))
 }
 
 func TestEvaluateFocusLossDuplicateAcknowledgesPriorDecisionWithoutRepeatingEffects(t *testing.T) {
@@ -189,13 +197,9 @@ func TestEvaluateFocusLossDuplicateAcknowledgesPriorDecisionWithoutRepeatingEffe
 	participationID := model.NewAttemptParticipationID()
 	signal, err := model.NewFocusLossSignal(model.NewFocusLossSignalID(), f.attemptID, participationID, 2, 8, 2500,
 		model.FocusLossSourceDocumentHidden, f.at.Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	flag, err := model.NewIntegrityFlag(model.NewIntegrityFlagID(), f.attemptID, 2, model.IntegrityPolicyFocusLoss, signal.ReceivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, 2)
 	f.persistence.focusResult = &store.ExamAttemptFocusLossResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, AttemptID: f.attemptID,
@@ -207,10 +211,13 @@ func TestEvaluateFocusLossDuplicateAcknowledgesPriorDecisionWithoutRepeatingEffe
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 8,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
-	if err != nil || !result.Duplicate || !result.FlagCreated || !result.CandidateWarningCreated ||
-		!result.ManagerNotificationRequired || result.SuspensionCreated || f.effects.focusLoss != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.Duplicate, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.FlagCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.CandidateWarningCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.ManagerNotificationRequired, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.False(t, result.SuspensionCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestEvaluateFocusLossDuplicateReplaysPriorSuspensionWithoutRepeatingEffects(t *testing.T) {
@@ -223,10 +230,13 @@ func TestEvaluateFocusLossDuplicateReplaysPriorSuspensionWithoutRepeatingEffects
 	f.persistence.focusResult = stored
 
 	result, err := f.service.EvaluateExamAttemptFocusLoss(context.Background(), f.invocation, command)
-	if err != nil || !result.Duplicate || !result.FlagCreated || !result.ManagerNotificationRequired ||
-		!result.ConnectionClosed || !result.SuspensionCreated || f.effects.focusLoss != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.Duplicate, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.FlagCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.ManagerNotificationRequired, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.ConnectionClosed, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.True(t, result.SuspensionCreated, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestEvaluateFocusLossProjectsCommittedPolicySuspensionAndPublishesOnce(t *testing.T) {
@@ -238,15 +248,18 @@ func TestEvaluateFocusLossProjectsCommittedPolicySuspensionAndPublishesOnce(t *t
 	f.persistence.focusResult = stored
 
 	result, err := f.service.EvaluateExamAttemptFocusLoss(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Qualified || !result.ThresholdCrossed || result.PolicyOutcome != model.IntegrityOutcomeFlagAndSuspend ||
-		!result.FlagCreated || !result.ManagerNotificationRequired || !result.ConnectionClosed || !result.SuspensionCreated ||
-		result.CandidateWarningCreated || result.Connection.ID != f.connectionID ||
-		result.Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonFocusLossPolicy || f.effects.focusLoss != 1 {
-		t.Fatalf("result=%#v effects=%#v", result, f.effects)
-	}
+	require.NoError(t, err)
+	require.True(t, result.Qualified, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.ThresholdCrossed, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, model.IntegrityOutcomeFlagAndSuspend, result.PolicyOutcome, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.FlagCreated, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.ManagerNotificationRequired, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.ConnectionClosed, "result=%#v effects=%#v", result, f.effects)
+	require.True(t, result.SuspensionCreated, "result=%#v effects=%#v", result, f.effects)
+	require.False(t, result.CandidateWarningCreated, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, f.connectionID, result.Connection.ID, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, model.AttemptSuspensionCandidateReasonFocusLossPolicy, result.Suspension.CandidateReason, "result=%#v effects=%#v", result, f.effects)
+	require.Equal(t, 1, f.effects.focusLoss, "result=%#v effects=%#v", result, f.effects)
 }
 
 func TestEvaluateFocusLossRejectsEnforcementForAnotherConnection(t *testing.T) {
@@ -259,9 +272,9 @@ func TestEvaluateFocusLossRejectsEnforcementForAnotherConnection(t *testing.T) {
 	f.persistence.focusResult = stored
 
 	result, err := f.service.EvaluateExamAttemptFocusLoss(context.Background(), f.invocation, command)
-	if err == nil || result != (FocusLossEvaluation{}) || f.effects.focusLoss != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.Error(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, FocusLossEvaluation{}, result, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestEvaluateFocusLossRejectsInconsistentSuspensionAggregate(t *testing.T) {
@@ -287,9 +300,9 @@ func TestEvaluateFocusLossRejectsInconsistentSuspensionAggregate(t *testing.T) {
 			f.persistence.focusResult = stored
 
 			result, err := f.service.EvaluateExamAttemptFocusLoss(context.Background(), f.invocation, command)
-			if err == nil || result != (FocusLossEvaluation{}) || f.effects.focusLoss != 0 {
-				t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-			}
+			require.Error(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+			require.Equal(t, FocusLossEvaluation{}, result, "result=%#v error=%v effects=%#v", result, err, f.effects)
+			require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
 		})
 	}
 }
@@ -301,9 +314,7 @@ func TestEvaluateFocusLossRejectsThresholdWithoutItsOpenFlag(t *testing.T) {
 	receivedAt := f.at.Add(time.Second)
 	signal, err := model.NewFocusLossSignal(model.NewFocusLossSignalID(), f.attemptID, participationID,
 		2, 4, 2500, model.FocusLossSourceDocumentHidden, receivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.persistence.focusTarget = focusLossTargetFixture(f, participationID, 2)
 	f.persistence.focusResult = &store.ExamAttemptFocusLossResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, AttemptID: f.attemptID,
@@ -315,9 +326,9 @@ func TestEvaluateFocusLossRejectsThresholdWithoutItsOpenFlag(t *testing.T) {
 		ParticipationID: participationID, ConnectionID: f.connectionID, Generation: 2, Sequence: 4,
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
-	if err == nil || result != (FocusLossEvaluation{}) || f.effects.focusLoss != 0 {
-		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
-	}
+	require.Error(t, err, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, FocusLossEvaluation{}, result, "result=%#v error=%v effects=%#v", result, err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "result=%#v error=%v effects=%#v", result, err, f.effects)
 }
 
 func TestEvaluateFocusLossMapsChangedSameSequenceToStableConflict(t *testing.T) {
@@ -332,9 +343,9 @@ func TestEvaluateFocusLossMapsChangedSameSequenceToStableConflict(t *testing.T) 
 		DurationMilliseconds: 2500, Source: model.FocusLossSourceDocumentHidden,
 		ContinuityCredential: model.NewCredentialToken()})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.focus_loss_conflict" || f.effects.focusLoss != 0 {
-		t.Fatalf("error=%v effects=%#v", err, f.effects)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, "exam.attempt.focus_loss_conflict", fault.Code(), "error=%v effects=%#v", err, f.effects)
+	require.Equal(t, 0, f.effects.focusLoss, "error=%v effects=%#v", err, f.effects)
 }
 
 func focusLossSuspensionFixture(t *testing.T, f *fixture,
@@ -345,22 +356,15 @@ func focusLossSuspensionFixture(t *testing.T, f *fixture,
 	receivedAt := f.at.Add(time.Second)
 	signal, err := model.NewFocusLossSignal(model.NewFocusLossSignalID(), f.attemptID, participationID,
 		generation, sequence, 2500, model.FocusLossSourceApplicationBackgrounded, receivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	flag, err := model.NewIntegrityFlag(model.NewIntegrityFlagID(), f.attemptID, generation,
 		model.IntegrityPolicyFocusLoss, receivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID,
 		f.revision.ID, f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = attempt.Suspend(receivedAt); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = attempt.Suspend(receivedAt)
+	require.NoError(t, err)
 	participation := &store.ExamAttemptParticipationView{ID: participationID, AttemptID: f.attemptID,
 		State: model.AttemptParticipationEnded, Generation: generation, RenewalSequence: sequence,
 		StartedAt: f.at.Add(-time.Minute), UpdatedAt: receivedAt,

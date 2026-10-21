@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -33,15 +35,12 @@ func TestCommandOutcomeCleanupDeletesOneBoundedPage(t *testing.T) {
 	command, _ := json.Marshal(CommandOutcomeCleanupCommandV1{BatchSize: 500})
 	at := time.Now().UTC()
 	record, err := model.NewJob(model.NewJobID(), model.JobTypeCommandOutcomeCleanup, 1, command, "cleanup", at, at, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	outcome := (commandOutcomeCleanupHandler{outcomes: cleaner}).Run(context.Background(), jobengine.NewExecution(record, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || cleaner.limit != 500 {
-		t.Fatalf("outcome = %#v, limit = %d", outcome, cleaner.limit)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome = %#v, limit", outcome)
+	require.Equal(t, 500, cleaner.limit, "outcome = %#v, limit", outcome)
 	var result CommandOutcomeCleanupResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || result.Deleted != 17 {
-		t.Fatalf("result = %#v, err = %v", result, err)
-	}
+	err = json.Unmarshal(outcome.Result, &result)
+	require.NoError(t, err, "result = %#v, err", result)
+	require.Equal(t, int64(17), result.Deleted, "result = %#v, err", result)
 }

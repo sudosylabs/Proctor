@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -23,26 +25,22 @@ func TestResultReleaseMailPreparerContainsOnlyAvailabilityFacts(t *testing.T) {
 	renderer := &resultReleaseRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	reviewID := model.NewSubmissionReviewID()
 	details := ResultReleaseMailDetails{ExamTitle: "Algorithms", ReleasedAt: at}
 	prepared, err := preparer.PrepareResultReleaseMail(ResultReleaseDirectMailPreparation{Recipient: recipient,
 		OccurrenceID: model.MailOccurrenceID(reviewID.String()), Details: details, ReleasedAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceResultRelease ||
-		prepared.Occurrence.ID != model.MailOccurrenceID(reviewID.String()) ||
-		prepared.Occurrence.ActorUserID != recipient.ID || prepared.Delivery.TargetUserID != recipient.ID ||
-		prepared.Delivery.TemplateKey != model.MailTemplateExamResultReleased ||
-		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour || renderer.details != details {
-		t.Fatalf("prepared=%#v details=%#v", prepared, renderer.details)
-	}
-	if relevance, relevanceErr := evaluateMailDeliveryRelevance(context.Background(), prepared.Delivery); relevanceErr != nil || relevance != mailDeliveryRelevant {
-		t.Fatalf("release relevance=%v, %v", relevance, relevanceErr)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceResultRelease, prepared.Occurrence.Kind, "prepared=%#v details", prepared)
+	require.Equal(t, model.MailOccurrenceID(reviewID.String()), prepared.Occurrence.ID, "prepared=%#v details", prepared)
+	require.Equal(t, recipient.ID, prepared.Occurrence.ActorUserID, "prepared=%#v details", prepared)
+	require.Equal(t, recipient.ID, prepared.Delivery.TargetUserID, "prepared=%#v details", prepared)
+	require.Equal(t, model.MailTemplateExamResultReleased, prepared.Delivery.TemplateKey, "prepared=%#v details", prepared)
+	require.Equal(t, 72*time.Hour, prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt), "prepared=%#v details", prepared)
+	require.Equal(t, details, renderer.details, "prepared=%#v details", prepared)
+	relevance, relevanceErr := evaluateMailDeliveryRelevance(context.Background(), prepared.Delivery)
+	require.NoError(t, relevanceErr, "release relevance")
+	require.Equal(t, mailDeliveryRelevant, relevance, "release relevance")
 }
 
 func TestResultReleaseMailPreparerSuppressesInactiveCandidate(t *testing.T) {
@@ -53,19 +51,13 @@ func TestResultReleaseMailPreparerSuppressesInactiveCandidate(t *testing.T) {
 	recipient.DisabledAt = model.OptionalTimeFrom(at.Add(-time.Minute))
 	preparer, err := newDirectMailPreparer(&resultReleaseRendererFake{}, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PrepareResultReleaseMail(ResultReleaseDirectMailPreparation{Recipient: recipient,
 		OccurrenceID: model.MailOccurrenceID(model.NewSubmissionReviewID().String()),
 		Details:      ResultReleaseMailDetails{ExamTitle: "Algorithms", ReleasedAt: at}, ReleasedAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Delivery.State != model.MailDeliverySuppressed ||
-		prepared.Delivery.PublicFailureCode != model.MailDeliveryRecipientIneligibleCode {
-		t.Fatalf("inactive result mail = %#v", prepared.Delivery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, prepared.Delivery.State)
+	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, prepared.Delivery.PublicFailureCode)
 }
 
 type resultReleaseRendererFake struct {

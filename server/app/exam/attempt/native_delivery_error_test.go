@@ -11,6 +11,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -22,13 +24,12 @@ func TestDeliveryCorruptionRemainsInternal(t *testing.T) {
 		for _, mapper := range []func(error) error{deliveryStoreError, func(err error) error { return storeError(storeErrors, err) }} {
 			var fault *apperror.Error
 			mapped := mapper(corruption)
-			if !errors.As(mapped, &fault) || fault.Code() != "exam.attempt.unavailable" || !errors.Is(mapped, cause) {
-				t.Fatalf("corrupt retained value became client error: %v", mapped)
-			}
+			require.ErrorAs(t, mapped, &fault)
+			require.Equal(t, "exam.attempt.unavailable", fault.Code())
+			require.ErrorIs(t, mapped, cause)
 		}
 	}
 	var invalid *apperror.Error
-	if mapped := deliveryStoreError(model.ErrDeliveryInvalid); !errors.As(mapped, &invalid) || invalid.Code() != "exam.attempt.invalid" {
-		t.Fatalf("request validation changed: %v", mapped)
-	}
+	require.ErrorAs(t, deliveryStoreError(model.ErrDeliveryInvalid), &invalid)
+	require.Equal(t, "exam.attempt.invalid", invalid.Code())
 }

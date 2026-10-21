@@ -11,19 +11,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func nativeObservePolicy(t *testing.T) model.NativeSecurityPolicy {
 	t.Helper()
 	policy := model.DefaultNativeSecurityPolicy()
-	if err := json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &policy.Families[1]); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"interactive_session","mode":"observe"}`), &policy.Families[1]))
 	return policy
 }
 func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
@@ -47,33 +47,24 @@ func TestConfigureDraftNativePolicyOrderAndFailures(t *testing.T) {
 			policy := nativeObservePolicy(t)
 			view, err := fixture.service.ConfigureExamDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: test.revision, NativePolicy: policy, IdempotencyKey: "native-key"})
 			if test.want != "" {
-				if err == nil || !apperror.Is(err, test.want) && err.Error() != test.want {
-					t.Fatalf("error = %v, want %s", err, test.want)
-				}
-				if fixture.effects.updatedRevision != 0 {
-					t.Fatal("effect published after failure")
-				}
+				require.Error(t, err, "error = %v, want %s", err, test.want)
+				require.False(t, !apperror.Is(err, test.want) && err.Error() != test.want, "error = %v, want %s", err, test.want)
+				require.Equal(t, int64(0), fixture.effects.updatedRevision, "effect published after failure")
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if test.replay {
-				if fixture.effects.updatedRevision != 0 {
-					t.Fatal("replay republished")
-				}
+				require.Equal(t, int64(0), fixture.effects.updatedRevision, "replay republished")
 				return
 			}
-			if view.Draft.Policy.Native.Families[1].Mode() != model.NativeModeObserve || view.Draft.Revision != 2 || fixture.authorizer.action != model.ActionExamManage {
-				t.Fatal("native selection was not authorized and saved")
-			}
-			if fixture.persistence.idempotency.Operation != "exam.draft.native_policy.configure.v1" || len(fixture.auditor.value) != 3 {
-				t.Fatal("wrong idempotency or unsafe audit")
-			}
-			want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_native_policy", "effect.updated"}
-			if !reflect.DeepEqual(*fixture.order, want) {
-				t.Fatalf("order = %v", *fixture.order)
-			}
+			require.Equal(t, model.NativeModeObserve, view.Draft.Policy.Native.Families[1].Mode(), "native selection was not authorized and saved")
+			require.Equal(t, int64(2), view.Draft.Revision, "native selection was not authorized and saved")
+			require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "native selection was not authorized and saved")
+			require.Equal(t, "exam.draft.native_policy.configure.v1", fixture.persistence.idempotency.Operation, "wrong idempotency or unsafe audit")
+			require.Len(t, fixture.auditor.value, 3, "wrong idempotency or unsafe audit")
+			// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+			// begins before the durable write, and the write commits before its effect.
+			ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.update_native_policy", "effect.updated")
 		})
 	}
 }
@@ -87,9 +78,9 @@ func TestConfigureDraftNativePolicyNoOpAndMalformed(t *testing.T) {
 			policy.BaselineID = "disabled"
 		}
 		_, err := fixture.service.ConfigureExamDraftNativePolicy(context.Background(), fixture.invocation, ConfigureDraftNativePolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, NativePolicy: policy, IdempotencyKey: "native-key"})
-		if err == nil || fixture.persistence.nativePolicyUpdate != nil || fixture.effects.updatedRevision != 0 {
-			t.Fatal("invalid or no-op mutation reached persistence")
-		}
+		require.Error(t, err, "invalid or no-op mutation reached persistence")
+		require.Nil(t, fixture.persistence.nativePolicyUpdate, "invalid or no-op mutation reached persistence")
+		require.Equal(t, int64(0), fixture.effects.updatedRevision, "invalid or no-op mutation reached persistence")
 	}
 }
 
@@ -100,16 +91,15 @@ func TestConfigureBrowserPolicyUsesInstallationPin(t *testing.T) {
 			fixture.persistence.actorIsManager = true
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			policy, err := model.NewBrowserPolicy(true, "start", []model.BrowserPolicyRule{{RuleID: "start", Origin: origin, PathPrefix: "/", HostMatch: model.BrowserPolicyHostExact, BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationRecord, InstitutionHTTPException: true}})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			result, err := fixture.service.ConfigureExamDraftBrowserPolicy(context.Background(), fixture.invocation, ConfigureDraftBrowserPolicyCommand{ExamID: fixture.examID, ExpectedDraftRevision: 1, Policy: policy, IdempotencyKey: "browser-pin"})
 			if origin == "http://institution.example" {
-				if err != nil || !result.Draft.BrowserPolicy.Enabled {
-					t.Fatalf("matching exception: %#v, %v", result, err)
-				}
-			} else if err == nil || fixture.effects.updatedRevision != 0 || len(*fixture.order) != 0 {
-				t.Fatalf("foreign exception reached application effects: %v, %v", err, *fixture.order)
+				require.NoError(t, err, "matching exception: %#v", result)
+				require.True(t, result.Draft.BrowserPolicy.Enabled, "matching exception: %#v", result)
+			} else {
+				require.Error(t, err, "foreign exception reached application effects")
+				require.Zero(t, fixture.effects.updatedRevision, "foreign exception reached application effects")
+				require.Empty(t, *fixture.order, "foreign exception reached application effects")
 			}
 		})
 	}

@@ -11,9 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
@@ -36,13 +37,9 @@ func exportJobExecution(t *testing.T, command []byte, reserve func(context.Conte
 	t.Helper()
 	now := model.NowUTC()
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportBuild, 1, command, "export-test", now, now, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	token, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt := &model.JobAttempt{ID: model.NewJobAttemptID(), JobID: job.ID, ClaimToken: token}
 	return jobengine.NewExecution(job, attempt, nil, reserve)
 }
@@ -54,31 +51,31 @@ func TestExamExportBuildJobIsStrictClaimBoundedAndSafe(t *testing.T) {
 	handler := examExportBuildHandler{service: fake}
 	for _, data := range [][]byte{[]byte(`{}`), []byte(`{"export_id":"invalid"}`), []byte(`{"export_id":"` + id.String() + `","snapshot":"private"}`), []byte(`{"export_id":"` + id.String() + `","export_id":"` + id.String() + `"}`)} {
 		outcome := handler.Run(context.Background(), exportJobExecution(t, data, allowJobWorkReservation()))
-		if outcome.Kind != jobengine.OutcomePermanentFailure || fake.calls != 0 {
-			t.Fatalf("invalid command accepted: %#v", outcome)
-		}
+		require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind)
+		require.Equal(t, 0, fake.calls)
 	}
 	execution := exportJobExecution(t, valid, func(_ context.Context, units, limit int) (bool, error) {
-		if units != 1 || limit != 3 {
-			t.Fatalf("work bound=%d/%d", units, limit)
-		}
+		require.Equal(t, 1, units, "work bound")
+		require.Equal(t, 3, limit, "work bound")
 		return true, nil
 	})
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || fake.calls != 1 || fake.input.ExportID != id || fake.input.JobID != execution.Job.ID || fake.input.AttemptID != execution.Attempt.ID || fake.input.ClaimToken != execution.Attempt.ClaimToken {
-		t.Fatalf("claim not carried: %#v %#v", outcome, fake.input)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "claim not carried: %#v %#v", outcome, fake.input)
+	require.Equal(t, 1, fake.calls, "claim not carried: %#v %#v", outcome, fake.input)
+	require.Equal(t, id, fake.input.ExportID, "claim not carried: %#v %#v", outcome, fake.input)
+	require.Equal(t, execution.Job.ID, fake.input.JobID, "claim not carried: %#v %#v", outcome, fake.input)
+	require.Equal(t, execution.Attempt.ID, fake.input.AttemptID, "claim not carried: %#v %#v", outcome, fake.input)
+	require.Equal(t, execution.Attempt.ClaimToken, fake.input.ClaimToken, "claim not carried: %#v %#v", outcome, fake.input)
 	fake.err = errors.New("private answer and provider://internal/key")
 	outcome = handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeRetryableFailure || strings.Contains(outcome.Err.Error(), "private") || strings.Contains(outcome.Err.Error(), "provider") {
-		t.Fatalf("unsafe failure=%#v", outcome)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+	require.NotContains(t, outcome.Err.Error(), "private")
+	require.NotContains(t, outcome.Err.Error(), "provider")
 	execution = exportJobExecution(t, valid, func(context.Context, int, int) (bool, error) { return false, nil })
 	previous := fake.calls
 	outcome = handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomePermanentFailure || fake.calls != previous {
-		t.Fatal("exhausted work budget constructed more content")
-	}
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "exhausted work budget constructed more content")
+	require.Equal(t, previous, fake.calls, "exhausted work budget constructed more content")
 }
 
 type exportMaintenanceFake struct {
@@ -122,22 +119,21 @@ func TestExamExportCleanupCompletesOnlyVerifiedKeysAndDoesNotStarveOtherKeys(t *
 	fake := &exportMaintenanceFake{artifacts: []store.ExamExportArtifact{first, second}, fail: first.AttemptID}
 	now := model.NowUTC()
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":2}`), "cleanup", now, now, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	handler := examExportCleanupHandler{exports: fake, content: fake}
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, allowJobWorkReservation()))
-	if outcome.Kind != jobengine.OutcomeRetryableFailure || fake.limit != 2 || len(fake.completed) != 1 || fake.completed[0] != second {
-		t.Fatalf("cleanup=%#v complete=%#v", outcome, fake.completed)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind, "cleanup=%#v complete", outcome)
+	require.Equal(t, 2, fake.limit, "cleanup=%#v complete", outcome)
+	require.Len(t, fake.completed, 1, "cleanup=%#v complete", outcome)
+	require.Equal(t, second, fake.completed[0], "cleanup=%#v complete", outcome)
 	fake.fail = ""
 	fake.completed = nil
 	// Only the failed key becomes due again after its durable retry delay.
 	fake.artifacts = []store.ExamExportArtifact{first}
 	outcome = handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, allowJobWorkReservation()))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(fake.completed) != 1 || fake.completed[0] != first {
-		t.Fatalf("cleanup retry=%#v", outcome)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	require.Len(t, fake.completed, 1)
+	require.Equal(t, first, fake.completed[0])
 }
 
 func TestExamExportCleanupFailedFullBatchDoesNotStarveNextBatch(t *testing.T) {
@@ -149,19 +145,19 @@ func TestExamExportCleanupFailedFullBatchDoesNotStarveNextBatch(t *testing.T) {
 	}
 	now := model.NowUTC()
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":100}`), "cleanup-progress", now, now, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	handler := examExportCleanupHandler{exports: fake, content: fake}
 	reserve := reserveRetentionWork(job)
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, reserve))
-	if outcome.Kind != jobengine.OutcomeRetryableFailure || len(fake.completed) != 0 || len(fake.artifacts) != 101 {
-		t.Fatal("failed first batch lost its error or exceeded its selection bound")
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind, "failed first batch lost its error or exceeded its selection bound")
+	require.Empty(t, fake.completed, "failed first batch lost its error or exceeded its selection bound")
+	require.Len(t, fake.artifacts, 101, "failed first batch lost its error or exceeded its selection bound")
 	outcome = handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, reserve))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(fake.completed) != 100 || len(fake.artifacts) != 1 || fake.beginCalls != 2 || job.WorkReserved != 2 {
-		t.Fatalf("later healthy batch starved: %#v complete=%d reserved=%d", outcome, len(fake.completed), job.WorkReserved)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "later healthy batch starved: %#v complete=%d reserved", outcome, len(fake.completed))
+	require.Len(t, fake.completed, 100, "later healthy batch starved: %#v complete=%d reserved", outcome, len(fake.completed))
+	require.Len(t, fake.artifacts, 1, "later healthy batch starved: %#v complete=%d reserved", outcome, len(fake.completed))
+	require.Equal(t, 2, fake.beginCalls, "later healthy batch starved: %#v complete=%d reserved", outcome, len(fake.completed))
+	require.Equal(t, 2, job.WorkReserved, "later healthy batch starved: %#v complete=%d reserved", outcome, len(fake.completed))
 }
 
 func TestExamExportCleanupProposerUsesFixedHourlyOccurrences(t *testing.T) {
@@ -169,42 +165,36 @@ func TestExamExportCleanupProposerUsesFixedHourlyOccurrences(t *testing.T) {
 	enqueuer := &deduplicatingJobEnqueuerFake{jobs: map[string]*model.Job{}}
 	proposer := examExportCleanupProposer{jobs: enqueuer, now: func() time.Time { return now }}
 	for _, at := range []time.Time{now, now.Add(59 * time.Minute), now.Add(time.Hour)} {
-		if err := proposer.Propose(context.Background(), at); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, proposer.Propose(context.Background(), at))
 	}
-	if len(enqueuer.jobs) != 2 {
-		t.Fatalf("hourly occurrences=%d", len(enqueuer.jobs))
-	}
+	require.Len(t, enqueuer.jobs, 2, "hourly occurrences")
 	for _, job := range enqueuer.jobs {
-		if job.MaximumAttempts != 3 || job.DedupePolicy != model.JobDedupePermanent || strings.Contains(string(job.Command), "snapshot") {
-			t.Fatalf("unbounded cleanup=%#v", job)
-		}
+		require.Equal(t, 3, job.MaximumAttempts)
+		require.Equal(t, model.JobDedupePermanent, job.DedupePolicy)
+		require.NotContains(t, string(job.Command), "snapshot")
 	}
 	for _, descriptor := range []jobengine.Descriptor{examExportBuildDescriptor(examExportBuildHandler{}), examExportCleanupDescriptor(examExportCleanupHandler{})} {
-		if descriptor.MaximumAttempts != 3 || len(descriptor.ExplicitRetryStatuses) != 0 || descriptor.Concurrency != 1 {
-			t.Fatal("exports allow unbounded retry or concurrent construction")
-		}
+		require.Equal(t, 3, descriptor.MaximumAttempts, "exports allow unbounded retry or concurrent construction")
+		require.Empty(t, descriptor.ExplicitRetryStatuses, "exports allow unbounded retry or concurrent construction")
+		require.Equal(t, 1, descriptor.Concurrency, "exports allow unbounded retry or concurrent construction")
 	}
 }
 
 func TestExamExportPurgeSelectionUncertaintyConsumesFiniteBudget(t *testing.T) {
 	now := model.NowUTC()
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamExportCleanup, 1, json.RawMessage(`{"batch_size":100}`), "cleanup-uncertainty", now, now, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fake := &exportMaintenanceFake{beginError: errors.New("private commit acknowledgement lost")}
 	handler := examExportCleanupHandler{exports: fake, content: fake}
 	reserve := reserveRetentionWork(job)
 	for range 3 {
 		outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, reserve))
-		if outcome.Kind != jobengine.OutcomeRetryableFailure || strings.Contains(outcome.Err.Error(), "private") {
-			t.Fatalf("uncertain selection=%#v", outcome)
-		}
+		require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+		require.NotContains(t, outcome.Err.Error(), "private")
 	}
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, reserve))
-	if outcome.Kind != jobengine.OutcomePermanentFailure || fake.beginCalls != 3 || job.WorkReserved != 3 || len(fake.completed) != 0 {
-		t.Fatalf("uncertainty restarted cleanup: %#v calls=%d reserved=%d", outcome, fake.beginCalls, job.WorkReserved)
-	}
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "uncertainty restarted cleanup: %#v calls=%d reserved", outcome, fake.beginCalls)
+	require.Equal(t, 3, fake.beginCalls, "uncertainty restarted cleanup: %#v calls=%d reserved", outcome, fake.beginCalls)
+	require.Equal(t, 3, job.WorkReserved, "uncertainty restarted cleanup: %#v calls=%d reserved", outcome, fake.beginCalls)
+	require.Empty(t, fake.completed, "uncertainty restarted cleanup: %#v calls=%d reserved", outcome, fake.beginCalls)
 }

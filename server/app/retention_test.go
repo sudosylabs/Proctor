@@ -12,6 +12,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -57,9 +59,9 @@ func TestRetentionApprovalRequiresAuthorityAndCriticalAudit(t *testing.T) {
 			}
 			application := &App{retentionPolicyService: fixture.service}
 			value, err := application.ChangeRetentionControl(t.Context(), invocation, command)
-			if err == nil || value != nil || lifecycle.change != nil {
-				t.Fatalf("%s did not stop approval: %+v, %v, %+v", gate, value, err, lifecycle.change)
-			}
+			require.Error(t, err, "%s did not stop approval", gate)
+			require.Nil(t, value, "%s did not stop approval", gate)
+			require.Nil(t, lifecycle.change, "%s did not stop approval", gate)
 		})
 	}
 }
@@ -73,17 +75,15 @@ func TestRetentionApprovalPassesExactReviewedPolicyAndCredential(t *testing.T) {
 	application := &App{retentionPolicyService: fixture.service}
 	value, err := application.ChangeRetentionControl(t.Context(), fixture.invocation, ChangeRetentionControlCommand{
 		ExpectedRevision: 1, ExpectedPolicyRevision: 7, PreviewID: control.ApprovedPreviewID, State: model.RetentionControlEnabled, IdempotencyKey: "approve-cleanup"})
-	if err != nil || value != control {
-		t.Fatalf("approval = %+v, %v", value, err)
-	}
-	if lifecycle.change.ExpectedPolicyRevision != 7 || lifecycle.change.PreviewID != control.ApprovedPreviewID ||
-		lifecycle.change.Principal.CredentialID != fixture.invocation.Principal().CredentialID || lifecycle.change.AuditEventID != model.AuditEventID(fixture.audit.beginID) ||
-		lifecycle.change.RecentAuthenticationTTL <= 0 || lifecycle.command.Operation != store.RetentionControlOperation {
-		t.Fatalf("lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
-	}
-	if fixture.authorization.action != model.ActionRetentionCleanupManage {
-		t.Fatal("cleanup approval reused configuration permission")
-	}
+	require.NoError(t, err, "approval")
+	require.Same(t, control, value, "approval")
+	require.Equal(t, int64(7), lifecycle.change.ExpectedPolicyRevision, "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Equal(t, control.ApprovedPreviewID, lifecycle.change.PreviewID, "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Equal(t, fixture.invocation.Principal().CredentialID, lifecycle.change.Principal.CredentialID, "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Equal(t, model.AuditEventID(fixture.audit.beginID), lifecycle.change.AuditEventID, "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Positive(t, int64(lifecycle.change.RecentAuthenticationTTL), "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Equal(t, store.RetentionControlOperation, lifecycle.command.Operation, "lost review, authority or atomic audit fence: %+v, %+v", lifecycle.change, lifecycle.command)
+	require.Equal(t, model.ActionRetentionCleanupManage, fixture.authorization.action, "cleanup approval reused configuration permission")
 }
 
 func TestRetentionStoreConflictsStayBounded(t *testing.T) {
@@ -96,8 +96,9 @@ func TestRetentionStoreConflictsStayBounded(t *testing.T) {
 		{store.NewErrNotFound("retention_preview", model.NewRetentionPreviewID().String()), "resource.not_found"},
 		{errors.New("private database error"), "retention.unavailable"},
 	} {
-		if got := retentionError(test.err); !apperror.Is(got, test.code) {
-			t.Fatalf("error = %v; want %s", got, test.code)
-		}
+		t.Run(test.code, func(t *testing.T) {
+			got := retentionError(test.err)
+			require.True(t, apperror.Is(got, test.code), "error = %v; want %s", got, test.code)
+		})
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -21,12 +23,10 @@ import (
 func TestAuthenticationCacheInvalidatorRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
-	if _, err := newAuthenticationCacheInvalidator(nil, &securityEffectsDiagnosticsFake{}); err == nil {
-		t.Fatal("nil cache was accepted")
-	}
-	if _, err := newAuthenticationCacheInvalidator(newAuthenticationCacheFake(), nil); err == nil {
-		t.Fatal("nil diagnostics was accepted")
-	}
+	_, err := newAuthenticationCacheInvalidator(nil, &securityEffectsDiagnosticsFake{})
+	require.Error(t, err, "nil cache was accepted")
+	_, err = newAuthenticationCacheInvalidator(newAuthenticationCacheFake(), nil)
+	require.Error(t, err, "nil diagnostics was accepted")
 }
 
 func TestRealtimeServiceRequiresSecurityDependencies(t *testing.T) {
@@ -36,15 +36,11 @@ func TestRealtimeServiceRequiresSecurityDependencies(t *testing.T) {
 		newAuthenticationCacheFake(),
 		&securityEffectsDiagnosticsFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := newRealtimeService(nil, &securityEffectsRealtimeDiagnosticsFake{}); err == nil {
-		t.Fatal("nil authentication invalidator was accepted")
-	}
-	if _, err := newRealtimeService(invalidator, nil); err == nil {
-		t.Fatal("nil realtime diagnostics were accepted")
-	}
+	require.NoError(t, err)
+	_, err = newRealtimeService(nil, &securityEffectsRealtimeDiagnosticsFake{})
+	require.Error(t, err, "nil authentication invalidator was accepted")
+	_, err = newRealtimeService(invalidator, nil)
+	require.Error(t, err, "nil realtime diagnostics were accepted")
 }
 
 func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
@@ -53,9 +49,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
 	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	type dependencies struct {
 		users              store.UserStore
 		passwords          store.PasswordCredentialStore
@@ -123,9 +117,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			candidate := valid
 			test.mutate(&candidate)
-			if err := construct(candidate); err == nil {
-				t.Fatalf("nil %s dependency was accepted", test.name)
-			}
+			require.Error(t, construct(candidate), "nil %s dependency was accepted", test.name)
 		})
 	}
 }
@@ -136,9 +128,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	authentication := newTestAuthenticationService(t, persistence)
 	audit, auditErr := newAuditService(securityAuditStore{}, securityInstitutionStore{}, model.NewID())
-	if auditErr != nil {
-		t.Fatal(auditErr)
-	}
+	require.NoError(t, auditErr)
 	_, err := newExternalAuthenticationService(
 		securityEffectsProviderSourceFake{},
 		securityExternalLoginStateStore{},
@@ -160,23 +150,18 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		model.NewCredentialToken,
 		nil,
 	)
-	if err == nil {
-		t.Fatal("nil authentication invalidator was accepted")
-	}
+	require.Error(t, err, "nil authentication invalidator was accepted")
 }
 
 func TestAuditServiceRequiresDependencies(t *testing.T) {
 	t.Parallel()
 
-	if _, err := newAuditService(nil, securityInstitutionStore{}, model.NewID()); err == nil {
-		t.Fatal("nil audit store was accepted")
-	}
-	if _, err := newAuditService(securityAuditStore{}, nil, model.NewID()); err == nil {
-		t.Fatal("nil audit institution store was accepted")
-	}
-	if _, err := newAuditService(securityAuditStore{}, securityInstitutionStore{}, ""); err == nil {
-		t.Fatal("empty audit node ID was accepted")
-	}
+	_, err := newAuditService(nil, securityInstitutionStore{}, model.NewID())
+	require.Error(t, err, "nil audit store was accepted")
+	_, err = newAuditService(securityAuditStore{}, nil, model.NewID())
+	require.Error(t, err, "nil audit institution store was accepted")
+	_, err = newAuditService(securityAuditStore{}, securityInstitutionStore{}, "")
+	require.Error(t, err, "empty audit node ID was accepted")
 }
 
 type securityExternalLoginStateStore struct{ store.ExternalLoginStateStore }
@@ -191,11 +176,9 @@ func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	realtimePointerType := reflect.TypeOf((*realtimeService)(nil))
 	for index := 0; index < authenticationType.NumField(); index++ {
 		field := authenticationType.Field(index)
-		if field.Type == realtimePointerType {
-			t.Fatalf("authenticationService retains realtimeService in field %q", field.Name)
-		}
-		if field.Type.Kind() == reflect.Func && field.Name != "now" && field.Name != "newCredential" {
-			t.Fatalf("authenticationService retains mutable callback field %q", field.Name)
+		require.NotEqual(t, realtimePointerType, field.Type, "authenticationService retains realtimeService in field %q", field.Name)
+		if field.Type.Kind() == reflect.Func && field.Name != "now" {
+			require.Equal(t, "newCredential", field.Name)
 		}
 	}
 
@@ -203,9 +186,7 @@ func TestAuthenticationAndRealtimeRetainOnlyNarrowSiblingPorts(t *testing.T) {
 	authenticationPointerType := reflect.TypeOf((*authenticationService)(nil))
 	for index := 0; index < realtimeType.NumField(); index++ {
 		field := realtimeType.Field(index)
-		if field.Type == authenticationPointerType {
-			t.Fatalf("realtimeService retains authenticationService in field %q", field.Name)
-		}
+		require.NotEqual(t, authenticationPointerType, field.Type, "realtimeService retains authenticationService in field %q", field.Name)
 	}
 }
 
@@ -220,9 +201,7 @@ func TestAuthenticationCacheInvalidatorOwnsKeysAndSafeDiagnostics(t *testing.T) 
 	}
 	diagnostics := &securityEffectsDiagnosticsFake{}
 	invalidator, err := newAuthenticationCacheInvalidator(cache, diagnostics)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	invalidator.InvalidateAccessCredentials(
 		context.Background(),
@@ -239,15 +218,9 @@ func TestAuthenticationCacheInvalidatorOwnsKeysAndSafeDiagnostics(t *testing.T) 
 		activityCachePrefix + "session-one",
 		activityCachePrefix + "session-two",
 	}
-	if !reflect.DeepEqual(cache.deleted, wantDeletes) {
-		t.Fatalf("deleted keys = %v, want %v", cache.deleted, wantDeletes)
-	}
-	if want := []string{"authentication cache delete failed"}; !reflect.DeepEqual(diagnostics.messages, want) {
-		t.Fatalf("diagnostics = %v, want %v", diagnostics.messages, want)
-	}
-	if want := []string{"cache operation failed"}; !reflect.DeepEqual(diagnostics.errors, want) {
-		t.Fatalf("diagnostic errors = %v, want %v", diagnostics.errors, want)
-	}
+	require.Equal(t, wantDeletes, cache.deleted, "deleted keys")
+	require.Equal(t, []string{"authentication cache delete failed"}, diagnostics.messages, "diagnostics")
+	require.Equal(t, []string{"cache operation failed"}, diagnostics.errors, "diagnostic errors")
 }
 
 type securityEffectsCacheFake struct {

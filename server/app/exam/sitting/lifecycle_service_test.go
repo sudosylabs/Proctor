@@ -9,10 +9,11 @@ package sitting
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -22,47 +23,33 @@ import (
 func TestPauseAuthorizesCurrentManagerAndKeepsPrivateReasonOutOfAuditAndEffect(t *testing.T) {
 	fixture := newFixture(t)
 	current := fixture.sitting(t)
-	if err := current.Open(testNow); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, current.Open(testNow))
 	paused := cloneSitting(current)
-	if err := paused.Pause(testNow.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, paused.Pause(testNow.Add(time.Minute)))
 	fixture.persistence.lifecycle = lifecycleResult(paused, store.ExamSittingTransitionManagerPaused, true, false)
 
 	got, err := fixture.service.PauseExamSitting(context.Background(), fixture.invocation, PauseCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
 		PrivateReason: "Candidate requested clarification", IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.State != model.ExamSittingPaused {
-		t.Fatalf("Pause() = %#v", got)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingManage || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}) {
-		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting)
+	require.Equal(t, model.ExamSittingPaused, got.Sitting.State)
+	require.Equal(t, model.ActionExamSittingManage, fixture.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}, fixture.authorizer.resource, "authorization")
 	wantAudit := map[string]any{"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"expected_sitting_revision": current.Revision, "transition": string(store.ExamSittingTransitionManagerPaused)}
-	if !reflect.DeepEqual(fixture.auditor.value, wantAudit) {
-		t.Fatalf("audit value = %#v", fixture.auditor.value)
-	}
-	if fixture.persistence.pause == nil || fixture.persistence.pause.PrivateReason != "Candidate requested clarification" {
-		t.Fatalf("Store Pause = %#v", fixture.persistence.pause)
-	}
+	require.Equal(t, wantAudit, fixture.auditor.value)
+	require.NotNil(t, fixture.persistence.pause)
+	require.Equal(t, "Candidate requested clarification", fixture.persistence.pause.PrivateReason)
 	wantIdempotency, err := prepareTransitionIdempotency(fixture.invocation, idempotencyOperationPause, PauseCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
 		PrivateReason: "Candidate requested clarification", IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != string(store.ExamSittingTransitionManagerPaused) {
-		t.Fatalf("effects = %#v", fixture.effects.events)
-	}
+	require.NoError(t, err)
+	require.Equal(t, wantIdempotency, fixture.persistence.command)
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, string(store.ExamSittingTransitionManagerPaused), fixture.effects.events[0].kind)
 }
 
 func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *testing.T) {
@@ -113,18 +100,12 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newFixture(t)
 			current := fixture.sitting(t)
-			if err := current.Open(testNow); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, current.Open(testNow))
 			if test.transition == store.ExamSittingTransitionManagerResumed {
-				if err := current.Pause(testNow); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, current.Pause(testNow))
 			}
 			if test.archived {
-				if err := fixture.access.snapshot.Exam.Archive(testNow); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, fixture.access.snapshot.Exam.Archive(testNow))
 			}
 			result := cloneSitting(current)
 			switch test.transition {
@@ -141,17 +122,14 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 			_, err := test.run(fixture, current)
 			if test.wantFault != "" {
 				assertFaultCode(t, err, test.wantFault)
-				if fixture.persistence.resume != nil || fixture.persistence.extend != nil || fixture.persistence.earlyClose != nil {
-					t.Fatal("archived command reached Store")
-				}
+				require.Nil(t, fixture.persistence.resume, "archived command reached Store")
+				require.Nil(t, fixture.persistence.extend, "archived command reached Store")
+				require.Nil(t, fixture.persistence.earlyClose, "archived command reached Store")
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if test.input(fixture.persistence) == nil || fixture.authorizer.action != test.wantAction {
-				t.Fatalf("Store input/action = %#v %q", test.input(fixture.persistence), fixture.authorizer.action)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, test.input(fixture.persistence), "Store input/action")
+			require.Equal(t, test.wantAction, fixture.authorizer.action, "Store input/action")
 			var wantIdempotency *store.CommandIdempotency
 			switch test.transition {
 			case store.ExamSittingTransitionManagerPaused:
@@ -176,12 +154,11 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 					PrivateReason: "Safety stop", IdempotencyKey: "test-key",
 				})
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
-			if test.finalizes && (fixture.jobs.finalizeRevision != current.Revision+1 || !fixture.jobs.finalizeAvailableAt.Equal(testNow)) {
-				t.Fatalf("finalize intent = revision %d at %s", fixture.jobs.finalizeRevision, fixture.jobs.finalizeAvailableAt)
+			require.NoError(t, err)
+			require.Equal(t, wantIdempotency, fixture.persistence.command)
+			if test.finalizes {
+				require.Equal(t, current.Revision+1, fixture.jobs.finalizeRevision, "finalize intent = revision %d at %s", fixture.jobs.finalizeRevision, fixture.jobs.finalizeAvailableAt)
+				require.True(t, fixture.jobs.finalizeAvailableAt.Equal(testNow), "finalize intent = revision %d at %s", fixture.jobs.finalizeRevision, fixture.jobs.finalizeAvailableAt)
 			}
 		})
 	}
@@ -194,12 +171,8 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 	fixture.persistence.lifecycle = lifecycleResult(paused, store.ExamSittingTransitionManagerPaused, true, true)
 	_, err := fixture.service.PauseExamSitting(context.Background(), fixture.invocation, PauseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID,
 		ExpectedRevision: current.Revision, PrivateReason: "Replay", IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(fixture.effects.events) != 0 {
-		t.Fatalf("replay effects = %#v", fixture.effects.events)
-	}
+	require.NoError(t, err)
+	require.Empty(t, fixture.effects.events)
 }
 
 func TestPauseUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testing.T) {
@@ -214,12 +187,10 @@ func TestPauseUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testing.T
 	_, err := fixture.service.PauseExamSitting(context.Background(), fixture.invocation, PauseCommand{ExamID: fixture.examID,
 		SittingID: fixture.sittingID, ExpectedRevision: current.Revision, PrivateReason: "Administrator intervention",
 		IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingManageOverride || fixture.persistence.pause == nil || !fixture.persistence.pause.ManagerOverride {
-		t.Fatalf("override authorization/store = %q %#v", fixture.authorizer.action, fixture.persistence.pause)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamSittingManageOverride, fixture.authorizer.action, "override authorization/store")
+	require.NotNil(t, fixture.persistence.pause, "override authorization/store")
+	require.True(t, fixture.persistence.pause.ManagerOverride, "override authorization/store")
 }
 
 func TestLifecycleCommandsValidatePrivateReasonBounds(t *testing.T) {
@@ -258,48 +229,37 @@ func TestSystemAdvancePublishesOnlyChangedOutcomeAndUsesSystemAudit(t *testing.T
 	current := fixture.sitting(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current, AcademicUnitID: fixture.unitID}
 	opened := cloneSitting(current)
-	if err := opened.Open(testNow); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, opened.Open(testNow))
 	fixture.persistence.lifecycle = lifecycleResult(opened, store.ExamSittingTransitionOpened, true, false)
 	system := invocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
 
 	got, err := fixture.service.AdvanceDue(context.Background(), system, fixture.sittingID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Value == nil || got.Value.Sitting.State != model.ExamSittingOpen || fixture.systemAudit.system != system ||
-		fixture.systemAudit.action != model.ActionExamSittingManage || fixture.systemAudit.scopeType != model.RoleScopeAcademicUnit ||
-		fixture.systemAudit.scopeID != fixture.unitID.String() || fixture.persistence.advance == nil {
-		t.Fatalf("AdvanceDue() = %#v, audit=%#v, input=%#v", got, fixture.systemAudit, fixture.persistence.advance)
-	}
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != string(store.ExamSittingTransitionOpened) {
-		t.Fatalf("effects = %#v", fixture.effects.events)
-	}
-	if !fixture.jobs.finalizeAvailableAt.Equal(current.ScheduledEndAt) {
-		t.Fatalf("system finalize availability = %s, want deadline %s", fixture.jobs.finalizeAvailableAt, current.ScheduledEndAt)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Value, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Equal(t, model.ExamSittingOpen, got.Value.Sitting.State, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Equal(t, system, fixture.systemAudit.system, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Equal(t, model.ActionExamSittingManage, fixture.systemAudit.action, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Equal(t, model.RoleScopeAcademicUnit, fixture.systemAudit.scopeType, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Equal(t, fixture.unitID.String(), fixture.systemAudit.scopeID, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.NotNil(t, fixture.persistence.advance, "AdvanceDue() = %#v, audit=%#v, input", got, fixture.systemAudit)
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, string(store.ExamSittingTransitionOpened), fixture.effects.events[0].kind)
+	require.True(t, fixture.jobs.finalizeAvailableAt.Equal(current.ScheduledEndAt), "system finalize availability = %s, want deadline", fixture.jobs.finalizeAvailableAt)
 
 	fixture.effects.events = nil
 	fixture.persistence.lifecycle = lifecycleResult(current, "", false, false)
-	if _, err = fixture.service.AdvanceDue(context.Background(), system, fixture.sittingID); err != nil {
-		t.Fatal(err)
-	}
-	if len(fixture.effects.events) != 0 {
-		t.Fatalf("no-op effects = %#v", fixture.effects.events)
-	}
+	_, err = fixture.service.AdvanceDue(context.Background(), system, fixture.sittingID)
+	require.NoError(t, err)
+	require.Empty(t, fixture.effects.events)
 
 	structurallyInvalid := cloneSitting(current)
-	if err = structurallyInvalid.Cancel(model.ExamSittingReasonAcademicStructureInvalid, testNow); err != nil {
-		t.Fatal(err)
-	}
+	err = structurallyInvalid.Cancel(model.ExamSittingReasonAcademicStructureInvalid, testNow)
+	require.NoError(t, err)
 	fixture.persistence.lifecycle = lifecycleResult(structurallyInvalid, store.ExamSittingTransitionAcademicStructureInvalid, true, false)
-	if _, err = fixture.service.AdvanceDue(context.Background(), system, fixture.sittingID); err != nil {
-		t.Fatal(err)
-	}
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != string(store.ExamSittingTransitionAcademicStructureInvalid) {
-		t.Fatalf("structural-invalid effects = %#v", fixture.effects.events)
-	}
+	_, err = fixture.service.AdvanceDue(context.Background(), system, fixture.sittingID)
+	require.NoError(t, err)
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, string(store.ExamSittingTransitionAcademicStructureInvalid), fixture.effects.events[0].kind)
 }
 
 func TestSystemCloseAndDueListingUseBoundedSystemSeam(t *testing.T) {
@@ -313,19 +273,18 @@ func TestSystemCloseAndDueListingUseBoundedSystemSeam(t *testing.T) {
 	fixture.persistence.lifecycle = lifecycleResult(closed, store.ExamSittingTransitionClosedNoAttempts, true, false)
 	system := invocation.System{JobID: model.NewJobID(), AttemptID: model.NewJobAttemptID()}
 
-	if _, err := fixture.service.FinishSealing(context.Background(), system, fixture.sittingID); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.persistence.finish == nil || len(fixture.effects.events) != 1 {
-		t.Fatalf("finish input/effects = %#v %#v", fixture.persistence.finish, fixture.effects.events)
-	}
+	_, err := fixture.service.FinishSealing(context.Background(), system, fixture.sittingID)
+	require.NoError(t, err)
+	require.NotNil(t, fixture.persistence.finish, "finish input/effects")
+	require.Len(t, fixture.effects.events, 1, "finish input/effects")
 
 	dueAt := testNow.Add(-time.Minute)
 	fixture.persistence.due = []store.ExamSittingLifecycleDue{{Value: &store.ExamSittingSnapshot{Sitting: closing}, DueAt: dueAt}}
 	items, err := fixture.service.ListLifecycleDue(context.Background(), store.ExamSittingLifecycleDueOptions{Limit: 50})
-	if err != nil || len(items) != 1 || !items[0].DueAt.Equal(dueAt) || fixture.persistence.dueOptions.Limit != 50 {
-		t.Fatalf("ListLifecycleDue() = %#v, %v", items, err)
-	}
+	require.NoError(t, err, "ListLifecycleDue()")
+	require.Len(t, items, 1, "ListLifecycleDue()")
+	require.True(t, items[0].DueAt.Equal(dueAt), "ListLifecycleDue()")
+	require.Equal(t, 50, fixture.persistence.dueOptions.Limit, "ListLifecycleDue()")
 }
 
 func cloneSitting(value *model.ExamSitting) *model.ExamSitting {

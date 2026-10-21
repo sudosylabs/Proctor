@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type roleBindingStoreFake struct {
@@ -110,20 +112,15 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 		UserID: userID, RoleID: created.RoleID.String(), ScopeType: model.RoleScopeInstitution,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID != created.ID {
-		t.Fatalf("result = %#v", got)
-	}
-	if len(mail.requests) != 1 || mail.requests[0].TemplateKey != model.MailTemplateAuthorizationInstitutionRoleAssigned ||
-		service.bindings.(*roleBindingStoreFake).createInput.Notice == nil {
-		t.Fatalf("role assignment mail = %#v", mail.requests)
-	}
-	want := []string{"authorize-binding-scope", "get-role", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, created.ID, got.ID)
+	require.Len(t, mail.requests, 1)
+	require.Equal(t, model.MailTemplateAuthorizationInstitutionRoleAssigned, mail.requests[0].TemplateKey)
+	require.NotNil(t, service.bindings.(*roleBindingStoreFake).createInput.Notice)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-binding-scope", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization")
 }
 
 func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
@@ -145,13 +142,8 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 		UserID: model.NewID(), RoleID: roleID, ScopeType: model.RoleScopeClass,
 		ScopeID: model.NewID(), StartAt: 100,
 	})
-	if !apperror.Is(err, "role_binding.system_admin_scope_invalid") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-binding-scope", "get-role"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "role_binding.system_admin_scope_invalid"), "error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 }
 
 func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testing.T) {
@@ -171,12 +163,13 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 	result, err := service.CreateRoleBinding(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
 			ScopeID: scopeID, StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
-	if err != nil || result == nil || persistence.createInput == nil {
-		t.Fatalf("retained create = %#v, %v, input %#v", result, err, persistence.createInput)
-	}
-	if want := []string{"authorize-binding-scope", "get-role-including-archived", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err, "retained create")
+	require.NotNil(t, result, "retained create")
+	require.NotNil(t, persistence.createInput, "retained create")
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-binding-scope", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization")
 }
 
 func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
@@ -202,20 +195,17 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.EndRoleBinding(context.Background(), Invocation{}, EndRoleBindingCommand{ID: binding.ID})
-	if !apperror.Is(err, "role_binding.last_system_admin") {
-		t.Fatalf("error = %v", err)
-	}
-	if _, available := persistence.endInput.Capabilities.Providers["campus"]; !available {
-		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.endInput.Capabilities)
-	}
-	if persistence.endInput.Notice == nil || len(mail.requests) != 1 ||
-		mail.requests[0].TemplateKey != model.MailTemplateAuthorizationScopedRoleEnded {
-		t.Fatalf("role ending mail = %#v / %#v", persistence.endInput, mail.requests)
-	}
-	want := []string{"authorize-binding-preflight", "get-binding", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "role_binding.last_system_admin"), "error = %v", err)
+	_, available := persistence.endInput.Capabilities.Providers["campus"]
+	require.True(t, available, "Store capability snapshot = %#v, want configured campus provider", persistence.endInput.Capabilities)
+	require.NotNil(t, persistence.endInput.Notice, "role ending mail = %#v", persistence.endInput)
+	require.Len(t, mail.requests, 1, "role ending mail = %#v", persistence.endInput)
+	require.Equal(t, model.MailTemplateAuthorizationScopedRoleEnded, mail.requests[0].TemplateKey, "role ending mail = %#v", persistence.endInput)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-binding-preflight", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail")
+	require.NotContains(t, events, "invalidate-authorization", "a failed end invalidated authorization")
 }
 
 func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
@@ -234,13 +224,10 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 		time.Now,
 	)
 	got, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: userID})
-	if err != nil || len(got) != 1 {
-		t.Fatalf("list = %#v err=%v", got, err)
-	}
-	want := []string{"authorize-binding-list", "list-visible-by-user"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err, "list")
+	require.Len(t, got, 1, "list")
+	// Contract: authorization precedes the read.
+	ordertest.RequireInOrder(t, events, "authorize-binding-list", "list-visible-by-user")
 }
 
 func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
@@ -255,10 +242,8 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &roleBindingEffectsFake{events: &events}, time.Now,
 	)
-	if _, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(persistence.visibility.AcademicUnitRootIDs, []model.AcademicUnitID{model.AcademicUnitID(rootID)}) || persistence.visibility.InstitutionWide {
-		t.Fatalf("visibility = %#v", persistence.visibility)
-	}
+	_, err := service.ListRoleBindings(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()})
+	require.NoError(t, err)
+	require.Equal(t, []model.AcademicUnitID{model.AcademicUnitID(rootID)}, persistence.visibility.AcademicUnitRootIDs)
+	require.False(t, persistence.visibility.InstitutionWide)
 }

@@ -10,9 +10,13 @@ package job
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type occurrenceProposerFake struct {
@@ -81,48 +85,40 @@ func TestEngineRetriesSameOccurrenceWakesLocallyAndStopsRecurrence(t *testing.T)
 		Policy: Policy{PollInterval: time.Hour, ProposalRetryDelay: 10 * time.Second}, Clock: clock,
 		Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = engine.Start(context.Background())
+	require.NoError(t, err)
 	first := <-proposer.calls
 	retryTimer := <-clock.timers
-	if !first.Equal(at) || retryTimer.delay != 10*time.Second {
-		t.Fatalf("first occurrence=%v retry delay=%v", first, retryTimer.delay)
-	}
+	require.True(t, first.Equal(at), "first occurrence=%v retry delay", first)
+	require.Equal(t, 10*time.Second, retryTimer.delay, "first occurrence=%v retry delay", first)
 	// The worker polls once on startup. A failed proposal must not add a wake.
 	select {
 	case <-persistence.claimRequests:
 	case <-time.After(time.Second):
-		t.Fatal("worker did not perform its initial claim")
+		require.FailNow(t, "worker did not perform its initial claim")
 	}
 	select {
 	case <-persistence.claimRequests:
-		t.Fatal("failed proposal woke the local worker")
+		require.FailNow(t, "failed proposal woke the local worker")
 	default:
 	}
 	clock.advance(retryTimer, at.Add(10*time.Second))
-	if second := <-proposer.calls; !second.Equal(at) {
-		t.Fatalf("retry occurrence=%v, want %v", second, at)
-	}
+	second := <-proposer.calls
+	require.True(t, second.Equal(at), "retry occurrence=%v", second)
 	select {
 	case <-persistence.claimRequests:
 	case <-time.After(time.Second):
-		t.Fatal("successful proposal did not wake the local worker")
+		require.FailNow(t, "successful proposal did not wake the local worker")
 	}
 	dailyTimer := <-clock.timers
-	if dailyTimer.delay != 14*time.Hour+29*time.Minute+50*time.Second {
-		t.Fatalf("next daily delay=%v", dailyTimer.delay)
-	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, 14*time.Hour+29*time.Minute+50*time.Second, dailyTimer.delay)
+	err = engine.Close()
+	require.NoError(t, err)
 	clock.advance(dailyTimer, nextDailyOccurrence(at))
 	select {
 	case occurrence := <-proposer.calls:
-		t.Fatalf("proposal ran after engine shutdown: %v", occurrence)
+		require.FailNow(t, fmt.Sprintf("proposal ran after engine shutdown: %v", occurrence))
 	default:
 	}
 }
@@ -139,26 +135,22 @@ func TestEngineCopiesRecurrenceDefinitionsAtConstruction(t *testing.T) {
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a", Diagnostics: &jobDiagnosticsFake{},
 		Policy: Policy{PollInterval: time.Hour}, Clock: clock, Recurrences: recurrences,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	recurrences[0] = Recurrence{Name: "replacement", Proposer: replacement}
-	if err = engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	err = engine.Start(context.Background())
+	require.NoError(t, err)
 	select {
 	case <-original.calls:
 	case <-time.After(time.Second):
-		t.Fatal("constructed recurrence did not run")
+		require.FailNow(t, "constructed recurrence did not run")
 	}
 	select {
 	case <-replacement.calls:
-		t.Fatal("engine retained caller-owned recurrence slice")
+		require.FailNow(t, "engine retained caller-owned recurrence slice")
 	default:
 	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = engine.Close()
+	require.NoError(t, err)
 }
 
 func TestConcurrentEnginesAndRestartProposeTheSameOccurrence(t *testing.T) {
@@ -173,50 +165,33 @@ func TestConcurrentEnginesAndRestartProposeTheSameOccurrence(t *testing.T) {
 			Policy: Policy{PollInterval: time.Hour}, Clock: newManualClock(at),
 			Recurrences: []Recurrence{{Name: "daily", Proposer: proposer}},
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return engine
 	}
 
 	first, second := newEngine("node-a"), newEngine("node-b")
-	if err := first.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, first.Start(context.Background()))
+	require.NoError(t, second.Start(context.Background()))
 	for range 2 {
-		if occurrence := <-proposer.calls; !occurrence.Equal(at) {
-			t.Fatalf("concurrent occurrence=%v, want %v", occurrence, at)
-		}
+		occurrence := <-proposer.calls
+		require.True(t, occurrence.Equal(at), "concurrent occurrence=%v", occurrence)
 	}
-	if err := first.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, first.Close())
+	require.NoError(t, second.Close())
 
 	restarted := newEngine("node-a-restarted")
-	if err := restarted.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if occurrence := <-proposer.calls; !occurrence.Equal(at) {
-		t.Fatalf("restart occurrence=%v, want %v", occurrence, at)
-	}
-	if err := restarted.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, restarted.Start(context.Background()))
+	occurrence := <-proposer.calls
+	require.True(t, occurrence.Equal(at), "restart occurrence=%v", occurrence)
+	require.NoError(t, restarted.Close())
 }
 
 func TestNextDailyOccurrenceUsesUTCDayBoundary(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 10, 23, 59, 0, 0, time.FixedZone("offset", 2*60*60))
 	want := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
-	if got := nextDailyOccurrence(now); !got.Equal(want) {
-		t.Fatalf("next occurrence = %v, want %v", got, want)
-	}
+	got := nextDailyOccurrence(now)
+	require.True(t, got.Equal(want), "next occurrence = %v", got)
 }
 
 func TestRecurrenceIntervalRetriesSameBucketThenAdvancesAtUTCBoundary(t *testing.T) {
@@ -231,49 +206,36 @@ func TestRecurrenceIntervalRetriesSameBucketThenAdvancesAtUTCBoundary(t *testing
 		runRecurrenceProposal(ctx, Recurrence{Name: "hourly", Interval: time.Hour, Proposer: proposer}, &jobDiagnosticsFake{}, clock, 5*time.Minute, nil, nil)
 	}()
 	defer func() { cancel(); <-done }()
-	if got := <-proposer.calls; !got.Equal(at) {
-		t.Fatalf("first occurrence = %v", got)
-	}
+	require.True(t, (<-proposer.calls).Equal(at))
 	retry := <-clock.timers
-	if retry.delay != 5*time.Minute {
-		t.Fatalf("retry delay = %v", retry.delay)
-	}
+	require.Equal(t, 5*time.Minute, retry.delay)
 	// A transient failure crossing noon must first finish the old occurrence.
 	clock.advance(retry, at.Add(5*time.Minute))
-	if got := <-proposer.calls; !got.Equal(at) {
-		t.Fatalf("retry changed occurrence: %v", got)
-	}
-	if got := <-proposer.calls; !got.Equal(at.Add(5 * time.Minute)) {
-		t.Fatalf("missed current occurrence: %v", got)
-	}
+	require.True(t, (<-proposer.calls).Equal(at))
+	require.True(t, (<-proposer.calls).Equal(at.Add(5*time.Minute)))
 	next := <-clock.timers
-	if next.delay != 58*time.Minute {
-		t.Fatalf("next UTC hour delay = %v", next.delay)
-	}
+	require.Equal(t, 58*time.Minute, next.delay)
 	clock.advance(next, time.Date(2026, time.September, 7, 13, 0, 0, 0, time.UTC))
-	if got := <-proposer.calls; got.Hour() != 13 || got.Location() != time.UTC {
-		t.Fatalf("next occurrence = %v", got)
-	}
+	got := <-proposer.calls
+	require.Equal(t, 13, got.Hour())
+	require.Same(t, time.UTC, got.Location())
 }
 
 func TestRecurrenceIntervalsAreBoundedAndAlignAcrossNodes(t *testing.T) {
 	t.Parallel()
 	for _, interval := range []time.Duration{-time.Hour, time.Second, 7 * time.Minute, 25 * time.Hour} {
-		if _, err := cloneRecurrences([]Recurrence{{Name: "invalid", Interval: interval, Proposer: noOpProposer{}}}); err == nil {
-			t.Errorf("accepted interval %s", interval)
-		}
+		_, err := cloneRecurrences([]Recurrence{{Name: "invalid", Interval: interval, Proposer: noOpProposer{}}})
+		assert.Error(t, err, "accepted interval %s", interval)
 	}
 	for _, interval := range []time.Duration{0, time.Minute, 10 * time.Minute, time.Hour, 24 * time.Hour} {
-		if _, err := cloneRecurrences([]Recurrence{{Name: "valid", Interval: interval, Proposer: noOpProposer{}}}); err != nil {
-			t.Fatal(err)
-		}
+		_, err := cloneRecurrences([]Recurrence{{Name: "valid", Interval: interval, Proposer: noOpProposer{}}})
+		require.NoError(t, err)
 	}
 	first := time.Date(2026, time.September, 7, 12, 31, 0, 0, time.UTC)
 	second := first.Add(4 * time.Minute).In(time.FixedZone("offset", -5*60*60))
 	want := time.Date(2026, time.September, 7, 12, 40, 0, 0, time.UTC)
 	for _, now := range []time.Time{first, second} {
-		if got := nextRecurrenceOccurrence(now, 10*time.Minute); !got.Equal(want) {
-			t.Fatalf("boundary = %v, want %v", got, want)
-		}
+		got := nextRecurrenceOccurrence(now, 10*time.Minute)
+		require.True(t, got.Equal(want), "boundary = %v", got)
 	}
 }

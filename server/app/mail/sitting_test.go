@@ -10,9 +10,10 @@ package mail
 import (
 	"context"
 	"encoding/base64"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -25,48 +26,34 @@ func TestSittingComposerFreezesAndSelectsRecipientLocales(t *testing.T) {
 	sealer := sittingTestSealer(t)
 	composer, err := NewSittingComposer(localizedSittingRenderer{}, &sittingSenderFake{enabled: true,
 		from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, sealer, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := composer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
 		SittingScheduleDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	bundle, err := composer.OpenBundle(prepared.Bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(bundle.Messages) != 2 || bundle.Messages["en"] == nil || bundle.Messages["fr"] == nil {
-		t.Fatalf("frozen locales = %#v", bundle.Messages)
-	}
+	require.NoError(t, err)
+	require.Len(t, bundle.Messages, 2)
+	require.NotNil(t, bundle.Messages["en"])
+	require.NotNil(t, bundle.Messages["fr"])
 	fanout := &store.ExamSittingMailFanoutSnapshot{Occurrence: prepared.Occurrence, Deadline: at.Add(72 * time.Hour)}
 	for _, test := range []struct {
 		locale      string
 		wantSubject string
 	}{{locale: "fr-FR", wantSubject: "fr:exam.sitting_scheduled"}, {locale: "de", wantSubject: "en:exam.sitting_scheduled"}} {
-		recipient := &model.User{Username: "student", Email: model.NewID() + "@example.test", DisplayName: "Student",
-			EmailVerified: true, Locale: test.locale, Timezone: "UTC"}
-		recipient.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
-		delivery, _, prepareErr := composer.PrepareRecipient(fanout, recipient, model.MailTemplateExamSittingScheduled, bundle)
-		if prepareErr != nil {
-			t.Fatalf("PrepareRecipient(%q): %v", test.locale, prepareErr)
-		}
-		payload, openErr := OpenDelivery(sealer, delivery)
-		if openErr != nil {
-			t.Fatal(openErr)
-		}
-		if !strings.Contains(payload.HTML, `src="cid:`+testLockupCID+`"`) {
-			t.Fatal("fan-out changed the immutable logo reference")
-		}
-		if payload.Subject != test.wantSubject {
-			t.Fatalf("PrepareRecipient(%q) subject = %q, want %q", test.locale, payload.Subject, test.wantSubject)
-		}
+		t.Run(test.locale, func(t *testing.T) {
+			recipient := &model.User{Username: "student", Email: model.NewID() + "@example.test", DisplayName: "Student",
+				EmailVerified: true, Locale: test.locale, Timezone: "UTC"}
+			recipient.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
+			delivery, _, prepareErr := composer.PrepareRecipient(fanout, recipient, model.MailTemplateExamSittingScheduled, bundle)
+			require.NoError(t, prepareErr, "PrepareRecipient(%q)", test.locale)
+			payload, openErr := OpenDelivery(sealer, delivery)
+			require.NoError(t, openErr)
+			require.Contains(t, payload.HTML, `src="cid:`+testLockupCID+`"`, "fan-out changed the immutable logo reference")
+			require.Equal(t, test.wantSubject, payload.Subject, "PrepareRecipient(%q) subject", test.locale)
+		})
 	}
 }
 
@@ -101,8 +88,6 @@ func sittingTestSealer(t *testing.T) *secretseal.Sealer {
 	t.Helper()
 	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: key, MaximumPlaintext: secretseal.MaximumPlaintextBytes})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sealer
 }

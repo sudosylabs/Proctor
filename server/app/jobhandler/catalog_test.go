@@ -10,6 +10,8 @@ package jobhandler
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -17,9 +19,8 @@ import (
 func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 	t.Parallel()
 	catalog := NewCatalog(CatalogDependencies{})
-	if _, err := jobengine.NewRegistry(catalog.Descriptors); err != nil {
-		t.Fatalf("registry: %v", err)
-	}
+	_, err := jobengine.NewRegistry(catalog.Descriptors)
+	require.NoError(t, err)
 	wantTypes := map[model.JobType]bool{
 		model.JobTypeProfilePictureGenerateDefault: true,
 		model.JobTypeProfilePictureReconcile:       true,
@@ -42,13 +43,9 @@ func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 		model.JobTypeRetentionNotices:              true,
 		model.JobTypeCleanup:                       true,
 	}
-	if len(catalog.Descriptors) != len(wantTypes) {
-		t.Fatalf("descriptor count = %d, want %d", len(catalog.Descriptors), len(wantTypes))
-	}
+	require.Len(t, catalog.Descriptors, len(wantTypes), "descriptor count")
 	for _, descriptor := range catalog.Descriptors {
-		if !wantTypes[descriptor.Type] {
-			t.Fatalf("unexpected descriptor %q", descriptor.Type)
-		}
+		require.True(t, wantTypes[descriptor.Type], "unexpected descriptor %q", descriptor.Type)
 	}
 	wantRecurrences := map[string]bool{
 		"profile-picture-default-reconciliation": true,
@@ -64,12 +61,8 @@ func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 		"retention-purge":                        true,
 		"retention-notices":                      true,
 	}
-	if len(catalog.Recurrences) != len(wantRecurrences) {
-		t.Fatalf("recurrence count = %d, want %d", len(catalog.Recurrences), len(wantRecurrences))
-	}
+	require.Len(t, catalog.Recurrences, len(wantRecurrences), "recurrence count")
 	for _, recurrence := range catalog.Recurrences {
-		if !wantRecurrences[recurrence.Name] {
-			t.Fatalf("unexpected recurrence %q", recurrence.Name)
-		}
+		require.True(t, wantRecurrences[recurrence.Name], "unexpected recurrence %q", recurrence.Name)
 	}
 }

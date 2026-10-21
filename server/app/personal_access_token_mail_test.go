@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -20,24 +22,18 @@ func TestPersonalAccessTokenSecurityNoticeIsTerminalWhenMailIsDisabled(t *testin
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	principal := mailTestPrincipal(at)
 	preparer, err := newDirectMailPreparer(mailRendererFake{}, &mailSenderFake{enabled: false}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PreparePersonalAccessTokenSecurityNotice(personalAccessTokenSecurityNoticePreparation{
 		Recipient:   mailTestUser(principal, at),
 		TemplateKey: model.MailTemplateIdentityPersonalAccessTokenCreated,
 		Description: "automation", ExpiresAt: at.Add(time.Hour), ActionAt: at,
 		ActionCount: 1,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceSecurityNotice ||
-		prepared.Delivery.State != model.MailDeliverySuppressed ||
-		prepared.Delivery.PublicFailureCode != model.MailDeliveryDisabledCode ||
-		len(prepared.Delivery.EncryptedPayload) != 0 ||
-		prepared.Job.Status != model.JobStatusCanceled ||
-		prepared.Job.Type != model.JobTypeMailDeliver {
-		t.Fatalf("disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceSecurityNotice, prepared.Occurrence.Kind, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
+	require.Equal(t, model.MailDeliverySuppressed, prepared.Delivery.State, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
+	require.Equal(t, model.MailDeliveryDisabledCode, prepared.Delivery.PublicFailureCode, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
+	require.Empty(t, prepared.Delivery.EncryptedPayload, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
+	require.Equal(t, model.JobStatusCanceled, prepared.Job.Status, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
+	require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type, "disabled-mail preparation = %#v %#v %#v", prepared.Occurrence, prepared.Delivery, prepared.Job)
 }

@@ -11,9 +11,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -157,21 +160,17 @@ func TestEngineValidatesRecurrencesAtConstruction(t *testing.T) {
 		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Second},
 		Recurrences: []Recurrence{{Name: "daily", Proposer: noOpProposer{}}, {Name: "daily", Proposer: noOpProposer{}}},
 	}
-	if _, err := New(config); err == nil {
-		t.Fatal("New() accepted duplicate recurrence names")
-	}
+	_, err := New(config)
+	require.Error(t, err, "New() accepted duplicate recurrence names")
 	config.Recurrences = []Recurrence{{Name: "", Proposer: noOpProposer{}}}
-	if _, err := New(config); err == nil {
-		t.Fatal("New() accepted an unnamed recurrence")
-	}
+	_, err = New(config)
+	require.Error(t, err, "New() accepted an unnamed recurrence")
 	config.Recurrences = []Recurrence{{Name: "unsafe\nname", Proposer: noOpProposer{}}}
-	if _, err := New(config); err == nil {
-		t.Fatal("New() accepted an unsafe recurrence name")
-	}
+	_, err = New(config)
+	require.Error(t, err, "New() accepted an unsafe recurrence name")
 	config.Recurrences = []Recurrence{{Name: "daily"}}
-	if _, err := New(config); err == nil {
-		t.Fatal("New() accepted a recurrence without a proposer")
-	}
+	_, err = New(config)
+	require.Error(t, err, "New() accepted a recurrence without a proposer")
 }
 
 func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
@@ -184,15 +183,12 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if described, describeErr := engine.Descriptor(descriptor.Type); describeErr != nil || described.Handler != nil {
-		t.Fatalf("Descriptor() exposed executable handler: %#v, %v", described.Handler, describeErr)
-	}
-	if err = engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	described, describeErr := engine.Descriptor(descriptor.Type)
+	require.NoError(t, describeErr, "Descriptor() exposed executable handler")
+	require.Nil(t, described.Handler, "Descriptor() exposed executable handler")
+	err = engine.Start(context.Background())
+	require.NoError(t, err)
 	engine.Wake()
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -202,26 +198,21 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 		if completion != nil {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("Engine did not claim and complete queued work")
-		}
+		require.False(t, time.Now().After(deadline), "Engine did not claim and complete queued work")
 		time.Sleep(time.Millisecond)
 	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = engine.Close()
+	require.NoError(t, err)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.started != 1 || recorder.finished != 1 {
-		t.Fatalf("execution metrics = started %d finished %d", recorder.started, recorder.finished)
-	}
+	require.Equal(t, 1, recorder.started, "execution metrics = started")
+	require.Equal(t, 1, recorder.finished, "execution metrics = started")
 	seen := map[string]bool{}
 	for _, activity := range recorder.activities {
 		seen[activity.Operation+"/"+activity.Outcome] = true
 	}
-	if !seen["claim/success"] || !seen["complete/success"] {
-		t.Fatalf("activities = %#v", recorder.activities)
-	}
+	require.True(t, seen["claim/success"])
+	require.True(t, seen["complete/success"])
 }
 
 func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
@@ -236,12 +227,9 @@ func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = engine.Start(context.Background())
+	require.NoError(t, err)
 	engine.Wake()
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -251,19 +239,17 @@ func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
 		if completion != nil {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("Engine did not complete the unsupported claim")
-		}
+		require.False(t, time.Now().After(deadline), "Engine did not complete the unsupported claim")
 		time.Sleep(time.Millisecond)
 	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = engine.Close()
+	require.NoError(t, err)
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
-	if recorder.started != 1 || recorder.finished != 1 || len(recorder.outcomes) != 1 || recorder.outcomes[0] != ExecutionPermanentFailure {
-		t.Fatalf("execution metrics = started %d finished %d outcomes %#v", recorder.started, recorder.finished, recorder.outcomes)
-	}
+	require.Equal(t, 1, recorder.started, "execution metrics = started")
+	require.Equal(t, 1, recorder.finished, "execution metrics = started")
+	require.Len(t, recorder.outcomes, 1, "execution metrics = started")
+	require.Equal(t, ExecutionPermanentFailure, recorder.outcomes[0], "execution metrics = started")
 }
 
 func TestEngineSchedulesRetryWithBoundedDeterministicBackoff(t *testing.T) {
@@ -278,25 +264,23 @@ func TestEngineSchedulesRetryWithBoundedDeterministicBackoff(t *testing.T) {
 		attempt int
 		want    time.Duration
 	}{{attempt: 1, want: 119400 * time.Microsecond}, {attempt: 2, want: 238800 * time.Microsecond}, {attempt: 3, want: 450 * time.Millisecond}, {attempt: 4, want: 450 * time.Millisecond}} {
-		claim := jobRunnerClaim(t)
-		claim.Job.ID = model.JobID("job-fixed")
-		claim.Attempt.Number = test.attempt
-		persistence := &jobRunnerStoreFake{}
-		registry, err := NewRegistry([]Descriptor{descriptor})
-		if err != nil {
-			t.Fatal(err)
-		}
-		engine, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		engine.execute(context.Background(), descriptor, claim)
-		persistence.mu.Lock()
-		completion := persistence.completion
-		persistence.mu.Unlock()
-		if completion == nil || completion.Kind != store.JobCompletionRetryableFailure || completion.RetryDelay != test.want {
-			t.Fatalf("attempt %d retry completion = %#v, want delay %v", test.attempt, completion, test.want)
-		}
+		t.Run(fmt.Sprintf("attempt=%v", test.attempt), func(t *testing.T) {
+			claim := jobRunnerClaim(t)
+			claim.Job.ID = model.JobID("job-fixed")
+			claim.Attempt.Number = test.attempt
+			persistence := &jobRunnerStoreFake{}
+			registry, err := NewRegistry([]Descriptor{descriptor})
+			require.NoError(t, err)
+			engine, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
+			require.NoError(t, err)
+			engine.execute(context.Background(), descriptor, claim)
+			persistence.mu.Lock()
+			completion := persistence.completion
+			persistence.mu.Unlock()
+			require.NotNil(t, completion, "attempt %d retry completion", test.attempt)
+			require.Equal(t, store.JobCompletionRetryableFailure, completion.Kind, "attempt %d retry completion", test.attempt)
+			require.Equal(t, test.want, completion.RetryDelay, "attempt %d retry completion", test.attempt)
+		})
 	}
 }
 
@@ -308,23 +292,19 @@ func TestEngineRelinquishesIncompatibleWorkWithoutConsumingItsRetryBudget(t *tes
 	}))
 	descriptor.PublicErrorCodes = append(descriptor.PublicErrorCodes, "worker.capability_mismatch")
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-old", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	runner.execute(context.Background(), descriptor, claim)
 
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionRelinquished ||
-		persistence.completion.PublicErrorCode != "worker.capability_mismatch" || persistence.completion.RetryDelay <= 0 {
-		t.Fatalf("relinquished completion = %#v", persistence.completion)
-	}
+	require.NotNil(t, persistence.completion)
+	require.Equal(t, store.JobCompletionRelinquished, persistence.completion.Kind)
+	require.Equal(t, "worker.capability_mismatch", persistence.completion.PublicErrorCode)
+	require.Positive(t, int64(persistence.completion.RetryDelay))
 }
 
 func TestEngineContainsPanicsAsRetryableOutcomes(t *testing.T) {
@@ -332,20 +312,16 @@ func TestEngineContainsPanicsAsRetryableOutcomes(t *testing.T) {
 	claim := jobRunnerClaim(t)
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { panic("secret payload") }))
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionRetryableFailure || persistence.completion.PublicErrorCode != "job.handler_panic" {
-		t.Fatalf("panic completion = %#v", persistence.completion)
-	}
+	require.NotNil(t, persistence.completion)
+	require.Equal(t, store.JobCompletionRetryableFailure, persistence.completion.Kind)
+	require.Equal(t, "job.handler_panic", persistence.completion.PublicErrorCode)
 }
 
 func TestEngineFencesOccurrenceWorkReservations(t *testing.T) {
@@ -361,18 +337,17 @@ func TestEngineFencesOccurrenceWorkReservations(t *testing.T) {
 		return succeededOutcome()
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
-	if !reserved || persistence.reservation == nil || persistence.reservation.AttemptID != claim.Attempt.ID || persistence.reservation.ClaimToken != claim.Attempt.ClaimToken || persistence.reservation.Units != 2 || persistence.reservation.Limit != 5 {
-		t.Fatalf("reservation = %#v, reserved = %v", persistence.reservation, reserved)
-	}
+	require.True(t, reserved, "reservation")
+	require.NotNil(t, persistence.reservation, "reservation")
+	require.Equal(t, claim.Attempt.ID, persistence.reservation.AttemptID, "reservation")
+	require.Equal(t, claim.Attempt.ClaimToken, persistence.reservation.ClaimToken, "reservation")
+	require.Equal(t, 2, persistence.reservation.Units, "reservation")
+	require.Equal(t, 5, persistence.reservation.Limit, "reservation")
 }
 
 func TestEngineHeartbeatsLongWorkAndCompletesWithItsFence(t *testing.T) {
@@ -387,20 +362,17 @@ func TestEngineHeartbeatsLongWorkAndCompletesWithItsFence(t *testing.T) {
 		}
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.heartbeats == 0 || persistence.completion == nil || persistence.completion.Kind != store.JobCompletionSucceeded || persistence.completion.ClaimToken != claim.Attempt.ClaimToken {
-		t.Fatalf("execution: heartbeats=%d completion=%#v", persistence.heartbeats, persistence.completion)
-	}
+	require.NotEqual(t, 0, persistence.heartbeats, "execution: heartbeats")
+	require.NotNil(t, persistence.completion, "execution: heartbeats")
+	require.Equal(t, store.JobCompletionSucceeded, persistence.completion.Kind, "execution: heartbeats")
+	require.Equal(t, claim.Attempt.ClaimToken, persistence.completion.ClaimToken, "execution: heartbeats")
 }
 
 func TestEngineObservesDurableCancellationCooperatively(t *testing.T) {
@@ -414,19 +386,14 @@ func TestEngineObservesDurableCancellationCooperatively(t *testing.T) {
 	descriptor.Cancelable = true
 	persistence := &jobRunnerStoreFake{cancelRequested: true}
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionCanceled {
-		t.Fatalf("cancellation completion = %#v", persistence.completion)
-	}
+	require.NotNil(t, persistence.completion)
+	require.Equal(t, store.JobCompletionCanceled, persistence.completion.Kind)
 }
 
 func TestEngineRejectsAnUnregisteredResultVersion(t *testing.T) {
@@ -436,20 +403,16 @@ func TestEngineRejectsAnUnregisteredResultVersion(t *testing.T) {
 		return Outcome{Kind: OutcomeSucceeded, ResultVersion: 2, Result: json.RawMessage(`{}`)}
 	}))
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.completion == nil || persistence.completion.Kind != store.JobCompletionPermanentFailure || persistence.completion.PublicErrorCode != "job.result.invalid" {
-		t.Fatalf("completion = %#v", persistence.completion)
-	}
+	require.NotNil(t, persistence.completion)
+	require.Equal(t, store.JobCompletionPermanentFailure, persistence.completion.Kind)
+	require.Equal(t, "job.result.invalid", persistence.completion.PublicErrorCode)
 }
 
 func TestEngineShutdownIsBounded(t *testing.T) {
@@ -459,13 +422,9 @@ func TestEngineShutdownIsBounded(t *testing.T) {
 	}))
 	descriptor.Timeout = 20 * time.Millisecond
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner, err := newTestEngine(&jobRunnerStoreFake{}, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	blocked := make(chan struct{})
 	runner.wg.Add(1)
 	go func() {
@@ -473,13 +432,12 @@ func TestEngineShutdownIsBounded(t *testing.T) {
 		<-blocked
 	}()
 	started := time.Now()
-	if err = runner.Close(); err == nil {
-		t.Fatal("Close() waited without a shutdown deadline")
-	}
+	err = runner.Close()
+	require.Error(t, err, "Close() waited without a shutdown deadline")
 	close(blocked)
-	if elapsed := time.Since(started); elapsed < descriptor.Timeout || elapsed > time.Second {
-		t.Fatalf("Close() duration = %v", elapsed)
-	}
+	elapsed := time.Since(started)
+	require.GreaterOrEqual(t, elapsed, descriptor.Timeout)
+	require.LessOrEqual(t, elapsed, time.Second)
 }
 
 func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
@@ -494,22 +452,16 @@ func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
 	descriptor.CheckpointVersions = []int{1}
 	descriptor.ProgressStages = []string{"rendering"}
 	registry, err := NewRegistry([]Descriptor{descriptor})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &jobRunnerStoreFake{}
 	runner, err := newTestEngine(persistence, registry, "node-a", &jobDiagnosticsFake{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	runner.execute(context.Background(), descriptor, claim)
-	if checkpointErr != nil {
-		t.Fatalf("Checkpoint() error = %v", checkpointErr)
-	}
+	require.NoError(t, checkpointErr)
 	persistence.mu.Lock()
-	if persistence.checkpoints != 1 || persistence.checkpoint.CheckpointVersion != 1 || persistence.checkpoint.Progress.Stage != "rendering" {
-		t.Fatalf("checkpoint = %#v count=%d", persistence.checkpoint, persistence.checkpoints)
-	}
+	require.Equal(t, 1, persistence.checkpoints, "checkpoint = %#v count", persistence.checkpoint)
+	require.Equal(t, 1, persistence.checkpoint.CheckpointVersion, "checkpoint = %#v count", persistence.checkpoint)
+	require.Equal(t, "rendering", persistence.checkpoint.Progress.Stage, "checkpoint = %#v count", persistence.checkpoint)
 	persistence.mu.Unlock()
 
 	undeclared := testDescriptor(handlerFunc(func(ctx context.Context, execution Execution) Outcome {
@@ -517,14 +469,10 @@ func TestEngineEnforcesTypedCheckpointContract(t *testing.T) {
 		return succeededOutcome()
 	}))
 	runner.execute(context.Background(), undeclared, jobRunnerClaim(t))
-	if checkpointErr == nil {
-		t.Fatal("Checkpoint() accepted undeclared version and stage")
-	}
+	require.Error(t, checkpointErr, "Checkpoint() accepted undeclared version and stage")
 	persistence.mu.Lock()
 	defer persistence.mu.Unlock()
-	if persistence.checkpoints != 1 {
-		t.Fatalf("undeclared checkpoint reached store: count=%d", persistence.checkpoints)
-	}
+	require.Equal(t, 1, persistence.checkpoints, "undeclared checkpoint reached store: count")
 }
 
 func testDescriptor(handler Handler) Descriptor {
@@ -535,21 +483,13 @@ func jobRunnerClaim(t *testing.T) *store.JobClaim {
 	t.Helper()
 	at := time.Now()
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, []byte(`{}`), "test", at, at, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	running, err := job.Start(at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	token, err := model.NewJobClaimToken()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt, err := model.NewJobAttempt(model.NewJobAttemptID(), job.ID, 1, "node-a", token, at, at.Add(time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return &store.JobClaim{Job: running, Attempt: attempt}
 }
 

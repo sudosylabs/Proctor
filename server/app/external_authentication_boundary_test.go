@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -28,9 +30,7 @@ func TestExternalAuthenticationRetainsExactPersistenceContracts(t *testing.T) {
 	root := reflect.TypeOf((*store.Store)(nil)).Elem()
 	typeOfService := reflect.TypeOf(externalAuthenticationService{})
 	for index := 0; index < typeOfService.NumField(); index++ {
-		if typeOfService.Field(index).Type == root {
-			t.Fatalf("externalAuthenticationService retains root Store in %q", typeOfService.Field(index).Name)
-		}
+		require.NotEqual(t, root, typeOfService.Field(index).Type, "externalAuthenticationService retains root Store in")
 	}
 }
 
@@ -45,9 +45,7 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 	databaseAt := at.Add(-2 * time.Hour)
 	states := &externalLoginStateStoreFake{storeNow: databaseAt}
 	attempts, err := newAuthenticationAttemptAccounting(newAuthenticationCacheFake())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service := &externalAuthenticationService{
 		registry:     externalProviderSourceFake{provider: externalProviderFake{}},
 		loginStates:  states,
@@ -65,17 +63,15 @@ func TestExternalAuthenticationBeginUsesControlledCredentials(t *testing.T) {
 		context.Background(), "campus", "/after", model.SessionClientWeb,
 		"browser", "Browser", "127.0.0.1",
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Binding != bindingToken || states.saved == nil ||
-		states.saved.StateHash != model.HashToken(stateToken) ||
-		states.saved.BindingHash != model.HashToken(bindingToken) ||
-		!states.saved.CreatedAt.IsZero() || !states.saved.ExpiresAt.IsZero() ||
-		states.saveLifetime != 10*time.Minute ||
-		result.ExpiresAt != databaseAt.Add(10*time.Minute).UnixMilli() {
-		t.Fatalf("result=%#v saved=%#v", result, states.saved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, bindingToken, result.Binding, "result=%#v saved", result)
+	require.NotNil(t, states.saved, "result=%#v saved", result)
+	require.Equal(t, model.HashToken(stateToken), states.saved.StateHash, "result=%#v saved", result)
+	require.Equal(t, model.HashToken(bindingToken), states.saved.BindingHash, "result=%#v saved", result)
+	require.True(t, states.saved.CreatedAt.IsZero(), "result=%#v saved", result)
+	require.True(t, states.saved.ExpiresAt.IsZero(), "result=%#v saved", result)
+	require.Equal(t, 10*time.Minute, states.saveLifetime, "result=%#v saved", result)
+	require.Equal(t, databaseAt.Add(10*time.Minute).UnixMilli(), result.ExpiresAt, "result=%#v saved", result)
 }
 
 func TestInvitationRequiredBeginHashesClaimIntoPurposeBoundState(t *testing.T) {
@@ -91,16 +87,13 @@ func TestInvitationRequiredBeginHashesClaimIntoPurposeBoundState(t *testing.T) {
 
 	result, err := service.beginWithInvitationClaim(context.Background(), "campus", "/join", model.SessionClientWeb,
 		"", "", "127.0.0.1", claim)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || states.saved == nil || states.saved.Purpose != model.ExternalAuthenticationPurposeInvitationAdmission ||
-		states.admissionClaimHash != model.HashInvitationClaim(claim) {
-		t.Fatalf("result=%#v state=%#v claim_hash=%q", result, states.saved, states.admissionClaimHash)
-	}
-	if strings.Contains(states.saved.StateHash, claim) || strings.Contains(result.RedirectURL, claim) {
-		t.Fatal("raw Invitation claim escaped into durable/provider state")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result, "result")
+	require.NotNil(t, states.saved, "result")
+	require.Equal(t, model.ExternalAuthenticationPurposeInvitationAdmission, states.saved.Purpose, "result")
+	require.Equal(t, model.HashInvitationClaim(claim), states.admissionClaimHash, "result")
+	require.NotContains(t, states.saved.StateHash, claim, "raw Invitation claim escaped into durable/provider state")
+	require.NotContains(t, result.RedirectURL, claim, "raw Invitation claim escaped into durable/provider state")
 }
 
 func TestInvitationRequiredBeginRejectsWhenInvitationAdmissionIsDisabled(t *testing.T) {
@@ -120,12 +113,9 @@ func TestInvitationRequiredBeginRejectsWhenInvitationAdmissionIsDisabled(t *test
 		context.Background(), "campus", "/join", model.SessionClientWeb,
 		"", "", "192.0.2.9", model.NewCredentialToken(),
 	)
-	if result != nil || !apperror.Is(err, "authentication.external.account_not_linked") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if provider.beginCalls != 0 {
-		t.Fatalf("disabled invitation admission began %d provider challenges", provider.beginCalls)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.account_not_linked"), "result=%#v err=%v", result, err)
+	require.Equal(t, 0, provider.beginCalls, "disabled invitation admission began")
 }
 
 func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersistence(t *testing.T) {
@@ -139,12 +129,10 @@ func TestExternalAuthenticationOrdinaryLoginRejectsDesktopBeforeProviderOrPersis
 	service.loginStates = states
 
 	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientDesktop, "desktop-1", "Desktop", "127.0.0.1")
-	if result != nil || !apperror.Is(err, "authentication.external.request.invalid") {
-		t.Fatalf("desktop ordinary login result=%#v err=%v", result, err)
-	}
-	if provider.beginCalls != 0 || states.saved != nil {
-		t.Fatalf("desktop ordinary login reached provider/persistence: provider=%d state=%#v", provider.beginCalls, states.saved)
-	}
+	require.Nil(t, result, "desktop ordinary login result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.request.invalid"), "desktop ordinary login result=%#v err=%v", result, err)
+	require.Equal(t, 0, provider.beginCalls, "desktop ordinary login reached provider/persistence: provider")
+	require.Nil(t, states.saved, "desktop ordinary login reached provider/persistence: provider")
 }
 
 func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing.T) {
@@ -162,22 +150,18 @@ func TestProviderConnectionStartRequiresStrongRecentAndBindsExactUser(t *testing
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	_, err := application.BeginProviderConnection(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus", ReturnTo: "/account/security", Source: "127.0.0.1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if states.saved == nil || states.saved.Purpose != model.ExternalAuthenticationPurposeConnect || states.saved.TargetUserID != principal.UserID || states.saved.AuditEventID != auditor.beginID {
-		t.Fatalf("saved state = %#v", states.saved)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, states.saved)
+	require.Equal(t, model.ExternalAuthenticationPurposeConnect, states.saved.Purpose)
+	require.Equal(t, principal.UserID, states.saved.TargetUserID)
+	require.Equal(t, auditor.beginID, states.saved.AuditEventID)
 	weak := principal
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	states.saved = nil
-	if _, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"}); !apperror.Is(err, "authentication.strong_required") {
-		t.Fatalf("weak start error = %v", err)
-	}
-	if states.saved != nil {
-		t.Fatal("weak start persisted state")
-	}
+	_, err = application.BeginProviderConnection(context.Background(), NewInvocation(weak, model.RequestMetadata{}), BeginProviderConnectionCommand{ProviderID: "campus"})
+	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak start error = %v", err)
+	require.Nil(t, states.saved, "weak start persisted state")
 }
 
 func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *testing.T) {
@@ -194,9 +178,7 @@ func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *tes
 			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: databaseNow}
 			identities := &providerConnectionIdentityStoreFake{}
 			institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			issuer := &providerConnectionSessionIssuerFake{}
 			provider := providerConnectionProvider{state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject-never-exposed"}}
 			service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider}, loginStates: states,
@@ -205,17 +187,19 @@ func TestProviderConnectionCallbackLinksOnlyTransactionUserWithoutSession(t *tes
 				mutationAudit: &accessPolicyAuditFake{}, capabilities: &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}},
 				policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return nodeNow }}
 			completion, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if identities.linked == nil || identities.linked.Identity.UserID != target || identities.linked.Identity.Subject != provider.assertion.Subject ||
-				identities.linked.AuditEventID != model.AuditEventID(state.AuditEventID) || identities.linked.AuditAt != databaseNow.UnixMilli() ||
-				!identities.linked.Identity.LastSeenAt.Valid || !identities.linked.Identity.LastSeenAt.Time.Equal(databaseNow) {
-				t.Fatalf("link = %#v", identities.linked)
-			}
-			if states.consumeCalls != 1 || issuer.calls != 0 || completion.Tokens != nil || completion.Session != nil || completion.ReturnTo != state.ReturnTo {
-				t.Fatalf("completion=%#v consume calls=%d session calls=%d", completion, states.consumeCalls, issuer.calls)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, identities.linked)
+			require.Equal(t, target, identities.linked.Identity.UserID)
+			require.Equal(t, provider.assertion.Subject, identities.linked.Identity.Subject)
+			require.Equal(t, model.AuditEventID(state.AuditEventID), identities.linked.AuditEventID)
+			require.Equal(t, databaseNow.UnixMilli(), identities.linked.AuditAt)
+			require.True(t, identities.linked.Identity.LastSeenAt.Valid)
+			require.True(t, identities.linked.Identity.LastSeenAt.Time.Equal(databaseNow))
+			require.Equal(t, 1, states.consumeCalls, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)
+			require.Equal(t, 0, issuer.calls, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)
+			require.Nil(t, completion.Tokens, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)
+			require.Nil(t, completion.Session, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)
+			require.Equal(t, state.ReturnTo, completion.ReturnTo, "completion=%#v consume calls=%d session calls", completion, states.consumeCalls)
 		})
 	}
 }
@@ -231,9 +215,7 @@ func TestProviderConnectionCallbackTerminalizesAttemptWhenProviderRejectsAfterCo
 	events := []string{}
 	auditor := &mutationAttemptAuditorFake{events: &events}
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := providerConnectionProvider{state: stateToken, completeErr: ErrExternalAuthenticationRejected}
 	service := &externalAuthenticationService{registry: externalProviderSourceFake{provider: provider},
 		loginStates:  &externalLoginStateStoreFake{get: state, consumeResult: state},
@@ -242,12 +224,10 @@ func TestProviderConnectionCallbackTerminalizesAttemptWhenProviderRejectsAfterCo
 		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return now }}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !apperror.Is(err, "authentication.external.rejected") {
-		t.Fatalf("completion result=%#v err=%v", result, err)
-	}
-	if auditor.failID != auditID || auditor.failCode != "authentication.external.rejected" {
-		t.Fatalf("terminal audit id=%q code=%q", auditor.failID, auditor.failCode)
-	}
+	require.Nil(t, result, "completion result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.rejected"), "completion result=%#v err=%v", result, err)
+	require.Equal(t, auditID, auditor.failID, "terminal audit id")
+	require.Equal(t, "authentication.external.rejected", auditor.failCode, "terminal audit id")
 }
 
 func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProvisionMode(t *testing.T) {
@@ -263,9 +243,7 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 				ClientType: model.SessionClientWeb, ExpiresAt: databaseNow.Add(time.Minute)}
 			identities := &externalIdentityResolutionStoreFake{}
 			institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
 				state: stateToken, assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject",
 					Username: "eligible-user", Email: "eligible@example.edu"}}, autoProvision: true}
@@ -278,17 +256,16 @@ func TestOrdinaryExternalAuthenticationDoesNotPrepareProvisioningOutsideAutoProv
 					Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor(), AutoProvision: true}}}},
 				policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test"}, now: func() time.Time { return databaseNow }}
 
-			if _, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{}); !apperror.Is(err, "authentication.external.account_not_linked") {
-				t.Fatalf("completion error = %v", err)
-			}
-			if identities.resolution == nil || identities.resolution.User != nil || identities.resolution.Settings != nil ||
-				identities.resolution.AuditEvent != nil || identities.resolution.DefaultProfilePictureJob != nil {
-				t.Fatalf("%s prepared a provisioning package: %#v", mode, identities.resolution)
-			}
+			_, err = service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
+			require.True(t, apperror.Is(err, "authentication.external.account_not_linked"), "completion error = %v", err)
+			require.NotNil(t, identities.resolution, "%s prepared a provisioning package", mode)
+			require.Nil(t, identities.resolution.User, "%s prepared a provisioning package", mode)
+			require.Nil(t, identities.resolution.Settings, "%s prepared a provisioning package", mode)
+			require.Nil(t, identities.resolution.AuditEvent, "%s prepared a provisioning package", mode)
+			require.Nil(t, identities.resolution.DefaultProfilePictureJob, "%s prepared a provisioning package", mode)
 			capability, configured := identities.resolution.Capabilities.Providers["campus"]
-			if !configured || !capability.AutoProvision {
-				t.Fatalf("%s terminal capability snapshot = %#v", mode, identities.resolution.Capabilities)
-			}
+			require.True(t, configured, "%s terminal capability snapshot = %#v", mode, identities.resolution.Capabilities)
+			require.True(t, capability.AutoProvision, "%s terminal capability snapshot = %#v", mode, identities.resolution.Capabilities)
 		})
 	}
 }
@@ -309,9 +286,7 @@ func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t 
 			Provider: "campus", Subject: "opaque-subject"},
 	}}
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{state: stateToken,
 		assertion: &model.ExternalAuthenticationAssertion{ProviderID: "campus", Subject: "opaque-subject",
 			Username: "invited-user", Email: " Invited@Example.EDU ", EmailVerified: true}}, autoProvision: false}
@@ -326,16 +301,18 @@ func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t 
 		policy: ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", NodeID: "node-a"}, now: func() time.Time { return databaseNow }}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if err != nil || result == nil || result.User != acceptedUser || result.Session != nil || result.Tokens != nil || result.ReturnTo != "/join" {
-		t.Fatalf("completion result=%#v error=%v", result, err)
-	}
-	if acceptor.state == nil || acceptor.assertion != provider.assertion || acceptor.method != "oidc" ||
-		acceptor.state.InvitationID != invitationID || !acceptor.state.ConsumedAt.Valid {
-		t.Fatalf("terminal acceptance state=%#v assertion=%#v method=%q", acceptor.state, acceptor.assertion, acceptor.method)
-	}
-	if identities.resolution != nil {
-		t.Fatalf("Invitation admission used ordinary identity resolution: %#v", identities.resolution)
-	}
+	require.NoError(t, err, "completion result")
+	require.NotNil(t, result, "completion result")
+	require.Same(t, acceptedUser, result.User, "completion result")
+	require.Nil(t, result.Session, "completion result")
+	require.Nil(t, result.Tokens, "completion result")
+	require.Equal(t, "/join", result.ReturnTo, "completion result")
+	require.NotNil(t, acceptor.state, "terminal acceptance state")
+	require.Same(t, provider.assertion, acceptor.assertion, "terminal acceptance state")
+	require.Equal(t, "oidc", acceptor.method, "terminal acceptance state")
+	require.Equal(t, invitationID, acceptor.state.InvitationID, "terminal acceptance state")
+	require.True(t, acceptor.state.ConsumedAt.Valid, "terminal acceptance state")
+	require.Nil(t, identities.resolution)
 	secondStateToken, secondBindingToken := model.NewCredentialToken(), model.NewCredentialToken()
 	secondState := *state
 	secondState.StateHash, secondState.BindingHash = model.HashToken(secondStateToken), model.HashToken(secondBindingToken)
@@ -348,10 +325,9 @@ func TestInvitationAdmissionDelegatesExactProofWithoutCreatingOrdinarySession(t 
 	service.loginStates = &externalLoginStateStoreFake{get: &secondState, consumeResult: &secondState, storeNow: databaseNow}
 	service.audit = externalAuditFake{failureCodes: &failureCodes}
 	result, err = service.complete(context.Background(), "campus", secondBindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !apperror.Is(err, "authentication.external.invalid") ||
-		!slices.Equal(failureCodes, []string{"authentication.external.invalid"}) {
-		t.Fatalf("terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
-	}
+	require.Nil(t, result, "terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
+	require.True(t, apperror.Is(err, "authentication.external.invalid"), "terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
+	require.True(t, slices.Equal(failureCodes, []string{"authentication.external.invalid"}), "terminal provider removal result=%#v error=%v failure_audits=%v", result, err, failureCodes)
 }
 
 func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *testing.T) {
@@ -374,9 +350,7 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 	acceptor := &externalInvitationAcceptorFake{}
 	failureCodes := []string{}
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", databaseNow)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	provider := admissionModeProvider{providerConnectionProvider: providerConnectionProvider{
 		state: stateToken,
 		assertion: &model.ExternalAuthenticationAssertion{
@@ -403,19 +377,14 @@ func TestInvitationAdmissionCallbackRejectsWhenGloballyDisabledAfterStart(t *tes
 	}
 
 	result, err := service.complete(context.Background(), "campus", bindingToken, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-	if result != nil || !apperror.Is(err, "authentication.external.invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if identities.resolution != nil || acceptor.state != nil {
-		t.Fatalf("disabled admission reached terminal stores: resolution=%#v state=%#v", identities.resolution, acceptor.state)
-	}
-	if !slices.Equal(failureCodes, []string{"authentication.external.invalid"}) {
-		t.Fatalf("disabled admission failure audits = %v", failureCodes)
-	}
-	if strings.Contains(err.Error(), invitationID.String()) || strings.Contains(err.Error(), "private-subject") ||
-		strings.Contains(err.Error(), "invited@example.edu") {
-		t.Fatalf("bounded admission error leaked private state: %v", err)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.invalid"), "result=%#v err=%v", result, err)
+	require.Nil(t, identities.resolution, "disabled admission reached terminal stores: resolution")
+	require.Nil(t, acceptor.state, "disabled admission reached terminal stores: resolution")
+	require.True(t, slices.Equal(failureCodes, []string{"authentication.external.invalid"}), "disabled admission failure audits = %v", failureCodes)
+	require.NotContains(t, err.Error(), invitationID.String())
+	require.NotContains(t, err.Error(), "private-subject")
+	require.NotContains(t, err.Error(), "invited@example.edu")
 }
 
 func TestExternalAuthenticationCallbackRejectsLegacyDesktopStateBeforeConsumption(t *testing.T) {
@@ -433,12 +402,9 @@ func TestExternalAuthenticationCallbackRejectsLegacyDesktopStateBeforeConsumptio
 	}
 	result, err := service.complete(context.Background(), "campus", bindingToken,
 		model.ExternalAuthenticationCallback{Values: map[string][]string{"code": {"accepted"}}}, model.RequestMetadata{})
-	if result != nil || !apperror.Is(err, "authentication.external.invalid") {
-		t.Fatalf("legacy desktop callback result=%#v err=%v", result, err)
-	}
-	if states.consumeCalls != 0 {
-		t.Fatalf("legacy desktop state was consumed %d times", states.consumeCalls)
-	}
+	require.Nil(t, result, "legacy desktop callback result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.invalid"), "legacy desktop callback result=%#v err=%v", result, err)
+	require.Equal(t, 0, states.consumeCalls, "legacy desktop state was consumed")
 }
 
 func TestExternalAuthenticationBeginHidesProviderDisabledByCurrentPolicy(t *testing.T) {
@@ -450,12 +416,9 @@ func TestExternalAuthenticationBeginHidesProviderDisabledByCurrentPolicy(t *test
 	}, newAuthenticationCacheFake(), 10)
 	service.accessPolicy = authenticationAccessPolicyFake{providers: map[string]bool{}}
 	result, err := service.begin(context.Background(), "campus", "/", model.SessionClientWeb, "", "", "192.0.2.9")
-	if result != nil || !apperror.Is(err, "authentication.external.provider_not_found") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if provider.beginCalls != 0 {
-		t.Fatalf("disabled provider began %d challenges", provider.beginCalls)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.external.provider_not_found"), "result=%#v err=%v", result, err)
+	require.Equal(t, 0, provider.beginCalls, "disabled provider began")
 }
 
 func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t *testing.T) {
@@ -470,12 +433,8 @@ func TestExternalAuthenticationProviderListIncludesOnlyCurrentPolicySelections(t
 		accessPolicy: authenticationAccessPolicyFake{providers: map[string]bool{"campus-b": true}},
 	}
 	providers, err := service.ExternalAuthenticationProviders(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(providers, configured[1:]) {
-		t.Fatalf("available providers = %#v, want %#v", providers, configured[1:])
-	}
+	require.NoError(t, err)
+	require.Equal(t, configured[1:], providers, "available providers")
 }
 
 func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
@@ -493,9 +452,8 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		desktop:  &externalDesktopAuthorizationFake{},
 		now:      time.Now,
 	}
-	if _, err := valid.build(); err != nil {
-		t.Fatalf("complete construction failed: %v", err)
-	}
+	_, err := valid.build()
+	require.NoError(t, err)
 	tests := []struct {
 		name  string
 		clear func(*externalAuthenticationConstructorArgs)
@@ -513,9 +471,8 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			candidate := valid
 			test.clear(&candidate)
-			if _, err := candidate.build(); err == nil {
-				t.Fatalf("missing %s accepted", test.name)
-			}
+			_, err := candidate.build()
+			require.Error(t, err, "missing %s accepted", test.name)
 		})
 	}
 }
@@ -563,37 +520,29 @@ func TestExternalAuthenticationInitiationUsesProviderScopedSourceAccounting(t *t
 		1,
 	)
 
-	if _, err := service.begin(
+	_, err := service.begin(
 		context.Background(), "campus-a", "/", model.SessionClientWeb,
 		"", "", "192.0.2.10:4000",
-	); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.begin(
+	)
+	require.NoError(t, err)
+	_, err = service.begin(
 		context.Background(), " CAMPUS-A ", "/", model.SessionClientWeb,
 		"", "", "192.0.2.10:5000",
-	); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("normalized-source threshold error = %v", err)
-	}
-	if _, err := service.begin(
+	)
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "normalized-source threshold error = %v", err)
+	_, err = service.begin(
 		context.Background(), "campus-b", "/", model.SessionClientWeb,
 		"", "", "192.0.2.10:6000",
-	); err != nil {
-		t.Fatalf("provider-isolated attempt failed: %v", err)
-	}
+	)
+	require.NoError(t, err)
 
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	if len(cache.counters) != 2 {
-		t.Fatalf("counter keys = %d, want 2", len(cache.counters))
-	}
+	require.Len(t, cache.counters, 2, "counter keys")
 	for key := range cache.counters {
-		if !strings.HasPrefix(key, "authentication/attempts/external-authentication/source/") {
-			t.Fatalf("unexpected counter key %q", key)
-		}
-		if strings.Contains(key, "campus") || strings.Contains(key, "192.0.2.10") {
-			t.Fatalf("counter key exposes provider or source: %q", key)
-		}
+		require.True(t, strings.HasPrefix(key, "authentication/attempts/external-authentication/source/"), "unexpected counter key %q", key)
+		require.NotContains(t, key, "campus")
+		require.NotContains(t, key, "192.0.2.10")
 	}
 }
 
@@ -608,22 +557,18 @@ func TestExternalAuthenticationInitiationAllowsMaximumThenLimitsNext(t *testing.
 		2,
 	)
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, err := service.begin(
+		_, err := service.begin(
 			context.Background(), "campus", "/", model.SessionClientWeb,
 			"", "", "198.51.100.7",
-		); err != nil {
-			t.Fatalf("attempt %d failed: %v", attempt, err)
-		}
+		)
+		require.NoError(t, err, "attempt %d failed", attempt)
 	}
-	if _, err := service.begin(
+	_, err := service.begin(
 		context.Background(), "campus", "/", model.SessionClientWeb,
 		"", "", "198.51.100.7",
-	); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("attempt beyond maximum error = %v", err)
-	}
-	if provider.beginCalls != 2 {
-		t.Fatalf("provider Begin calls = %d, want 2", provider.beginCalls)
-	}
+	)
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt beyond maximum error = %v", err)
+	require.Equal(t, 2, provider.beginCalls, "provider Begin calls")
 }
 
 func TestExternalAuthenticationInitiationPreservesValidationAndFailureOrdering(t *testing.T) {
@@ -641,33 +586,24 @@ func TestExternalAuthenticationInitiationPreservesValidationAndFailureOrdering(t
 		2,
 	)
 
-	if _, err := service.begin(
+	_, err := service.begin(
 		context.Background(), "missing", "/", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !apperror.Is(err, "authentication.external.provider_not_found") {
-		t.Fatalf("missing-provider error = %v", err)
-	}
-	if cache.addCalls != 0 {
-		t.Fatalf("provider validation occurred after %d counter calls", cache.addCalls)
-	}
-	if _, err := service.begin(
+	)
+	require.True(t, apperror.Is(err, "authentication.external.provider_not_found"), "missing-provider error = %v", err)
+	require.Equal(t, 0, cache.addCalls, "provider validation occurred after")
+	_, err = service.begin(
 		context.Background(), "campus", "https://unsafe.example", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !apperror.Is(err, "authentication.external.request.invalid") {
-		t.Fatalf("invalid-request error = %v", err)
-	}
-	if cache.addCalls != 0 {
-		t.Fatalf("request validation occurred after %d counter calls", cache.addCalls)
-	}
-	if _, err := service.begin(
+	)
+	require.True(t, apperror.Is(err, "authentication.external.request.invalid"), "invalid-request error = %v", err)
+	require.Equal(t, 0, cache.addCalls, "request validation occurred after")
+	_, err = service.begin(
 		context.Background(), "campus", "/", model.SessionClientWeb,
 		"", "", "203.0.113.8",
-	); !apperror.Is(err, "authentication.rate_limit_unavailable") {
-		t.Fatalf("counter failure error = %v", err)
-	}
-	if provider.beginCalls != 0 {
-		t.Fatalf("provider began before accounting succeeded")
-	}
+	)
+	require.True(t, apperror.Is(err, "authentication.rate_limit_unavailable"), "counter failure error = %v", err)
+	require.Equal(t, 0, provider.beginCalls, "provider began before accounting succeeded")
 }
 
 func externalAuthenticationBeginService(
@@ -701,9 +637,7 @@ func newExternalAuthenticationAttempts(
 ) *authenticationAttemptAccounting {
 	t.Helper()
 	attempts, err := newAuthenticationAttemptAccounting(cache)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return attempts
 }
 

@@ -10,9 +10,10 @@ package resource
 import (
 	"crypto/sha256"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
@@ -21,23 +22,19 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func assertStoreBoundaryCommand(t *testing.T, got, want *store.CommandIdempotency) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Store idempotency = %#v; want %#v", got, want)
-	}
-}
-
 func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, userID model.UserID, operation, key, document string) {
 	t.Helper()
 	wantKey := sha256.Sum256([]byte(key))
 	wantFingerprint := sha256.Sum256([]byte(operation + "\x00v1\x00" + document))
-	if got == nil || got.UserID != userID || got.Operation != operation || got.KeyDigest != wantKey ||
-		got.FingerprintVersion != 1 || got.Fingerprint != wantFingerprint || got.OutcomeVersion != 1 ||
-		got.Retention != 24*time.Hour || got.Wait != 2*time.Second {
-		t.Fatalf("prepared idempotency = %#v; want user=%s operation=%q key=%x fingerprint=%x versions=1/1 retention=24h wait=2s",
-			got, userID, operation, wantKey, wantFingerprint)
-	}
+	require.NotNil(t, got, "prepared idempotency")
+	require.Equal(t, userID, got.UserID, "prepared idempotency")
+	require.Equal(t, operation, got.Operation, "prepared idempotency")
+	require.Equal(t, wantKey, got.KeyDigest, "prepared idempotency")
+	require.Equal(t, 1, got.FingerprintVersion, "prepared idempotency")
+	require.Equal(t, wantFingerprint, got.Fingerprint, "prepared idempotency")
+	require.Equal(t, 1, got.OutcomeVersion, "prepared idempotency")
+	require.Equal(t, 24*time.Hour, got.Retention, "prepared idempotency")
+	require.Equal(t, 2*time.Second, got.Wait, "prepared idempotency")
 }
 
 func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
@@ -74,16 +71,14 @@ func TestResourceIdempotencyOperationAndDocumentCompatibility(t *testing.T) {
 		"reorder": "exam.resource.reorder.v1", "remove": "exam.resource.remove.v1",
 	}
 	for _, test := range tests {
-		prepared, err := prepareResourceIdempotency(invocation, test.operation, "key", examID, 2, test.resource,
-			test.nameValue, test.description, test.media, test.size, test.sha, test.ids)
-		if err != nil {
-			t.Fatalf("%s: %v", test.name, err)
-		}
-		assertPreparedIdempotency(t, prepared, userID, wantOperations[test.name], "key", test.document)
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := prepareResourceIdempotency(invocation, test.operation, "key", examID, 2, test.resource,
+				test.nameValue, test.description, test.media, test.size, test.sha, test.ids)
+			require.NoError(t, err, "%s", test.name)
+			assertPreparedIdempotency(t, prepared, userID, wantOperations[test.name], "key", test.document)
+		})
 	}
-	if idempotencyOperationEditResourceMetadata != "exam.resource.metadata.edit.v1" {
-		t.Fatalf("metadata operation = %q", idempotencyOperationEditResourceMetadata)
-	}
+	require.Equal(t, "exam.resource.metadata.edit.v1", idempotencyOperationEditResourceMetadata)
 }
 
 func TestMetadataIdempotencyPreservesFieldPresence(t *testing.T) {
@@ -93,16 +88,10 @@ func TestMetadataIdempotencyPreservesFieldPresence(t *testing.T) {
 	examID, resourceID := model.NewExamID(), model.NewExamResourceID()
 	empty := ""
 	nameOnly, err := prepareMetadataIdempotency(invocation, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DisplayName: &empty, IdempotencyKey: "same-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	descriptionOnly, err := prepareMetadataIdempotency(invocation, EditMetadataCommand{ExamID: examID, ResourceID: resourceID, ExpectedDraftRevision: 1, DescriptionMarkdown: &empty, IdempotencyKey: "same-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if nameOnly.Fingerprint == descriptionOnly.Fingerprint {
-		t.Fatal("metadata field presence was erased")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, descriptionOnly.Fingerprint, nameOnly.Fingerprint, "metadata field presence was erased")
 	assertPreparedIdempotency(t, nameOnly, userID, idempotencyOperationEditResourceMetadata, "same-key",
 		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":1,"resource_id":%q,"display_name":"","description_markdown":null}`, examID, resourceID))
 	assertPreparedIdempotency(t, descriptionOnly, userID, idempotencyOperationEditResourceMetadata, "same-key",
@@ -113,7 +102,7 @@ func TestPrepareIdempotencyRequiresKey(t *testing.T) {
 	t.Parallel()
 	invocation := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	_, err := applicationidempotency.Require(invocation, "operation", "", struct{}{})
-	if fault, ok := apperror.As(err); !ok || fault.Code() != "idempotency.key_required" {
-		t.Fatalf("error = %v", err)
-	}
+	fault, ok := apperror.As(err)
+	require.True(t, ok)
+	require.Equal(t, "idempotency.key_required", fault.Code())
 }

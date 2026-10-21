@@ -9,14 +9,15 @@ package app
 
 import (
 	"context"
-	"reflect"
-	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type classMemberStoreFake struct {
@@ -132,31 +133,23 @@ func TestClassMemberEnrollUsesDestinationPeriodAndAtomicStore(t *testing.T) {
 		return time.UnixMilli(500)
 	}, model.NewID)
 	enrollment, err := service.EnrollClassMember(context.Background(), NewInvocation(principal, model.RequestMetadata{}), EnrollClassMemberCommand{ClassID: model.ClassID(classID), UserID: userID, StartAt: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if enrollment.Membership.AcademicPeriodID.String() != periodID || persistence.enrollInput.Member.UserID.String() != userID {
-		t.Fatalf("enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
-	}
-	if persistence.enrollInput.ExpectedRecipientRevision != user.Revision {
-		t.Fatalf("expected recipient revision=%d, want %d", persistence.enrollInput.ExpectedRecipientRevision, user.Revision)
-	}
-	if clockCalls != 1 || persistence.enrollInput.AuditAt != model.MillisFromTime(enrollment.Membership.CreatedAt) {
-		t.Fatalf("clock calls/creation/audit time = %d/%v/%d", clockCalls, enrollment.Membership.CreatedAt, persistence.enrollInput.AuditAt)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateAcademicClassEnrolled ||
-		mailer.requests[0].Details.ClassDisplayName != classes.value.DisplayName || persistence.enrollInput.Notice == nil ||
-		persistence.enrollInput.ExpectedPreviousID.IsValid() {
-		t.Fatalf("enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
-	}
-	want := []string{"authorize", "get-class", "list-active", "get-user", "prepare-mail", "audit-begin", "store-enroll"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if effects.calls != 1 || effects.candidate != model.UserID(userID) ||
-		!reflect.DeepEqual(effects.classIDs, []model.ClassID{model.ClassID(classID)}) {
-		t.Fatalf("membership effects = %#v", effects)
-	}
+	require.NoError(t, err)
+	require.Equal(t, periodID, enrollment.Membership.AcademicPeriodID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
+	require.Equal(t, userID, persistence.enrollInput.Member.UserID.String(), "enrollment/input = %#v / %#v", enrollment, persistence.enrollInput)
+	require.Equal(t, user.Revision, persistence.enrollInput.ExpectedRecipientRevision, "expected recipient revision")
+	require.Equal(t, 1, clockCalls, "clock calls/creation/audit time")
+	require.Equal(t, model.MillisFromTime(enrollment.Membership.CreatedAt), persistence.enrollInput.AuditAt, "clock calls/creation/audit time")
+	require.Len(t, mailer.requests, 1, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, model.MailTemplateAcademicClassEnrolled, mailer.requests[0].TemplateKey, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, classes.value.DisplayName, mailer.requests[0].Details.ClassDisplayName, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.NotNil(t, persistence.enrollInput.Notice, "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.False(t, persistence.enrollInput.ExpectedPreviousID.IsValid(), "enrollment mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-enroll")
+	require.Equal(t, 1, effects.calls)
+	require.Equal(t, model.UserID(userID), effects.candidate)
+	require.Equal(t, []model.ClassID{model.ClassID(classID)}, effects.classIDs)
 }
 
 func TestClassMemberEnrollReplayDoesNotPublishMembershipChange(t *testing.T) {
@@ -185,12 +178,9 @@ func TestClassMemberEnrollReplayDoesNotPublishMembershipChange(t *testing.T) {
 			ClassID: classID, UserID: userID.String(), StartAt: 100, IdempotencyKey: "replay",
 		},
 	)
-	if err != nil || result == nil {
-		t.Fatalf("Enroll() = %#v, %v", result, err)
-	}
-	if effects.calls != 0 {
-		t.Fatalf("replayed enrollment published %d membership changes", effects.calls)
-	}
+	require.NoError(t, err, "Enroll()")
+	require.NotNil(t, result, "Enroll()")
+	require.Equal(t, 0, effects.calls, "replayed enrollment published")
 }
 
 func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testing.T) {
@@ -204,10 +194,14 @@ func TestClassMemberRetainedEnrollmentBypassesChangedMembershipAndMail(t *testin
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	result, err := service.EnrollClassMember(context.Background(), invocation, EnrollClassMemberCommand{ClassID: model.NewClassID(),
 		UserID: model.NewUserID().String(), StartAt: 100, IdempotencyKey: "row", batchRetainedOutcome: true})
-	if err != nil || result == nil || len(mailer.requests) != 0 || slices.Contains(events, "list-active") ||
-		slices.Contains(events, "get-class") || slices.Contains(events, "get-user") || persistence.enrollInput == nil || persistence.enrollInput.Notice != nil {
-		t.Fatalf("retained enrollment=%#v error=%v mail=%#v events=%v input=%#v", result, err, mailer.requests, events, persistence.enrollInput)
-	}
+	require.NoError(t, err, "retained enrollment")
+	require.NotNil(t, result, "retained enrollment")
+	require.Empty(t, mailer.requests, "retained enrollment")
+	require.NotContains(t, events, "list-active", "retained enrollment")
+	require.NotContains(t, events, "get-class", "retained enrollment")
+	require.NotContains(t, events, "get-user", "retained enrollment")
+	require.NotNil(t, persistence.enrollInput, "retained enrollment")
+	require.Nil(t, persistence.enrollInput.Notice, "retained enrollment")
 }
 
 func TestClassMemberAlreadySatisfiedEnrollmentPreparesNoticeForAuthoritativeRace(t *testing.T) {
@@ -224,9 +218,11 @@ func TestClassMemberAlreadySatisfiedEnrollmentPreparesNoticeForAuthoritativeRace
 		func() time.Time { return time.UnixMilli(500) }, func() string { return model.NewClassMemberID().String() })
 	result, err := service.EnrollClassMember(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100, IdempotencyKey: "row"})
-	if err != nil || result == nil || persistence.enrollInput == nil || persistence.enrollInput.Notice == nil || len(mailer.requests) != 1 {
-		t.Fatalf("already-satisfied enrollment=%#v error=%v mail=%#v input=%#v", result, err, mailer.requests, persistence.enrollInput)
-	}
+	require.NoError(t, err, "already-satisfied enrollment")
+	require.NotNil(t, result, "already-satisfied enrollment")
+	require.NotNil(t, persistence.enrollInput, "already-satisfied enrollment")
+	require.NotNil(t, persistence.enrollInput.Notice, "already-satisfied enrollment")
+	require.Len(t, mailer.requests, 1, "already-satisfied enrollment")
 }
 
 func TestClassMemberEnrollCommitsTerminalNoticeForInactiveRecipient(t *testing.T) {
@@ -241,23 +237,19 @@ func TestClassMemberEnrollCommitsTerminalNoticeForInactiveRecipient(t *testing.T
 	users := &classMemberUserStoreFake{events: &events, value: user}
 	preparer, err := newDirectMailPreparer(&classTransitionRendererFake{}, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service := newClassMemberService(persistence, classes, users, &programmeAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events, beginID: model.NewID()}, preparer, &classMemberEffectsFake{},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	if _, err = service.EnrollClassMember(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
-		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100}); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.enrollInput == nil || persistence.enrollInput.Notice == nil ||
-		persistence.enrollInput.ExpectedRecipientRevision != user.Revision ||
-		persistence.enrollInput.Notice.Delivery.State != model.MailDeliverySuppressed ||
-		persistence.enrollInput.Notice.Delivery.PublicFailureCode != model.MailDeliveryRecipientIneligibleCode ||
-		persistence.enrollInput.Notice.Job.Status != model.JobStatusCanceled {
-		t.Fatalf("inactive recipient enrollment notice=%#v", persistence.enrollInput)
-	}
+	_, err = service.EnrollClassMember(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
+		EnrollClassMemberCommand{ClassID: classID, UserID: userID.String(), StartAt: 100})
+	require.NoError(t, err)
+	require.NotNil(t, persistence.enrollInput)
+	require.NotNil(t, persistence.enrollInput.Notice)
+	require.Equal(t, user.Revision, persistence.enrollInput.ExpectedRecipientRevision)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.enrollInput.Notice.Delivery.State)
+	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, persistence.enrollInput.Notice.Delivery.PublicFailureCode)
+	require.Equal(t, model.JobStatusCanceled, persistence.enrollInput.Notice.Job.Status)
 }
 
 func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testing.T) {
@@ -284,28 +276,23 @@ func TestClassMemberTransferAuthorizesSourceAndCreatesOneTransferNotice(t *testi
 		EnrollClassMemberCommand{ClassID: destination.ID, UserID: userID.String(), StartAt: 200,
 			ExpectedPreviousID: previous.ID.String(), RequireTransfer: true, IdempotencyKey: "row", batchAuthorization: authority,
 			batchMetadata: &store.CommandBatch{GroupDigest: [32]byte{1}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateAcademicClassTransferred ||
-		mailer.requests[0].Details.PreviousClassDisplayName != source.DisplayName ||
-		mailer.requests[0].Details.ClassDisplayName != destination.DisplayName ||
-		persistence.enrollInput.ExpectedPreviousID != previous.ID || persistence.enrollInput.Notice == nil ||
-		persistence.enrollInput.ExpectedRecipientRevision != users.value.Revision ||
-		persistence.enrollInput.AuditEventID != model.AuditEventID(destinationAuditID) || persistence.enrollInput.PreviousAuditEventID != model.AuditEventID(sourceAuditID) {
-		t.Fatalf("transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
-	}
+	require.NoError(t, err)
+	require.Len(t, mailer.requests, 1, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, model.MailTemplateAcademicClassTransferred, mailer.requests[0].TemplateKey, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, source.DisplayName, mailer.requests[0].Details.PreviousClassDisplayName, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, destination.DisplayName, mailer.requests[0].Details.ClassDisplayName, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, previous.ID, persistence.enrollInput.ExpectedPreviousID, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.NotNil(t, persistence.enrollInput.Notice, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, users.value.Revision, persistence.enrollInput.ExpectedRecipientRevision, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, model.AuditEventID(destinationAuditID), persistence.enrollInput.AuditEventID, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
+	require.Equal(t, model.AuditEventID(sourceAuditID), persistence.enrollInput.PreviousAuditEventID, "transfer mail/input = %#v / %#v", mailer.requests, persistence.enrollInput)
 	wantAuditResources := []model.Resource{{Type: model.ResourceClass, ID: destination.ID.String()}, {Type: model.ResourceClass, ID: source.ID.String()}}
-	if !reflect.DeepEqual(auditor.resources, wantAuditResources) {
-		t.Fatalf("transfer audit resources = %#v, want %#v", auditor.resources, wantAuditResources)
-	}
-	if persistence.enrollInput.Command == nil || persistence.enrollInput.Command.Authorization.ClassMemberID != previous.ID {
-		t.Fatalf("terminal source authority = %#v", persistence.enrollInput.Command)
-	}
-	want := []string{"authorize", "get-class", "list-active", "authorize", "get-class", "get-user", "prepare-mail", "audit-begin", "audit-begin", "store-enroll"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, wantAuditResources, auditor.resources, "transfer audit resources")
+	require.NotNil(t, persistence.enrollInput.Command)
+	require.Equal(t, previous.ID, persistence.enrollInput.Command.Authorization.ClassMemberID)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "authorize", "audit-begin", "audit-begin", "store-enroll")
 }
 
 func TestClassMemberEndCarriesRevision(t *testing.T) {
@@ -324,23 +311,16 @@ func TestClassMemberEndCarriesRevision(t *testing.T) {
 		&programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &classMemberEffectsFake{},
 		func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	ended, err := service.EndClassMember(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), EndClassMemberCommand{ID: current.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.endInput.ExpectedRevision != 4 || ended.Revision != 5 {
-		t.Fatalf("end input/result = %#v / %#v", persistence.endInput, ended)
-	}
-	if persistence.endInput.ExpectedRecipientRevision != users.value.Revision {
-		t.Fatalf("end expected recipient revision=%d, want %d", persistence.endInput.ExpectedRecipientRevision, users.value.Revision)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateAcademicClassEnrollmentEnded ||
-		persistence.endInput.Notice == nil {
-		t.Fatalf("end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
-	}
-	want := []string{"authorize-preflight", "get-member", "authorize", "get-class", "get-user", "prepare-mail", "audit-begin", "store-end"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(4), persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
+	require.Equal(t, int64(5), ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)
+	require.Equal(t, users.value.Revision, persistence.endInput.ExpectedRecipientRevision, "end expected recipient revision")
+	require.Len(t, mailer.requests, 1, "end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
+	require.Equal(t, model.MailTemplateAcademicClassEnrollmentEnded, mailer.requests[0].TemplateKey, "end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
+	require.NotNil(t, persistence.endInput.Notice, "end mail/input = %#v / %#v", mailer.requests, persistence.endInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-preflight", "authorize", "audit-begin", "store-end")
 }
 
 func TestClassMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
@@ -352,12 +332,9 @@ func TestClassMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	if _, err := service.EndClassMember(context.Background(), Invocation{}, EndClassMemberCommand{ID: model.NewClassMemberID()}); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("End() error = %v, want authorization.denied", err)
-	}
-	if want := []string{"authorize-preflight"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	_, err := service.EndClassMember(context.Background(), Invocation{}, EndClassMemberCommand{ID: model.NewClassMemberID()})
+	require.True(t, apperror.Is(err, "authorization.denied"), "End() error = %v, want authorization.denied", err)
+	require.Equal(t, []string{"authorize-preflight"}, events, "events")
 }
 
 func TestClassMemberEndConcealsCrossScopeTarget(t *testing.T) {
@@ -373,9 +350,8 @@ func TestClassMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &classMemberMailFake{events: &events}, &classMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	if _, err := service.EndClassMember(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID}); !apperror.Is(err, "resource.not_found") {
-		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
-	}
+	_, err := service.EndClassMember(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID})
+	require.True(t, apperror.Is(err, "resource.not_found"), "End() error = %v, want concealed resource.not_found", err)
 }
 
 func (s *classMemberStoreFake) ListPageByClass(_ context.Context, options store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {

@@ -12,6 +12,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -39,25 +41,19 @@ func TestBrowserAuthenticationMaintenancePeriodicRunnerProcessesOnlyBoundedPages
 	}
 	maintainer := &browserAuthenticationMaintainerFake{results: results}
 	err := (browserAuthenticationMaintenancePeriodicRunner{transactions: maintainer}).Run(context.Background())
-	if err != nil || len(maintainer.limits) != browserAuthenticationMaintenanceMaximumPages {
-		t.Fatalf("Run() error=%v limits=%#v", err, maintainer.limits)
-	}
+	require.NoError(t, err, "Run() error")
+	require.Len(t, maintainer.limits, browserAuthenticationMaintenanceMaximumPages, "Run() error")
 	for _, limit := range maintainer.limits {
-		if limit != browserAuthenticationMaintenancePageSize {
-			t.Fatalf("Maintain() limit=%d, want %d", limit, browserAuthenticationMaintenancePageSize)
-		}
+		require.Equal(t, browserAuthenticationMaintenancePageSize, limit, "Maintain() limit")
 	}
 }
 
 func TestBrowserAuthenticationMaintenancePeriodicRunnerStopsAndReportsFailure(t *testing.T) {
 	t.Parallel()
 	maintainer := &browserAuthenticationMaintainerFake{results: []*store.BrowserAuthenticationMaintenanceResult{{More: false}}}
-	if err := (browserAuthenticationMaintenancePeriodicRunner{transactions: maintainer}).Run(context.Background()); err != nil || len(maintainer.limits) != 1 {
-		t.Fatalf("completed Run() error=%v limits=%#v", err, maintainer.limits)
-	}
+	require.NoError(t, (browserAuthenticationMaintenancePeriodicRunner{transactions: maintainer}).Run(context.Background()), "completed Run() error")
+	require.Len(t, maintainer.limits, 1, "completed Run() error")
 	wantErr := errors.New("database unavailable")
 	maintainer = &browserAuthenticationMaintainerFake{err: wantErr}
-	if err := (browserAuthenticationMaintenancePeriodicRunner{transactions: maintainer}).Run(context.Background()); !errors.Is(err, wantErr) {
-		t.Fatalf("failed Run() error=%v, want %v", err, wantErr)
-	}
+	require.ErrorIs(t, (browserAuthenticationMaintenancePeriodicRunner{transactions: maintainer}).Run(context.Background()), wantErr, "failed Run() error")
 }

@@ -10,10 +10,11 @@ package mail
 import (
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -35,14 +36,11 @@ func TestComposerRejectsInvalidFrozenContent(t *testing.T) {
 			t.Parallel()
 			composer, err := NewComposer(&payloadRendererFake{content: test.content},
 				&sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, sittingTestSealer(t))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 			prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
-			if err == nil || prepared != nil {
-				t.Fatalf("invalid content was prepared: prepared=%#v err=%v", prepared, err)
-			}
+			require.Error(t, err, "invalid content was prepared: prepared")
+			require.Nil(t, prepared, "invalid content was prepared: prepared")
 		})
 	}
 }
@@ -52,14 +50,11 @@ func TestComposerPreservesRendererFailure(t *testing.T) {
 	renderErr := errors.New("renderer unavailable")
 	composer, err := NewComposer(&payloadRendererFake{err: renderErr},
 		&sittingSenderFake{enabled: true, from: Address{Address: "no-reply@example.test"}}, sittingTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	at := time.Date(2026, 8, 21, 9, 0, 0, 0, time.UTC)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
-	if !errors.Is(err, renderErr) || prepared != nil {
-		t.Fatalf("renderer failure was lost: prepared=%#v err=%v", prepared, err)
-	}
+	require.ErrorIs(t, err, renderErr, "renderer failure was lost: prepared")
+	require.Nil(t, prepared, "renderer failure was lost: prepared")
 }
 
 func TestOpenDeliveryPreservesPreparedContent(t *testing.T) {
@@ -71,30 +66,23 @@ func TestOpenDeliveryPreservesPreparedContent(t *testing.T) {
 	sender := &sittingSenderFake{enabled: true, from: Address{Name: "Proctor", Address: "no-reply@example.test"}}
 	recipient := payloadTestUser(at)
 	composer, err := NewComposer(renderer, sender, sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: recipient, At: at})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := Outbound{From: sender.from, EnvelopeFrom: sender.from.Address,
 		To: Address{Name: recipient.DisplayName, Address: recipient.Email}, Subject: content.Subject, Text: content.Text, HTML: content.HTML,
 		Headers:   map[string][]string{"Auto-Submitted": {"auto-generated"}, "X-Auto-Response-Suppress": {"All"}},
 		MessageID: prepared.Delivery.MessageID, Date: at}
-	if strings.Contains(string(prepared.Delivery.EncryptedPayload), content.Text) ||
-		strings.Contains(string(prepared.Delivery.EncryptedPayload), recipient.Email) {
-		t.Fatal("prepared payload exposes content or recipient")
-	}
+	require.NotContains(t, string(prepared.Delivery.EncryptedPayload), content.Text, "prepared payload exposes content or recipient")
+	require.NotContains(t, string(prepared.Delivery.EncryptedPayload), recipient.Email, "prepared payload exposes content or recipient")
 	renderer.content = FrozenContent{Subject: "Changed", Text: "Changed"}
 	renderer.err = errors.New("renderer must not run during reopening")
 	sender.from = Address{Address: "changed@example.test"}
 	recipient.Email, recipient.DisplayName = "changed@example.test", "Changed"
 	for range 2 {
 		message, openErr := OpenDelivery(sealer, prepared.Delivery)
-		if openErr != nil || !reflect.DeepEqual(message, want) {
-			t.Fatalf("reopened message=%#v err=%v, want=%#v", message, openErr, want)
-		}
+		require.NoError(t, openErr, "reopened message")
+		require.Equal(t, want, message, "reopened message")
 		// A transport may modify its own headers without changing the next retry.
 		message.Headers["Auto-Submitted"][0] = "changed"
 	}
@@ -128,23 +116,17 @@ func TestOpenDeliveryRejectsInvalidPayloadVersionAndMeaning(t *testing.T) {
 			sealer, delivery := preparedPayloadTestDelivery(t)
 			rewritePayloadTestDelivery(t, sealer, delivery, func(plaintext []byte) []byte {
 				var payload map[string]any
-				if err := json.Unmarshal(plaintext, &payload); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, json.Unmarshal(plaintext, &payload))
 				test.edit(payload)
 				encoded, err := json.Marshal(payload)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				return encoded
 			})
 			message, err := OpenDelivery(sealer, delivery)
-			if err == nil || errors.Is(err, ErrInvalidMessage) != test.invalidMsg || !reflect.DeepEqual(message, Outbound{}) {
-				t.Fatalf("invalid payload reopened: message=%#v err=%v", message, err)
-			}
-			if strings.Contains(err.Error(), "hidden@example.test") {
-				t.Fatal("validation error disclosed frozen content")
-			}
+			require.Error(t, err, "invalid payload reopened: message")
+			require.Equal(t, test.invalidMsg, errors.Is(err, ErrInvalidMessage), "invalid payload reopened: message")
+			require.Equal(t, Outbound{}, message, "invalid payload reopened: message")
+			require.NotContains(t, err.Error(), "hidden@example.test", "validation error disclosed frozen content")
 		})
 	}
 }
@@ -167,9 +149,8 @@ func TestOpenDeliveryRejectsMalformedAndTrailingJSON(t *testing.T) {
 			sealer, delivery := preparedPayloadTestDelivery(t)
 			rewritePayloadTestDelivery(t, sealer, delivery, test.edit)
 			message, err := OpenDelivery(sealer, delivery)
-			if err == nil || !reflect.DeepEqual(message, Outbound{}) {
-				t.Fatalf("malformed payload reopened: message=%#v err=%v", message, err)
-			}
+			require.Error(t, err, "malformed payload reopened: message")
+			require.Equal(t, Outbound{}, message, "malformed payload reopened: message")
 		})
 	}
 }
@@ -194,18 +175,16 @@ func TestOpenDeliveryRejectsUnavailableEnvelopeAndMetadata(t *testing.T) {
 			sealer, delivery := preparedPayloadTestDelivery(t)
 			test.edit(delivery)
 			message, err := OpenDelivery(sealer, delivery)
-			if err == nil || errors.Is(err, ErrInvalidMessage) != test.invalidMsg || !reflect.DeepEqual(message, Outbound{}) {
-				t.Fatalf("invalid delivery reopened: message=%#v err=%v", message, err)
-			}
+			require.Error(t, err, "invalid delivery reopened: message")
+			require.Equal(t, test.invalidMsg, errors.Is(err, ErrInvalidMessage), "invalid delivery reopened: message")
+			require.Equal(t, Outbound{}, message, "invalid delivery reopened: message")
 		})
 	}
 	sealer, delivery := preparedPayloadTestDelivery(t)
-	if _, err := OpenDelivery(nil, delivery); err == nil {
-		t.Fatal("missing sealer was accepted")
-	}
-	if _, err := OpenDelivery(sealer, nil); err == nil {
-		t.Fatal("missing delivery was accepted")
-	}
+	_, err := OpenDelivery(nil, delivery)
+	require.Error(t, err, "missing sealer was accepted")
+	_, err = OpenDelivery(sealer, nil)
+	require.Error(t, err, "missing delivery was accepted")
 }
 
 func TestOpenDeliveryBoundsEncryptedPayload(t *testing.T) {
@@ -227,14 +206,14 @@ func TestOpenDeliveryBoundsEncryptedPayload(t *testing.T) {
 				strings.Repeat(" ", test.size-len(delivery.EncryptedPayload))...)
 			message, err := OpenDelivery(sealer, delivery)
 			if test.wantErr {
-				if err == nil || errors.Is(err, ErrInvalidMessage) || !reflect.DeepEqual(message, Outbound{}) {
-					t.Fatalf("oversized envelope reopened: message=%#v err=%v", message, err)
-				}
+				require.Error(t, err, "oversized envelope reopened: message")
+				require.NotErrorIs(t, err, ErrInvalidMessage, "oversized envelope reopened: message")
+				require.Equal(t, Outbound{}, message, "oversized envelope reopened: message")
 				return
 			}
-			if err != nil || message.MessageID != delivery.MessageID || message.Subject != "Subject" {
-				t.Fatalf("valid envelope at limit did not reopen: message=%#v err=%v", message, err)
-			}
+			require.NoError(t, err, "valid envelope at limit did not reopen: message=%#v err", message)
+			require.Equal(t, delivery.MessageID, message.MessageID, "valid envelope at limit did not reopen: message=%#v err", message)
+			require.Equal(t, "Subject", message.Subject, "valid envelope at limit did not reopen: message=%#v err", message)
 		})
 	}
 }
@@ -255,14 +234,12 @@ func TestOpenDeliveryBoundsMessageID(t *testing.T) {
 			delivery.MessageID = "<" + strings.Repeat("a", test.size-len("<@example.test>")) + "@example.test>"
 			message, err := OpenDelivery(sealer, delivery)
 			if test.wantErr {
-				if !errors.Is(err, ErrInvalidMessage) || !reflect.DeepEqual(message, Outbound{}) {
-					t.Fatalf("oversized Message-ID reopened: message=%#v err=%v", message, err)
-				}
+				require.ErrorIs(t, err, ErrInvalidMessage, "oversized Message-ID reopened: message")
+				require.Equal(t, Outbound{}, message, "oversized Message-ID reopened: message")
 				return
 			}
-			if err != nil || message.MessageID != delivery.MessageID {
-				t.Fatalf("valid Message-ID at limit did not reopen: message=%#v err=%v", message, err)
-			}
+			require.NoError(t, err, "valid Message-ID at limit did not reopen: message=%#v err", message)
+			require.Equal(t, delivery.MessageID, message.MessageID, "valid Message-ID at limit did not reopen: message=%#v err", message)
 		})
 	}
 }
@@ -287,13 +264,9 @@ func preparedPayloadTestDelivery(t *testing.T) (*secretseal.Sealer, *model.MailD
 	sealer := sittingTestSealer(t)
 	composer, err := NewComposer(&payloadRendererFake{content: FrozenContent{Subject: "Subject", Text: "Text", HTML: "<p>HTML</p>"}},
 		&sittingSenderFake{enabled: true, from: Address{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := composer.PrepareOperatorTest(NoticePreparation{Recipient: payloadTestUser(at), At: at})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sealer, prepared.Delivery
 }
 
@@ -302,20 +275,12 @@ func preparedPayloadTestDelivery(t *testing.T) (*secretseal.Sealer, *model.MailD
 func rewritePayloadTestDelivery(t *testing.T, sealer *secretseal.Sealer, delivery *model.MailDelivery, edit func([]byte) []byte) {
 	t.Helper()
 	var envelope secretseal.Envelope
-	if err := json.Unmarshal(delivery.EncryptedPayload, &envelope); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(delivery.EncryptedPayload, &envelope))
 	binding := secretseal.Binding{Purpose: DeliverySealingPurpose, Owner: delivery.ID.String()}
 	plaintext, err := sealer.Open(binding, envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	envelope, err = sealer.Seal(binding, edit(plaintext))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	delivery.EncryptedPayload, err = json.Marshal(envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }

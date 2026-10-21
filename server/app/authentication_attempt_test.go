@@ -10,10 +10,14 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -159,15 +163,10 @@ func TestAuthenticationAttemptIntentRejectsInvalidClosedInputs(t *testing.T) {
 			t.Parallel()
 			cache := newExpiringAuthenticationAttemptCache(time.Now)
 			accounting, err := newAuthenticationAttemptAccounting(cache)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err = accounting.account(context.Background(), test.intent); err == nil {
-				t.Fatal("invalid intent was accepted")
-			}
-			if len(cache.snapshot()) != 0 {
-				t.Fatal("invalid intent changed a counter")
-			}
+			require.NoError(t, err)
+			_, _, err = accounting.account(context.Background(), test.intent)
+			require.Error(t, err, "invalid intent was accepted")
+			require.Empty(t, cache.snapshot(), "invalid intent changed a counter")
 		})
 	}
 }
@@ -179,27 +178,17 @@ func TestAuthenticationAttemptAccountingNormalizesAndProtectsKeyMaterial(t *test
 	accounting := mustAuthenticationAttemptAccounting(t, cache)
 	first := localLoginAttemptIntent(" Student@Example.EDU ", " Example.COM:443 ", 10)
 	second := localLoginAttemptIntent("student@example.edu", "example.com:8443", 10)
-	if _, _, err := accounting.account(context.Background(), first); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := accounting.account(context.Background(), second); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err := accounting.account(context.Background(), first)
+	require.NoError(t, err)
+	_, _, err = accounting.account(context.Background(), second)
+	require.NoError(t, err)
 	entries := cache.snapshot()
-	if len(entries) != 2 {
-		t.Fatalf("counter keys = %d, want normalized identity/source pair", len(entries))
-	}
+	require.Len(t, entries, 2, "counter keys")
 	for key, entry := range entries {
-		if !strings.HasPrefix(key, "authentication/attempts/local-login/") {
-			t.Fatalf("key = %q, want canonical namespace", key)
-		}
-		if strings.Contains(strings.ToLower(key), "student") ||
-			strings.Contains(strings.ToLower(key), "example") {
-			t.Fatalf("key exposes attempt material: %q", key)
-		}
-		if entry.count != 2 {
-			t.Fatalf("counter %q = %d, want 2", key, entry.count)
-		}
+		require.True(t, strings.HasPrefix(key, "authentication/attempts/local-login/"), "key = %q, want canonical namespace", key)
+		require.NotContains(t, strings.ToLower(key), "student")
+		require.NotContains(t, strings.ToLower(key), "example")
+		require.Equal(t, int64(2), entry.count, "counter %q", key)
 	}
 }
 
@@ -254,29 +243,19 @@ func TestAuthenticationAttemptAccountingIsolatesAllFourCallerFlowsAndProtectsInp
 		},
 	}
 	for index, flow := range flows {
-		if err := flow(); err != nil {
-			t.Fatalf("flow %d first attempt: %v", index, err)
-		}
+		require.NoError(t, flow(), "flow %d first attempt", index)
 		err := flow()
-		if !apperror.Is(err, "authentication.rate_limited") {
-			t.Fatalf("flow %d second attempt = %v, want rate limited", index, err)
-		}
+		require.True(t, apperror.Is(err, "authentication.rate_limited"), "flow %d second attempt = %v, want rate limited", index, err)
 		for _, sensitive := range sensitiveValues {
-			if strings.Contains(strings.ToLower(err.Error()), sensitive) {
-				t.Fatalf("flow %d error exposes attempt input: %v", index, err)
-			}
+			require.NotContains(t, strings.ToLower(err.Error()), sensitive, "flow %d error exposes attempt input: %v", index, err)
 		}
 	}
 	entries := cache.snapshot()
 	const expectedKeys = 7 // login 3 + recovery 2 + external 1 + bootstrap 1
-	if len(entries) != expectedKeys {
-		t.Fatalf("counter keys = %d, want %d isolated keys", len(entries), expectedKeys)
-	}
+	require.Len(t, entries, expectedKeys, "counter keys")
 	for key := range entries {
 		for _, sensitive := range sensitiveValues {
-			if strings.Contains(strings.ToLower(key), sensitive) {
-				t.Fatalf("key exposes raw identity, source, operation, or provider qualifier: %q", key)
-			}
+			require.NotContains(t, strings.ToLower(key), sensitive, "key exposes raw identity, source, operation, or provider qualifier")
 		}
 	}
 }
@@ -297,25 +276,22 @@ func TestAuthenticationAttemptAccountingUsesFixedWindowAndThresholdEdge(t *testi
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
 		_, limited, err := accounting.account(context.Background(), intent)
-		if err != nil || limited {
-			t.Fatalf("attempt %d = limited %v, error %v", attempt, limited, err)
-		}
+		require.NoError(t, err, "attempt %d = limited", attempt)
+		require.False(t, limited, "attempt %d = limited", attempt)
 		now = now.Add(20 * time.Second)
 	}
 	// Continued attempts inside the window stay limited but never extend it.
 	for now.Before(time.Date(2026, time.August, 13, 10, 0, 59, 0, time.UTC)) {
 		_, limited, err := accounting.account(context.Background(), intent)
-		if err != nil || !limited {
-			t.Fatalf("attempt after maximum = limited %v, error %v", limited, err)
-		}
+		require.NoError(t, err, "attempt after maximum = limited")
+		require.True(t, limited, "attempt after maximum = limited")
 		now = now.Add(5 * time.Second)
 	}
 
 	now = time.Date(2026, time.August, 13, 10, 1, 0, 0, time.UTC)
 	_, limited, err := accounting.account(context.Background(), intent)
-	if err != nil || limited {
-		t.Fatalf("attempt in the next fixed window = limited %v, error %v", limited, err)
-	}
+	require.NoError(t, err, "attempt in the next fixed window = limited")
+	require.False(t, limited, "attempt in the next fixed window = limited")
 }
 
 func TestAuthenticationAttemptReceiptResetsOnlySelectedDimension(t *testing.T) {
@@ -327,22 +303,17 @@ func TestAuthenticationAttemptReceiptResetsOnlySelectedDimension(t *testing.T) {
 		context.Background(),
 		localLoginAttemptIntent("student", "192.0.2.2:443", 5),
 	)
-	if err != nil || limited {
-		t.Fatalf("account = limited %v, error %v", limited, err)
-	}
-	if err = accounting.reset(
+	require.NoError(t, err, "account = limited")
+	require.False(t, limited, "account = limited")
+	err = accounting.reset(
 		context.Background(), receipt, authenticationAttemptDimensionIdentitySource,
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	entries := cache.snapshot()
-	if len(entries) != 1 {
-		t.Fatalf("remaining counters = %d, want source-only counter", len(entries))
-	}
+	require.Len(t, entries, 1, "remaining counters")
 	for key, entry := range entries {
-		if !strings.Contains(key, "/source/") || entry.count != 1 {
-			t.Fatalf("remaining counter = %q %#v", key, entry)
-		}
+		require.Contains(t, key, "/source/", "remaining counter = %q %#v", key, entry)
+		require.Equal(t, int64(1), entry.count, "remaining counter = %q %#v", key, entry)
 	}
 }
 
@@ -376,12 +347,10 @@ func TestAuthenticationAttemptAccountingIsAtomicPerKeyUnderConcurrency(t *testin
 	group.Wait()
 	close(errorsSeen)
 	for err := range errorsSeen {
-		t.Error(err)
+		assert.Fail(t, fmt.Sprint(err))
 	}
 	for _, entry := range cache.snapshot() {
-		if entry.count != 100 {
-			t.Fatalf("counter = %d, want 100", entry.count)
-		}
+		require.Equal(t, int64(100), entry.count, "counter")
 	}
 }
 
@@ -415,26 +384,19 @@ func TestAuthenticationAttemptAccountingPreservesSequentialPartialFailure(t *tes
 				failAt:                             failAt,
 			}
 			accounting := mustAuthenticationAttemptAccounting(t, cache)
-			if _, _, err := accounting.account(
+			_, _, err := accounting.account(
 				context.Background(), localLoginAttemptIntent("student", "192.0.2.4", 5),
-			); err == nil {
-				t.Fatal("cache failure was ignored")
-			}
-			if len(cache.calls) != failAt {
-				t.Fatalf("Add calls = %d, want %d", len(cache.calls), failAt)
-			}
+			)
+			require.Error(t, err, "cache failure was ignored")
+			require.Len(t, cache.calls, failAt, "Add calls")
 			entries := cache.snapshot()
-			if failAt == 1 && len(entries) != 0 {
-				t.Fatal("first-counter failure changed cache")
+			if failAt == 1 {
+				require.Empty(t, entries, "first-counter failure changed cache")
 			}
 			if failAt == 2 {
-				if len(entries) != 1 {
-					t.Fatalf("partial counters = %d, want 1", len(entries))
-				}
-				if !strings.Contains(cache.calls[0], "/identity-source/") ||
-					!strings.Contains(cache.calls[1], "/source/") {
-					t.Fatalf("counter order = %#v", cache.calls)
-				}
+				require.Len(t, entries, 1, "partial counters")
+				require.Contains(t, cache.calls[0], "/identity-source/")
+				require.Contains(t, cache.calls[1], "/source/")
 			}
 		})
 	}
@@ -484,17 +446,15 @@ func TestLoginMapsEitherCounterFailureToUnavailableWithoutRollback(t *testing.T)
 				LoginID: "student@example.edu", Password: "wrong-password",
 				ClientType: model.SessionClientCLI, Source: "192.0.2.8:443",
 			})
-			if !apperror.Is(err, "authentication.rate_limit_unavailable") {
-				t.Fatalf("login error = %v", err)
-			}
+			require.True(t, apperror.Is(err, "authentication.rate_limit_unavailable"), "login error = %v", err)
 			cache.mu.Lock()
 			counterCount := len(cache.counters)
 			cache.mu.Unlock()
-			if failAt == 1 && counterCount != 0 {
-				t.Fatalf("first failure retained %d counters", counterCount)
+			if failAt == 1 {
+				require.Equal(t, 0, counterCount, "first failure retained")
 			}
-			if failAt == 2 && counterCount != 1 {
-				t.Fatalf("second failure retained %d counters, want 1", counterCount)
+			if failAt == 2 {
+				require.Equal(t, 1, counterCount, "second failure retained")
 			}
 		})
 	}
@@ -517,25 +477,19 @@ func TestSuccessfulLoginTreatsAttemptResetFailureAsDiagnosticOnly(t *testing.T) 
 		},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Username, Password: "CorrectHorseBatteryStaple1!",
 		ClientType: model.SessionClientCLI, Source: "192.0.2.9:443",
 	})
-	if err != nil || result == nil {
-		t.Fatalf("login result = %#v, error %v", result, err)
-	}
-	if len(diagnostics.messages) != 1 ||
-		diagnostics.messages[0] != "login rate-limit reset failed" {
-		t.Fatalf("diagnostics = %#v", diagnostics.messages)
-	}
+	require.NoError(t, err, "login result")
+	require.NotNil(t, result, "login result")
+	require.Len(t, diagnostics.messages, 1)
+	require.Equal(t, "login rate-limit reset failed", diagnostics.messages[0])
 	for _, diagnostic := range append(append([]string(nil), diagnostics.messages...), diagnostics.errors...) {
 		lower := strings.ToLower(diagnostic)
-		if strings.Contains(lower, "reset-user") || strings.Contains(lower, "192.0.2.9") {
-			t.Fatalf("diagnostic exposes raw login identity or source: %q", diagnostic)
-		}
+		require.NotContains(t, lower, "reset-user")
+		require.NotContains(t, lower, "192.0.2.9")
 	}
 }
 
@@ -545,31 +499,24 @@ func TestLoginIdentityLimitHoldsAcrossSources(t *testing.T) {
 	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationService(t, persistence)
 	service.loginRateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 2, MaximumIdentityAttempts: 3, MaximumSourceAttempts: 100}
-	if _, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
+	_, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "spread-user", Email: "spread-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	// Each source stays under its per-account-and-source budget, but the
 	// account-wide budget is shared by every source.
 	for index, source := range []string{"198.51.100.1:1", "198.51.100.2:1", "198.51.100.3:1"} {
-		_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+		_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 			LoginID: "spread-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: source,
 		})
-		if !apperror.Is(err, "authentication.credentials_invalid") {
-			t.Fatalf("attempt %d from %s: err = %v", index, source, err)
-		}
+		require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "attempt %d from %s: err = %v", index, source, err)
 	}
-	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
+	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "spread-user", Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
-	if !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("attempt from a fresh source after the account budget = %v, want rate limited", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt from a fresh source after the account budget = %v, want rate limited", err)
 	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: "other-user", Password: "wrong-password-value", ClientType: model.SessionClientCLI, Source: "198.51.100.4:1",
 	})
-	if !apperror.Is(err, "authentication.credentials_invalid") {
-		t.Fatalf("another account from the same source = %v, want an independent budget", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "another account from the same source = %v, want an independent budget", err)
 }

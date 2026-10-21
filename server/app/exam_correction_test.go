@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -21,12 +23,8 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	candidateID := model.NewUserID()
 	collections := examCollectionInvalidationEffects{
@@ -39,18 +37,18 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 		ExamID: examID, SittingID: sittingID, PreviousRevisionID: previousRevisionID,
 		RevisionID: revisionID, SittingRevision: 7, EffectiveAt: at,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 4 || events[0].Action != model.ActionExamSittingView ||
-		events[1].Action != model.ActionExamSittingParticipate || events[0].Name != "exam_sitting_content_corrected" ||
-		events[1].Name != events[0].Name || string(events[1].Data) != string(events[0].Data) ||
-		events[2].Name != "manager.sitting_board.changed" ||
-		events[3].Name != "candidate.exam_activity.changed" || events[3].UserID != candidateID.String() {
-		t.Fatalf("events = %#v", events)
-	}
+	require.Len(t, events, 4)
+	require.Equal(t, model.ActionExamSittingView, events[0].Action)
+	require.Equal(t, model.ActionExamSittingParticipate, events[1].Action)
+	require.Equal(t, "exam_sitting_content_corrected", events[0].Name)
+	require.Equal(t, events[0].Name, events[1].Name)
+	require.Equal(t, string(events[0].Data), string(events[1].Data))
+	require.Equal(t, "manager.sitting_board.changed", events[2].Name)
+	require.Equal(t, "candidate.exam_activity.changed", events[3].Name)
+	require.Equal(t, candidateID.String(), events[3].UserID)
 
 }

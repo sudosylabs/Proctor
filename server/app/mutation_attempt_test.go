@@ -11,12 +11,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type mutationAttemptAuditorFake struct {
@@ -100,15 +102,9 @@ func TestMutationAttemptBeginFailurePreventsMutation(t *testing.T) {
 		},
 		func(err error) error { return apperror.New("programme.conflict").Wrap(err) },
 	)
-	if err != beginErr {
-		t.Fatalf("runAuditedMutation() error = %v, want begin error", err)
-	}
-	if mutated {
-		t.Fatal("named mutation ran after begin failure")
-	}
-	if !reflect.DeepEqual(events, []string{"begin"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.Equal(t, err, beginErr, "runAuditedMutation() error = %v, want begin error", err)
+	require.False(t, mutated, "named mutation ran after begin failure")
+	require.Equal(t, []string{"begin"}, events)
 }
 
 func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
@@ -133,15 +129,14 @@ func TestMutationAttemptUsesIndependentAuditScope(t *testing.T) {
 		},
 		func(error) error { return nil },
 	)
-	if err != nil || got != auditID {
-		t.Fatalf("runAuditedMutation() = %q, %v", got, err)
-	}
-	if auditor.attempt.Resource != resource || auditor.attempt.ScopeType != model.RoleScopeAcademicUnit || auditor.attempt.ScopeID != scopeID {
-		t.Fatalf("scoped attempt = %#v", auditor.attempt)
-	}
-	if !reflect.DeepEqual(events, []string{"begin-at-scope", "mutate"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "runAuditedMutation()")
+	require.Equal(t, auditID, got, "runAuditedMutation()")
+	require.Equal(t, resource, auditor.attempt.Resource)
+	require.Equal(t, model.RoleScopeAcademicUnit, auditor.attempt.ScopeType)
+	require.Equal(t, scopeID, auditor.attempt.ScopeID)
+	// Contract (guardrail 8): the audit begins before the durable write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "begin-at-scope", "mutate")
 }
 
 func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
@@ -163,28 +158,22 @@ func TestMutationAttemptMapsStoreFailureBeforeCompletingAttempt(t *testing.T) {
 		func() time.Time { return at },
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != model.AuditEventID(auditID) || reference.MutationAtMillis != at.UnixMilli() {
-				t.Fatalf("reference = %#v", reference)
-			}
+			require.Equal(t, model.AuditEventID(auditID), reference.ID)
+			require.Equal(t, at.UnixMilli(), reference.MutationAtMillis)
 			return "", storeErr
 		},
 		func(err error) error {
 			events = append(events, "map")
-			if err != storeErr {
-				t.Fatalf("mapped error = %v", err)
-			}
+			require.Equal(t, storeErr, err)
 			return mapped
 		},
 	)
-	if err != mapped {
-		t.Fatalf("runAuditedMutation() error = %v, want mapped error", err)
-	}
-	if auditor.failID != auditID || auditor.failCode != mapped.Code() {
-		t.Fatalf("failure completion = id %q code %q", auditor.failID, auditor.failCode)
-	}
-	if !reflect.DeepEqual(events, []string{"begin", "mutate", "map", "fail"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.Equal(t, err, mapped, "runAuditedMutation() error = %v, want mapped error", err)
+	require.Equal(t, auditID, auditor.failID, "failure completion = id")
+	require.Equal(t, mapped.Code(), auditor.failCode, "failure completion = id")
+	// Contract (guardrail 8): the audit begins before the durable write, and the
+	// audit outcome follows the write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "begin", "mutate", "fail")
 }
 
 func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T) {
@@ -212,9 +201,10 @@ func TestMutationAttemptFailureCompletionErrorJoinsOriginalFailure(t *testing.T)
 	// The audit failure must stay observable without replacing the original
 	// classification that callers and transport mapping resolve first.
 	appErr, ok := apperror.As(err)
-	if !ok || appErr.Code() != "programme.conflict" || !errors.Is(err, storeErr) || !errors.Is(err, auditErr) {
-		t.Fatalf("runAuditedMutation() error = %v, want original conflict joined with audit error", err)
-	}
+	require.True(t, ok, "runAuditedMutation() error")
+	require.Equal(t, "programme.conflict", appErr.Code(), "runAuditedMutation() error")
+	require.ErrorIs(t, err, storeErr, "runAuditedMutation() error")
+	require.ErrorIs(t, err, auditErr, "runAuditedMutation() error")
 }
 
 func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
@@ -241,12 +231,9 @@ func TestMutationAttemptRejectsInvalidMappedError(t *testing.T) {
 				func(error) error { return mapped },
 			)
 			appErr, ok := apperror.As(err)
-			if !ok || appErr.Code() != "audit.internal" {
-				t.Fatalf("runAuditedMutation() error = %v", err)
-			}
-			if auditor.failCode != "audit.internal" {
-				t.Fatalf("failure code = %q", auditor.failCode)
-			}
+			require.True(t, ok)
+			require.Equal(t, "audit.internal", appErr.Code())
+			require.Equal(t, "audit.internal", auditor.failCode)
 		})
 	}
 }
@@ -271,12 +258,8 @@ func TestMutationAttemptPreservesMappedErrorWrapper(t *testing.T) {
 		},
 		func(error) error { return mapped },
 	)
-	if err != mapped {
-		t.Fatalf("runAuditedMutation() error = %v, want original mapped wrapper", err)
-	}
-	if auditor.failCode != appFailure.Code() {
-		t.Fatalf("failure code = %q", auditor.failCode)
-	}
+	require.Equal(t, mapped, err, "runAuditedMutation() error")
+	require.Equal(t, appFailure.Code(), auditor.failCode)
 }
 
 func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
@@ -306,28 +289,25 @@ func TestMutationAttemptReturnsSuccessWithoutCompletingIt(t *testing.T) {
 		},
 		func(_ context.Context, reference mutationAttemptReference) (string, error) {
 			events = append(events, "mutate")
-			if reference.ID != model.AuditEventID(auditID) || reference.MutationAtMillis != 500 {
-				t.Fatalf("reference = %#v", reference)
-			}
+			require.Equal(t, model.AuditEventID(auditID), reference.ID)
+			require.Equal(t, int64(500), reference.MutationAtMillis)
 			return "saved", nil
 		},
 		func(error) error {
-			t.Fatal("error mapper called on success")
+			require.FailNow(t, "error mapper called on success")
 			return nil
 		},
 	)
-	if err != nil || got != "saved" {
-		t.Fatalf("runAuditedMutation() = %q, %v", got, err)
-	}
-	if !reflect.DeepEqual(auditor.attempt.Invocation, invocation) || auditor.attempt.Action != model.ActionAcademicUnitManage ||
-		auditor.attempt.Resource != resource || auditor.attempt.Operation != "patch" ||
-		!reflect.DeepEqual(auditor.attempt.Value, value) || !reflect.DeepEqual(auditor.attempt.Prior, prior) {
-		t.Fatalf("attempt = %#v", auditor.attempt)
-	}
-	if clockCalls != 1 {
-		t.Fatalf("clock calls = %d, want 1", clockCalls)
-	}
-	if !reflect.DeepEqual(events, []string{"begin", "mutate"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "runAuditedMutation()")
+	require.Equal(t, "saved", got, "runAuditedMutation()")
+	require.Equal(t, invocation, auditor.attempt.Invocation)
+	require.Equal(t, model.ActionAcademicUnitManage, auditor.attempt.Action)
+	require.Equal(t, resource, auditor.attempt.Resource)
+	require.Equal(t, "patch", auditor.attempt.Operation)
+	require.Equal(t, value, auditor.attempt.Value)
+	require.Equal(t, prior, auditor.attempt.Prior)
+	require.Equal(t, 1, clockCalls, "clock calls")
+	// Contract (guardrail 8): the audit begins before the durable write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "begin", "mutate")
 }

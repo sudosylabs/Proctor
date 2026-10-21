@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -91,9 +93,7 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 	t.Helper()
 	at := time.UnixMilli(1_000)
 	institution, err := model.NewInstitution(model.NewInstitutionID(), "northbridge", "Northbridge", "", at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
 	persistence := &accessPolicyStoreFake{snapshot: &store.AccessPolicySnapshot{Policy: policy}}
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{
@@ -105,9 +105,7 @@ func accessPolicyFixture(t *testing.T) (*accessPolicyService, *accessPolicyStore
 	service, err := newAccessPolicyService(persistence, &accessPolicyInstitutionFake{institution}, &accessPolicyAuthorizationFake{}, capabilities,
 		audit, effects, accessPolicyEffectFailuresFake{}, "https://proctor.example.edu", time.Minute,
 		func() time.Time { return at.Add(time.Minute) })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: at, MFACompletedAt: model.OptionalTimeFrom(at.Add(30 * time.Second)), ClientType: model.SessionClientWeb}
@@ -162,10 +160,10 @@ func TestDeploymentAccessPolicyCapabilitiesUseOnlyLiveProvidersAndMailAvailabili
 		},
 		mail: accessPolicyMailSenderFake{enabled: true}, health: accessPolicyMailHealthFake{code: MailHealthHealthy},
 	}).Snapshot()
-	if !snapshot.DurableMail || len(snapshot.Providers) != 1 || snapshot.Providers[0].Descriptor.ID != "campus" ||
-		!snapshot.Providers[0].AutoProvision {
-		t.Fatalf("capability snapshot = %#v", snapshot)
-	}
+	require.True(t, snapshot.DurableMail)
+	require.Len(t, snapshot.Providers, 1)
+	require.Equal(t, "campus", snapshot.Providers[0].Descriptor.ID)
+	require.True(t, snapshot.Providers[0].AutoProvision)
 }
 
 func TestDeploymentAccessPolicyCapabilitiesRejectDisabledAndUnhealthyDurableMail(t *testing.T) {
@@ -184,9 +182,7 @@ func TestDeploymentAccessPolicyCapabilitiesRejectDisabledAndUnhealthyDurableMail
 			t.Parallel()
 			snapshot := (deploymentAccessPolicyCapabilities{mail: accessPolicyMailSenderFake{enabled: tc.enabled},
 				health: accessPolicyMailHealthFake{code: tc.health}}).Snapshot()
-			if snapshot.DurableMail {
-				t.Fatalf("durable mail available for enabled=%v health=%q", tc.enabled, tc.health)
-			}
+			require.False(t, snapshot.DurableMail, "durable mail available for enabled=%v health=%q", tc.enabled, tc.health)
 		})
 	}
 }
@@ -195,13 +191,9 @@ func TestDeploymentAccessPolicyCapabilitiesTrackAuthoritativeMailHealth(t *testi
 	t.Parallel()
 	health := newMailHealth(true)
 	capabilities := deploymentAccessPolicyCapabilities{mail: accessPolicyMailSenderFake{enabled: true}, health: health}
-	if !capabilities.Snapshot().DurableMail {
-		t.Fatal("healthy configured durable mail was unavailable")
-	}
+	require.True(t, capabilities.Snapshot().DurableMail, "healthy configured durable mail was unavailable")
 	health.set(MailHealthSMTPOutage)
-	if capabilities.Snapshot().DurableMail {
-		t.Fatal("SMTP outage remained available for invitation-required activation")
-	}
+	require.False(t, capabilities.Snapshot().DurableMail, "SMTP outage remained available for invitation-required activation")
 }
 
 type accessPolicyExternalProviderFake struct{ autoProvision bool }
@@ -226,13 +218,11 @@ func TestAccessPolicyPreflightUsesCurrentDeploymentCapabilities(t *testing.T) {
 	settings := persistence.snapshot.Policy.Settings()
 	settings.ProviderAdmissions["campus-oidc"] = model.ProviderAdmissionAutoProvision
 	result, err := service.PreflightAccessPolicy(context.Background(), invocation, PreflightAccessPolicyCommand{ExpectedRevision: 1, Settings: settings})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Blockers) != 0 || persistence.preflightInput == nil ||
-		!persistence.preflightInput.Capabilities.DurableMail || !persistence.preflightInput.Capabilities.Providers["campus-oidc"].AutoProvision {
-		t.Fatalf("preflight = %#v input %#v", result, persistence.preflightInput)
-	}
+	require.NoError(t, err)
+	require.Empty(t, result.Blockers, "preflight = %#v input", result)
+	require.NotNil(t, persistence.preflightInput, "preflight = %#v input", result)
+	require.True(t, persistence.preflightInput.Capabilities.DurableMail, "preflight = %#v input", result)
+	require.True(t, persistence.preflightInput.Capabilities.Providers["campus-oidc"].AutoProvision, "preflight = %#v input", result)
 }
 
 func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *testing.T) {
@@ -285,9 +275,8 @@ func TestAccessPolicyMutationRequiresInteractiveStrongRecentAuthentication(t *te
 				t.Run(operation.name, func(t *testing.T) {
 					err := operation.run()
 					var appErr *apperror.Error
-					if !errors.As(err, &appErr) || appErr.Code() != tc.wantCode {
-						t.Fatalf("error = %v, want %s", err, tc.wantCode)
-					}
+					require.ErrorAs(t, err, &appErr)
+					require.Equal(t, tc.wantCode, appErr.Code())
 				})
 			}
 		})
@@ -303,22 +292,21 @@ func TestAccessPolicyReplacementIsIdempotentAndPublishesOnlyCommittedRevision(t 
 		value.DesktopAuthorizationEnabled = false
 		return value
 	}(), invocation.Principal().UserID, time.UnixMilli(2_000))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence.result = &store.AccessPolicyReplacementResult{Snapshot: &store.AccessPolicySnapshot{Policy: next, History: []*model.AccessPolicyTransition{transition}}, Changed: true}
 	settings := persistence.snapshot.Policy.Settings()
 	settings.DesktopAuthorizationEnabled = false
 	result, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{ExpectedRevision: 1, Settings: settings, IdempotencyKey: "policy-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Policy.Revision != 2 || persistence.command == nil || persistence.command.Operation != "access_policy.replace.v1" ||
-		persistence.replaceInput == nil || persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) ||
-		audit.attempt.Operation != "replace" || audit.attempt.ScopeType != model.RoleScopeInstitution ||
-		len(effects.changes) != 1 || effects.changes[0].Revision != 2 {
-		t.Fatalf("result=%#v command=%#v replacement=%#v effects=%v", result, persistence.command, persistence.replaceInput, effects.changes)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), result.Policy.Revision, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.NotNil(t, persistence.command, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, "access_policy.replace.v1", persistence.command.Operation, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.NotNil(t, persistence.replaceInput, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, model.AuditEventID(audit.beginID), persistence.replaceInput.AuditEventID, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, "replace", audit.attempt.Operation, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, model.RoleScopeInstitution, audit.attempt.ScopeType, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Len(t, effects.changes, 1, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
+	require.Equal(t, int64(2), effects.changes[0].Revision, "result=%#v command=%#v replacement=%#v effects", result, persistence.command, persistence.replaceInput)
 }
 
 func TestAccessPolicyReplacementResolvesExactReplayBeforeRevisionPreflight(t *testing.T) {
@@ -336,18 +324,13 @@ func TestAccessPolicyReplacementResolvesExactReplayBeforeRevisionPreflight(t *te
 	result, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, IdempotencyKey: "lost-response",
 	})
-	if err != nil || result.Policy == nil || result.Policy.Revision != 2 {
-		t.Fatalf("replay result = %#v, %v", result, err)
-	}
-	if persistence.preflightInput != nil {
-		t.Fatal("replacement performed a revision-sensitive preflight before replay resolution")
-	}
-	if len(effects.changes) != 0 {
-		t.Fatalf("replay effects = %#v", effects.changes)
-	}
-	if audit.attempt.Operation != "replace" || persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) {
-		t.Fatalf("replay audit = %#v replacement = %#v", audit.attempt, persistence.replaceInput)
-	}
+	require.NoError(t, err, "replay result = %#v", result)
+	require.NotNil(t, result.Policy, "replay result = %#v", result)
+	require.Equal(t, int64(2), result.Policy.Revision, "replay result = %#v", result)
+	require.Nil(t, persistence.preflightInput, "replacement performed a revision-sensitive preflight before replay resolution")
+	require.Empty(t, effects.changes)
+	require.Equal(t, "replace", audit.attempt.Operation, "replay audit = %#v replacement = %#v", audit.attempt, persistence.replaceInput)
+	require.Equal(t, model.AuditEventID(audit.beginID), persistence.replaceInput.AuditEventID, "replay audit = %#v replacement = %#v", audit.attempt, persistence.replaceInput)
 }
 
 func TestAccessPolicyReplacementFingerprintIncludesSessionRevocationChoice(t *testing.T) {
@@ -359,23 +342,16 @@ func TestAccessPolicyReplacementFingerprintIncludesSessionRevocationChoice(t *te
 	_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, RevokeExistingSessions: true, IdempotencyKey: "policy-revoke",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.replaceInput == nil || !persistence.replaceInput.Preflight.RevokeExistingSessions {
-		t.Fatalf("replacement = %#v", persistence.replaceInput)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.replaceInput)
+	require.True(t, persistence.replaceInput.Preflight.RevokeExistingSessions)
 	withRevocation := persistence.command.Fingerprint
 	persistence.result = &store.AccessPolicyReplacementResult{Snapshot: persistence.snapshot}
 	_, err = service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, RevokeExistingSessions: false, IdempotencyKey: "policy-revoke",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.command.Fingerprint == withRevocation {
-		t.Fatal("session revocation choice was omitted from the idempotency fingerprint")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, withRevocation, persistence.command.Fingerprint, "session revocation choice was omitted from the idempotency fingerprint")
 }
 
 func TestAccessPolicyReplacementMapsConflictingIdempotencyReuse(t *testing.T) {
@@ -387,12 +363,8 @@ func TestAccessPolicyReplacementMapsConflictingIdempotencyReuse(t *testing.T) {
 	_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 		ExpectedRevision: 1, Settings: settings, IdempotencyKey: "reused-key",
 	})
-	if !apperror.Is(err, "idempotency.conflict") {
-		t.Fatalf("error = %v", err)
-	}
-	if persistence.preflightInput != nil {
-		t.Fatal("conflicting reuse was preceded by a revision-sensitive preflight")
-	}
+	require.True(t, apperror.Is(err, "idempotency.conflict"), "error = %v", err)
+	require.Nil(t, persistence.preflightInput, "conflicting reuse was preceded by a revision-sensitive preflight")
 }
 
 func TestAccessPolicyReplacementCompletesRevisionBlockerAndStoreFailures(t *testing.T) {
@@ -416,15 +388,11 @@ func TestAccessPolicyReplacementCompletesRevisionBlockerAndStoreFailures(t *test
 			_, err := service.ReplaceAccessPolicy(context.Background(), invocation, ReplaceAccessPolicyCommand{
 				ExpectedRevision: 1, Settings: settings, IdempotencyKey: "failed-" + tc.name,
 			})
-			if !apperror.Is(err, tc.wantCode) {
-				t.Fatalf("error = %v, want %s", err, tc.wantCode)
-			}
-			if audit.attempt.Operation != "replace" || audit.failID != audit.beginID || audit.failCode != tc.wantCode {
-				t.Fatalf("audit = %#v fail=%q/%q", audit.attempt, audit.failID, audit.failCode)
-			}
-			if len(effects.changes) != 0 {
-				t.Fatalf("failure effects = %#v", effects.changes)
-			}
+			require.True(t, apperror.Is(err, tc.wantCode), "error = %v, want %s", err, tc.wantCode)
+			require.Equal(t, "replace", audit.attempt.Operation, "audit = %#v fail=%q", audit.attempt, audit.failID)
+			require.Equal(t, audit.beginID, audit.failID, "audit = %#v fail=%q", audit.attempt, audit.failID)
+			require.Equal(t, tc.wantCode, audit.failCode, "audit = %#v fail=%q", audit.attempt, audit.failID)
+			require.Empty(t, effects.changes)
 		})
 	}
 }
@@ -435,9 +403,7 @@ func TestAccessPolicyReadFailsSafelyForMissingSnapshot(t *testing.T) {
 	for _, snapshot := range []*store.AccessPolicySnapshot{nil, {}} {
 		persistence.snapshot = snapshot
 		_, err := service.GetAccessPolicy(context.Background(), invocation)
-		if !apperror.Is(err, "access_policy.unavailable") {
-			t.Fatalf("snapshot %#v error = %v", snapshot, err)
-		}
+		require.True(t, apperror.Is(err, "access_policy.unavailable"), "snapshot %#v error = %v", snapshot, err)
 	}
 }
 
@@ -450,15 +416,13 @@ func TestPublicAccessDiscoveryFiltersUnavailableProvidersAndRestoresByStableID(t
 
 	capabilities.snapshot.Providers = nil
 	discovery, err := service.DiscoverAccess(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if discovery.CanonicalOrigin != "https://proctor.example.edu" || len(discovery.Providers) != 0 || !discovery.Initialized {
-		t.Fatalf("removed-provider discovery = %#v", discovery)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "https://proctor.example.edu", discovery.CanonicalOrigin)
+	require.Empty(t, discovery.Providers)
+	require.True(t, discovery.Initialized)
 	capabilities.snapshot.Providers = []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus-oidc", DisplayName: "Campus", Type: "oidc"}}}
 	discovery, err = service.DiscoverAccess(context.Background())
-	if err != nil || len(discovery.Providers) != 1 || discovery.Providers[0].ID != "campus-oidc" {
-		t.Fatalf("restored-provider discovery = %#v, %v", discovery, err)
-	}
+	require.NoError(t, err, "restored-provider discovery = %#v", discovery)
+	require.Len(t, discovery.Providers, 1, "restored-provider discovery = %#v", discovery)
+	require.Equal(t, "campus-oidc", discovery.Providers[0].ID, "restored-provider discovery = %#v", discovery)
 }

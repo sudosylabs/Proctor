@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -86,9 +88,7 @@ func newLocalLoginAuditFixture(t *testing.T, mfa authenticationMFAVerifier) (*au
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "audited-user", Email: "audited-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service, persistence, audit, user
 }
 
@@ -103,23 +103,20 @@ func TestLocalLoginSuccessIsDurablyAuditedWithActorAndSession(t *testing.T) {
 	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.10:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// The application begins the attempt; Session creation completes it in
 	// the same transaction, so the application records no terminal outcome.
-	if len(audit.pending) != 1 || len(audit.terminal) != 0 {
-		t.Fatalf("pending=%#v terminal=%#v", audit.pending, audit.terminal)
-	}
+	require.Len(t, audit.pending, 1, "pending")
+	require.Empty(t, audit.terminal, "pending")
 	for id, record := range audit.pending {
-		if record.actor != user.ID || record.clientType != model.SessionClientWeb ||
-			record.metadata.IPAddress != "192.0.2.10" || record.metadata.UserAgent != "login-test" || record.metadata.RequestID != "request-login" {
-			t.Fatalf("login attempt = %#v", record)
-		}
+		require.Equal(t, user.ID, record.actor)
+		require.Equal(t, model.SessionClientWeb, record.clientType)
+		require.Equal(t, "192.0.2.10", record.metadata.IPAddress)
+		require.Equal(t, "login-test", record.metadata.UserAgent)
+		require.Equal(t, "request-login", record.metadata.RequestID)
 		projection, ok := persistence.completedAudits[id]
-		if !ok || projection["id"] != result.Session.ID.String() {
-			t.Fatalf("Session creation completion = %#v, session %s", persistence.completedAudits, result.Session.ID)
-		}
+		require.True(t, ok, "Session creation completion = %#v, session %s", persistence.completedAudits, result.Session.ID)
+		require.Equal(t, result.Session.ID.String(), projection["id"], "Session creation completion = %#v, session %s", persistence.completedAudits, result.Session.ID)
 	}
 }
 
@@ -146,22 +143,22 @@ func TestLocalLoginFailuresAreDurablyAudited(t *testing.T) {
 			_, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 				LoginID: test.loginID, Password: test.password, ClientType: model.SessionClientCLI, Source: "192.0.2.10:2",
 			})
-			if !apperror.Is(err, test.code) {
-				t.Fatalf("err = %v", err)
-			}
-			if len(persistence.sessions) != 0 || len(audit.pending) != 0 || len(audit.terminal) != 1 {
-				t.Fatalf("sessions=%d pending=%#v terminal=%#v", len(persistence.sessions), audit.pending, audit.terminal)
-			}
+			require.True(t, apperror.Is(err, test.code), "err = %v", err)
+			require.Empty(t, persistence.sessions, "sessions")
+			require.Empty(t, audit.pending, "sessions")
+			require.Len(t, audit.terminal, 1, "sessions")
 			record := audit.terminal[0]
 			wantTarget := model.UserID("")
 			if test.knownTarget {
 				wantTarget = user.ID
 			}
-			if record.status != model.AuditStatusFail || record.actor != "" || record.target != wantTarget ||
-				record.errorCode != test.code || record.clientType != model.SessionClientCLI ||
-				record.metadata.IPAddress != "192.0.2.10" || record.metadata.UserAgent != "login-test" {
-				t.Fatalf("failure audit = %#v", record)
-			}
+			require.Equal(t, model.AuditStatusFail, record.status)
+			require.Empty(t, record.actor)
+			require.Equal(t, wantTarget, record.target)
+			require.Equal(t, test.code, record.errorCode)
+			require.Equal(t, model.SessionClientCLI, record.clientType)
+			require.Equal(t, "192.0.2.10", record.metadata.IPAddress)
+			require.Equal(t, "login-test", record.metadata.UserAgent)
 		})
 	}
 }
@@ -171,15 +168,12 @@ func TestLocalLoginRejectedBeforeAdmissionWritesNoAudit(t *testing.T) {
 	service, _, audit, user := newLocalLoginAuditFixture(t, discardAuthenticationMFAVerifier{})
 	service.loginRateLimit.MaximumAttempts = 1
 	command := LoginCommand{LoginID: user.Email, Password: "incorrect password", ClientType: model.SessionClientCLI, Source: "192.0.2.10:3"}
-	if _, err := service.Login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.credentials_invalid") {
-		t.Fatalf("first err = %v", err)
-	}
-	if _, err := service.Login(context.Background(), localLoginInvocation(), command); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("limited err = %v", err)
-	}
-	if len(audit.terminal) != 1 || audit.terminal[0].errorCode != "authentication.credentials_invalid" {
-		t.Fatalf("rate-limited attempt was audited: %#v", audit.terminal)
-	}
+	_, err := service.Login(context.Background(), localLoginInvocation(), command)
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "first err = %v", err)
+	_, err = service.Login(context.Background(), localLoginInvocation(), command)
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "limited err = %v", err)
+	require.Len(t, audit.terminal, 1)
+	require.Equal(t, "authentication.credentials_invalid", audit.terminal[0].errorCode)
 }
 
 func TestLocalLoginIssuesNoSessionWhenSuccessAuditCannotComplete(t *testing.T) {
@@ -190,15 +184,12 @@ func TestLocalLoginIssuesNoSessionWhenSuccessAuditCannotComplete(t *testing.T) {
 	result, err := service.Login(context.Background(), localLoginInvocation(), LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientCLI, Source: "192.0.2.10:4",
 	})
-	if result != nil || err == nil {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if len(persistence.sessions) != 0 {
-		t.Fatalf("sessions = %d", len(persistence.sessions))
-	}
-	if len(audit.pending) != 0 || len(audit.terminal) != 1 || audit.terminal[0].status != model.AuditStatusFail {
-		t.Fatalf("pending=%#v terminal=%#v", audit.pending, audit.terminal)
-	}
+	require.Nil(t, result, "result")
+	require.Error(t, err, "result")
+	require.Empty(t, persistence.sessions, "sessions")
+	require.Empty(t, audit.pending, "pending")
+	require.Len(t, audit.terminal, 1, "pending")
+	require.Equal(t, model.AuditStatusFail, audit.terminal[0].status, "pending")
 }
 
 func TestAuditServiceLocalLoginEventsCarryRequestIdentity(t *testing.T) {
@@ -206,29 +197,27 @@ func TestAuditServiceLocalLoginEventsCarryRequestIdentity(t *testing.T) {
 	audits := &systemAuditStoreFake{}
 	institutionID := model.NewInstitutionID()
 	service, err := newAuditService(audits, loginAuditInstitutionStore{id: institutionID}, "node-login")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	metadata := model.RequestMetadata{RequestID: "request-1", IPAddress: "192.0.2.20", UserAgent: "agent"}
 	userID := model.NewUserID()
 	event, err := service.BeginLocalLogin(context.Background(), userID, model.SessionClientWeb, metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.ActorID != userID || event.Action != "authentication.login" || event.Status != model.AuditStatusAttempt ||
-		event.AuthMethod != "password" || event.IPAddress != "192.0.2.20" || event.UserAgent != "agent" ||
-		event.ScopeID != institutionID.String() || event.Resource.ID != userID.String() {
-		t.Fatalf("begin event = %#v", event)
-	}
-	if err := service.RecordLocalLoginFailure(context.Background(), "", model.SessionClientCLI, metadata,
-		"authentication.credentials_invalid"); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, userID, event.ActorID)
+	require.Equal(t, "authentication.login", event.Action)
+	require.Equal(t, model.AuditStatusAttempt, event.Status)
+	require.Equal(t, "password", event.AuthMethod)
+	require.Equal(t, "192.0.2.20", event.IPAddress)
+	require.Equal(t, "agent", event.UserAgent)
+	require.Equal(t, institutionID.String(), event.ScopeID)
+	require.Equal(t, userID.String(), event.Resource.ID)
+	require.NoError(t, service.RecordLocalLoginFailure(context.Background(), "", model.SessionClientCLI, metadata,
+		"authentication.credentials_invalid"))
 	failed := audits.saved
-	if failed.ActorID != "" || failed.Status != model.AuditStatusFail || failed.ErrorCode != "authentication.credentials_invalid" ||
-		failed.Resource != (model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}) || failed.IPAddress != "192.0.2.20" {
-		t.Fatalf("failure event = %#v", failed)
-	}
+	require.Empty(t, failed.ActorID)
+	require.Equal(t, model.AuditStatusFail, failed.Status)
+	require.Equal(t, "authentication.credentials_invalid", failed.ErrorCode)
+	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, failed.Resource)
+	require.Equal(t, "192.0.2.20", failed.IPAddress)
 }
 
 type loginAuditInstitutionStore struct {

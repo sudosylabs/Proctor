@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -140,12 +142,8 @@ func TestAcademicUnitGetDenialDoesNotReadPersistence(t *testing.T) {
 		NewInvocation(model.Principal{}, model.RequestMetadata{}),
 		GetAcademicUnitQuery{ID: model.NewAcademicUnitID()},
 	)
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Get() error = %v, want authorization.denied", err)
-	}
-	if units.getCalls != 0 {
-		t.Fatalf("persistence reads after denial = %d, want 0", units.getCalls)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Get() error = %v, want authorization.denied", err)
+	require.Equal(t, 0, units.getCalls, "persistence reads after denial")
 }
 
 func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
@@ -167,16 +165,10 @@ func TestAcademicUnitGetUsesUnitViewScope(t *testing.T) {
 	got, err := service.GetAcademicUnit(
 		context.Background(), Invocation{}, GetAcademicUnitQuery{ID: unit.ID},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != unit {
-		t.Fatalf("Get() = %#v, want %#v", got, unit)
-	}
-	if gotAction != model.ActionAcademicUnitView ||
-		gotResource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}) {
-		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
-	}
+	require.NoError(t, err)
+	require.Same(t, unit, got, "Get()")
+	require.Equal(t, model.ActionAcademicUnitView, gotAction, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceAcademicUnit, ID: unit.ID.String()}, gotResource, "authorization")
 }
 
 func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmptyArray(t *testing.T) {
@@ -199,16 +191,11 @@ func TestAcademicUnitRootListUsesInstitutionScopedAcademicUnitViewAndReturnsEmpt
 		},
 	})
 	got, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == nil || len(got) != 0 {
-		t.Fatalf("List() = %#v, want non-nil empty result", got)
-	}
-	if gotAction != model.ActionAcademicUnitView ||
-		gotResource != (model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}) {
-		t.Fatalf("authorization = %s %#v", gotAction, gotResource)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got, "List()")
+	require.Empty(t, got, "List()")
+	require.Equal(t, model.ActionAcademicUnitView, gotAction, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, gotResource, "authorization")
 }
 
 func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
@@ -230,16 +217,10 @@ func TestAcademicUnitSearchNormalizesInput(t *testing.T) {
 		context.Background(), Invocation{},
 		SearchAcademicUnitsQuery{Query: "  computing  ", Limit: 0},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got == nil || units.lastQuery != "computing" ||
-		units.lastLimit != defaultAdministrationListLimit {
-		t.Fatalf(
-			"Search() = %#v, query = %q, limit = %d",
-			got, units.lastQuery, units.lastLimit,
-		)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got, "Search()")
+	require.Equal(t, "computing", units.lastQuery, "Search()")
+	require.Equal(t, defaultAdministrationListLimit, units.lastLimit, "Search()")
 }
 
 func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
@@ -257,12 +238,8 @@ func TestAcademicUnitRootListDenialDoesNotReadQueryStore(t *testing.T) {
 		},
 	})
 	_, err := service.ListAcademicUnits(context.Background(), Invocation{}, ListAcademicUnitsQuery{})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("List() error = %v, want authorization.denied", err)
-	}
-	if units.listCalls != 0 {
-		t.Fatalf("query store changed after denial: %#v", units)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "List() error = %v, want authorization.denied", err)
+	require.Equal(t, 0, units.listCalls)
 }
 
 func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
@@ -280,10 +257,6 @@ func TestAcademicUnitSearchDenialDoesNotReadQueryStore(t *testing.T) {
 		},
 	})
 	_, err := service.SearchAcademicUnits(context.Background(), Invocation{}, SearchAcademicUnitsQuery{})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Search() error = %v, want authorization.denied", err)
-	}
-	if units.searchCalls != 0 {
-		t.Fatalf("query store called after denial: %#v", units)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Search() error = %v, want authorization.denied", err)
+	require.Equal(t, 0, units.searchCalls)
 }

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -29,9 +31,7 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			user, err := authentication.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "desktop-capacity", Email: "desktop-capacity@example.edu"}, Password: password,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			transactions := &desktopAuthorizationStoreFake{}
 			identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now)
 			identity.authentication = authentication
@@ -40,9 +40,7 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 				desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
 				desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, time.Now, identity)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			command := AuthenticateDesktopAuthorizationLocallyCommand{
 				Binding: model.NewCredentialToken(), LoginID: user.Email, Password: password, Source: "192.0.2.37",
 			}
@@ -51,18 +49,16 @@ func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T
 			}
 			saturatePasswordWork(t, authentication.hasher)
 			result, err := service.AuthenticateDesktopAuthorizationLocally(context.Background(), Invocation{}, command)
-			if result != nil || !apperror.Is(err, "service.busy") {
-				t.Fatalf("saturated Desktop authentication = %#v/%v", result, err)
-			}
+			require.Nil(t, result, "saturated Desktop authentication = %#v/%v", result, err)
+			require.True(t, apperror.Is(err, "service.busy"), "saturated Desktop authentication = %#v/%v", result, err)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			result, err = service.AuthenticateDesktopAuthorizationLocally(ctx, Invocation{}, command)
-			if result != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
-				t.Fatalf("cancelled Desktop authentication = %#v/%v", result, err)
-			}
-			if transactions.authenticated != nil || len(persistence.sessions) != 0 {
-				t.Fatal("rejected password work advanced Desktop authentication or issued a Session")
-			}
+			require.Nil(t, result, "cancelled Desktop authentication")
+			require.True(t, apperror.Is(err, "authentication.internal"), "cancelled Desktop authentication")
+			require.ErrorIs(t, err, context.Canceled, "cancelled Desktop authentication")
+			require.Nil(t, transactions.authenticated, "rejected password work advanced Desktop authentication or issued a Session")
+			require.Empty(t, persistence.sessions, "rejected password work advanced Desktop authentication or issued a Session")
 		})
 	}
 }
@@ -90,9 +86,7 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 		func() time.Time { return at },
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	state := model.NewCredentialToken()
 	challenge := model.NewCredentialToken()
 	callback := "http://127.0.0.1:49152/" + model.NewCredentialToken()
@@ -102,37 +96,29 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.created == nil ||
-		persistence.created.InstitutionID != institution.ID ||
-		persistence.created.Issuer != "https://proctor.example.edu" ||
-		persistence.created.HandleHash != model.HashToken(handle) ||
-		persistence.created.BrowserProofHash != model.HashToken(proof) ||
-		persistence.created.StateHash != model.HashToken(state) ||
-		persistence.created.CallbackURL != callback ||
-		persistence.created.CodeChallenge != challenge ||
-		persistence.created.Lifetime != 5*time.Minute {
-		t.Fatalf("created transaction = %#v", persistence.created)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.created)
+	require.Equal(t, institution.ID, persistence.created.InstitutionID)
+	require.Equal(t, "https://proctor.example.edu", persistence.created.Issuer)
+	require.Equal(t, model.HashToken(handle), persistence.created.HandleHash)
+	require.Equal(t, model.HashToken(proof), persistence.created.BrowserProofHash)
+	require.Equal(t, model.HashToken(state), persistence.created.StateHash)
+	require.Equal(t, callback, persistence.created.CallbackURL)
+	require.Equal(t, challenge, persistence.created.CodeChallenge)
+	require.Equal(t, 5*time.Minute, persistence.created.Lifetime)
 	authorizationURL, err := url.Parse(result.AuthorizationURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if authorizationURL.Scheme != "https" || authorizationURL.Host != "proctor.example.edu" ||
-		authorizationURL.Path != "/authorize/desktop" ||
-		authorizationURL.Query().Get("request") != handle ||
-		authorizationURL.Query().Get("state") != state ||
-		authorizationURL.Fragment != "proof="+proof ||
-		result.ExpiresAt != at.Add(5*time.Minute).UnixMilli() {
-		t.Fatalf("start result = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "https", authorizationURL.Scheme)
+	require.Equal(t, "proctor.example.edu", authorizationURL.Host)
+	require.Equal(t, "/authorize/desktop", authorizationURL.Path)
+	require.Equal(t, handle, authorizationURL.Query().Get("request"))
+	require.Equal(t, state, authorizationURL.Query().Get("state"))
+	require.Equal(t, "proof="+proof, authorizationURL.Fragment)
+	require.Equal(t, at.Add(5*time.Minute).UnixMilli(), result.ExpiresAt)
 	for _, raw := range []string{handle, proof, state} {
-		if persistence.created.HandleHash == raw || persistence.created.BrowserProofHash == raw ||
-			persistence.created.StateHash == raw {
-			t.Fatal("raw public-client secret was persisted")
-		}
+		require.NotEqual(t, raw, persistence.created.HandleHash, "raw public-client secret was persisted")
+		require.NotEqual(t, raw, persistence.created.BrowserProofHash, "raw public-client secret was persisted")
+		require.NotEqual(t, raw, persistence.created.StateHash, "raw public-client secret was persisted")
 	}
 }
 
@@ -158,9 +144,7 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 		func() time.Time { return at },
 		identity,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := StartDesktopAuthorizationCommand{
 		CallbackURL:   "http://127.0.0.1:49152/" + model.NewCredentialToken(),
 		State:         model.NewCredentialToken(),
@@ -168,9 +152,9 @@ func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	result, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-	if result != nil || !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
-		t.Fatalf("Start() = %#v, %v; persisted=%#v", result, err, persistence.created)
-	}
+	require.Nil(t, result, "Start() = %#v, %v; persisted", result, err)
+	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start() = %#v, %v; persisted", result, err)
+	require.Nil(t, persistence.created, "Start() = %#v, %v; persisted", result, err)
 }
 
 func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *testing.T) {
@@ -185,18 +169,15 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, func() string { return credential }, time.Now,
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
 		CodeChallenge: model.NewCredentialToken(),
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
-		t.Fatalf("Start() error=%v persisted=%#v", err, persistence.created)
-	}
+	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start() error=%v persisted", err)
+	require.Nil(t, persistence.created, "Start() error=%v persisted", err)
 }
 
 func TestDesktopAuthorizationLoopbackHTTPIssuerRequiresExplicitDevelopmentPolicy(t *testing.T) {
@@ -213,15 +194,9 @@ func TestDesktopAuthorizationLoopbackHTTPIssuerRequiresExplicitDevelopmentPolicy
 		)
 		return err
 	}
-	if err := dependencies(DesktopAuthorizationPolicy{Issuer: "http://localhost:8065"}); err == nil {
-		t.Fatal("loopback HTTP issuer accepted without explicit development policy")
-	}
-	if err := dependencies(DesktopAuthorizationPolicy{Issuer: "http://localhost:8065", AllowLoopbackHTTPDevelopment: true}); err != nil {
-		t.Fatalf("explicit loopback HTTP development issuer rejected: %v", err)
-	}
-	if err := dependencies(DesktopAuthorizationPolicy{Issuer: "http://192.0.2.1:8065", AllowLoopbackHTTPDevelopment: true}); err == nil {
-		t.Fatal("non-loopback HTTP issuer accepted in development policy")
-	}
+	require.Error(t, dependencies(DesktopAuthorizationPolicy{Issuer: "http://localhost:8065"}), "loopback HTTP issuer accepted without explicit development policy")
+	require.NoError(t, dependencies(DesktopAuthorizationPolicy{Issuer: "http://localhost:8065", AllowLoopbackHTTPDevelopment: true}))
+	require.Error(t, dependencies(DesktopAuthorizationPolicy{Issuer: "http://192.0.2.1:8065", AllowLoopbackHTTPDevelopment: true}), "non-loopback HTTP issuer accepted in development policy")
 }
 
 func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
@@ -241,9 +216,7 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		func() string { value := generated[0]; generated = generated[1:]; return value }, func() time.Time { return at },
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding, state := model.NewCredentialToken(), model.NewCredentialToken()
 	callback := "http://[::1]:49152/" + model.NewCredentialToken()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
@@ -256,16 +229,15 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 	persistence.contextUserID = principal.UserID
 	approved, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: binding, State: state})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	redirect, _ := url.Parse(approved.RedirectURL)
-	if redirect.Scheme != "http" || redirect.Host != "[::1]:49152" || redirect.Query().Get("code") != code ||
-		redirect.Query().Get("state") != state || persistence.issued == nil ||
-		persistence.issued.BindingHash != model.HashToken(binding) ||
-		persistence.issued.CodeLifetime != time.Minute {
-		t.Fatalf("approval = %#v input=%#v", approved, persistence.issued)
-	}
+	require.Equal(t, "http", redirect.Scheme, "approval = %#v input", approved)
+	require.Equal(t, "[::1]:49152", redirect.Host, "approval = %#v input", approved)
+	require.Equal(t, code, redirect.Query().Get("code"), "approval = %#v input", approved)
+	require.Equal(t, state, redirect.Query().Get("state"), "approval = %#v input", approved)
+	require.NotNil(t, persistence.issued, "approval = %#v input", approved)
+	require.Equal(t, model.HashToken(binding), persistence.issued.BindingHash, "approval = %#v input", approved)
+	require.Equal(t, time.Minute, persistence.issued.CodeLifetime, "approval = %#v input", approved)
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, code, state, "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "",
 	)
@@ -276,16 +248,16 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 	}
 	exchanged, err := service.ExchangeDesktopAuthorization(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{}),
 		exchangeCommand)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.exchanged == nil || persistence.exchanged.CodeChallenge != "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" ||
-		persistence.exchanged.AccessLifetime != 5*time.Minute || persistence.exchanged.RefreshLifetime != time.Hour ||
-		persistence.exchanged.IdleLifetime != 30*time.Minute || persistence.exchanged.AbsoluteLifetime != 2*time.Hour ||
-		persistence.exchanged.DesktopCompatibilityPolicyRevision != 1 ||
-		exchanged.Tokens.AccessToken != access || exchanged.Tokens.RefreshToken != refresh {
-		t.Fatalf("exchange = %#v input=%#v", exchanged, persistence.exchanged)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.exchanged, "exchange = %#v input", exchanged)
+	require.Equal(t, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", persistence.exchanged.CodeChallenge, "exchange = %#v input", exchanged)
+	require.Equal(t, 5*time.Minute, persistence.exchanged.AccessLifetime, "exchange = %#v input", exchanged)
+	require.Equal(t, time.Hour, persistence.exchanged.RefreshLifetime, "exchange = %#v input", exchanged)
+	require.Equal(t, 30*time.Minute, persistence.exchanged.IdleLifetime, "exchange = %#v input", exchanged)
+	require.Equal(t, 2*time.Hour, persistence.exchanged.AbsoluteLifetime, "exchange = %#v input", exchanged)
+	require.Equal(t, int64(1), persistence.exchanged.DesktopCompatibilityPolicyRevision, "exchange = %#v input", exchanged)
+	require.Equal(t, access, exchanged.Tokens.AccessToken, "exchange = %#v input", exchanged)
+	require.Equal(t, refresh, exchanged.Tokens.RefreshToken, "exchange = %#v input", exchanged)
 }
 
 func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *testing.T) {
@@ -303,9 +275,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		model.NewCredentialToken, func() time.Time { return at },
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
@@ -313,18 +283,17 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 	persistence.contextUserID = principal.UserID
 	_, err = service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
-	if !apperror.Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
-		t.Fatalf("Approve() error=%v failure audit=%q/%q", err, auditor.auditID, auditor.failureCode)
-	}
+	require.True(t, apperror.Is(err, "authentication.desktop_authorization.rejected"), "Approve() error=%v failure audit=%q", err, auditor.auditID)
+	require.Equal(t, "authentication.desktop_authorization.rejected", auditor.failureCode, "Approve() error=%v failure audit=%q", err, auditor.auditID)
+	require.NotEmpty(t, auditor.auditID, "Approve() error=%v failure audit=%q", err, auditor.auditID)
 	persistence.issueErr = nil
 	persistence.exchangeErr = errors.New("database unavailable")
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
 	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
-	if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
-		t.Fatalf("Exchange() error=%v failure audit=%q", err, auditor.failureCode)
-	}
+	require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Exchange() error=%v failure audit", err)
+	require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Exchange() error=%v failure audit", err)
 }
 
 func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t *testing.T) {
@@ -341,9 +310,7 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
 		func() time.Time { return at }, identity,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := testDesktopAuthorizationExchangeCommand(
 		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
 	)
@@ -355,14 +322,12 @@ func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t
 	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
 
 	result, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, command)
-	if result != nil || !apperror.Is(err, "authentication.dpop.unavailable") {
-		t.Fatalf("Exchange() = %#v, %v; want no credential response", result, err)
-	}
+	require.Nil(t, result, "Exchange() = %#v, %v; want no credential response", result, err)
+	require.True(t, apperror.Is(err, "authentication.dpop.unavailable"), "Exchange() = %#v, %v; want no credential response", result, err)
 	sessions := identity.authentication.sessions.(*desktopAuthorizationSessionStoreStub)
-	if sessions.revokedID != session.ID.String() || sessions.revokedUserID != session.UserID.String() ||
-		sessions.reason != model.SessionRevocationDesktopAuthorizationFailed {
-		t.Fatalf("compensating revocation = %#v", sessions)
-	}
+	require.Equal(t, session.ID.String(), sessions.revokedID)
+	require.Equal(t, session.UserID.String(), sessions.revokedUserID)
+	require.Equal(t, model.SessionRevocationDesktopAuthorizationFailed, sessions.reason)
 }
 
 func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
@@ -380,18 +345,14 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, func() time.Time { return at },
 				testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			command := StartDesktopAuthorizationCommand{
 				CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
 				CodeChallenge: model.NewCredentialToken(),
 			}
 			setTestDesktopAuthorizationBuild(t, &command)
 			_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-			if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
-				t.Fatalf("Start error = %v", err)
-			}
+			require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start error = %v", err)
 		})
 	}
 	newService := func(persistence *desktopAuthorizationStoreFake, audit desktopAuthorizationAuditor) *desktopAuthorizationService {
@@ -404,9 +365,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			func() time.Time { return at },
 			testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return service
 	}
 
@@ -421,9 +380,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		}
 		setTestDesktopAuthorizationBuild(t, &command)
 		_, err := service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") {
-			t.Fatalf("Start error = %v", err)
-		}
+		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Start error = %v", err)
 	})
 
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
@@ -437,9 +394,8 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 		}, contextUserID: principal.UserID}, auditor)
 		_, err := service.ApproveDesktopAuthorization(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
-		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
-			t.Fatalf("Approve error/audit = %v/%q", err, auditor.failureCode)
-		}
+		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Approve error/audit = %v", err)
+		require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Approve error/audit = %v", err)
 	})
 
 	t.Run("exchange expiries", func(t *testing.T) {
@@ -457,9 +413,8 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			RefreshExpiresAt: at.Add(time.Hour),
 		}
 		_, err := service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
-		if !apperror.Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
-			t.Fatalf("Exchange error/audit = %v/%q", err, auditor.failureCode)
-		}
+		require.True(t, apperror.Is(err, "authentication.desktop_authorization.unavailable"), "Exchange error/audit = %v", err)
+		require.Equal(t, "authentication.desktop_authorization.unavailable", auditor.failureCode, "Exchange error/audit = %v", err)
 	})
 }
 
@@ -480,9 +435,7 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 		model.NewCredentialToken, func() time.Time { return at },
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	state := model.NewCredentialToken()
 	command := StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: state,
@@ -490,24 +443,25 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	}
 	setTestDesktopAuthorizationBuild(t, &command)
 	_, err = service.StartDesktopAuthorization(context.Background(), Invocation{}, command)
-	if !apperror.Is(err, "authentication.rate_limited") || persistence.created != nil || auditor.prepareExchange != 0 || auditor.prepareIssue != 0 {
-		t.Fatalf("Start() error=%v persisted=%#v audit prepares=%d/%d", err, persistence.created, auditor.prepareIssue, auditor.prepareExchange)
-	}
-	if limiter.operation != desktopAuthorizationAttemptStart || limiter.identity != model.HashToken(state) || limiter.source != "192.0.2.10:5000" {
-		t.Fatalf("start attempt = %#v", limiter)
-	}
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
+	require.Nil(t, persistence.created, "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
+	require.Equal(t, 0, auditor.prepareExchange, "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
+	require.Equal(t, 0, auditor.prepareIssue, "Start() error=%v persisted=%#v audit prepares=%d", err, persistence.created, auditor.prepareIssue)
+	require.Equal(t, desktopAuthorizationAttemptStart, limiter.operation)
+	require.Equal(t, model.HashToken(state), limiter.identity)
+	require.Equal(t, "192.0.2.10:5000", limiter.source)
 
 	code := model.NewCredentialToken()
 	exchangeCommand := testDesktopAuthorizationExchangeCommand(
 		t, service, at, code, model.NewCredentialToken(), model.NewCredentialToken(), "192.0.2.10:5001",
 	)
 	_, err = service.ExchangeDesktopAuthorization(context.Background(), Invocation{}, exchangeCommand)
-	if !apperror.Is(err, "authentication.rate_limited") || persistence.exchanged != nil || auditor.prepareExchange != 0 {
-		t.Fatalf("Exchange() error=%v persisted=%#v exchange audits=%d", err, persistence.exchanged, auditor.prepareExchange)
-	}
-	if limiter.operation != desktopAuthorizationAttemptExchange || limiter.identity != model.HashToken(code) || limiter.source != "192.0.2.10:5001" {
-		t.Fatalf("exchange attempt = %#v", limiter)
-	}
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
+	require.Nil(t, persistence.exchanged, "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
+	require.Equal(t, 0, auditor.prepareExchange, "Exchange() error=%v persisted=%#v exchange audits", err, persistence.exchanged)
+	require.Equal(t, desktopAuthorizationAttemptExchange, limiter.operation)
+	require.Equal(t, model.HashToken(code), limiter.identity)
+	require.Equal(t, "192.0.2.10:5001", limiter.source)
 }
 
 func TestDesktopAuthorizationAttemptAccountingSeparatesStartAndExchange(t *testing.T) {
@@ -515,22 +469,17 @@ func TestDesktopAuthorizationAttemptAccountingSeparatesStartAndExchange(t *testi
 
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	accounting, err := newAuthenticationAttemptAccounting(newExpiringAuthenticationAttemptCache(func() time.Time { return now }))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	limiter := desktopAuthorizationAttemptAccounting{attempts: accounting, policy: LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 2,
 	}}
 	identity := model.HashToken(model.NewCredentialToken())
-	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1"); err != nil {
-		t.Fatalf("first start: %v", err)
-	}
-	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1"); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("repeated start error = %v", err)
-	}
-	if err = limiter.Check(context.Background(), desktopAuthorizationAttemptExchange, identity, "192.0.2.20:1"); err != nil {
-		t.Fatalf("exchange must use a distinct domain: %v", err)
-	}
+	err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1")
+	require.NoError(t, err)
+	err = limiter.Check(context.Background(), desktopAuthorizationAttemptStart, identity, "192.0.2.20:1")
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "repeated start error = %v", err)
+	err = limiter.Check(context.Background(), desktopAuthorizationAttemptExchange, identity, "192.0.2.20:1")
+	require.NoError(t, err)
 }
 
 func testDesktopSessionPolicy() SessionPolicy {
@@ -746,9 +695,7 @@ func testDesktopAuthorizationIdentity(
 		Origin: origin, NonceLifetime: 5 * time.Minute, ProofLifetime: 5 * time.Minute,
 		ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return desktopAuthorizationIdentityDependencies{
 		users: desktopAuthorizationUserStoreStub{}, authentication: &authenticationService{
 			sessions: &desktopAuthorizationSessionStoreStub{}, securityEffects: discardAuthenticationSecurityEffects{},
@@ -779,22 +726,16 @@ func testDesktopAuthorizationExchangeCommand(
 	t.Helper()
 	privateKey, publicJWK := testDPoPKey(t)
 	thumbprint, err := publicJWK.Thumbprint()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorizationID, err := service.transactions.ResolveDesktopAuthorizationExchange(context.Background(),
 		&store.DesktopAuthorizationExchangeProof{CodeHash: model.HashToken(code)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding := dpopBinding{
 		Kind: dpopBindingAuthorization, AuthorizationID: authorizationID.ID,
 		KeyThumbprint: thumbprint, Origin: service.dpop.policy.Origin,
 	}
 	nonce, err := service.dpop.IssueNonce(context.Background(), binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	proof := signDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
 		"htu": service.dpop.policy.Origin + "/api/v1/auth/desktop/token",
@@ -817,9 +758,7 @@ func testDesktopAuthorizationExchangeResult(
 ) (*model.Session, *model.DesktopRegistration) {
 	t.Helper()
 	thumbprint, err := command.PublicJWK.Thumbprint()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	registrationID := model.NewDesktopRegistrationID()
 	registration := &model.DesktopRegistration{
 		UserID: userID, InstitutionID: model.NewInstitutionID(), PublicJWK: command.PublicJWK,

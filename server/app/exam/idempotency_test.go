@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -20,12 +23,15 @@ func assertStoreIdempotency(t *testing.T, got *store.CommandIdempotency, userID 
 	t.Helper()
 	wantKey := sha256.Sum256([]byte(key))
 	wantFingerprint := sha256.Sum256([]byte(operation + "\x00v1\x00" + document))
-	if got == nil || got.UserID != userID || got.Operation != operation || got.KeyDigest != wantKey ||
-		got.FingerprintVersion != 1 || got.Fingerprint != wantFingerprint || got.OutcomeVersion != 1 ||
-		got.Retention != 24*time.Hour || got.Wait != 2*time.Second {
-		t.Fatalf("Store idempotency = %#v; want user=%s operation=%q key_digest=%x fingerprint_version=1 fingerprint=%x outcome_version=1 retention=%s wait=%s",
-			got, userID, operation, wantKey, wantFingerprint, 24*time.Hour, 2*time.Second)
-	}
+	require.NotNil(t, got, "Store idempotency")
+	require.Equal(t, userID, got.UserID, "Store idempotency")
+	require.Equal(t, operation, got.Operation, "Store idempotency")
+	require.Equal(t, wantKey, got.KeyDigest, "Store idempotency")
+	require.Equal(t, 1, got.FingerprintVersion, "Store idempotency")
+	require.Equal(t, wantFingerprint, got.Fingerprint, "Store idempotency")
+	require.Equal(t, 1, got.OutcomeVersion, "Store idempotency")
+	require.Equal(t, 24*time.Hour, got.Retention, "Store idempotency")
+	require.Equal(t, 2*time.Second, got.Wait, "Store idempotency")
 }
 
 func TestIdempotencyOperationCompatibility(t *testing.T) {
@@ -51,8 +57,6 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 		"publish Revision":           "exam.revision.publish.v1",
 	}
 	for name, operation := range tests {
-		if operation != want[name] {
-			t.Errorf("%s operation = %q; want %q", name, operation, want[name])
-		}
+		assert.Equal(t, want[name], operation, "%s operation", name)
 	}
 }

@@ -10,9 +10,10 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -38,9 +39,9 @@ func TestAdministratorMFAResetRequiresEnabledServiceAndExactTargetBeforeMutation
 				capabilities: &accessPolicyCapabilitiesFake{}, mfaEnabled: test.enabled,
 			}}
 			result, err := service.ResetAdministratorMFA(context.Background(), AdministratorMFAResetCommand{InstitutionID: test.institution, UserID: test.user})
-			if result != nil || !apperror.Is(err, test.code) || len(events) != 0 {
-				t.Fatalf("result=%#v error=%v events=%v", result, err, events)
-			}
+			require.Nil(t, result, "result=%#v error=%v events", result, err)
+			require.True(t, apperror.Is(err, test.code), "result=%#v error=%v events", result, err)
+			require.Empty(t, events, "result=%#v error=%v events", result, err)
 		})
 	}
 }
@@ -72,15 +73,18 @@ func TestAdministratorMFAResetPassesCurrentDeploymentAndRequiresDurableEvidence(
 			service := newBootstrapService(persistence, &passwordHasherFake{events: &events}, nil, LoginRateLimitPolicy{}, BootstrapProtectionPolicy{}, "offline", time.Now,
 				administratorRecoveryPolicy{capabilities: capabilities, mfaEnabled: true})
 			result, err := service.ResetAdministratorMFA(context.Background(), AdministratorMFAResetCommand{InstitutionID: " " + institutionID.String() + " ", UserID: userID.String()})
-			if test.wantOK != (err == nil) || !reflect.DeepEqual(events, []string{"reset-administrator-mfa"}) {
-				t.Fatalf("result=%#v error=%v events=%v", result, err, events)
-			}
+			require.Equal(t, test.wantOK, err == nil, "result=%#v error=%v events", result, err)
+			require.Equal(t, []string{"reset-administrator-mfa"}, events, "result=%#v error=%v events", result, err)
 			input := persistence.mfaResetInput
-			if input == nil || input.InstitutionID != institutionID || input.UserID != userID || !input.MFAEnabled || len(input.Capabilities.Providers) != 1 {
-				t.Fatalf("input=%#v", input)
-			}
-			if test.wantOK && (result == nil || !result.ReenrollmentRequired || result.RecoveryGeneration != 2) {
-				t.Fatalf("result=%#v", result)
+			require.NotNil(t, input)
+			require.Equal(t, institutionID, input.InstitutionID)
+			require.Equal(t, userID, input.UserID)
+			require.True(t, input.MFAEnabled)
+			require.Len(t, input.Capabilities.Providers, 1)
+			if test.wantOK {
+				require.NotNil(t, result)
+				require.True(t, result.ReenrollmentRequired)
+				require.Equal(t, int64(2), result.RecoveryGeneration)
 			}
 		})
 	}

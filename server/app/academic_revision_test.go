@@ -9,9 +9,12 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -52,28 +55,20 @@ func TestAcademicClientRevisionPreconditions(t *testing.T) {
 						code = "authorization.denied"
 					}
 					if code != "" {
-						if !apperror.Is(err, code) {
-							t.Fatalf("error = %v, want %s", err, code)
-						}
+						require.True(t, apperror.Is(err, code), "error = %v, want %s", err, code)
 						for _, event := range events {
-							if strings.HasPrefix(event, "store-") || event == "audit-begin" {
-								t.Fatalf("rejected editor reached mutation: %v", events)
-							}
+							require.False(t, strings.HasPrefix(event, "store-"))
+							require.NotEqual(t, "audit-begin", event)
 						}
-						if len(events) == 0 || !strings.HasPrefix(events[0], "authorize") {
-							t.Fatalf("authorization did not precede snapshot check: %v", events)
-						}
+						require.NotEmpty(t, events)
+						require.True(t, strings.HasPrefix(events[0], "authorize"))
 					} else {
-						if err != nil {
-							t.Fatal(err)
-						}
+						require.NoError(t, err)
 						want := int64(8)
 						if operation == "archive" {
 							want = 7
 						}
-						if got := revision(operation); got != want {
-							t.Fatalf("Store revision = %d, want %d", got, want)
-						}
+						require.Equal(t, want, revision(operation), "Store revision")
 					}
 				})
 			}
@@ -182,7 +177,7 @@ func academicRevisionFixture(t *testing.T, kind string, events *[]string, denied
 				return persistence.updateInput.Class.Revision
 			}
 	default:
-		t.Fatalf("unknown academic kind %s", kind)
+		require.FailNow(t, fmt.Sprintf("unknown academic kind %s", kind))
 		return nil, nil, nil
 	}
 }

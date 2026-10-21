@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -70,20 +72,20 @@ func TestMFAAssistedResetRequiresIndependentVerifiedAdministrator(t *testing.T) 
 			}
 			err := service.ResetUserMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
 			if name != "success" {
-				if err == nil || effects.userID != "" {
-					t.Fatal("failed reset returned success or emitted post-commit effects")
-				}
-				if name != "commit failure" && persistence.input != nil {
-					t.Fatal("invalid reset reached durable mutation")
+				require.Error(t, err, "failed reset returned success or emitted post-commit effects")
+				require.Empty(t, effects.userID, "failed reset returned success or emitted post-commit effects")
+				if name != "commit failure" {
+					require.Nil(t, persistence.input, "invalid reset reached durable mutation")
 				}
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if persistence.input == nil || persistence.input.Principal.UserID != principal.UserID || persistence.input.UserID != command.UserID || !persistence.input.IdentityVerified || persistence.input.Notice.Occurrence.TemplateKey != model.MailTemplateIdentityMFAReset || effects.userID != command.UserID.String() {
-				t.Fatal("assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
-			}
+			require.NoError(t, err)
+			require.NotNil(t, persistence.input, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.Equal(t, principal.UserID, persistence.input.Principal.UserID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.Equal(t, command.UserID, persistence.input.UserID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.True(t, persistence.input.IdentityVerified, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.Equal(t, model.MailTemplateIdentityMFAReset, persistence.input.Notice.Occurrence.TemplateKey, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
+			require.Equal(t, command.UserID.String(), effects.userID, "assisted reset lost its exact actor, target, attestation, notice or post-commit effects")
 		})
 	}
 }
@@ -97,18 +99,14 @@ func TestMFARestrictedContextSurvivesDisabledService(t *testing.T) {
 	service := newTestMFAApplicationService(t, base, &mfaApplicationAuditFake{}, &mfaApplicationEffectsFake{}, now)
 	service.mechanics.settings.Enabled = false
 	status, err := service.GetMFAStatus(context.Background(), NewInvocation(principal, model.RequestMetadata{}), GetMFAStatusQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.ServiceEnabled || !status.MFARecoveryRequired || status.AuthenticationMethod != "password" {
-		t.Fatal("disabled service concealed mandatory reenrollment")
-	}
-	if _, err := service.SetupMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{}); !apperror.Is(err, "authentication.mfa.disabled") {
-		t.Fatalf("disabled setup = %v", err)
-	}
-	if _, err := service.ChallengeMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"}); !apperror.Is(err, "authentication.session_required") {
-		t.Fatalf("restricted challenge = %v", err)
-	}
+	require.NoError(t, err)
+	require.False(t, status.ServiceEnabled, "disabled service concealed mandatory reenrollment")
+	require.True(t, status.MFARecoveryRequired, "disabled service concealed mandatory reenrollment")
+	require.Equal(t, "password", status.AuthenticationMethod, "disabled service concealed mandatory reenrollment")
+	_, err = service.SetupMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), SetupMFACommand{})
+	require.True(t, apperror.Is(err, "authentication.mfa.disabled"), "disabled setup = %v", err)
+	_, err = service.ChallengeMFA(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ChallengeMFACommand{Code: "123456"})
+	require.True(t, apperror.Is(err, "authentication.session_required"), "restricted challenge = %v", err)
 }
 
 func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
@@ -120,7 +118,5 @@ func TestMFAFactorAttemptsAreBoundedBeforeVerification(t *testing.T) {
 	invocation := NewInvocation(principal, model.RequestMetadata{IPAddress: "127.0.0.1"})
 	_, _ = service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000000"})
 	_, err := service.ChallengeMFA(context.Background(), invocation, ChallengeMFACommand{Code: "000001"})
-	if !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("unbounded factor challenge: %v", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "unbounded factor challenge: %v", err)
 }

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -27,30 +29,26 @@ func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatalf("SaveDecision() error = %v", err)
-	}
-	if result.Review == nil || result.Decision == nil || f.persistence.decision == nil || f.effects.changed != 1 {
-		t.Fatalf("result=%#v mutation=%#v effects=%d", result, f.persistence.decision, f.effects.changed)
-	}
-	if f.authorizer.reviewSubmission != f.submissionID || f.persistence.decision.ManagerOverride ||
-		f.persistence.decision.ActorUserID != f.userID || f.persistence.decision.AuditEventID == "" {
-		t.Fatalf("authorization=%#v mutation=%#v", f.authorizer, f.persistence.decision)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result.Review, "result=%#v mutation=%#v effects", result, f.persistence.decision)
+	require.NotNil(t, result.Decision, "result=%#v mutation=%#v effects", result, f.persistence.decision)
+	require.NotNil(t, f.persistence.decision, "result=%#v mutation=%#v effects", result, f.persistence.decision)
+	require.Equal(t, 1, f.effects.changed, "result=%#v mutation=%#v effects", result, f.persistence.decision)
+	require.Equal(t, f.submissionID, f.authorizer.reviewSubmission, "authorization=%#v mutation=%#v", f.authorizer, f.persistence.decision)
+	require.False(t, f.persistence.decision.ManagerOverride, "authorization=%#v mutation=%#v", f.authorizer, f.persistence.decision)
+	require.Equal(t, f.userID, f.persistence.decision.ActorUserID, "authorization=%#v mutation=%#v", f.authorizer, f.persistence.decision)
+	require.NotEmpty(t, f.persistence.decision.AuditEventID, "authorization=%#v mutation=%#v", f.authorizer, f.persistence.decision)
 	for _, forbidden := range []string{"private_rationale", "manager_notes", "student_remarks_markdown"} {
-		if _, exists := f.auditor.value[forbidden]; exists {
-			t.Fatalf("private field %q in audit %#v", forbidden, f.auditor.value)
-		}
+		_, exists := f.auditor.value[forbidden]
+		require.False(t, exists, "private field %q in audit %#v", forbidden, f.auditor.value)
 	}
 	wantIdempotency, prepareErr := prepareDecisionIdempotency(f.invocation, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestUpdateDraftPassesOwnedIdempotencyToStore(t *testing.T) {
@@ -58,14 +56,11 @@ func TestUpdateDraftPassesOwnedIdempotencyToStore(t *testing.T) {
 	f := newReviewFixture(t)
 	command := UpdateDraftCommand{SubmissionID: f.submissionID, ReviewID: f.reviewID, ExpectedReviewRevision: 1,
 		ManagerNotes: "private", StudentRemarksMarkdown: "Visible", IdempotencyKey: "draft-key"}
-	if _, err := f.service.UpdateExamIntegrityReview(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
+	_, err := f.service.UpdateExamIntegrityReview(context.Background(), f.invocation, command)
+	require.NoError(t, err)
 	want, err := prepareDraftIdempotency(f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
+	require.NoError(t, err)
+	require.Equal(t, want, f.persistence.idempotency)
 }
 
 func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
@@ -76,9 +71,9 @@ func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
 		SubmissionID: f.submissionID, FlagID: f.flagID, Outcome: model.IntegrityReviewConfirmed,
 		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
-	if err != nil || !result.Replayed || f.effects.changed != 0 {
-		t.Fatalf("result=%#v error=%v effects=%d", result, err, f.effects.changed)
-	}
+	require.NoError(t, err, "result=%#v error=%v effects", result, err)
+	require.True(t, result.Replayed, "result=%#v error=%v effects", result, err)
+	require.Equal(t, 0, f.effects.changed, "result=%#v error=%v effects", result, err)
 }
 
 func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
@@ -87,32 +82,32 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	f.persistence.mode = "finalize"
 	finalized, err := f.service.FinalizeExamIntegrityReview(context.Background(), f.invocation, FinalizeCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 2, IdempotencyKey: "test-key"})
-	if err != nil || finalized.Review.State != model.SubmissionReviewFinalized || f.authorizer.reviewCalls != 1 || f.effects.finalized != 1 {
-		t.Fatalf("finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
-	}
+	require.NoError(t, err, "finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
+	require.Equal(t, model.SubmissionReviewFinalized, finalized.Review.State, "finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
+	require.Equal(t, 1, f.authorizer.reviewCalls, "finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
+	require.Equal(t, 1, f.effects.finalized, "finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
 	wantFinalize, prepareErr := prepareTerminalIdempotency(f.invocation, store.ExamIntegrityReviewFinalizeOperation,
 		"test-key", f.submissionID, f.reviewID, 2)
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantFinalize)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantFinalize, f.persistence.idempotency)
 	f.persistence.mode = "release"
 	released, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
-	if err != nil || released.Review.ReleaseState != model.SubmissionReviewReleased || f.authorizer.releaseCalls != 1 || f.effects.released != 1 {
-		t.Fatalf("released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
-	}
+	require.NoError(t, err, "released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
+	require.Equal(t, model.SubmissionReviewReleased, released.Review.ReleaseState, "released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
+	require.Equal(t, 1, f.authorizer.releaseCalls, "released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
+	require.Equal(t, 1, f.effects.released, "released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
 	wantRelease, prepareErr := prepareTerminalIdempotency(f.invocation, store.ExamIntegrityReviewReleaseOperation,
 		"test-key", f.submissionID, f.reviewID, 3)
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantRelease)
-	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ReviewID != f.reviewID || f.mail.request.ExpectedReviewRevision != 3 ||
-		!f.mail.request.ReleasedAt.Equal(f.at.Add(time.Minute)) || f.persistence.release == nil ||
-		f.persistence.release.Notice == nil || f.persistence.release.ExpectedRecipientRevision != 2 {
-		t.Fatalf("mail=%#v release=%#v", f.mail.request, f.persistence.release)
-	}
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantRelease, f.persistence.idempotency)
+	require.Equal(t, f.userID, f.mail.request.CandidateUserID, "mail=%#v release", f.mail.request)
+	require.Equal(t, f.reviewID, f.mail.request.ReviewID, "mail=%#v release", f.mail.request)
+	require.Equal(t, int64(3), f.mail.request.ExpectedReviewRevision, "mail=%#v release", f.mail.request)
+	require.True(t, f.mail.request.ReleasedAt.Equal(f.at.Add(time.Minute)), "mail=%#v release", f.mail.request)
+	require.NotNil(t, f.persistence.release, "mail=%#v release", f.mail.request)
+	require.NotNil(t, f.persistence.release.Notice, "mail=%#v release", f.mail.request)
+	require.Equal(t, int64(2), f.persistence.release.ExpectedRecipientRevision, "mail=%#v release", f.mail.request)
 }
 
 func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
@@ -123,14 +118,14 @@ func TestReleasePreparationFailureIsAuditedAsAttempt(t *testing.T) {
 	_, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.integrity_review.state_conflict" {
-		t.Fatalf("Release() error = %v", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.integrity_review.state_conflict", fault.Code())
 	// The release-time reservation is a durable write, so its attempt must be
 	// audited before it runs and completed as failed when it is refused.
-	if f.auditor.begun != 1 || f.auditor.failedCode != fault.Code() || f.mail.calls != 0 || f.persistence.release != nil {
-		t.Fatalf("audit=%#v mail=%d release=%#v", f.auditor, f.mail.calls, f.persistence.release)
-	}
+	require.Equal(t, 1, f.auditor.begun, "audit=%#v mail=%d release", f.auditor, f.mail.calls)
+	require.Equal(t, fault.Code(), f.auditor.failedCode, "audit=%#v mail=%d release", f.auditor, f.mail.calls)
+	require.Equal(t, 0, f.mail.calls, "audit=%#v mail=%d release", f.auditor, f.mail.calls)
+	require.Nil(t, f.persistence.release, "audit=%#v mail=%d release", f.auditor, f.mail.calls)
 }
 
 func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
@@ -139,11 +134,12 @@ func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
 	f.persistence.mode, f.persistence.replayed = "release", true
 	released, err := f.service.ReleaseStudentExamResult(context.Background(), f.invocation, ReleaseCommand{SubmissionID: f.submissionID,
 		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
-	if err != nil || !released.Replayed || f.effects.released != 0 || f.mail.calls != 0 ||
-		f.persistence.release == nil || f.persistence.release.Notice != nil {
-		t.Fatalf("released=%#v error=%v effects=%#v mail=%#v release=%#v", released, err, f.effects,
-			f.mail, f.persistence.release)
-	}
+	require.NoError(t, err, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
+	require.True(t, released.Replayed, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
+	require.Equal(t, 0, f.effects.released, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
+	require.Equal(t, 0, f.mail.calls, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
+	require.NotNil(t, f.persistence.release, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
+	require.Nil(t, f.persistence.release.Notice, "released=%#v error=%v effects=%#v mail=%#v release", released, err, f.effects, f.mail)
 }
 
 func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T) {
@@ -153,25 +149,19 @@ func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T
 		AttemptID: f.attemptID, CandidateUserID: f.userID,
 		StudentRemarksMarkdown: "Safe **text** <script>alert(1)</script> ![remote](https://tracker.example/x)", ReleasedAt: f.at}
 	result, err := f.service.GetStudentExamResult(context.Background(), f.invocation, f.attemptID)
-	if err != nil {
-		t.Fatalf("GetStudentResult() error = %v", err)
-	}
-	if result.StudentRemarksMarkdown != "Safe **text**  remote" {
-		t.Fatalf("sanitized remarks = %q", result.StudentRemarksMarkdown)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Safe **text**  remote", result.StudentRemarksMarkdown)
 	wrongPrincipal := f.invocation.Principal()
 	wrongPrincipal.UserID = model.NewUserID()
 	wrong := invocation.New(wrongPrincipal, f.invocation.RequestMetadata())
-	if _, err = f.service.GetStudentExamResult(context.Background(), wrong, f.attemptID); err == nil {
-		t.Fatal("GetStudentResult() accepted another candidate")
-	}
+	_, err = f.service.GetStudentExamResult(context.Background(), wrong, f.attemptID)
+	require.Error(t, err, "GetStudentResult() accepted another candidate")
 	patPrincipal := f.invocation.Principal()
 	patPrincipal.CredentialType = model.CredentialPersonalAccessToken
 	patPrincipal.SessionID = ""
 	pat := invocation.New(patPrincipal, f.invocation.RequestMetadata())
-	if _, err = f.service.GetStudentExamResult(context.Background(), pat, f.attemptID); err == nil {
-		t.Fatal("GetStudentResult() accepted non-Session principal")
-	}
+	_, err = f.service.GetStudentExamResult(context.Background(), pat, f.attemptID)
+	require.Error(t, err, "GetStudentResult() accepted non-Session principal")
 }
 
 type reviewFixture struct {
@@ -202,9 +192,7 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 	service, err := New(Dependencies{Persistence: f.persistence, Authorizer: f.authorizer, Auditor: f.auditor,
 		Effects: f.effects, EffectFailures: f.effects, Mail: f.mail, Now: func() time.Time { return f.at },
 		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.service = service
 	f.invocation = invocation.New(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,

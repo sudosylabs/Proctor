@@ -18,13 +18,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
 	"github.com/sudosylabs/proctor/server/config"
@@ -36,13 +37,9 @@ import (
 
 func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const (
 		providerID           = "campus-oidc"
 		invitationProviderID = "invited-oidc"
@@ -77,19 +74,15 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			oidcServer.ServeHTTP(writer, request)
 			return
 		}
-		if err := request.ParseForm(); err != nil {
-			t.Errorf("parse token request: %v", err)
-		}
+		assert.NoError(t, request.ParseForm())
 		transactionMutex.Lock()
 		nonce := expectedNonce
 		challenge := expectedChallenge
 		transactionMutex.Unlock()
-		if request.Form.Get("code") != code ||
-			oauth2.S256ChallengeFromVerifier(
-				request.Form.Get("code_verifier"),
-			) != challenge {
-			t.Errorf("invalid token exchange: %#v", request.Form)
-		}
+		assert.Equal(t, code, request.Form.Get("code"))
+		assert.Equal(t, challenge, oauth2.S256ChallengeFromVerifier(
+			request.Form.Get("code_verifier"),
+		))
 		now := time.Now()
 		rawClaims, _ := json.Marshal(map[string]any{
 			"iss": issuer, "aud": clientID, "sub": subject,
@@ -155,9 +148,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			DisplayName: "OIDC Authentication University",
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	begin := performJSONRequest(
 		helper.Handler(),
@@ -167,31 +158,25 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		nil,
 		"",
 	)
-	if begin.Code != http.StatusSeeOther {
-		t.Fatalf("begin status = %d: %s", begin.Code, begin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, begin.Code, "begin status = %d: %s", begin.Code, begin.Body.String())
 	authorizationURL, err := url.Parse(begin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	transactionMutex.Lock()
 	expectedNonce = authorizationURL.Query().Get("nonce")
 	expectedChallenge = authorizationURL.Query().Get("code_challenge")
 	transactionMutex.Unlock()
 	state := authorizationURL.Query().Get("state")
-	if state == "" || expectedNonce == "" || expectedChallenge == "" ||
-		authorizationURL.Query().Get("code_challenge_method") != "S256" {
-		t.Fatalf("authorization URL = %q", authorizationURL.String())
-	}
+	require.NotEmpty(t, state)
+	require.NotEmpty(t, expectedNonce)
+	require.NotEmpty(t, expectedChallenge)
+	require.Equal(t, "S256", authorizationURL.Query().Get("code_challenge_method"))
 	var bindingCookie *http.Cookie
 	for _, cookie := range begin.Result().Cookies() {
 		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			bindingCookie = cookie
 		}
 	}
-	if bindingCookie == nil {
-		t.Fatal("external login binding cookie is missing")
-	}
+	require.NotNil(t, bindingCookie, "external login binding cookie is missing")
 	callbackPath := model.APIURLSuffix + "/auth/providers/" +
 		providerID + "/callback?state=" + url.QueryEscape(state) +
 		"&code=" + url.QueryEscape(code)
@@ -203,73 +188,50 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	callbackRequest.AddCookie(bindingCookie)
 	callback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(callback, callbackRequest)
-	if callback.Code != http.StatusSeeOther ||
-		callback.Header().Get("Location") != "/oidc-complete" {
-		t.Fatalf(
-			"callback status=%d location=%q body=%s",
-			callback.Code,
-			callback.Header().Get("Location"),
-			callback.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusSeeOther, callback.Code, "callback status=%d location=%q body=%s", callback.Code, callback.Header().Get("Location"), callback.Body.String())
+	require.Equal(t, "/oidc-complete", callback.Header().Get("Location"), "callback status=%d location=%q body=%s", callback.Code, callback.Header().Get("Location"), callback.Body.String())
 	replayRequest := httptest.NewRequest(http.MethodGet, callbackPath, nil)
 	replayRequest.AddCookie(bindingCookie)
 	replay := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(replay, replayRequest)
-	if replay.Code != http.StatusUnauthorized {
-		t.Fatalf("replayed callback status=%d body=%s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, replay.Code, "replayed callback status=%d body=%s", replay.Code, replay.Body.String())
 	identity, err := persistence.ExternalIdentity().GetByProviderSubject(
 		context.Background(),
 		providerID,
 		subject,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user, err := persistence.User().Get(
 		context.Background(),
 		identity.UserID,
 	)
-	if err != nil || user.Username != "oidc.student" ||
-		user.Email != "oidc.student@example.edu" ||
-		!user.EmailVerified {
-		t.Fatalf("provisioned OIDC user = %#v, %v", user, err)
-	}
+	require.NoError(t, err, "provisioned OIDC user = %#v", user)
+	require.Equal(t, "oidc.student", user.Username, "provisioned OIDC user = %#v", user)
+	require.Equal(t, "oidc.student@example.edu", user.Email, "provisioned OIDC user = %#v", user)
+	require.True(t, user.EmailVerified, "provisioned OIDC user = %#v", user)
 	affiliations, err := persistence.Affiliation().ListByUser(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	academicMemberships, err := persistence.AcademicUnitMember().ListByUser(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	classMemberships, err := persistence.ClassMember().ListByUser(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	bindings, err := persistence.RoleBinding().ListByUser(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(affiliations) != 0 || len(academicMemberships) != 0 || len(classMemberships) != 0 || len(bindings) != 0 {
-		t.Fatalf("OIDC claims created academic authority: affiliations=%#v academic_memberships=%#v class_memberships=%#v role_bindings=%#v",
-			affiliations, academicMemberships, classMemberships, bindings)
-	}
+	require.NoError(t, err)
+	require.Empty(t, affiliations, "OIDC claims created academic authority: affiliations")
+	require.Empty(t, academicMemberships, "OIDC claims created academic authority: affiliations")
+	require.Empty(t, classMemberships, "OIDC claims created academic authority: affiliations")
+	require.Empty(t, bindings, "OIDC claims created academic authority: affiliations")
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID,
 		model.NowUTC(),
 	)
-	if err != nil || len(sessions) != 1 ||
-		sessions[0].AuthenticationMethod !=
-			config.ExternalAuthenticationTypeOIDC ||
-		sessions[0].AuthenticationProviderID != providerID ||
-		sessions[0].ExternalIdentityID != identity.ID ||
-		sessions[0].AuthenticationStrength !=
-			model.AuthenticationMultiFactor {
-		t.Fatalf("OIDC session = %#v, %v", sessions, err)
-	}
+	require.NoError(t, err, "OIDC session")
+	require.Len(t, sessions, 1, "OIDC session")
+	require.Equal(t, config.ExternalAuthenticationTypeOIDC, sessions[0].AuthenticationMethod, "OIDC session")
+	require.Equal(t, providerID, sessions[0].AuthenticationProviderID, "OIDC session")
+	require.Equal(t, identity.ID, sessions[0].ExternalIdentityID, "OIDC session")
+	require.Equal(t, model.AuthenticationMultiFactor, sessions[0].AuthenticationStrength, "OIDC session")
 
 	invitedEmail := "invited.oidc@example.edu"
 	claim, pendingInvitation := seedExternalAdmissionInvitation(t, persistence, institution, user, invitedEmail)
@@ -277,13 +239,10 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	invitationBegin := performJSONRequest(helper.Handler(), http.MethodPost,
 		"/api/v1/auth/providers/"+invitationProviderID+"/login",
 		map[string]any{"invitation_claim": claim, "return_to": "/join"}, "")
-	if invitationBegin.Code != http.StatusSeeOther || strings.Contains(invitationBegin.Header().Get("Location"), claim) {
-		t.Fatalf("OIDC invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, invitationBegin.Code, "OIDC invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
+	require.NotContains(t, invitationBegin.Header().Get("Location"), claim, "OIDC invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
 	invitationAuthorizationURL, err := url.Parse(invitationBegin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	transactionMutex.Lock()
 	expectedNonce = invitationAuthorizationURL.Query().Get("nonce")
 	expectedChallenge = invitationAuthorizationURL.Query().Get("code_challenge")
@@ -294,59 +253,48 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			invitationBinding = cookie
 		}
 	}
-	if invitationBinding == nil {
-		t.Fatal("OIDC invitation binding cookie is missing")
-	}
+	require.NotNil(t, invitationBinding, "OIDC invitation binding cookie is missing")
 	invitationCallbackPath := model.APIURLSuffix + "/auth/providers/" + invitationProviderID +
 		"/callback?state=" + url.QueryEscape(invitationAuthorizationURL.Query().Get("state")) + "&code=" + url.QueryEscape(code)
 	invitationCallbackRequest := httptest.NewRequest(http.MethodGet, invitationCallbackPath, nil)
 	invitationCallbackRequest.AddCookie(invitationBinding)
 	invitationCallback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(invitationCallback, invitationCallbackRequest)
-	if invitationCallback.Code != http.StatusSeeOther || invitationCallback.Header().Get("Location") != "/join" {
-		t.Fatalf("OIDC invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, invitationCallback.Code, "OIDC invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
+	require.Equal(t, "/join", invitationCallback.Header().Get("Location"), "OIDC invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
 	invitedIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), invitationProviderID, subject)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invitedUser, err := persistence.User().Get(context.Background(), invitedIdentity.UserID)
-	if err != nil || invitedUser.Email != invitedEmail || !invitedUser.EmailVerified {
-		t.Fatalf("OIDC invitation User = %#v, %v", invitedUser, err)
-	}
+	require.NoError(t, err, "OIDC invitation User = %#v", invitedUser)
+	require.Equal(t, invitedEmail, invitedUser.Email, "OIDC invitation User = %#v", invitedUser)
+	require.True(t, invitedUser.EmailVerified, "OIDC invitation User = %#v", invitedUser)
 	acceptedInvitation, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || acceptedInvitation.ID != pendingInvitation.ID || acceptedInvitation.State != model.InvitationAccepted ||
-		acceptedInvitation.AcceptedUserID != invitedUser.ID {
-		t.Fatalf("OIDC terminal Invitation = %#v, %v", acceptedInvitation, err)
-	}
+	require.NoError(t, err, "OIDC terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, pendingInvitation.ID, acceptedInvitation.ID, "OIDC terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, model.InvitationAccepted, acceptedInvitation.State, "OIDC terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, invitedUser.ID, acceptedInvitation.AcceptedUserID, "OIDC terminal Invitation = %#v", acceptedInvitation)
 	invitedAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitedUser.ID)
 	invitedMemberships, _ := persistence.ClassMember().ListByUser(context.Background(), invitedUser.ID)
 	invitedBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitedUser.ID)
-	if len(invitedAffiliations) != 1 || invitedAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
-		len(invitedMemberships) != 1 || invitedMemberships[0].ID != acceptedInvitation.AcceptedClassMemberID ||
-		len(invitedBindings) != 0 {
-		t.Fatalf("OIDC invitation admission package: affiliations=%#v memberships=%#v bindings=%#v",
-			invitedAffiliations, invitedMemberships, invitedBindings)
-	}
+	require.Len(t, invitedAffiliations, 1, "OIDC invitation admission package: affiliations")
+	require.Equal(t, acceptedInvitation.AcceptedAffiliationID, invitedAffiliations[0].ID, "OIDC invitation admission package: affiliations")
+	require.Len(t, invitedMemberships, 1, "OIDC invitation admission package: affiliations")
+	require.Equal(t, acceptedInvitation.AcceptedClassMemberID, invitedMemberships[0].ID, "OIDC invitation admission package: affiliations")
+	require.Empty(t, invitedBindings, "OIDC invitation admission package: affiliations")
 	invitedSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitedUser.ID, model.NowUTC())
-	if err != nil || len(invitedSessions) != 0 {
-		t.Fatalf("OIDC Invitation proof created an ordinary Session = %#v, %v", invitedSessions, err)
-	}
+	require.NoError(t, err, "OIDC Invitation proof created an ordinary Session")
+	require.Empty(t, invitedSessions, "OIDC Invitation proof created an ordinary Session")
 	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorID: invitedUser.ID,
 		Action: "invitation.accept", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	if err != nil || len(invitationAudits) != 1 || invitationAudits[0].AuthMethod != config.ExternalAuthenticationTypeOIDC {
-		t.Fatalf("OIDC Invitation acceptance audits = %#v, %v", invitationAudits, err)
-	}
+	require.NoError(t, err, "OIDC Invitation acceptance audits")
+	require.Len(t, invitationAudits, 1, "OIDC Invitation acceptance audits")
+	require.Equal(t, config.ExternalAuthenticationTypeOIDC, invitationAudits[0].AuthMethod, "OIDC Invitation acceptance audits")
 	invitationReplayRequest := httptest.NewRequest(http.MethodGet, invitationCallbackPath, nil)
 	invitationReplayRequest.AddCookie(invitationBinding)
 	invitationReplay := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(invitationReplay, invitationReplayRequest)
-	if invitationReplay.Code != http.StatusUnauthorized {
-		t.Fatalf("OIDC invitation callback replay = %d body=%s", invitationReplay.Code, invitationReplay.Body.String())
-	}
-	if strings.Contains(helper.Logs.String(), claim) {
-		t.Fatal("raw Invitation claim appeared in OIDC logs")
-	}
+	require.Equal(t, http.StatusUnauthorized, invitationReplay.Code, "OIDC invitation callback replay = %d body=%s", invitationReplay.Code, invitationReplay.Body.String())
+	require.NotContains(t, helper.Logs.String(), claim, "raw Invitation claim appeared in OIDC logs")
 	subject, claimedUsername, claimedEmail = linkedSubject, "oidc.student", "oidc.student@example.edu"
 
 	deniedBegin := performJSONRequest(
@@ -360,23 +308,15 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	deniedAuthorizationURL, err := url.Parse(
 		deniedBegin.Header().Get("Location"),
 	)
-	if err != nil || deniedBegin.Code != http.StatusSeeOther {
-		t.Fatalf(
-			"denied-flow begin status=%d location=%q error=%v",
-			deniedBegin.Code,
-			deniedBegin.Header().Get("Location"),
-			err,
-		)
-	}
+	require.NoError(t, err, "denied-flow begin status=%d location=%q error", deniedBegin.Code, deniedBegin.Header().Get("Location"))
+	require.Equal(t, http.StatusSeeOther, deniedBegin.Code, "denied-flow begin status=%d location=%q error", deniedBegin.Code, deniedBegin.Header().Get("Location"))
 	var deniedBindingCookie *http.Cookie
 	for _, cookie := range deniedBegin.Result().Cookies() {
 		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			deniedBindingCookie = cookie
 		}
 	}
-	if deniedBindingCookie == nil {
-		t.Fatal("denied-flow external login binding cookie is missing")
-	}
+	require.NotNil(t, deniedBindingCookie, "denied-flow external login binding cookie is missing")
 	deniedCallbackRequest := httptest.NewRequest(
 		http.MethodGet,
 		model.APIURLSuffix+"/auth/providers/"+providerID+
@@ -391,13 +331,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		deniedCallback,
 		deniedCallbackRequest,
 	)
-	if deniedCallback.Code != http.StatusUnauthorized {
-		t.Fatalf(
-			"denied-flow callback status=%d body=%s",
-			deniedCallback.Code,
-			deniedCallback.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusUnauthorized, deniedCallback.Code, "denied-flow callback status=%d body=%s", deniedCallback.Code, deniedCallback.Body.String())
 	loginAudits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
@@ -406,25 +340,18 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
-	if err != nil || len(loginAudits) != 2 {
-		t.Fatalf("OIDC login audits = %#v, %v", loginAudits, err)
-	}
+	require.NoError(t, err, "OIDC login audits")
+	require.Len(t, loginAudits, 2, "OIDC login audits")
 	for _, event := range loginAudits {
-		if event.AuthMethod != config.ExternalAuthenticationTypeOIDC {
-			t.Fatalf("OIDC audit authentication method = %#v", event)
-		}
+		require.Equal(t, config.ExternalAuthenticationTypeOIDC, event.AuthMethod)
 	}
 
 	loginAgain := func() *httptest.ResponseRecorder {
 		begin := performJSONRequest(helper.Handler(), http.MethodGet,
 			"/api/v1/auth/providers/"+providerID+"/login?client_type=web", nil, "")
-		if begin.Code != http.StatusSeeOther {
-			t.Fatalf("OIDC repeat begin status=%d body=%s", begin.Code, begin.Body.String())
-		}
+		require.Equal(t, http.StatusSeeOther, begin.Code, "OIDC repeat begin status=%d body=%s", begin.Code, begin.Body.String())
 		authorizationURL, parseErr := url.Parse(begin.Header().Get("Location"))
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
+		require.NoError(t, parseErr)
 		transactionMutex.Lock()
 		expectedNonce = authorizationURL.Query().Get("nonce")
 		expectedChallenge = authorizationURL.Query().Get("code_challenge")
@@ -435,9 +362,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 				repeatBinding = cookie
 			}
 		}
-		if repeatBinding == nil {
-			t.Fatal("OIDC repeat binding cookie is missing")
-		}
+		require.NotNil(t, repeatBinding, "OIDC repeat binding cookie is missing")
 		request := httptest.NewRequest(http.MethodGet, model.APIURLSuffix+"/auth/providers/"+providerID+
 			"/callback?state="+url.QueryEscape(authorizationURL.Query().Get("state"))+"&code="+url.QueryEscape(code), nil)
 		request.AddCookie(repeatBinding)
@@ -448,37 +373,31 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 
 	claimedUsername, claimedEmail = "changed.oidc", "changed.oidc@example.edu"
 	claimedFirstName, claimedLastName = "Changed", "OIDC Profile"
-	if response := loginAgain(); response.Code != http.StatusSeeOther {
-		t.Fatalf("OIDC changed-claim login status = %d", response.Code)
-	}
+	require.Equal(t, http.StatusSeeOther, loginAgain().Code, "OIDC changed-claim login status")
 	unchangedUser, err := persistence.User().Get(context.Background(), user.ID)
-	if err != nil || unchangedUser.Username != "oidc.student" || unchangedUser.Email != "oidc.student@example.edu" ||
-		unchangedUser.FirstName != "OIDC" || unchangedUser.LastName != "Student" {
-		t.Fatalf("OIDC claims overwrote established User = %#v, %v", unchangedUser, err)
-	}
+	require.NoError(t, err, "OIDC claims overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "oidc.student", unchangedUser.Username, "OIDC claims overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "oidc.student@example.edu", unchangedUser.Email, "OIDC claims overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "OIDC", unchangedUser.FirstName, "OIDC claims overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "Student", unchangedUser.LastName, "OIDC claims overwrote established User = %#v", unchangedUser)
 
 	subject = "ineligible-oidc-subject"
 	claimedUsername, claimedEmail = "ineligible.oidc", "ineligible.oidc@example.edu"
 	claimedHomeOrg = "outside.example"
-	if response := loginAgain(); response.Code != http.StatusUnauthorized {
-		t.Fatalf("ineligible OIDC auto_provision status = %d", response.Code)
-	}
-	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject); !store.IsNotFound(err) {
-		t.Fatalf("ineligible OIDC subject persisted an identity: %v", err)
-	}
+	require.Equal(t, http.StatusUnauthorized, loginAgain().Code, "ineligible OIDC auto_provision status")
+	_, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject)
+	require.True(t, store.IsNotFound(err), "ineligible OIDC subject persisted an identity")
 
 	subject = "conflicting-oidc-subject"
 	claimedUsername, claimedEmail, claimedHomeOrg = "conflicting.oidc", "oidc.student@example.edu", "example.edu"
 	conflictResponse := loginAgain()
-	if conflictResponse.Code != http.StatusConflict {
-		t.Fatalf("conflicting OIDC auto_provision status = %d", conflictResponse.Code)
-	}
-	if body := conflictResponse.Body.String(); strings.Contains(body, subject) || strings.Contains(body, claimedEmail) || strings.Contains(body, user.ID.String()) {
-		t.Fatalf("conflicting OIDC response disclosed account or provider claims: %s", body)
-	}
-	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject); !store.IsNotFound(err) {
-		t.Fatalf("conflicting OIDC subject persisted an identity: %v", err)
-	}
+	require.Equal(t, http.StatusConflict, conflictResponse.Code, "conflicting OIDC auto_provision status")
+	body := conflictResponse.Body.String()
+	require.NotContains(t, body, subject)
+	require.NotContains(t, body, claimedEmail)
+	require.NotContains(t, body, user.ID.String())
+	_, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject)
+	require.True(t, store.IsNotFound(err), "conflicting OIDC subject persisted an identity")
 
 	for _, secret := range []string{
 		code,
@@ -488,8 +407,6 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		bindingCookie.Value,
 		"provider-access-token",
 	} {
-		if strings.Contains(helper.Logs.String(), secret) {
-			t.Fatalf("OIDC secret appeared in logs")
-		}
+		require.NotContains(t, helper.Logs.String(), secret, "OIDC secret appeared in logs")
 	}
 }

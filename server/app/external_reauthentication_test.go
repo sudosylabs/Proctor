@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -73,18 +75,24 @@ func TestExternalReauthenticationBindsOriginalSessionAndClosedTask(t *testing.T)
 			service.loginStates, service.mutationAudit = states, audit
 			result, err := service.BeginExternalReauthentication(context.Background(), NewInvocation(principal, model.RequestMetadata{}), BeginExternalReauthenticationCommand{Task: test.task, Source: "192.0.2.30"})
 			if test.want == "" {
-				if err == nil || result != nil || states.saved != nil || provider.beginRequest.FreshAuthentication {
-					t.Fatal("unbounded continuation reached provider or Store")
-				}
+				require.Error(t, err, "unbounded continuation reached provider or Store")
+				require.Nil(t, result, "unbounded continuation reached provider or Store")
+				require.Nil(t, states.saved, "unbounded continuation reached provider or Store")
+				require.False(t, provider.beginRequest.FreshAuthentication, "unbounded continuation reached provider or Store")
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			bound := states.saved
-			if result == nil || bound == nil || !provider.beginRequest.FreshAuthentication || bound.Purpose != model.ExternalAuthenticationPurposeReauthenticate || bound.ReturnTo != test.want || bound.TargetUserID != principal.UserID || bound.SessionID != principal.SessionID || bound.SessionCredentialID.String() != principal.CredentialID.String() || bound.ExternalIdentityID != principal.ExternalIdentityID || bound.AuditEventID != audit.beginID {
-				t.Fatalf("missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
-			}
+			require.NotNil(t, result, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.NotNil(t, bound, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.True(t, provider.beginRequest.FreshAuthentication, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, model.ExternalAuthenticationPurposeReauthenticate, bound.Purpose, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, test.want, bound.ReturnTo, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, principal.UserID, bound.TargetUserID, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, principal.SessionID, bound.SessionID, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, principal.CredentialID.String(), bound.SessionCredentialID.String(), "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, principal.ExternalIdentityID, bound.ExternalIdentityID, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
+			require.Equal(t, audit.beginID, bound.AuditEventID, "missing exact fresh-proof binding: %#v %#v", bound, provider.beginRequest)
 		})
 	}
 }
@@ -113,9 +121,7 @@ func TestExternalReauthenticationCallbackUsesBoundProofAndSafeFailureContinuatio
 			service.now = func() time.Time { return now }
 			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: now}
 			institution, err := model.NewInstitution(model.NewInstitutionID(), "fresh-proof", "Fresh Proof", "", now)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			events := []string{}
 			auditor := &mutationAttemptAuditorFake{events: &events}
 			committed := &model.Session{ID: state.SessionID, UserID: state.TargetUserID}
@@ -123,18 +129,22 @@ func TestExternalReauthenticationCallbackUsesBoundProofAndSafeFailureContinuatio
 			service.loginStates, service.sessions = states, sessions
 			service.institutions, service.audit, service.mutationAudit, service.invalidator = providerConnectionInstitutionStoreFake{institution: institution}, externalAuditFake{}, auditor, externalInvalidatorFake{}
 			result, err := service.complete(context.Background(), "campus", binding, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-			if err != nil || result == nil || result.Tokens != nil || result.Restart != nil {
-				t.Fatalf("completion=%#v err=%v", result, err)
-			}
-			if !provider.completeRequest.AuthenticationStartedAt.Equal(state.CreatedAt) || states.consumeCalls != 1 || (sessions.input != nil) != test.wantCommit {
-				t.Fatal("provider proof was not bound to consumed flow")
-			}
+			require.NoError(t, err, "completion")
+			require.NotNil(t, result, "completion")
+			require.Nil(t, result.Tokens, "completion")
+			require.Nil(t, result.Restart, "completion")
+			require.True(t, provider.completeRequest.AuthenticationStartedAt.Equal(state.CreatedAt), "provider proof was not bound to consumed flow")
+			require.Equal(t, 1, states.consumeCalls, "provider proof was not bound to consumed flow")
+			require.Equal(t, test.wantCommit, sessions.input != nil, "provider proof was not bound to consumed flow")
 			if test.fail {
-				if result.Session != nil || result.ReturnTo != "/account/reauthenticate?task=connect-provider#external_login=failed" || auditor.failID != state.AuditEventID {
-					t.Fatalf("unsafe failure continuation: %#v", result)
-				}
-			} else if result.Session != committed || result.ReturnTo != state.ReturnTo || sessions.input.StateID != state.ID || sessions.input.Subject != provider.assertion.Subject {
-				t.Fatalf("proof changed Session or final task: %#v", result)
+				require.Nil(t, result.Session)
+				require.Equal(t, "/account/reauthenticate?task=connect-provider#external_login=failed", result.ReturnTo)
+				require.Equal(t, state.AuditEventID, auditor.failID)
+			} else {
+				require.Same(t, committed, result.Session, "proof changed Session")
+				require.Equal(t, state.ReturnTo, result.ReturnTo, "proof changed final task")
+				require.Equal(t, state.ID, sessions.input.StateID)
+				require.Equal(t, provider.assertion.Subject, sessions.input.Subject)
 			}
 		})
 	}
@@ -193,23 +203,25 @@ func TestExternalRecoveryRequiresFreshExistingIdentityBeforeSessionIssuance(t *t
 			service.now = func() time.Time { return now }
 			states := &externalLoginStateStoreFake{get: state, consumeResult: state, storeNow: now}
 			institution, err := model.NewInstitution(model.NewInstitutionID(), "fresh-proof", "Fresh Proof", "", now)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			service.loginStates, service.authentication, service.audit = states, issuer, externalAuditFake{}
 			service.institutions = providerConnectionInstitutionStoreFake{institution: institution}
 			service.identities = recoveryExternalIdentityFake{user: user, identity: &model.ExternalIdentity{ID: model.NewExternalIdentityID(), UserID: user.ID, Provider: "campus", Subject: "existing-identity"}}
 			service.capabilities = &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: provider.Descriptor()}}}}
 			result, err := service.complete(context.Background(), "campus", binding, model.ExternalAuthenticationCallback{}, model.RequestMetadata{})
-			if issuer.calls != 0 {
-				t.Fatal("unverified recovery flow issued a Session")
-			}
+			require.Equal(t, 0, issuer.calls, "unverified recovery flow issued a Session")
 			if test.restart {
-				if err != nil || result == nil || result.Restart == nil || result.Session != nil || !provider.beginRequest.FreshAuthentication || states.saved.Purpose != model.ExternalAuthenticationPurposeMFARecovery || states.saved.TargetUserID != user.ID || states.saved.ReturnTo != "/account/security" {
-					t.Fatalf("recovery restart=%#v err=%v", result, err)
-				}
-			} else if err == nil || result != nil {
-				t.Fatal("pre-reset or wrong-User proof regained authority")
+				require.NoError(t, err, "recovery restart")
+				require.NotNil(t, result, "recovery restart")
+				require.NotNil(t, result.Restart, "recovery restart")
+				require.Nil(t, result.Session, "recovery restart")
+				require.True(t, provider.beginRequest.FreshAuthentication, "recovery restart")
+				require.Equal(t, model.ExternalAuthenticationPurposeMFARecovery, states.saved.Purpose, "recovery restart")
+				require.Equal(t, user.ID, states.saved.TargetUserID, "recovery restart")
+				require.Equal(t, "/account/security", states.saved.ReturnTo, "recovery restart")
+			} else {
+				require.Error(t, err, "pre-reset or wrong-User proof regained authority")
+				require.Nil(t, result, "pre-reset or wrong-User proof regained authority")
 			}
 		})
 	}

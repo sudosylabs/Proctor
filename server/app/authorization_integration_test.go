@@ -17,6 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -27,9 +30,7 @@ import (
 
 func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
@@ -40,17 +41,13 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "security-auditor", Email: "security-auditor@example.edu",
 		DisplayName: "Security Auditor",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	login := loginIntegrationUser(
 		t, helper.Handler(), user.Username, password,
 		model.SessionClientCLI, "audit-cli",
@@ -60,31 +57,24 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		helper.Handler(), http.MethodGet, "/api/v1/audits", nil,
 		login.Tokens.AccessToken,
 	)
-	if denied.Code != http.StatusForbidden {
-		t.Fatalf("unbound audit listing status = %d: %s", denied.Code, denied.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, denied.Code, "unbound audit listing status = %d: %s", denied.Code, denied.Body.String())
 
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "security-auditor", DisplayName: "Security Auditor",
 		Permissions: []string{string(model.ActionAuditView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis()),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 
 	allowed := performJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/audits?limit=20", nil,
 		login.Tokens.AccessToken,
 	)
-	if allowed.Code != http.StatusOK {
-		t.Fatalf("authorized audit listing status = %d: %s", allowed.Code, allowed.Body.String())
-	}
+	require.Equal(t, http.StatusOK, allowed.Code, "authorized audit listing status = %d: %s", allowed.Code, allowed.Body.String())
 	var response struct {
 		Events []struct {
 			ActorID   string `json:"actor_id"`
@@ -99,12 +89,8 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 			NodeID    string            `json:"node_id"`
 		} `json:"events"`
 	}
-	if err := json.Unmarshal(allowed.Body.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Events) < 2 {
-		t.Fatalf("audit events = %#v", response.Events)
-	}
+	require.NoError(t, json.Unmarshal(allowed.Body.Bytes(), &response))
+	require.GreaterOrEqual(t, len(response.Events), 2, "audit events")
 	decisions := map[string]bool{}
 	for _, event := range response.Events {
 		if event.Action == storetest.FixtureAuditAction {
@@ -118,21 +104,17 @@ func TestPrivilegedAuditListingIsScopedAndDurablyAudited(t *testing.T) {
 		// A password login attempt is recorded before any Session exists; its
 		// success projection names the issued Session instead.
 		preSession := event.Action == "authentication.login"
-		if (event.SessionID == "" && !preSession) || event.NodeID == "" || event.RequestID == "" {
-			t.Fatalf("incomplete security audit event = %#v", event)
-		}
+		require.False(t, event.SessionID == "" && !preSession)
+		require.NotEmpty(t, event.NodeID)
+		require.NotEmpty(t, event.RequestID)
 	}
-	if !decisions[string(model.ActionAcademicAuditView)+":"+string(model.AuditStatusFail)] ||
-		!decisions[string(model.ActionAuditView)+":"+string(model.AuditStatusSuccess)] {
-		t.Fatalf("authorization decisions = %#v", decisions)
-	}
+	require.True(t, decisions[string(model.ActionAcademicAuditView)+":"+string(model.AuditStatusFail)])
+	require.True(t, decisions[string(model.ActionAuditView)+":"+string(model.AuditStatusSuccess)])
 }
 
 func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
@@ -143,84 +125,61 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	root, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "engineering", DisplayName: "Engineering",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	child, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sibling, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "humanities", DisplayName: "Humanities",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: child.ID, Name: "computer-science",
 		DisplayName: "Computer Science",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	siblingProgramme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: sibling.ID, Name: "history", DisplayName: "History",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID), Name: "2026-2027", DisplayName: "2026-2027",
 		StartsAt: model.TimeFromMillis(1_800_000_000_000), EndsAt: model.TimeFromMillis(1_830_000_000_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "class-a", DisplayName: "Class A",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	password := "correct horse battery staple"
 	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "hierarchy-teacher", Email: "hierarchy-teacher@example.edu",
 		DisplayName: "Hierarchy Teacher",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login := loginIntegrationUser(
 		t, helper.Handler(), user.Username, password,
 		model.SessionClientCLI, "hierarchy-device",
 	)
 	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+	require.NoError(t, err)
+	_, err = persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: root.ID,
 		UserID:         user.ID,
 		StartsAt:       model.TimeFromMillis(model.GetMillis() - 1_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	// Keep permission results on a distinct error variable from CreateLocalUser
 	// / AuthenticateAccess so typed-nil *apperror.Error values cannot poison later
 	// nil checks through a shared interface variable.
@@ -228,9 +187,8 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("academic-unit membership unexpectedly granted class permission = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "academic-unit membership unexpectedly granted class permission")
+	require.False(t, allowed, "academic-unit membership unexpectedly granted class permission")
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "academic-unit-teacher", DisplayName: "Academic Unit Teacher",
 		Permissions: []string{
@@ -238,23 +196,18 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 			string(model.ActionClassView),
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
-	if permErr != nil || !allowed {
-		t.Fatalf("ancestor class permission = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "ancestor class permission")
+	require.True(t, allowed, "ancestor class permission")
 	for _, check := range []struct {
 		action   model.Action
 		resource model.Resource
@@ -262,42 +215,37 @@ func TestAuthorizationResolvesCurrentAcademicHierarchy(t *testing.T) {
 		{model.ActionProgrammeView, model.Resource{Type: model.ResourceProgramme, ID: programme.ID.String()}},
 		{model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgrammeLevel, ID: level.ID.String()}},
 	} {
-		allowed, permErr = helper.App.Can(ctx, *principal, check.action, check.resource)
-		if permErr != nil || !allowed {
-			t.Fatalf("descendant %s permission = %v, %v", check.action, allowed, permErr)
-		}
+		t.Run(string(check.action), func(t *testing.T) {
+			allowed, permErr = helper.App.Can(ctx, *principal, check.action, check.resource)
+			require.NoError(t, permErr, "descendant %s permission", check.action)
+			require.True(t, allowed, "descendant %s permission", check.action)
+		})
 	}
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionProgrammeView,
 		model.Resource{Type: model.ResourceProgramme, ID: siblingProgramme.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("sibling programme permission = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "sibling programme permission")
+	require.False(t, allowed, "sibling programme permission")
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionInstitutionManage,
 		model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("lower-scope institution permission = %v, %v", allowed, permErr)
-	}
-	if _, err := storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, permErr, "lower-scope institution permission")
+	require.False(t, allowed, "lower-scope institution permission")
+	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis())
+	require.NoError(t, err)
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, ID: class.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("ended binding permission = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "ended binding permission")
+	require.False(t, allowed, "ended binding permission")
 }
 
 func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
@@ -308,32 +256,24 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	password := "correct horse battery staple"
 	viewer, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-viewer", Email: "directory-viewer@example.edu",
 		DisplayName: "Directory Viewer",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	target, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "directory-target", Email: "directory-target@example.edu",
 		DisplayName: "Directory Target",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login := loginIntegrationUser(
 		t, helper.Handler(), viewer.Username, password,
 		model.SessionClientCLI, "directory-device",
 	)
 	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	metadata := model.RequestMetadata{
 		RequestID: model.NewID(),
 		IPAddress: "127.0.0.1",
@@ -346,71 +286,57 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		ctx, *principal, model.ActionUserView,
 		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	)
-	if permErr != nil || !allowed {
-		t.Fatalf("self visibility = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "self visibility")
+	require.True(t, allowed, "self visibility")
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionUserManage,
 		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("self management without permission = %v, %v", allowed, permErr)
-	}
-	if authErr := helper.App.Authorize(
+	require.NoError(t, permErr, "self management without permission")
+	require.False(t, allowed, "self management without permission")
+	require.NoError(t, helper.App.Authorize(
 		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: viewer.ID.String()},
-	); authErr != nil {
-		t.Fatalf("self profile-picture authorization = %v", authErr)
-	}
-	if authErr := helper.App.Authorize(
+	))
+	authErr := helper.App.Authorize(
 		ctx, app.NewInvocation(*principal, metadata), model.ActionUserProfilePictureManage,
 		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
-	); !apperror.Is(authErr, "authorization.denied") {
-		t.Fatalf("cross-user profile-picture authorization = %v", authErr)
-	}
-	if _, err := helper.App.GetUserProfile(
+	)
+	require.True(t, apperror.Is(authErr, "authorization.denied"), "cross-user profile-picture authorization = %v", authErr)
+	_, err = helper.App.GetUserProfile(
 		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
-	); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("unbound cross-user read error = %v", err)
-	}
+	)
+	require.True(t, apperror.Is(err, "authorization.denied"), "unbound cross-user read error = %v", err)
 
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-directory-viewer", DisplayName: "Institution Directory Viewer",
 		Permissions: []string{string(model.ActionUserView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	visible, err := helper.App.GetUserProfile(
 		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
 	)
-	if err != nil || visible.ID != target.ID {
-		t.Fatalf("authorized cross-user read = %#v, %v", visible, err)
-	}
+	require.NoError(t, err, "authorized cross-user read = %#v", visible)
+	require.Equal(t, target.ID, visible.ID, "authorized cross-user read = %#v", visible)
 	allowed, permErr = helper.App.Can(
 		ctx, *principal, model.ActionUserManage,
 		model.Resource{Type: model.ResourceUser, ID: target.ID.String()},
 	)
-	if permErr != nil || allowed {
-		t.Fatalf("view role unexpectedly granted management = %v, %v", allowed, permErr)
-	}
+	require.NoError(t, permErr, "view role unexpectedly granted management")
+	require.False(t, allowed, "view role unexpectedly granted management")
 
-	if _, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := helper.App.GetUserProfile(
+	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, model.GetMillis())
+	require.NoError(t, err)
+	_, err = helper.App.GetUserProfile(
 		ctx, app.NewInvocation(*principal, metadata), app.GetUserProfileQuery{ID: target.ID},
-	); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("ended binding cross-user read error = %v", err)
-	}
+	)
+	require.True(t, apperror.Is(err, "authorization.denied"), "ended binding cross-user read error = %v", err)
 
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: viewer.ID,
@@ -422,30 +348,22 @@ func TestPrincipalPermissionAndUserVisibilityPolicies(t *testing.T) {
 		Limit:      20,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	statuses := map[model.AuditStatus]int{}
 	for _, event := range events {
 		statuses[event.Status]++
-		if event.Resource.Type != model.ResourceUser ||
-			event.Resource.ID != target.ID.String() ||
-			event.ScopeType != model.RoleScopeInstitution ||
-			event.ScopeID != institution.ID.String() {
-			t.Fatalf("user authorization audit scope = %#v", event)
-		}
+		require.Equal(t, model.ResourceUser, event.Resource.Type)
+		require.Equal(t, target.ID.String(), event.Resource.ID)
+		require.Equal(t, model.RoleScopeInstitution, event.ScopeType)
+		require.Equal(t, institution.ID.String(), event.ScopeID)
 	}
-	if statuses[model.AuditStatusSuccess] != 1 ||
-		statuses[model.AuditStatusFail] != 2 {
-		t.Fatalf("user authorization audit statuses = %#v", statuses)
-	}
+	require.Equal(t, 1, statuses[model.AuditStatusSuccess])
+	require.Equal(t, 2, statuses[model.AuditStatusFail])
 }
 
 func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
@@ -455,62 +373,44 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	institution, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "northbridge", DisplayName: "Northbridge University",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	root, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "engineering", DisplayName: "Engineering",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	child, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, ParentID: root.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sibling, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "humanities", DisplayName: "Humanities",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	otherRoot, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "medicine", DisplayName: "Medicine",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: child.ID, Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "year-1", DisplayName: "Year 1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(institution.ID),
 		Name:  "2026-2027", DisplayName: "2026-2027",
 		StartsAt: model.TimeFromMillis(now - 86_400_000),
 		EndsAt:   model.TimeFromMillis(now + 31_536_000_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "class-a", DisplayName: "Class A",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	password := "correct horse battery staple"
 	createUser := func(username string) *model.User {
@@ -519,9 +419,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 			Username: username, Email: username + "@example.edu", DisplayName: username,
 			EmailVerified: true, Locale: "fr", Timezone: "Europe/Paris",
 		}, Password: password})
-		if appErr != nil {
-			t.Fatal(appErr)
-		}
+		require.NoError(t, appErr)
 		return user
 	}
 	viewer := createUser("scoped-viewer")
@@ -537,21 +435,18 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		{AcademicUnitID: sibling.ID, UserID: siblingUser.ID, StartsAt: model.TimeFromMillis(now - 10_000)},
 		{AcademicUnitID: child.ID, UserID: historicalUser.ID, StartsAt: model.TimeFromMillis(now - 20_000), EndsAt: model.OptionalTimeFromMillis(now - 10_000)},
 	} {
-		if _, err := persistence.AcademicUnitMember().Save(ctx, membership); err != nil {
-			t.Fatal(err)
-		}
+		_, err := persistence.AcademicUnitMember().Save(ctx, membership)
+		require.NoError(t, err)
 	}
-	if _, err := persistence.Affiliation().Save(ctx, &model.Affiliation{
+	_, err = persistence.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: classUser.ID, Kind: model.AffiliationStudent,
 		StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
+	})
+	require.NoError(t, err)
+	_, err = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: classUser.ID, StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 
 	visibilityRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "academic-directory-auditor", DisplayName: "Academic Directory Auditor",
@@ -560,88 +455,66 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 			string(model.ActionAcademicAuditView),
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	targetRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "visibility-fixture-role", DisplayName: "Visibility Fixture Role",
 		Permissions: []string{string(model.ActionClassView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	archivedTargetRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "archived-visibility-fixture-role", DisplayName: "Archived Visibility Fixture Role",
 		Permissions: []string{string(model.ActionClassView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: archivedRoleUser.ID, RoleID: archivedTargetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 20_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = storetest.ArchiveRole(ctx, persistence, archivedTargetRole.ID, model.GetMillis()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	})
+	require.NoError(t, err)
+	_, err = storetest.ArchiveRole(ctx, persistence, archivedTargetRole.ID, model.GetMillis())
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: visibilityRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	})
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: viewer.ID, RoleID: visibilityRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: otherRoot.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	visibleBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 20_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	historicalBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: child.ID.String(), StartsAt: model.TimeFromMillis(now - 40_000), EndsAt: model.OptionalTimeFromMillis(now - 30_000),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: sibling.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	})
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: bindingUser.ID, RoleID: targetRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 
 	login := loginIntegrationUser(t, helper.Handler(), viewer.Username, password, model.SessionClientCLI, "scoped-device")
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	invocation := app.NewInvocation(*principal, model.RequestMetadata{
 		RequestID: model.NewID(), IPAddress: "127.0.0.1", UserAgent: "access-visibility-integration-test",
 	})
 
 	search := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users?limit=50", nil, login.Tokens.AccessToken)
-	if search.Code != http.StatusOK {
-		t.Fatalf("scoped user search status = %d: %s", search.Code, search.Body.String())
-	}
+	require.Equal(t, http.StatusOK, search.Code, "scoped user search status = %d: %s", search.Code, search.Body.String())
 	var directory []map[string]any
-	if err := json.Unmarshal(search.Body.Bytes(), &directory); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(search.Body.Bytes(), &directory))
 	wanted := map[string]bool{
 		unitUser.ID.String(): false, classUser.ID.String(): false, bindingUser.ID.String(): false,
 	}
@@ -651,34 +524,28 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 			wanted[id] = true
 		}
 		for _, field := range []string{"email", "email_verified", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at"} {
-			if _, leaked := user[field]; leaked {
-				t.Fatalf("scoped user %s leaked %s: %#v", id, field, user)
-			}
+			_, leaked := user[field]
+			require.False(t, leaked, "scoped user %s leaked %s: %#v", id, field, user)
 		}
-		if id == siblingUser.ID.String() || id == historicalUser.ID.String() || id == archivedRoleUser.ID.String() {
-			t.Fatalf("unauthorized user returned by scoped search: %#v", user)
-		}
+		require.NotEqual(t, siblingUser.ID.String(), id)
+		require.NotEqual(t, historicalUser.ID.String(), id)
+		require.NotEqual(t, archivedRoleUser.ID.String(), id)
 	}
 	for id, seen := range wanted {
-		if !seen {
-			t.Errorf("scoped search omitted visible user %s: %#v", id, directory)
-		}
+		assert.True(t, seen, "scoped search omitted visible user %s: %#v", id, directory)
 	}
 
 	classMembersRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "scoped-class-roster-viewer", DisplayName: "Scoped Class Roster Viewer",
 		Permissions: []string{string(model.ActionClassMembersView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	classMembersViewer := createUser("scoped-class-roster-viewer")
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: classMembersViewer.ID, RoleID: classMembersRole.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: root.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	classMembersLogin := loginIntegrationUser(
 		t, helper.Handler(), classMembersViewer.Username, password,
 		model.SessionClientCLI, "scoped-class-roster-device",
@@ -686,64 +553,48 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	assertClassMemberDirectory := func(label, credential string) {
 		t.Helper()
 		response := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users?limit=50", nil, credential)
-		if response.Code != http.StatusOK {
-			t.Fatalf("%s class-member search status = %d: %s", label, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "%s class-member search status = %d: %s", label, response.Code, response.Body.String())
 		var users []map[string]any
-		if err := json.Unmarshal(response.Body.Bytes(), &users); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
 		seenClassMember := false
 		for _, user := range users {
 			id, _ := user["id"].(string)
 			if id == classUser.ID.String() {
 				seenClassMember = true
 			}
-			if id == unitUser.ID.String() || id == bindingUser.ID.String() ||
-				id == archivedRoleUser.ID.String() || id == siblingUser.ID.String() {
-				t.Fatalf("%s class-member search leaked non-roster User %s: %#v", label, id, users)
-			}
+			require.NotEqual(t, unitUser.ID.String(), id, "%s class-member search leaked non-roster User %s: %#v", label, id, users)
+			require.NotEqual(t, bindingUser.ID.String(), id, "%s class-member search leaked non-roster User %s: %#v", label, id, users)
+			require.NotEqual(t, archivedRoleUser.ID.String(), id, "%s class-member search leaked non-roster User %s: %#v", label, id, users)
+			require.NotEqual(t, siblingUser.ID.String(), id, "%s class-member search leaked non-roster User %s: %#v", label, id, users)
 			for _, field := range []string{"email", "email_verified", "locale", "timezone", "last_login_at", "last_activity_at", "disabled_at"} {
-				if _, leaked := user[field]; leaked {
-					t.Fatalf("%s class-member User %s leaked %s: %#v", label, id, field, user)
-				}
+				_, leaked := user[field]
+				require.False(t, leaked, "%s class-member User %s leaked %s: %#v", label, id, field, user)
 			}
 		}
-		if !seenClassMember {
-			t.Fatalf("%s class-member search omitted current Class member %s: %#v", label, classUser.ID, users)
-		}
+		require.True(t, seenClassMember, "%s class-member search omitted current Class member %s: %#v", label, classUser.ID, users)
 	}
 	assertClassMemberDirectory("academic-unit", classMembersLogin.Tokens.AccessToken)
 	classMemberRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+classUser.ID.String(), nil, classMembersLogin.Tokens.AccessToken)
-	if classMemberRead.Code != http.StatusOK {
-		t.Fatalf("class-member exact read status = %d: %s", classMemberRead.Code, classMemberRead.Body.String())
-	}
+	require.Equal(t, http.StatusOK, classMemberRead.Code, "class-member exact read status = %d: %s", classMemberRead.Code, classMemberRead.Body.String())
 	classMemberPicture := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+classUser.ID.String()+"/profile-picture?size=128", nil, classMembersLogin.Tokens.AccessToken)
-	if classMemberPicture.Code != http.StatusOK {
-		t.Fatalf("class-member profile-picture status = %d: %s", classMemberPicture.Code, classMemberPicture.Body.String())
-	}
+	require.Equal(t, http.StatusOK, classMemberPicture.Code, "class-member profile-picture status = %d: %s", classMemberPicture.Code, classMemberPicture.Body.String())
 	for label, userID := range map[string]string{
 		"academic-unit member": unitUser.ID.String(),
 		"active Role holder":   bindingUser.ID.String(),
 		"archived Role holder": archivedRoleUser.ID.String(),
 	} {
 		nonMemberRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+userID, nil, classMembersLogin.Tokens.AccessToken)
-		if nonMemberRead.Code != http.StatusForbidden {
-			t.Fatalf("class-member %s non-roster read status = %d: %s", label, nonMemberRead.Code, nonMemberRead.Body.String())
-		}
+		require.Equal(t, http.StatusForbidden, nonMemberRead.Code, "class-member %s non-roster read status = %d: %s", label, nonMemberRead.Code, nonMemberRead.Body.String())
 		nonMemberPicture := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+userID+"/profile-picture?size=128", nil, classMembersLogin.Tokens.AccessToken)
-		if nonMemberPicture.Code != http.StatusForbidden {
-			t.Fatalf("class-member %s non-roster profile-picture status = %d: %s", label, nonMemberPicture.Code, nonMemberPicture.Body.String())
-		}
+		require.Equal(t, http.StatusForbidden, nonMemberPicture.Code, "class-member %s non-roster profile-picture status = %d: %s", label, nonMemberPicture.Code, nonMemberPicture.Body.String())
 	}
 
 	institutionClassMembersViewer := createUser("institution-class-roster-viewer")
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: institutionClassMembersViewer.ID, RoleID: classMembersRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(now - 10_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	institutionClassMembersLogin := loginIntegrationUser(
 		t, helper.Handler(), institutionClassMembersViewer.Username, password,
 		model.SessionClientCLI, "institution-class-roster-device",
@@ -751,21 +602,17 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	assertClassMemberDirectory("institution", institutionClassMembersLogin.Tokens.AccessToken)
 
 	unitRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+unitUser.ID.String(), nil, login.Tokens.AccessToken)
-	if unitRead.Code != http.StatusOK {
-		t.Fatalf("descendant user read status = %d: %s", unitRead.Code, unitRead.Body.String())
-	}
+	require.Equal(t, http.StatusOK, unitRead.Code, "descendant user read status = %d: %s", unitRead.Code, unitRead.Body.String())
 	readDecisions, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: viewer.ID, Action: string(model.ActionUserView),
 		Resource: &model.Resource{Type: model.ResourceUser, ID: unitUser.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(readDecisions) != 1 || readDecisions[0].Status != model.AuditStatusSuccess ||
-		readDecisions[0].ScopeType != model.RoleScopeAcademicUnit || readDecisions[0].ScopeID != root.ID.String() {
-		t.Fatalf("multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
-	}
+	require.NoError(t, err)
+	require.Len(t, readDecisions, 1, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
+	require.Equal(t, model.AuditStatusSuccess, readDecisions[0].Status, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
+	require.Equal(t, model.RoleScopeAcademicUnit, readDecisions[0].ScopeType, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
+	require.Equal(t, root.ID.String(), readDecisions[0].ScopeID, "multi-root user read decision = %#v, want matched root %s", readDecisions, root.ID)
 	disableAt := model.GetMillis()
 	disableAudit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: viewer.ID, Action: string(model.ActionUserManage),
@@ -773,55 +620,39 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		Status: model.AuditStatusAttempt, NodeID: "access-visibility-integration",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	require.NoError(t, err)
+	_, err = persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: unitUser.ID, ExpectedRevision: unitUser.Revision, Disabled: true,
 		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAudit.ID, AuditAt: disableAt,
-	})); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, err)
 	for _, path := range []string{"/api/v1/users?limit=50", "/api/v1/users?limit=50&include_disabled=true"} {
 		response := performJSONRequest(helper.Handler(), http.MethodGet, path, nil, login.Tokens.AccessToken)
-		if response.Code != http.StatusOK {
-			t.Fatalf("scoped disabled search %q status = %d: %s", path, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "scoped disabled search %q status = %d: %s", path, response.Code, response.Body.String())
 		var users []struct {
 			ID string `json:"id"`
 		}
-		if err := json.Unmarshal(response.Body.Bytes(), &users); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
 		for _, user := range users {
-			if user.ID == unitUser.ID.String() {
-				t.Fatalf("scoped disabled search %q exposed User %s", path, user.ID)
-			}
+			require.NotEqual(t, unitUser.ID.String(), user.ID, "scoped disabled search %q exposed User", path)
 		}
 	}
 	disabledRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+unitUser.ID.String(), nil, login.Tokens.AccessToken)
-	if disabledRead.Code != http.StatusForbidden {
-		t.Fatalf("disabled exact read status = %d: %s", disabledRead.Code, disabledRead.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, disabledRead.Code, "disabled exact read status = %d: %s", disabledRead.Code, disabledRead.Body.String())
 	disabledPicture := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+unitUser.ID.String()+"/profile-picture?size=128", nil, login.Tokens.AccessToken)
-	if disabledPicture.Code != http.StatusForbidden {
-		t.Fatalf("disabled profile-picture status = %d: %s", disabledPicture.Code, disabledPicture.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, disabledPicture.Code, "disabled profile-picture status = %d: %s", disabledPicture.Code, disabledPicture.Body.String())
 	globalViewer := createUser("institution-directory-viewer")
 	globalRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-directory-viewer", DisplayName: "Institution Directory Viewer",
 		Permissions: []string{string(model.ActionUserView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: globalViewer.ID, RoleID: globalRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis()),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	globalLogin := loginIntegrationUser(t, helper.Handler(), globalViewer.Username, password, model.SessionClientCLI, "institution-directory-device")
 	for _, test := range []struct {
 		path string
@@ -830,53 +661,39 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		{path: "/api/v1/users?limit=50"},
 		{path: "/api/v1/users?limit=50&include_disabled=true", want: true},
 	} {
-		response := performJSONRequest(helper.Handler(), http.MethodGet, test.path, nil, globalLogin.Tokens.AccessToken)
-		if response.Code != http.StatusOK {
-			t.Fatalf("institution-wide disabled search %q status = %d: %s", test.path, response.Code, response.Body.String())
-		}
-		var users []struct {
-			ID         string    `json:"id"`
-			DisabledAt time.Time `json:"disabled_at"`
-		}
-		if err := json.Unmarshal(response.Body.Bytes(), &users); err != nil {
-			t.Fatal(err)
-		}
-		found := false
-		for _, user := range users {
-			if user.ID == unitUser.ID.String() {
-				found = true
-				if user.DisabledAt.IsZero() {
-					t.Fatalf("institution-wide disabled projection omitted disabled_at: %#v", user)
+		t.Run(test.path, func(t *testing.T) {
+			response := performJSONRequest(helper.Handler(), http.MethodGet, test.path, nil, globalLogin.Tokens.AccessToken)
+			require.Equal(t, http.StatusOK, response.Code, "institution-wide disabled search %q status = %d: %s", test.path, response.Code, response.Body.String())
+			var users []struct {
+				ID         string    `json:"id"`
+				DisabledAt time.Time `json:"disabled_at"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &users))
+			found := false
+			for _, user := range users {
+				if user.ID == unitUser.ID.String() {
+					found = true
+					require.False(t, user.DisabledAt.IsZero())
 				}
 			}
-		}
-		if found != test.want {
-			t.Fatalf("institution-wide disabled search %q found=%t, want %t", test.path, found, test.want)
-		}
+			require.Equal(t, test.want, found, "institution-wide disabled search %q found", test.path)
+		})
 	}
 	siblingRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+siblingUser.ID.String(), nil, login.Tokens.AccessToken)
-	if siblingRead.Code != http.StatusForbidden {
-		t.Fatalf("sibling user read status = %d: %s", siblingRead.Code, siblingRead.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, siblingRead.Code, "sibling user read status = %d: %s", siblingRead.Code, siblingRead.Body.String())
 	historicalRead := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/"+historicalUser.ID.String(), nil, login.Tokens.AccessToken)
-	if historicalRead.Code != http.StatusForbidden {
-		t.Fatalf("historical user read status = %d: %s", historicalRead.Code, historicalRead.Body.String())
-	}
+	require.Equal(t, http.StatusForbidden, historicalRead.Code, "historical user read status = %d: %s", historicalRead.Code, historicalRead.Body.String())
 
 	bindings, listErr := helper.App.ListRoleBindings(ctx, invocation, app.ListRoleBindingsQuery{UserID: bindingUser.ID.String()})
-	if listErr != nil {
-		t.Fatal(listErr)
-	}
+	require.NoError(t, listErr)
 	seenBindings := map[string]bool{}
 	for _, binding := range bindings {
 		seenBindings[binding.ID.String()] = true
-		if binding.ScopeType != model.RoleScopeAcademicUnit || binding.ScopeID != child.ID.String() {
-			t.Fatalf("out-of-scope binding returned: %#v", binding)
-		}
+		require.Equal(t, model.RoleScopeAcademicUnit, binding.ScopeType)
+		require.Equal(t, child.ID.String(), binding.ScopeID)
 	}
-	if !seenBindings[visibleBinding.ID.String()] || !seenBindings[historicalBinding.ID.String()] {
-		t.Fatalf("visible binding history = %#v", seenBindings)
-	}
+	require.True(t, seenBindings[visibleBinding.ID.String()])
+	require.True(t, seenBindings[historicalBinding.ID.String()])
 
 	saveAudit := func(action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string) string {
 		t.Helper()
@@ -887,9 +704,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 			AuthMethod: "bearer", IPAddress: "127.0.0.1", UserAgent: "sensitive-agent",
 			Parameters: json.RawMessage(`{"fixture":true}`),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return event.ID.String()
 	}
 	childAuditID := saveAudit(model.ActionAcademicUnitManage, model.Resource{Type: model.ResourceAcademicUnit, ID: child.ID.String()}, model.RoleScopeAcademicUnit, child.ID.String())
@@ -898,46 +713,36 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	securityAuditID := saveAudit(model.ActionExternalIdentityManage, model.Resource{Type: model.ResourceUser, ID: bindingUser.ID.String()}, model.RoleScopeAcademicUnit, child.ID.String())
 
 	audits := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/audits?limit=100", nil, login.Tokens.AccessToken)
-	if audits.Code != http.StatusOK {
-		t.Fatalf("scoped audit list status = %d: %s", audits.Code, audits.Body.String())
-	}
+	require.Equal(t, http.StatusOK, audits.Code, "scoped audit list status = %d: %s", audits.Code, audits.Body.String())
 	var auditBody struct {
 		Events []map[string]any `json:"events"`
 	}
-	if err := json.Unmarshal(audits.Body.Bytes(), &auditBody); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(audits.Body.Bytes(), &auditBody))
 	seenAudits := map[string]bool{}
 	for _, event := range auditBody.Events {
 		id, _ := event["id"].(string)
 		seenAudits[id] = true
 		for _, field := range []string{"session_id", "request_id", "node_id", "client_type", "authentication_method", "ip_address", "user_agent"} {
-			if _, leaked := event[field]; leaked {
-				t.Fatalf("scoped audit %s leaked %s: %#v", id, field, event)
-			}
+			_, leaked := event[field]
+			require.False(t, leaked, "scoped audit %s leaked %s: %#v", id, field, event)
 		}
 	}
-	if !seenAudits[childAuditID] || !seenAudits[classAuditID] {
-		t.Fatalf("scoped audit list omitted descendant history: %#v", seenAudits)
-	}
-	if seenAudits[siblingAuditID] || seenAudits[securityAuditID] {
-		t.Fatalf("scoped audit list leaked sibling/security history: %#v", seenAudits)
-	}
+	require.True(t, seenAudits[childAuditID])
+	require.True(t, seenAudits[classAuditID])
+	require.False(t, seenAudits[siblingAuditID])
+	require.False(t, seenAudits[securityAuditID])
 	institutionAcademicViewer := createUser("institution-academic-auditor")
 	institutionAcademicRole, err := storetest.SaveRole(ctx, persistence, &model.Role{
 		Name: "institution-academic-auditor", DisplayName: "Institution Academic Auditor",
 		Permissions: []string{string(model.ActionAcademicAuditView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: institutionAcademicViewer.ID, RoleID: institutionAcademicRole.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
 		StartsAt: model.TimeFromMillis(model.GetMillis()),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	institutionAcademicLogin := loginIntegrationUser(
 		t, helper.Handler(), institutionAcademicViewer.Username, password,
 		model.SessionClientCLI, "institution-academic-audit-device",
@@ -945,31 +750,24 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	assertInstitutionAcademicAudits := func(label, credential string) {
 		t.Helper()
 		response := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/audits?limit=100", nil, credential)
-		if response.Code != http.StatusOK {
-			t.Fatalf("%s academic audit status = %d: %s", label, response.Code, response.Body.String())
-		}
+		require.Equal(t, http.StatusOK, response.Code, "%s academic audit status = %d: %s", label, response.Code, response.Body.String())
 		var body struct {
 			Events []map[string]any `json:"events"`
 		}
-		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 		seen := map[string]bool{}
 		for _, event := range body.Events {
 			id, _ := event["id"].(string)
 			seen[id] = true
 			for _, field := range []string{"session_id", "request_id", "node_id", "client_type", "authentication_method", "ip_address", "user_agent"} {
-				if _, leaked := event[field]; leaked {
-					t.Fatalf("%s academic audit %s leaked %s: %#v", label, id, field, event)
-				}
+				_, leaked := event[field]
+				require.False(t, leaked, "%s academic audit %s leaked %s: %#v", label, id, field, event)
 			}
 		}
-		if !seen[childAuditID] || !seen[classAuditID] || !seen[siblingAuditID] {
-			t.Fatalf("%s academic audit omitted cross-unit history: %#v", label, seen)
-		}
-		if seen[securityAuditID] {
-			t.Fatalf("%s academic audit leaked security history: %#v", label, seen)
-		}
+		require.True(t, seen[childAuditID], "%s academic audit omitted cross-unit history: %#v", label, seen)
+		require.True(t, seen[classAuditID], "%s academic audit omitted cross-unit history: %#v", label, seen)
+		require.True(t, seen[siblingAuditID], "%s academic audit omitted cross-unit history: %#v", label, seen)
+		require.False(t, seen[securityAuditID], "%s academic audit leaked security history: %#v", label, seen)
 	}
 	assertInstitutionAcademicAudits("session", institutionAcademicLogin.Tokens.AccessToken)
 	createdToken := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/users/me/tokens", map[string]any{
@@ -977,30 +775,22 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 		"scopes":      []string{string(model.ActionAcademicAuditView)},
 		"expires_at":  integrationWireTime(model.GetMillis() + 2*60*60*1000),
 	}, institutionAcademicLogin.Tokens.AccessToken)
-	if createdToken.Code != http.StatusCreated {
-		t.Fatalf("create academic audit PAT status = %d: %s", createdToken.Code, createdToken.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, createdToken.Code, "create academic audit PAT status = %d: %s", createdToken.Code, createdToken.Body.String())
 	var tokenBody struct {
 		Credential string `json:"credential"`
 	}
-	if err := json.Unmarshal(createdToken.Body.Bytes(), &tokenBody); err != nil || tokenBody.Credential == "" {
-		t.Fatalf("create academic audit PAT response = %s, %v", createdToken.Body.String(), err)
-	}
+	require.NoError(t, json.Unmarshal(createdToken.Body.Bytes(), &tokenBody), "create academic audit PAT response = %s", createdToken.Body.String())
+	require.NotEmpty(t, tokenBody.Credential, "create academic audit PAT response = %s", createdToken.Body.String())
 	assertInstitutionAcademicAudits("personal access token", tokenBody.Credential)
 	decisions, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: institutionAcademicViewer.ID, Action: string(model.ActionAcademicAuditView), Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(decisions) < 2 {
-		t.Fatalf("institution academic audit decisions = %#v, want Session and PAT decisions", decisions)
-	}
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(decisions), 2, "institution academic audit decisions")
 	for _, decision := range decisions {
-		if decision.Status != model.AuditStatusSuccess || decision.ScopeType != model.RoleScopeInstitution ||
-			decision.ScopeID != institution.ID.String() {
-			t.Fatalf("institution academic audit decision scope = %#v", decision)
-		}
+		require.Equal(t, model.AuditStatusSuccess, decision.Status)
+		require.Equal(t, model.RoleScopeInstitution, decision.ScopeType)
+		require.Equal(t, institution.ID.String(), decision.ScopeID)
 	}
 }

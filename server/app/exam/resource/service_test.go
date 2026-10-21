@@ -15,10 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestCreateStagesVerifiedBytesBeforeAuditAndAtomicVisibility(t *testing.T) {
@@ -26,28 +29,22 @@ func TestCreateStagesVerifiedBytesBeforeAuditAndAtomicVisibility(t *testing.T) {
 	f := newFixture(t)
 	f.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: f.unitID, UserID: f.userID}}
 	got, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "  Reference  ", DescriptionMarkdown: "Read **carefully**.", MediaType: model.ExamResourceMediaMarkdown, Body: strings.NewReader("# Notes"), Size: 7, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Resource.DisplayName != "Reference" || got.Resource.FileEntryID.IsZero() || got.Resource.SelectedFileRevisionID != got.Rendition.RevisionID || got.DraftRevision != 2 {
-		t.Fatalf("record=%#v", got)
-	}
-	want := "access,membership,authorize,list,reserve,content.store,audit.begin,finalize,effect"
-	if strings.Join(f.order, ",") != want {
-		t.Fatalf("order=%v want=%s", f.order, want)
-	}
-	if f.persistence.finalization.Resource.DescriptionMarkdown != "Read **carefully**." || f.persistence.finalization.Rendition.SHA256 == "" {
-		t.Fatalf("finalization=%#v", f.persistence.finalization)
-	}
-	if f.content.storeCalls != 1 {
-		t.Fatalf("content storage calls=%d, want 1", f.content.storeCalls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Reference", got.Resource.DisplayName)
+	require.False(t, got.Resource.FileEntryID.IsZero())
+	require.Equal(t, got.Rendition.RevisionID, got.Resource.SelectedFileRevisionID)
+	require.Equal(t, int64(2), got.DraftRevision)
+	// Contract: authorization precedes the reservation, verified bytes are stored
+	// inside the reservation before the audit begins (guardrail 8) and the
+	// atomic finalization commits before its effect (guardrail 14).
+	ordertest.RequireInOrder(t, f.order, "authorize", "reserve", "content.store", "audit.begin", "finalize", "effect")
+	require.Equal(t, "Read **carefully**.", f.persistence.finalization.Resource.DescriptionMarkdown)
+	require.NotEmpty(t, f.persistence.finalization.Rendition.SHA256)
+	require.Equal(t, 1, f.content.storeCalls, "content storage calls")
 	wantIdempotency, prepareErr := prepareResourceIdempotency(f.invocation, idempotencyOperationAddResource, "test-key",
 		f.examID, 1, "", "Reference", "Read **carefully**.", model.ExamResourceMediaMarkdown, 7, strings.Repeat("a", 64), nil)
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestCreateInvalidContentRemainsInvisibleAndUnaudited(t *testing.T) {
@@ -56,12 +53,10 @@ func TestCreateInvalidContentRemainsInvisibleAndUnaudited(t *testing.T) {
 	f.content.storeErr = testInvalidContentError{}
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaPDF, Body: strings.NewReader("bad"), Size: 3, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.content_invalid" {
-		t.Fatalf("error=%v", err)
-	}
-	if f.persistence.finalization != nil || f.auditor.began {
-		t.Fatalf("partial visibility/audit: finalize=%#v audit=%v", f.persistence.finalization, f.auditor.began)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.resource.content_invalid", fault.Code())
+	require.Nil(t, f.persistence.finalization, "partial visibility/audit: finalize")
+	require.False(t, f.auditor.began, "partial visibility/audit: finalize")
 }
 
 type testCapacityError struct{}
@@ -84,12 +79,12 @@ func TestContentCapacityRefusalRemainsInvisibleAndUnaudited(t *testing.T) {
 				_, err = f.service.ReplaceExamResourceContent(context.Background(), f.invocation, ReplaceContentCommand{ExamID: f.examID, ResourceID: resourceID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 			}
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != "service.busy" || !errors.Is(err, f.content.storeErr) {
-				t.Fatalf("capacity outcome=%v", err)
-			}
-			if f.persistence.finalization != nil || f.auditor.began || f.effects.calls != 0 {
-				t.Fatalf("partial visibility/audit: finalize=%#v audit=%v effects=%d", f.persistence.finalization, f.auditor.began, f.effects.calls)
-			}
+			require.ErrorAs(t, err, &fault)
+			require.Equal(t, "service.busy", fault.Code())
+			require.ErrorIs(t, err, f.content.storeErr)
+			require.Nil(t, f.persistence.finalization, "partial visibility/audit: finalize")
+			require.False(t, f.auditor.began, "partial visibility/audit: finalize")
+			require.Equal(t, 0, f.effects.calls, "partial visibility/audit: finalize")
 		})
 	}
 }
@@ -99,12 +94,8 @@ func TestFinalizeReplayDoesNotRepublish(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.replayed = true
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.effects.calls != 0 {
-		t.Fatalf("replay effects=%d", f.effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, f.effects.calls, "replay effects")
 }
 
 func TestExactCreateRetryRecoversUnknownCommitWithoutRepublishing(t *testing.T) {
@@ -114,19 +105,16 @@ func TestExactCreateRetryRecoversUnknownCommitWithoutRepublishing(t *testing.T) 
 	command := CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
 	first, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// Simulate a lost success response: the caller retries the exact command
 	// with the original expected Draft revision and a fresh request body.
 	command.Body = strings.NewReader("notes")
 	recovered, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.Resource.ID != first.Resource.ID || f.persistence.reserveCalls != 2 || f.persistence.finalizeCalls != 2 || f.effects.calls != 1 {
-		t.Fatalf("first=%#v recovered=%#v reserve=%d finalize=%d effects=%d", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls, f.effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, first.Resource.ID, recovered.Resource.ID, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.reserveCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.finalizeCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 1, f.effects.calls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
 }
 
 func TestExactTenthCreateRetryReachesStoredOutcome(t *testing.T) {
@@ -141,18 +129,15 @@ func TestExactTenthCreateRetryReachesStoredOutcome(t *testing.T) {
 	command := CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Last reference", MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
 	first, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.persistence.items = append(f.persistence.items, first)
 	command.Body = strings.NewReader("notes")
 	recovered, err := f.service.CreateExamResource(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.Resource.ID != first.Resource.ID || f.persistence.reserveCalls != 2 || f.persistence.finalizeCalls != 2 || f.effects.calls != 1 {
-		t.Fatalf("first=%#v recovered=%#v reserve=%d finalize=%d effects=%d", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls, f.effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, first.Resource.ID, recovered.Resource.ID, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.reserveCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.finalizeCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 1, f.effects.calls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
 }
 
 func TestExactReplacementRetryRecoversUnknownCommitWithoutRepublishing(t *testing.T) {
@@ -164,25 +149,20 @@ func TestExactReplacementRetryRecoversUnknownCommitWithoutRepublishing(t *testin
 	command := ReplaceContentCommand{ExamID: f.examID, ResourceID: current.Resource.ID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"}
 	command.Body = strings.NewReader("notes")
 	first, err := f.service.ReplaceExamResourceContent(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// Simulate the same lost-success response as Create: the reservation is
 	// disposable and Finalize recovers the durable idempotent outcome.
 	command.Body = strings.NewReader("notes")
 	recovered, err := f.service.ReplaceExamResourceContent(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.Resource.SelectedFileRevisionID != first.Resource.SelectedFileRevisionID || f.persistence.reserveCalls != 2 || f.persistence.finalizeCalls != 2 || f.effects.calls != 1 {
-		t.Fatalf("first=%#v recovered=%#v reserve=%d finalize=%d effects=%d", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls, f.effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, first.Resource.SelectedFileRevisionID, recovered.Resource.SelectedFileRevisionID, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.reserveCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 2, f.persistence.finalizeCalls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
+	require.Equal(t, 1, f.effects.calls, "first=%#v recovered=%#v reserve=%d finalize=%d effects", first, recovered, f.persistence.reserveCalls, f.persistence.finalizeCalls)
 	wantIdempotency, prepareErr := prepareResourceIdempotency(f.invocation, idempotencyOperationReplaceResourceContent, "test-key",
 		f.examID, 1, current.Resource.ID.String(), "", "", model.ExamResourceMediaText, 5, strings.Repeat("a", 64), nil)
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestCreateMapsStorageFailureToUnavailableWithoutSafeBackendDetails(t *testing.T) {
@@ -191,9 +171,9 @@ func TestCreateMapsStorageFailureToUnavailableWithoutSafeBackendDetails(t *testi
 	f.content.storeErr = errors.New("secret backend bucket and object key")
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.unavailable" || len(fault.Fields()) != 0 {
-		t.Fatalf("error=%v fault=%#v", err, fault)
-	}
+	require.ErrorAs(t, err, &fault, "error=%v fault=%#v", err, fault)
+	require.Equal(t, "exam.resource.unavailable", fault.Code(), "error=%v fault=%#v", err, fault)
+	require.Empty(t, fault.Fields(), "error=%v fault=%#v", err, fault)
 }
 
 func TestOpenUsesExactAuthoritativeRenditionWithoutStorageDiscovery(t *testing.T) {
@@ -202,14 +182,12 @@ func TestOpenUsesExactAuthoritativeRenditionWithoutStorageDiscovery(t *testing.T
 	record := testRecord(f.examID, model.NewExamResourceID(), model.NewFileEntryID(), model.NewFileRevisionID(), 1)
 	f.persistence.items = []store.ExamResourceRecord{record}
 	opened, err := f.service.OpenExamResource(context.Background(), f.invocation, OpenQuery{ExamID: f.examID, ResourceID: record.Resource.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer opened.Body.Close()
 	body, _ := io.ReadAll(opened.Body)
-	if string(body) != "protected" || f.content.openedRevision != record.Resource.SelectedFileRevisionID || f.content.openedRendition != record.Rendition.ID {
-		t.Fatalf("body=%q content=%#v", body, f.content)
-	}
+	require.Equal(t, "protected", string(body), "body=%q content=%#v", body, f.content)
+	require.Equal(t, record.Resource.SelectedFileRevisionID, f.content.openedRevision, "body=%q content=%#v", body, f.content)
+	require.Equal(t, record.Rendition.ID, f.content.openedRendition, "body=%q content=%#v", body, f.content)
 }
 
 func TestMetadataAndOrderNoOpsDoNotBeginAudit(t *testing.T) {
@@ -219,13 +197,13 @@ func TestMetadataAndOrderNoOpsDoNotBeginAudit(t *testing.T) {
 	f.persistence.items = []store.ExamResourceRecord{record}
 	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.no_changes" || f.auditor.began {
-		t.Fatalf("metadata no-op error=%v audit=%v", err, f.auditor.began)
-	}
+	require.ErrorAs(t, err, &fault, "metadata no-op error")
+	require.Equal(t, "exam.resource.no_changes", fault.Code(), "metadata no-op error")
+	require.False(t, f.auditor.began, "metadata no-op error")
 	_, err = f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.no_changes" || f.auditor.began {
-		t.Fatalf("reorder no-op error=%v audit=%v", err, f.auditor.began)
-	}
+	require.ErrorAs(t, err, &fault, "reorder no-op error")
+	require.Equal(t, "exam.resource.no_changes", fault.Code(), "reorder no-op error")
+	require.False(t, f.auditor.began, "reorder no-op error")
 }
 
 func TestApparentMetadataNoOpWithStaleDraftReachesAuditedStoreGuard(t *testing.T) {
@@ -238,9 +216,10 @@ func TestApparentMetadataNoOpWithStaleDraftReachesAuditedStoreGuard(t *testing.T
 
 	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: examResourceString(record.Resource.DisplayName), DescriptionMarkdown: examResourceString(record.Resource.DescriptionMarkdown), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.draft.revision_conflict" || !f.auditor.began || f.persistence.updateCalls != 1 {
-		t.Fatalf("error=%v audit=%v update calls=%d", err, f.auditor.began, f.persistence.updateCalls)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.draft.revision_conflict", fault.Code())
+	require.True(t, f.auditor.began)
+	require.Equal(t, 1, f.persistence.updateCalls)
 }
 
 func TestApparentReorderNoOpWithArchivedExamReachesAuditedStoreGuard(t *testing.T) {
@@ -253,9 +232,10 @@ func TestApparentReorderNoOpWithArchivedExamReachesAuditedStoreGuard(t *testing.
 
 	_, err := f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{record.Resource.ID}, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.archived" || !f.auditor.began || f.persistence.reorderCalls != 1 {
-		t.Fatalf("error=%v audit=%v reorder calls=%d", err, f.auditor.began, f.persistence.reorderCalls)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.archived", fault.Code())
+	require.True(t, f.auditor.began)
+	require.Equal(t, 1, f.persistence.reorderCalls)
 }
 
 func TestReorderPublishesCommittedRevisionAndReportsTransientFailure(t *testing.T) {
@@ -269,31 +249,27 @@ func TestReorderPublishesCommittedRevisionAndReportsTransientFailure(t *testing.
 	f.effects.changedErr = errors.New("realtime unavailable")
 
 	items, err := f.service.ReorderExamResources(context.Background(), f.invocation, ReorderCommand{ExamID: f.examID, ExpectedDraftRevision: 1, ResourceIDs: []model.ExamResourceID{second.Resource.ID, first.Resource.ID}, IdempotencyKey: "test-key"})
-	if err != nil || len(items) != 2 || f.effects.draftRevision != 7 || f.effects.reportCalls != 1 {
-		t.Fatalf("items=%#v error=%v effect=%#v", items, err, f.effects)
-	}
+	require.NoError(t, err, "items=%#v error=%v effect=%#v", items, err, f.effects)
+	require.Len(t, items, 2, "items=%#v error=%v effect=%#v", items, err, f.effects)
+	require.Equal(t, int64(7), f.effects.draftRevision, "items=%#v error=%v effect=%#v", items, err, f.effects)
+	require.Equal(t, 1, f.effects.reportCalls, "items=%#v error=%v effect=%#v", items, err, f.effects)
 	want, prepareErr := prepareResourceIdempotency(f.invocation, idempotencyOperationReorderResources, "test-key",
 		f.examID, 1, "", "", "", "", 0, "", []string{second.Resource.ID.String(), first.Resource.ID.String()})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
+	require.NoError(t, prepareErr)
+	require.Equal(t, want, f.persistence.idempotency)
 }
 
 func TestRemovePassesOwnedIdempotencyToStore(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	resourceID := model.NewExamResourceID()
-	if _, err := f.service.RemoveExamResource(context.Background(), f.invocation, RemoveCommand{ExamID: f.examID,
-		ResourceID: resourceID, ExpectedDraftRevision: 1, IdempotencyKey: "remove-key"}); err != nil {
-		t.Fatal(err)
-	}
+	_, err := f.service.RemoveExamResource(context.Background(), f.invocation, RemoveCommand{ExamID: f.examID,
+		ResourceID: resourceID, ExpectedDraftRevision: 1, IdempotencyKey: "remove-key"})
+	require.NoError(t, err)
 	want, err := prepareResourceIdempotency(f.invocation, idempotencyOperationRemoveResource, "remove-key",
 		f.examID, 1, resourceID.String(), "", "", "", 0, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
+	require.NoError(t, err)
+	require.Equal(t, want, f.persistence.idempotency)
 }
 
 func TestMetadataPatchPreservesOmittedFieldsAndAllowsExplicitEmptyDescription(t *testing.T) {
@@ -315,19 +291,15 @@ func TestMetadataPatchPreservesOmittedFieldsAndAllowsExplicitEmptyDescription(t 
 			f.persistence.items = []store.ExamResourceRecord{record}
 			f.persistence.updateResult = &store.ExamResourceCommandResult{Value: &record}
 			_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: test.displayName, DescriptionMarkdown: test.description, IdempotencyKey: "test-key"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if f.persistence.metadataUpdate == nil || f.persistence.metadataUpdate.DisplayName != test.wantName || f.persistence.metadataUpdate.DescriptionMarkdown != test.wantDesc {
-				t.Fatalf("update=%#v", f.persistence.metadataUpdate)
-			}
+			require.NoError(t, err)
+			require.NotNil(t, f.persistence.metadataUpdate)
+			require.Equal(t, test.wantName, f.persistence.metadataUpdate.DisplayName)
+			require.Equal(t, test.wantDesc, f.persistence.metadataUpdate.DescriptionMarkdown)
 			want, prepareErr := prepareMetadataIdempotency(f.invocation, EditMetadataCommand{ExamID: f.examID,
 				ResourceID: record.Resource.ID, ExpectedDraftRevision: 1, DisplayName: test.displayName,
 				DescriptionMarkdown: test.description, IdempotencyKey: "test-key"})
-			if prepareErr != nil {
-				t.Fatal(prepareErr)
-			}
-			assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
+			require.NoError(t, prepareErr)
+			require.Equal(t, want, f.persistence.idempotency)
 		})
 	}
 }
@@ -337,9 +309,10 @@ func TestMetadataPatchRejectsOmittedFieldsBeforeAudit(t *testing.T) {
 	f := newFixture(t)
 	_, err := f.service.EditExamResourceMetadata(context.Background(), f.invocation, EditMetadataCommand{ExamID: f.examID, ResourceID: model.NewExamResourceID(), ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.invalid" || f.auditor.began || f.persistence.updateCalls != 0 {
-		t.Fatalf("error=%v audit=%v update calls=%d", err, f.auditor.began, f.persistence.updateCalls)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.resource.invalid", fault.Code())
+	require.False(t, f.auditor.began)
+	require.Equal(t, 0, f.persistence.updateCalls)
 }
 
 func TestInvalidMetadataIsRejectedBeforeUploadReservation(t *testing.T) {
@@ -347,13 +320,12 @@ func TestInvalidMetadataIsRejectedBeforeUploadReservation(t *testing.T) {
 	f := newFixture(t)
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "   ", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.invalid" {
-		t.Fatalf("error=%v", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.resource.invalid", fault.Code())
 	for _, event := range f.order {
-		if event == "reserve" || event == "content.store" || event == "audit.begin" {
-			t.Fatalf("invalid metadata caused %q: order=%v", event, f.order)
-		}
+		require.NotEqual(t, "reserve", event, "invalid metadata caused %q: order=%v", event, f.order)
+		require.NotEqual(t, "content.store", event, "invalid metadata caused %q: order=%v", event, f.order)
+		require.NotEqual(t, "audit.begin", event, "invalid metadata caused %q: order=%v", event, f.order)
 	}
 }
 
@@ -362,12 +334,10 @@ func TestCreateUsesExplicitOverrideWhenCurrentManagerMembershipIsAbsent(t *testi
 	f := newFixture(t)
 	f.memberships.items = []*model.AcademicUnitMember{}
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.authorizer.action != model.ActionExamManageOverride || f.persistence.reservation == nil || !f.persistence.reservation.ManagerOverride {
-		t.Fatalf("action=%s reservation=%#v", f.authorizer.action, f.persistence.reservation)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamManageOverride, f.authorizer.action, "action")
+	require.NotNil(t, f.persistence.reservation, "action")
+	require.True(t, f.persistence.reservation.ManagerOverride, "action")
 }
 
 func TestCreateStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
@@ -377,12 +347,12 @@ func TestCreateStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	f.memberships.err = failure
 	_, err := f.service.CreateExamResource(context.Background(), f.invocation, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.resource.unavailable" || !errors.Is(err, failure) {
-		t.Fatalf("error = %v, want unavailable membership failure", err)
-	}
-	if want := "access,membership"; strings.Join(f.order, ",") != want {
-		t.Fatalf("order = %v, want %s", f.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.resource.unavailable", fault.Code())
+	require.ErrorIs(t, err, failure)
+	// Without current membership nothing is authorized or reserved.
+	require.Empty(t, f.authorizer.action, "authorized without current membership")
+	require.Nil(t, f.persistence.reservation, "reserved without current membership")
 }
 
 type fixture struct {
@@ -427,9 +397,7 @@ func newFixture(t *testing.T) *fixture {
 		NewRevisionID:  model.NewFileRevisionID,
 		NewLeaseID:     model.NewUploadLeaseID,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.service = service
 	f.invocation = invocation.New(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: at}, model.RequestMetadata{})
 	return f

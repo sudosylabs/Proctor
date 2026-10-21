@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -40,9 +42,8 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	smtpAddress := strings.TrimSpace(os.Getenv("PROCTOR_TEST_MAIL_SMTP_ADDRESS"))
 	mailpitURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PROCTOR_TEST_MAILPIT_HTTP_URL")), "/")
-	if smtpAddress == "" || mailpitURL == "" {
-		t.Fatal("PROCTOR_TEST_MAIL_SMTP_ADDRESS and PROCTOR_TEST_MAILPIT_HTTP_URL must be set")
-	}
+	require.NotEmpty(t, smtpAddress, "PROCTOR_TEST_MAIL_SMTP_ADDRESS and PROCTOR_TEST_MAILPIT_HTTP_URL must be set")
+	require.NotEmpty(t, mailpitURL, "PROCTOR_TEST_MAIL_SMTP_ADDRESS and PROCTOR_TEST_MAILPIT_HTTP_URL must be set")
 	clearMailpit(t, mailpitURL)
 
 	persistence := openAuthenticationStore(t, dataSource)
@@ -70,20 +71,14 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		AdministratorDisplayName: "Mail Certification Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
 		Password: password, BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-admin",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminPrincipal, appErr := helper.App.AuthenticateAccess(ctx, adminLogin.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminInvocation := app.NewInvocation(*adminPrincipal,
 		model.RequestMetadata{RequestID: "mail-cert-admin", IPAddress: "127.0.0.1"})
 
@@ -91,109 +86,80 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 		Username: "mail-cert-credential", Email: "mail-cert-credential@example.edu",
 		DisplayName: "Mail Credential Candidate", Locale: "en", Timezone: "UTC",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	credentialLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: credentialUser.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1", DeviceName: "mail-cert-credential",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	credentialPrincipal, appErr := helper.App.AuthenticateAccess(ctx, credentialLogin.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if appErr = helper.App.RequestEmailVerification(ctx,
+	require.NoError(t, appErr)
+	appErr = helper.App.RequestEmailVerification(ctx,
 		app.NewInvocation(*credentialPrincipal, model.RequestMetadata{RequestID: "mail-cert-verification"}),
-		app.RequestEmailVerificationCommand{Source: "127.0.0.1:1"}); appErr != nil {
-		t.Fatal(appErr)
-	}
+		app.RequestEmailVerificationCommand{Source: "127.0.0.1:1"})
+	require.NoError(t, appErr)
 
 	securityUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-security", Email: "mail-cert-security@example.edu",
 		DisplayName: "Mail Security Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{
+	require.NoError(t, appErr)
+	_, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{
 		ID: securityUser.ID, Enabled: false, IdempotencyKey: "mail-cert-disable",
-	}); appErr != nil {
-		t.Fatal(appErr)
-	}
+	})
+	require.NoError(t, appErr)
 
 	candidate, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail-cert-candidate", Email: "mail-cert-candidate@example.edu",
 		DisplayName: "Mail Fanout Candidate", EmailVerified: true, Locale: "en", Timezone: "UTC",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{
 		InstitutionID: bootstrap.Institution.ID, Name: "mail-cert-unit", DisplayName: "Mail Certification Unit",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme, err := storetest.SaveProgramme(ctx, persistence, &model.Programme{
 		AcademicUnitID: unit.ID, Name: "mail-cert-programme", DisplayName: "Mail Certification Programme",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level, err := storetest.SaveProgrammeLevel(ctx, persistence, &model.ProgrammeLevel{
 		ProgrammeID: programme.ID, Name: "mail-cert-level", DisplayName: "Mail Certification Level",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	now := model.NowUTC()
 	period, err := storetest.SaveAcademicPeriod(ctx, persistence, &model.AcademicPeriod{
 		Owner: model.NewInstitutionAcademicPeriodOwner(bootstrap.Institution.ID),
 		Name:  "mail-cert-period", DisplayName: "Mail Certification Period",
 		StartsAt: now.Add(-time.Hour), EndsAt: now.Add(24 * time.Hour),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class, err := storetest.SaveClass(ctx, persistence, &model.Class{
 		ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "mail-cert-class", DisplayName: "Mail Certification Class",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.Affiliation().Save(ctx, &model.Affiliation{
+	require.NoError(t, err)
+	_, err = persistence.Affiliation().Save(ctx, &model.Affiliation{
 		UserID: candidate.ID, Kind: model.AffiliationStudent, StartsAt: now.Add(-time.Hour),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
+	})
+	require.NoError(t, err)
+	_, err = persistence.ClassMember().SeedEnroll(ctx, &model.ClassMember{
 		ClassID: class.ID, UserID: candidate.ID, StartsAt: now.Add(-time.Hour),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	created, appErr := helper.App.CreateExam(ctx, adminInvocation, app.CreateExamCommand{
 		AcademicUnitID: unit.ID, Title: "Mail Certification Exam", IdempotencyKey: "mail-cert-exam",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	published, appErr := helper.App.PublishExamRevision(ctx, adminInvocation, app.PublishExamRevisionCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision, IdempotencyKey: "mail-cert-publish",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if _, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, app.ScheduleExamSittingCommand{
+	require.NoError(t, appErr)
+	_, appErr = helper.App.ScheduleExamSitting(ctx, adminInvocation, app.ScheduleExamSittingCommand{
 		ExamID: created.Exam.ID, ExamRevisionID: published.ID, ClassID: class.ID,
 		ScheduledStartAt: now.Add(2 * time.Hour), ScheduledEndAt: now.Add(4 * time.Hour),
 		IdempotencyKey: "mail-cert-sitting",
-	}); appErr != nil {
-		t.Fatal(appErr)
-	}
+	})
+	require.NoError(t, appErr)
 
 	startIntegrationServer(t, helper)
 	expected := map[model.MailTemplateKey]string{
@@ -203,9 +169,7 @@ func TestTransactionalMailPhaseCertification(t *testing.T) {
 	}
 	deliveries := waitForAcceptedCertificationMail(t, ctx, persistence, expected)
 	messages := waitForMailpitMessages(t, mailpitURL, len(expected))
-	if len(messages) != len(expected) {
-		t.Fatalf("Mailpit messages = %d, want %d", len(messages), len(expected))
-	}
+	require.Len(t, messages, len(expected), "Mailpit messages")
 	byMessageID := make(map[string]certifiedMailDelivery, len(deliveries))
 	for _, delivery := range deliveries {
 		byMessageID[delivery.MessageID] = certifiedMailDelivery{
@@ -232,18 +196,14 @@ var mailpitHTTPClient = &http.Client{Timeout: 5 * time.Second}
 func clearMailpit(t *testing.T, baseURL string) {
 	t.Helper()
 	request, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/messages", strings.NewReader(`{}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request.Header.Set("Content-Type", "application/json")
 	response, err := mailpitHTTPClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		t.Fatalf("clear Mailpit status = %d: %s", response.StatusCode, body)
+		require.FailNow(t, fmt.Sprintf("clear Mailpit status = %d: %s", response.StatusCode, body))
 	}
 }
 
@@ -260,9 +220,7 @@ func waitForAcceptedCertificationMail(t *testing.T, ctx context.Context, persist
 		deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
 			TemplateKeys: keys, Limit: 20,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		accepted := len(deliveries) == len(expected)
 		for _, delivery := range deliveries {
 			accepted = accepted && delivery.State == model.MailDeliveryAccepted && delivery.AcceptedAt.Valid &&
@@ -271,9 +229,7 @@ func waitForAcceptedCertificationMail(t *testing.T, ctx context.Context, persist
 		if accepted {
 			return deliveries
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("certification deliveries did not become accepted: %#v", deliveries)
-		}
+		require.False(t, time.Now().After(deadline), "certification deliveries did not become accepted: %#v", deliveries)
 		time.Sleep(20 * time.Millisecond)
 	}
 }
@@ -283,23 +239,18 @@ func waitForMailpitMessages(t *testing.T, baseURL string, count int) []mailpitMe
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		response, err := mailpitHTTPClient.Get(fmt.Sprintf("%s/api/v1/messages?limit=%d", baseURL, count+5))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var page struct {
 			Messages []mailpitMessageSummary `json:"messages"`
 		}
 		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&page)
 		response.Body.Close()
-		if response.StatusCode != http.StatusOK || decodeErr != nil {
-			t.Fatalf("list Mailpit messages status=%d decode=%v", response.StatusCode, decodeErr)
-		}
+		require.Equal(t, http.StatusOK, response.StatusCode, "list Mailpit messages status")
+		require.NoError(t, decodeErr, "list Mailpit messages status")
 		if len(page.Messages) >= count {
 			return page.Messages
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("Mailpit messages = %d, want %d", len(page.Messages), count)
-		}
+		require.False(t, time.Now().After(deadline), "Mailpit messages = %d, want %d", len(page.Messages), count)
 		time.Sleep(20 * time.Millisecond)
 	}
 }
@@ -307,47 +258,35 @@ func waitForMailpitMessages(t *testing.T, baseURL string, count int) []mailpitMe
 func readMailpitRaw(t *testing.T, baseURL, id string) []byte {
 	t.Helper()
 	response, err := mailpitHTTPClient.Get(baseURL + "/api/v1/message/" + id + "/raw")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("read Mailpit message %q status = %d", id, response.StatusCode)
-	}
+	require.Equal(t, http.StatusOK, response.StatusCode, "read Mailpit message %q status", id)
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return raw
 }
 
 func assertCertifiedSMTPMessage(t *testing.T, raw []byte, deliveries map[string]certifiedMailDelivery) {
 	t.Helper()
 	message, err := netmail.ReadMessage(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	messageID := message.Header.Get("Message-ID")
 	certified, ok := deliveries[messageID]
-	if !ok || certified.delivery == nil || certified.delivery.MessageID != messageID {
-		t.Fatalf("SMTP Message-ID %q has no matching durable delivery", messageID)
-	}
+	require.True(t, ok, "SMTP Message-ID")
+	require.NotNil(t, certified.delivery, "SMTP Message-ID")
+	require.Equal(t, messageID, certified.delivery.MessageID, "SMTP Message-ID")
 	recipients, err := message.Header.AddressList("To")
-	if err != nil || len(recipients) != 1 || recipients[0].Address != certified.recipient {
-		t.Fatalf("accepted recipient header = %#v, want %q: %v", recipients, certified.recipient, err)
-	}
-	if message.Header.Get("Auto-Submitted") != "auto-generated" ||
-		message.Header.Get("X-Auto-Response-Suppress") != "All" {
-		t.Fatalf("automation headers = Auto-Submitted:%q X-Auto-Response-Suppress:%q",
-			message.Header.Get("Auto-Submitted"), message.Header.Get("X-Auto-Response-Suppress"))
-	}
-	if message.Header.Get("Bcc") != "" || message.Header.Get("Cc") != "" {
-		t.Fatalf("message exposed group recipients: Cc=%q Bcc=%q", message.Header.Get("Cc"), message.Header.Get("Bcc"))
-	}
+	require.NoError(t, err, "accepted recipient header")
+	require.Len(t, recipients, 1, "accepted recipient header")
+	require.Equal(t, certified.recipient, recipients[0].Address, "accepted recipient header")
+	require.Equal(t, "auto-generated", message.Header.Get("Auto-Submitted"), "automation headers = Auto-Submitted")
+	require.Equal(t, "All", message.Header.Get("X-Auto-Response-Suppress"), "automation headers = Auto-Submitted")
+	require.Empty(t, message.Header.Get("Bcc"), "message exposed group recipients: Cc")
+	require.Empty(t, message.Header.Get("Cc"), "message exposed group recipients: Cc")
 	mediaType, parameters, err := mime.ParseMediaType(message.Header.Get("Content-Type"))
-	if err != nil || mediaType != "multipart/alternative" || parameters["boundary"] == "" {
-		t.Fatalf("Content-Type = %q, %v", message.Header.Get("Content-Type"), err)
-	}
+	require.NoError(t, err, "Content-Type")
+	require.Equal(t, "multipart/alternative", mediaType, "Content-Type")
+	require.NotEmpty(t, parameters["boundary"], "Content-Type")
 	reader := multipart.NewReader(message.Body, parameters["boundary"])
 	var partTypes []string
 	for {
@@ -355,72 +294,54 @@ func assertCertifiedSMTPMessage(t *testing.T, raw []byte, deliveries map[string]
 		if nextErr == io.EOF {
 			break
 		}
-		if nextErr != nil {
-			t.Fatal(nextErr)
-		}
+		require.NoError(t, nextErr)
 		partType, _, parseErr := mime.ParseMediaType(part.Header.Get("Content-Type"))
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
+		require.NoError(t, parseErr)
 		content, readErr := io.ReadAll(io.LimitReader(part, 1<<20))
-		if readErr != nil || len(bytes.TrimSpace(content)) == 0 {
-			t.Fatalf("multipart %s content is empty: %v", partType, readErr)
-		}
+		require.NoError(t, readErr, "multipart %s content is empty", partType)
+		require.NotEmpty(t, bytes.TrimSpace(content), "multipart %s content is empty", partType)
 		if partType == "multipart/related" {
 			assertCertifiedInlineLogo(t, part.Header.Get("Content-Type"), content)
 		}
 		partTypes = append(partTypes, partType)
 	}
-	if len(partTypes) != 2 || partTypes[0] != "text/plain" || partTypes[1] != "multipart/related" {
-		t.Fatalf("multipart alternatives = %#v", partTypes)
-	}
+	require.Len(t, partTypes, 2)
+	require.Equal(t, "text/plain", partTypes[0])
+	require.Equal(t, "multipart/related", partTypes[1])
 }
 
 func assertCertifiedInlineLogo(t *testing.T, contentType string, body []byte) {
 	t.Helper()
 	_, parameters, err := mime.ParseMediaType(contentType)
-	if err != nil || parameters["boundary"] == "" {
-		t.Fatalf("invalid related content type: %v", err)
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, parameters["boundary"])
 	reader := multipart.NewReader(bytes.NewReader(body), parameters["boundary"])
 	htmlPart, err := reader.NextPart()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	kind, _, err := mime.ParseMediaType(htmlPart.Header.Get("Content-Type"))
-	if err != nil || kind != "text/html" {
-		t.Fatalf("first related part is not HTML: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "text/html", kind)
 	htmlBody, err := io.ReadAll(io.LimitReader(htmlPart, 1<<20))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	imagePart, err := reader.NextPart()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	kind, _, err = mime.ParseMediaType(imagePart.Header.Get("Content-Type"))
-	if err != nil || kind != "image/png" || imagePart.Header.Get("Content-Transfer-Encoding") != "base64" {
-		t.Fatalf("related logo is not a base64 PNG: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "image/png", kind)
+	require.Equal(t, "base64", imagePart.Header.Get("Content-Transfer-Encoding"))
 	disposition, _, err := mime.ParseMediaType(imagePart.Header.Get("Content-Disposition"))
-	if err != nil || disposition != "inline" {
-		t.Fatalf("logo is not inline: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "inline", disposition)
 	imageBytes, err := io.ReadAll(io.LimitReader(base64.NewDecoder(base64.StdEncoding, imagePart), 1<<20))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	config, err := png.DecodeConfig(bytes.NewReader(imageBytes))
-	if err != nil || config.Width != 600 || config.Height != 118 {
-		t.Fatalf("logo dimensions are invalid: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 600, config.Width)
+	require.Equal(t, 118, config.Height)
 	digest := sha256.Sum256(imageBytes)
 	id := "proctor-lockup-" + hex.EncodeToString(digest[:]) + "@proctor"
-	if imagePart.Header.Get("Content-ID") != "<"+id+">" || !bytes.Contains(htmlBody, []byte(`src="cid:`+id+`"`)) {
-		t.Fatal("logo Content-ID does not match its bytes and HTML reference")
-	}
-	if _, err := reader.NextPart(); err != io.EOF {
-		t.Fatalf("unexpected additional related part: %v", err)
-	}
+	require.Equal(t, "<"+id+">", imagePart.Header.Get("Content-ID"), "logo Content-ID does not match its bytes and HTML reference")
+	require.True(t, bytes.Contains(htmlBody, []byte(`src="cid:`+id+`"`)), "logo Content-ID does not match its bytes and HTML reference")
+	_, err = reader.NextPart()
+	require.Equal(t, io.EOF, err)
 }

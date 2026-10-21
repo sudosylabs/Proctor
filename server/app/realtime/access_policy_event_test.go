@@ -10,6 +10,8 @@ package realtime
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -17,18 +19,12 @@ func TestAccessPolicyChangedEventContainsOnlyRevision(t *testing.T) {
 	t.Parallel()
 	institutionID := model.NewInstitutionID()
 	event, err := NewAccessPolicyChangedEvent(institutionID, 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.Name != "access_policy_changed" || event.Action != model.ActionAccessPolicyView ||
-		event.Resource != (model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}) ||
-		string(event.Data) != `{"revision":7}` {
-		t.Fatalf("event = %#v payload=%s", event, event.Data)
-	}
-	if err := event.ValidateForPublish(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewAccessPolicyChangedEvent(institutionID, 0); err == nil {
-		t.Fatal("accepted zero policy revision")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "access_policy_changed", event.Name, "event = %#v payload", event)
+	require.Equal(t, model.ActionAccessPolicyView, event.Action, "event = %#v payload", event)
+	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, event.Resource, "event = %#v payload", event)
+	require.Equal(t, `{"revision":7}`, string(event.Data), "event = %#v payload", event)
+	require.NoError(t, event.ValidateForPublish())
+	_, err = NewAccessPolicyChangedEvent(institutionID, 0)
+	require.Error(t, err, "accepted zero policy revision")
 }

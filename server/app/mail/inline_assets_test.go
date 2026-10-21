@@ -10,9 +10,10 @@ package mail
 import (
 	"bytes"
 	"os"
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 const testLockupCID = "proctor-lockup-9867b48826bf314b6729f73941d053922d7baa7f5120894241ce197c219b8d66@proctor"
@@ -20,9 +21,7 @@ const testLockupCID = "proctor-lockup-9867b48826bf314b6729f73941d053922d7baa7f51
 func TestInlineAssetsRejectMissingOrChangedReleasedBytes(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../../templates/proctor-lockup-25d-v1.png")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name  string
 		files fstest.MapFS
@@ -32,9 +31,8 @@ func TestInlineAssetsRejectMissingOrChangedReleasedBytes(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := NewInlineAssets(test.files); err == nil {
-				t.Fatal("accepted an unavailable immutable image")
-			}
+			_, err := NewInlineAssets(test.files)
+			require.Error(t, err, "accepted an unavailable immutable image")
 		})
 	}
 }
@@ -42,9 +40,7 @@ func TestInlineAssetsRejectMissingOrChangedReleasedBytes(t *testing.T) {
 func TestInlineAssetsResolveOnlyReleasedImages(t *testing.T) {
 	t.Parallel()
 	assets, err := NewInlineAssets(os.DirFS("../../templates"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, test := range []struct {
 		name string
 		html string
@@ -66,11 +62,10 @@ func TestInlineAssetsResolveOnlyReleasedImages(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			images, err := assets.ForHTML(test.html)
-			if (err != nil) != test.fail || len(images) != test.want {
-				t.Fatalf("ForHTML() returned %d images, %v", len(images), err)
-			}
-			if err != nil && strings.Contains(err.Error(), "private.example") {
-				t.Fatal("error exposed an image source")
+			require.Equal(t, test.fail, err != nil, "ForHTML() returned %d images, %v", len(images), err)
+			require.Len(t, images, test.want, "ForHTML() returned %d images, %v", len(images), err)
+			if err != nil {
+				require.NotContains(t, err.Error(), "private.example", "error exposed an image source")
 			}
 		})
 	}
@@ -79,20 +74,18 @@ func TestInlineAssetsResolveOnlyReleasedImages(t *testing.T) {
 func TestInlineAssetsKeepFrozenReferencesStable(t *testing.T) {
 	t.Parallel()
 	assets, err := NewInlineAssets(os.DirFS("../../templates"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	frozenHTML := `<img src="cid:` + testLockupCID + `">`
 	first, err := assets.ForHTML(frozenHTML)
-	if err != nil || len(first) != 1 {
-		t.Fatalf("initial resolution = %v, %v", first, err)
-	}
+	require.NoError(t, err, "initial resolution")
+	require.Len(t, first, 1, "initial resolution")
 	original := bytes.Clone(first[0].Data)
 	first[0].Data[0] ^= 0xff
 	// A later release may add artwork without redirecting an existing CID.
 	assets.byID["future-release@proctor"] = InlineAsset{Filename: "future.png", ContentID: "future-release@proctor", Data: []byte("future")}
 	second, err := assets.ForHTML(frozenHTML)
-	if err != nil || len(second) != 1 || !bytes.Equal(second[0].Data, original) || second[0].ContentID != testLockupCID {
-		t.Fatalf("frozen artwork changed after another release or caller mutation: %v", err)
-	}
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	require.True(t, bytes.Equal(second[0].Data, original))
+	require.Equal(t, testLockupCID, second[0].ContentID)
 }

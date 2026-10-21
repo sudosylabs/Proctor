@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -29,33 +31,30 @@ func TestPreparePinsCommandIdentity(t *testing.T) {
 	}
 	userID := model.NewUserID()
 	got, err := Prepare(caller(userID), "exam.create.v1", "retry-key", semantics{ExamID: "exam-1", Title: "Networks"})
-	if err != nil {
-		t.Fatalf("Prepare: %v", err)
-	}
+	require.NoError(t, err)
 	wantKey := sha256.Sum256([]byte("retry-key"))
 	wantFingerprint := sha256.Sum256([]byte("exam.create.v1\x00v1\x00{\"exam_id\":\"exam-1\",\"title\":\"Networks\"}"))
-	if got.UserID != userID || got.Operation != "exam.create.v1" || got.KeyDigest != wantKey || got.Fingerprint != wantFingerprint {
-		t.Fatalf("unexpected command identity: %#v", got)
-	}
-	if got.FingerprintVersion != 1 || got.OutcomeVersion != 1 || got.Retention != 24*time.Hour || got.Wait != 2*time.Second {
-		t.Fatalf("unexpected command policy: %#v", got)
-	}
+	require.Equal(t, userID, got.UserID)
+	require.Equal(t, "exam.create.v1", got.Operation)
+	require.Equal(t, wantKey, got.KeyDigest)
+	require.Equal(t, wantFingerprint, got.Fingerprint)
+	require.Equal(t, 1, got.FingerprintVersion)
+	require.Equal(t, 1, got.OutcomeVersion)
+	require.Equal(t, 24*time.Hour, got.Retention)
+	require.Equal(t, 2*time.Second, got.Wait)
 }
 
 func TestPrepareEmptyKey(t *testing.T) {
 	t.Parallel()
 	got, err := Prepare(caller("invalid is irrelevant"), "operation", "", make(chan int))
-	if err != nil || got != nil {
-		t.Fatalf("Prepare empty key = %#v, %v; want nil, nil", got, err)
-	}
+	require.NoError(t, err, "Prepare empty key")
+	require.Nil(t, got, "Prepare empty key")
 }
 
 func TestPrepareRejectsInvalidPrincipal(t *testing.T) {
 	t.Parallel()
 	_, err := Prepare(caller(""), "operation", "key", struct{}{})
-	if !apperror.Is(err, "idempotency.key_invalid") {
-		t.Fatalf("Prepare error = %v; want idempotency.key_invalid", err)
-	}
+	require.True(t, apperror.Is(err, "idempotency.key_invalid"), "Prepare error = %v; want idempotency.key_invalid", err)
 }
 
 func TestPrepareWrapsSemanticEncodingFailure(t *testing.T) {
@@ -63,15 +62,12 @@ func TestPrepareWrapsSemanticEncodingFailure(t *testing.T) {
 	_, err := Prepare(caller(model.NewUserID()), "operation", "key", struct {
 		Unsupported chan int `json:"unsupported"`
 	}{Unsupported: make(chan int)})
-	if !apperror.Is(err, "request.invalid") {
-		t.Fatalf("Prepare error = %v; want request.invalid", err)
-	}
+	require.True(t, apperror.Is(err, "request.invalid"), "Prepare error = %v; want request.invalid", err)
 }
 
 func TestRequireRejectsEmptyKeyBeforeEncoding(t *testing.T) {
 	t.Parallel()
 	got, err := Require(caller(""), "operation", "", make(chan int))
-	if got != nil || !apperror.Is(err, "idempotency.key_required") {
-		t.Fatalf("Require empty key = %#v, %v; want idempotency.key_required", got, err)
-	}
+	require.Nil(t, got, "Require empty key = %#v, %v; want idempotency.key_required", got, err)
+	require.True(t, apperror.Is(err, "idempotency.key_required"), "Require empty key = %#v, %v; want idempotency.key_required", got, err)
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -55,14 +57,10 @@ func TestRequireStrongRecentSessionPreservesAssuranceErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			err := requireStrongRecentSession(test.principal, now, 15*time.Minute)
 			if test.wantCode == "" {
-				if err != nil {
-					t.Fatalf("requireStrongRecentSession() error = %v", err)
-				}
+				require.NoError(t, err)
 				return
 			}
-			if !apperror.Is(err, test.wantCode) {
-				t.Fatalf("requireStrongRecentSession() error = %v, want %s", err, test.wantCode)
-			}
+			require.True(t, apperror.Is(err, test.wantCode), "requireStrongRecentSession() error = %v, want %s", err, test.wantCode)
 		})
 	}
 }

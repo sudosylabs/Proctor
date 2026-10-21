@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -72,17 +74,17 @@ func TestInvitationMaintenanceJobConsumesBoundedPages(t *testing.T) {
 	persistence := &invitationMaintenanceStoreFake{results: []*store.InvitationMaintenanceResult{{Expired: 25, More: true}, {Expired: 2, Purged: 3}}}
 	handler := invitationMaintenanceHandler{invitations: persistence, imports: persistence, content: &onboardingImportFilesMaintenanceFake{}, now: func() time.Time { return at }}
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || persistence.calls != 2 || !json.Valid(outcome.Result) {
-		t.Fatalf("outcome/calls = %#v / %d", outcome, persistence.calls)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome/calls = %#v", outcome)
+	require.Equal(t, 2, persistence.calls, "outcome/calls = %#v", outcome)
+	require.True(t, json.Valid(outcome.Result), "outcome/calls = %#v", outcome)
 	var result InvitationMaintenanceResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || result.Expired != 27 || result.Purged != 3 {
-		t.Fatalf("result = %#v, %v", result, err)
-	}
+	require.NoError(t, json.Unmarshal(outcome.Result, &result), "result = %#v", result)
+	require.Equal(t, 27, result.Expired, "result = %#v", result)
+	require.Equal(t, 3, result.Purged, "result = %#v", result)
 	descriptor := invitationMaintenanceDescriptor(handler)
-	if descriptor.Concurrency != 1 || descriptor.Timeout > 5*time.Minute || descriptor.Type != model.JobTypeInvitationMaintenance {
-		t.Fatalf("descriptor = %#v", descriptor)
-	}
+	require.Equal(t, 1, descriptor.Concurrency)
+	require.LessOrEqual(t, descriptor.Timeout, 5*time.Minute)
+	require.Equal(t, model.JobTypeInvitationMaintenance, descriptor.Type)
 }
 
 func TestInvitationMaintenanceRemovesSourceForTerminalImport(t *testing.T) {
@@ -95,9 +97,9 @@ func TestInvitationMaintenanceRemovesSourceForTerminalImport(t *testing.T) {
 	files := &onboardingImportFilesMaintenanceFake{staged: []model.OnboardingImportID{id}}
 	outcome := (invitationMaintenanceHandler{invitations: persistence, imports: persistence, content: files, now: func() time.Time { return at }}).
 		Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(files.removed) != 1 || files.removed[0] != id {
-		t.Fatalf("terminal source cleanup = %#v / %v", outcome, files.removed)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "terminal source cleanup = %#v", outcome)
+	require.Len(t, files.removed, 1, "terminal source cleanup = %#v", outcome)
+	require.Equal(t, id, files.removed[0], "terminal source cleanup = %#v", outcome)
 }
 
 func TestInvitationMaintenanceProposalIsDurablyDeduplicatedAcrossNodes(t *testing.T) {
@@ -107,19 +109,12 @@ func TestInvitationMaintenanceProposalIsDurablyDeduplicatedAcrossNodes(t *testin
 	jobs := &deduplicatingJobEnqueuerFake{jobs: map[string]*model.Job{}}
 	first := invitationMaintenanceProposer{jobs: jobs, now: func() time.Time { return occurrence }}
 	second := invitationMaintenanceProposer{jobs: jobs, now: func() time.Time { return occurrence.Add(time.Minute) }}
-	if err := first.Propose(context.Background(), occurrence); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Propose(context.Background(), occurrence); err != nil {
-		t.Fatal(err)
-	}
-	if len(jobs.jobs) != 1 {
-		t.Fatalf("logical maintenance jobs = %d, want 1", len(jobs.jobs))
-	}
+	require.NoError(t, first.Propose(context.Background(), occurrence))
+	require.NoError(t, second.Propose(context.Background(), occurrence))
+	require.Len(t, jobs.jobs, 1, "logical maintenance jobs")
 	for _, job := range jobs.jobs {
-		if job.Type != model.JobTypeInvitationMaintenance || job.DedupePolicy != model.JobDedupePermanent ||
-			job.DedupeKey != "invitation-maintenance:2026-08-18" {
-			t.Fatalf("maintenance job = %#v", job)
-		}
+		require.Equal(t, model.JobTypeInvitationMaintenance, job.Type)
+		require.Equal(t, model.JobDedupePermanent, job.DedupePolicy)
+		require.Equal(t, "invitation-maintenance:2026-08-18", job.DedupeKey)
 	}
 }

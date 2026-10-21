@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 )
 
@@ -21,10 +23,10 @@ func TestExamAttemptExpiryPeriodicRunnerUsesBoundedBatchAndPreservesFailure(t *t
 	wantErr := errors.New("database unavailable")
 	fake := &recordingExamAttemptExpiryUseCases{err: wantErr}
 	err := (examAttemptExpiryPeriodicRunner{attempts: fake}).Run(context.Background())
-	if !errors.Is(err, wantErr) || fake.limit != examAttemptExpiryBatchLimit ||
-		examAttemptExpiryScanInterval != 2*time.Second || examAttemptExpiryPeriodicTaskName == "" {
-		t.Fatalf("Run() error=%v limit=%d", err, fake.limit)
-	}
+	require.ErrorIs(t, err, wantErr, "Run() error")
+	require.Equal(t, examAttemptExpiryBatchLimit, fake.limit, "Run() error")
+	require.Equal(t, 2*time.Second, examAttemptExpiryScanInterval, "Run() error")
+	require.NotEmpty(t, examAttemptExpiryPeriodicTaskName, "Run() error")
 }
 
 type recordingExamAttemptExpiryUseCases struct {
@@ -45,7 +47,6 @@ func (f *recordingExamAttemptExpiryUseCases) ScanExpiredDeliveries(_ context.Con
 
 func TestExpiryRunnerAlsoSettlesAbandonedDeliveries(t *testing.T) {
 	fake := &recordingExamAttemptExpiryUseCases{}
-	if err := (examAttemptExpiryPeriodicRunner{attempts: fake}).Run(context.Background()); err != nil || fake.deliveryLimit != 200 {
-		t.Fatalf("delivery scan bound=%d: %v", fake.deliveryLimit, err)
-	}
+	require.NoError(t, (examAttemptExpiryPeriodicRunner{attempts: fake}).Run(context.Background()), "delivery scan bound")
+	require.Equal(t, 200, fake.deliveryLimit, "delivery scan bound")
 }

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -22,32 +24,24 @@ func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *tes
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(cluster); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(cluster))
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID()
 	changedAt := time.Date(2026, 8, 15, 8, 30, 0, 123456789, time.UTC)
-	if err := (examStarterWorkspaceRealtimeEffects{realtime: realtime}).Changed(context.Background(), examID, entryID, 4, examworkspace.ChangeFileReplaced, changedAt); err != nil {
-		t.Fatal(err)
-	}
-	if len(sink.events) != 1 || sink.events[0].Name != "exam_starter_workspace_changed" ||
-		sink.events[0].Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
-		t.Fatalf("events=%#v", sink.events)
-	}
+	require.NoError(t, (examStarterWorkspaceRealtimeEffects{realtime: realtime}).Changed(context.Background(), examID, entryID, 4, examworkspace.ChangeFileReplaced, changedAt))
+	require.Len(t, sink.events, 1)
+	require.Equal(t, "exam_starter_workspace_changed", sink.events[0].Name)
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, sink.events[0].Resource)
 	var data map[string]any
-	if err := json.Unmarshal(sink.events[0].Data, &data); err != nil {
-		t.Fatal(err)
-	}
-	if len(data) != 5 || data["exam_id"] != examID.String() || data["entry_id"] != entryID.String() ||
-		data["operation"] != "file_replaced" || data["draft_revision"] != float64(4) || data["changed_at"] != "2026-08-15T08:30:00.123456Z" {
-		t.Fatalf("event data=%#v", data)
-	}
+	require.NoError(t, json.Unmarshal(sink.events[0].Data, &data))
+	require.Len(t, data, 5)
+	require.Equal(t, examID.String(), data["exam_id"])
+	require.Equal(t, entryID.String(), data["entry_id"])
+	require.Equal(t, "file_replaced", data["operation"])
+	require.Equal(t, float64(4), data["draft_revision"])
+	require.Equal(t, "2026-08-15T08:30:00.123456Z", data["changed_at"])
 	for _, forbidden := range []string{"path", "content", "sha256", "object_id"} {
-		if _, exists := data[forbidden]; exists {
-			t.Fatalf("event exposed %s: %#v", forbidden, data)
-		}
+		_, exists := data[forbidden]
+		require.False(t, exists, "event exposed %s: %#v", forbidden, data)
 	}
 }

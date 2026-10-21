@@ -12,10 +12,12 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/config"
@@ -42,9 +44,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 		"administrator":    map[string]any{"username": "live-node-admin", "email": "live-node-admin@example.edu"},
 		"password":         oldPassword,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	var created struct {
 		Institution struct {
 			ID string `json:"id"`
@@ -53,13 +53,9 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"administrator"`
 	}
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &created))
 	before, err := primaryStore.PasswordCredential().GetByUser(context.Background(), model.UserID(created.Administrator.ID))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	serveCtx, cancelServing := context.WithCancel(context.Background())
 	serveDone := make(chan error, 1)
@@ -70,7 +66,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 	}
 	if !primary.Server.Ready() {
 		cancelServing()
-		t.Fatalf("primary server did not become ready; logs=%s", primary.Logs.String())
+		require.FailNow(t, fmt.Sprintf("primary server did not become ready; logs=%s", primary.Logs.String()))
 	}
 
 	database := config.Default().Database
@@ -78,7 +74,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 	secondaryStore, err := sqlstore.New(context.Background(), sqlstore.SettingsFromConfig(database))
 	if err != nil {
 		cancelServing()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	secondary := testlib.Setup(t, testlib.WithStore(secondaryStore), testlib.WithConfig(configureNode("recovery-node-inert")))
 
@@ -87,33 +83,32 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 		InstitutionID: created.Institution.ID, UserID: created.Administrator.ID, Password: rejectedPassword,
 	}); err == nil {
 		cancelServing()
-		t.Fatal("offline recovery succeeded while another node was serving")
+		require.FailNow(t, "offline recovery succeeded while another node was serving")
 	}
 	after, err := secondaryStore.PasswordCredential().GetByUser(context.Background(), model.UserID(created.Administrator.ID))
 	if err != nil || after.PasswordHash != before.PasswordHash {
 		cancelServing()
-		t.Fatalf("credential after live-node rejection = %#v, %v", after, err)
+		require.FailNow(t, fmt.Sprintf("credential after live-node rejection = %#v, %v", after, err))
 	}
 	reconciled, err := secondaryStore.Installation().ReconcileAdministratorRecovery(context.Background(), &store.AdministratorRecoveryReconciliation{NodeID: "recovery-node-inert"})
 	if err != nil || reconciled == nil || reconciled.Reconciled != 0 {
 		cancelServing()
-		t.Fatalf("rejected recovery pending record = %#v, %v", reconciled, err)
+		require.FailNow(t, fmt.Sprintf("rejected recovery pending record = %#v, %v", reconciled, err))
 	}
 
 	cancelServing()
 	select {
 	case err := <-serveDone:
-		if err != nil {
-			t.Fatalf("primary Server.Run() shutdown error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("primary server did not stop")
+		require.FailNow(t, "primary server did not stop")
 	}
-	if result, err := secondary.Server.RecoverAdministratorAccess(context.Background(), server.AdministratorRecoveryCommand{
+	result, err := secondary.Server.RecoverAdministratorAccess(context.Background(), server.AdministratorRecoveryCommand{
 		InstitutionID: created.Institution.ID, UserID: created.Administrator.ID, Password: rejectedPassword,
-	}); err != nil || result == nil || !result.PasswordRotated {
-		t.Fatalf("recovery after serving node stopped = %#v, %v", result, err)
-	}
+	})
+	require.NoError(t, err, "recovery after serving node stopped")
+	require.NotNil(t, result, "recovery after serving node stopped")
+	require.True(t, result.PasswordRotated, "recovery after serving node stopped")
 }
 
 func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *testing.T) {
@@ -130,9 +125,7 @@ func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *tes
 		"administrator":    map[string]any{"username": "offline-admin", "email": "offline-admin@example.edu"},
 		"password":         oldPassword,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	var created struct {
 		Institution struct {
 			ID string `json:"id"`
@@ -141,27 +134,24 @@ func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *tes
 			ID string `json:"id"`
 		} `json:"administrator"`
 	}
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &created))
 	result, err := helper.Server.RecoverAdministratorAccess(context.Background(), server.AdministratorRecoveryCommand{
 		InstitutionID: created.Institution.ID, UserID: created.Administrator.ID, Password: newPassword,
 	})
-	if err != nil || result == nil || !result.PasswordRotated || result.LocalLoginEnabled {
-		t.Fatalf("RecoverAdministratorAccess() = %#v, %v", result, err)
-	}
-	if _, err := helper.Server.RecoverAdministratorAccess(context.Background(), server.AdministratorRecoveryCommand{
+	require.NoError(t, err, "RecoverAdministratorAccess()")
+	require.NotNil(t, result, "RecoverAdministratorAccess()")
+	require.True(t, result.PasswordRotated, "RecoverAdministratorAccess()")
+	require.False(t, result.LocalLoginEnabled, "RecoverAdministratorAccess()")
+	_, err = helper.Server.RecoverAdministratorAccess(context.Background(), server.AdministratorRecoveryCommand{
 		InstitutionID: created.Institution.ID, UserID: created.Administrator.ID, Password: newPassword,
-	}); err == nil {
-		t.Fatal("repeated pending recovery succeeded")
-	}
+	})
+	require.Error(t, err, "repeated pending recovery succeeded")
 	events, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
 		Action: "authentication.administrator_recovery", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil || len(events) != 0 {
-		t.Fatalf("pre-start audit events=%#v error=%v", events, err)
-	}
+	require.NoError(t, err, "pre-start audit events")
+	require.Empty(t, events, "pre-start audit events")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startDone := make(chan error, 1)
@@ -172,37 +162,32 @@ func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *tes
 	}
 	if !helper.Server.Ready() {
 		cancel()
-		t.Fatalf("server did not become ready; logs=%s", helper.Logs.String())
+		require.FailNow(t, fmt.Sprintf("server did not become ready; logs=%s", helper.Logs.String()))
 	}
 	login := loginIntegrationUser(t, helper.Handler(), "offline-admin", newPassword, model.SessionClientCLI, "offline-recovery-cli")
-	if login.User.ID.String() != created.Administrator.ID || login.Session == nil {
-		t.Fatalf("normal post-recovery login = %#v", login)
-	}
+	require.Equal(t, created.Administrator.ID, login.User.ID.String())
+	require.NotNil(t, login.Session)
 	oldLogin := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"login_id": "offline-admin", "password": oldPassword, "client_type": model.SessionClientCLI,
 	}, "")
-	if oldLogin.Code == http.StatusOK {
-		t.Fatal("old password authenticated after rotation")
-	}
+	require.NotEqual(t, http.StatusOK, oldLogin.Code, "old password authenticated after rotation")
 	events, err = persistence.Audit().List(context.Background(), store.AuditListOptions{
 		Action: "authentication.administrator_recovery", Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil || len(events) != 1 || !events[0].ActorID.IsZero() || events[0].Status != model.AuditStatusSuccess {
-		t.Fatalf("reconciled audit events=%#v error=%v", events, err)
-	}
+	require.NoError(t, err, "reconciled audit events")
+	require.Len(t, events, 1, "reconciled audit events")
+	require.True(t, events[0].ActorID.IsZero(), "reconciled audit events")
+	require.Equal(t, model.AuditStatusSuccess, events[0].Status, "reconciled audit events")
 	for _, secret := range []string{oldPassword, newPassword} {
-		if strings.Contains(helper.Logs.String(), secret) || strings.Contains(string(events[0].Result), secret) {
-			t.Fatal("administrator recovery secret appeared in logs or audit")
-		}
+		require.NotContains(t, helper.Logs.String(), secret, "administrator recovery secret appeared in logs or audit")
+		require.NotContains(t, string(events[0].Result), secret, "administrator recovery secret appeared in logs or audit")
 	}
 	cancel()
 	select {
 	case err := <-startDone:
-		if err != nil {
-			t.Fatalf("Server.Run() after cancellation = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("server did not stop")
+		require.FailNow(t, "server did not stop")
 	}
 }

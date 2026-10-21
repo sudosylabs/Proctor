@@ -9,8 +9,9 @@ package sitting
 
 import (
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 )
@@ -18,23 +19,21 @@ import (
 func TestPublicFailuresConcealDenialAndAbsence(t *testing.T) {
 	t.Parallel()
 	want := apperror.Concealment{Unavailable: "exam.sitting.unavailable", Concealed: []apperror.Code{"exam.sitting.not_found"}}
-	if !reflect.DeepEqual(publicFailures, want) {
-		t.Fatalf("publicFailures = %#v, want %#v", publicFailures, want)
-	}
+	require.Equal(t, want, publicFailures, "publicFailures")
 	for _, code := range append([]apperror.Code{"authorization.denied"}, want.Concealed...) {
 		cause := apperror.New(code)
-		if err := publicFailures.Conceal(cause); !apperror.Is(err, "resource.not_found") || !errors.Is(err, cause) {
-			t.Fatalf("Conceal(%s) = %v, want wrapped resource.not_found", code, err)
-		}
+		err := publicFailures.Conceal(cause)
+		require.True(t, apperror.Is(err, "resource.not_found"), "Conceal(%s)", code)
+		require.ErrorIs(t, err, cause, "Conceal(%s)", code)
 	}
 	safe := apperror.Invalid("request.invalid", "field")
-	if err := publicFailures.Conceal(safe); !apperror.Is(err, "request.invalid") || !errors.Is(err, safe) {
-		t.Fatalf("Conceal(request.invalid) = %v, want unchanged", err)
-	}
+	err := publicFailures.Conceal(safe)
+	require.True(t, apperror.Is(err, "request.invalid"), "Conceal(request.invalid)")
+	require.ErrorIs(t, err, safe, "Conceal(request.invalid)")
 	dependency := errors.New("dependency failed")
-	if err := publicFailures.Conceal(dependency); !apperror.Is(err, want.Unavailable) || !errors.Is(err, dependency) {
-		t.Fatalf("Conceal(dependency) = %v, want wrapped %s", err, want.Unavailable)
-	}
+	err = publicFailures.Conceal(dependency)
+	require.True(t, apperror.Is(err, want.Unavailable), "Conceal(dependency) = %v, want wrapped %s", err, want.Unavailable)
+	require.ErrorIs(t, err, dependency, "Conceal(dependency) = %v, want wrapped %s", err, want.Unavailable)
 }
 
 type operationalRecorderFake struct {
@@ -56,10 +55,8 @@ func TestObservedUseCaseRecordsItsConcealedOutcome(t *testing.T) {
 		ExamID: f.examID, SittingID: f.sittingID, ExpectedRevision: 1,
 		PrivateReason: "Candidate requested clarification", IdempotencyKey: "test-key",
 	})
-	if !apperror.Is(err, "resource.not_found") {
-		t.Fatalf("PauseExamSitting error = %v, want concealed resource.not_found", err)
-	}
-	if recorder.subsystem != "exam_sitting" || recorder.event != "pause" || !apperror.Is(recorder.err, "resource.not_found") {
-		t.Fatalf("recorded %s/%s %v, want exam_sitting/pause with the concealed failure", recorder.subsystem, recorder.event, recorder.err)
-	}
+	require.True(t, apperror.Is(err, "resource.not_found"), "PauseExamSitting error = %v, want concealed resource.not_found", err)
+	require.Equal(t, "exam_sitting", recorder.subsystem, "recorded %s/%s %v, want exam_sitting/pause with the concealed failure", recorder.subsystem, recorder.event, recorder.err)
+	require.Equal(t, "pause", recorder.event, "recorded %s/%s %v, want exam_sitting/pause with the concealed failure", recorder.subsystem, recorder.event, recorder.err)
+	require.True(t, apperror.Is(recorder.err, "resource.not_found"), "recorded %s/%s %v, want exam_sitting/pause with the concealed failure", recorder.subsystem, recorder.event, recorder.err)
 }

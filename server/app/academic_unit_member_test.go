@@ -9,13 +9,15 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type academicUnitMemberStoreFake struct {
@@ -70,26 +72,21 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 		return time.UnixMilli(500)
 	}, model.NewID)
 	created, err := service.CreateAcademicUnitMember(context.Background(), Invocation{}, CreateAcademicUnitMemberCommand{AcademicUnitID: model.AcademicUnitID(unitID), UserID: userID, StartAt: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.AcademicUnitID.String() != unitID || created.UserID.String() != userID || created.EndsAt.Valid || persistence.createInput.Member.EndsAt.Valid {
-		t.Fatalf("created = %#v", created)
-	}
-	if clockCalls != 1 || persistence.createInput.AuditAt != model.MillisFromTime(created.CreatedAt) {
-		t.Fatalf("clock calls/creation/audit time = %d/%v/%d", clockCalls, created.CreatedAt, persistence.createInput.AuditAt)
-	}
-	if !reflect.DeepEqual(effects.users, []string{userID}) {
-		t.Fatalf("invalidated Users = %v", effects.users)
-	}
-	if persistence.createInput.Notice == nil || persistence.createInput.ExpectedRecipientRevision != 1 || len(mail.requests) != 1 ||
-		mail.requests[0].TemplateKey != model.MailTemplateAcademicUnitAssigned {
-		t.Fatalf("creation mail = %#v / %#v", persistence.createInput, mail.requests)
-	}
-	want := []string{"authorize", "audit-begin", "store-create"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, unitID, created.AcademicUnitID.String())
+	require.Equal(t, userID, created.UserID.String())
+	require.False(t, created.EndsAt.Valid)
+	require.False(t, persistence.createInput.Member.EndsAt.Valid)
+	require.Equal(t, 1, clockCalls, "clock calls/creation/audit time")
+	require.Equal(t, model.MillisFromTime(created.CreatedAt), persistence.createInput.AuditAt, "clock calls/creation/audit time")
+	require.Equal(t, []string{userID}, effects.users)
+	require.NotNil(t, persistence.createInput.Notice, "creation mail = %#v", persistence.createInput)
+	require.Equal(t, int64(1), persistence.createInput.ExpectedRecipientRevision, "creation mail = %#v", persistence.createInput)
+	require.Len(t, mail.requests, 1, "creation mail = %#v", persistence.createInput)
+	require.Equal(t, model.MailTemplateAcademicUnitAssigned, mail.requests[0].TemplateKey, "creation mail = %#v", persistence.createInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
 }
 
 func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
@@ -105,23 +102,17 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 	mail := &relationshipMailPreparerTestFake{}
 	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mail, effects, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	ended, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.endInput.ExpectedRevision != current.Revision || ended.Revision != current.Revision+1 {
-		t.Fatalf("end input/result = %#v / %#v", persistence.endInput, ended)
-	}
-	if !reflect.DeepEqual(effects.users, []string{current.UserID.String()}) {
-		t.Fatalf("invalidated Users = %v", effects.users)
-	}
-	if persistence.endInput.Notice == nil || persistence.endInput.ExpectedRecipientRevision != 1 || len(mail.requests) != 1 ||
-		mail.requests[0].TemplateKey != model.MailTemplateAcademicUnitAssignmentEnded {
-		t.Fatalf("end mail = %#v / %#v", persistence.endInput, mail.requests)
-	}
-	want := []string{"authorize-preflight", "get-member", "authorize", "audit-begin", "store-end"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
+	require.Equal(t, current.Revision+1, ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)
+	require.Equal(t, []string{current.UserID.String()}, effects.users)
+	require.NotNil(t, persistence.endInput.Notice, "end mail = %#v", persistence.endInput)
+	require.Equal(t, int64(1), persistence.endInput.ExpectedRecipientRevision, "end mail = %#v", persistence.endInput)
+	require.Len(t, mail.requests, 1, "end mail = %#v", persistence.endInput)
+	require.Equal(t, model.MailTemplateAcademicUnitAssignmentEnded, mail.requests[0].TemplateKey, "end mail = %#v", persistence.endInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-preflight", "authorize", "audit-begin", "store-end")
 }
 
 func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
@@ -133,12 +124,9 @@ func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, preflightErr: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	if _, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()}); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("End() error = %v, want authorization.denied", err)
-	}
-	if want := []string{"authorize-preflight"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	_, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewAcademicUnitMemberID()})
+	require.True(t, apperror.Is(err, "authorization.denied"), "End() error = %v, want authorization.denied", err)
+	require.Equal(t, []string{"authorize-preflight"}, events, "events")
 }
 
 func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
@@ -154,9 +142,8 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 		&programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")},
 		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &academicUnitMemberEffectsFake{}, time.Now, model.NewID,
 	)
-	if _, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID}); !apperror.Is(err, "resource.not_found") {
-		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
-	}
+	_, err := service.EndAcademicUnitMember(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID})
+	require.True(t, apperror.Is(err, "resource.not_found"), "End() error = %v, want concealed resource.not_found", err)
 }
 
 func (s *academicUnitMemberStoreFake) ListPageByAcademicUnit(_ context.Context, options store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {

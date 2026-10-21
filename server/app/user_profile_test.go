@@ -10,14 +10,16 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type userProfileStoreFake struct {
@@ -97,21 +99,22 @@ func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
 	principal.DesktopRealtimeProtocol = 1
 
 	got, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.currentContextLimit != 21 || got.UserID != userID || got.ProfilePictureReference != "/api/v1/users/"+userID.String()+"/profile-picture" ||
-		!got.SessionManagementAvailable || got.CurrentDesktopRegistrationID != principal.DesktopRegistrationID || got.UnresolvedAttempt == nil ||
-		got.UnresolvedAttempt.AttemptID != attempt.AttemptID || len(got.ManagementScopes) != 1 || len(got.AvailableProductAreas) != 3 {
-		t.Fatalf("GetCurrentUserContext() = %#v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 21, persistence.currentContextLimit)
+	require.Equal(t, userID, got.UserID)
+	require.Equal(t, "/api/v1/users/"+userID.String()+"/profile-picture", got.ProfilePictureReference)
+	require.True(t, got.SessionManagementAvailable)
+	require.Equal(t, principal.DesktopRegistrationID, got.CurrentDesktopRegistrationID)
+	require.NotNil(t, got.UnresolvedAttempt)
+	require.Equal(t, attempt.AttemptID, got.UnresolvedAttempt.AttemptID)
+	require.Len(t, got.ManagementScopes, 1)
+	require.Len(t, got.AvailableProductAreas, 3)
 	got.AvailableProductAreas[0] = store.CurrentUserProductAreaAdministration
 	got.ManagementScopes[0].DisplayName = "changed"
 	got.UnresolvedAttempt.State = model.ExamAttemptActive
-	if persisted.AvailableProductAreas[0] != store.CurrentUserProductAreaAccount || persisted.ManagementScopes[0].DisplayName != "Engineering" ||
-		persisted.UnresolvedAttempt.State != model.ExamAttemptSuspended {
-		t.Fatal("GetCurrentUserContext mutated its persistence projection")
-	}
+	require.Equal(t, store.CurrentUserProductAreaAccount, persisted.AvailableProductAreas[0], "GetCurrentUserContext mutated its persistence projection")
+	require.Equal(t, "Engineering", persisted.ManagementScopes[0].DisplayName, "GetCurrentUserContext mutated its persistence projection")
+	require.Equal(t, model.ExamAttemptSuspended, persisted.UnresolvedAttempt.State, "GetCurrentUserContext mutated its persistence projection")
 }
 
 func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.T) {
@@ -123,12 +126,9 @@ func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.
 		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
 		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionUserView)},
 	}
-	if _, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("GetCurrentUserContext() error = %v", err)
-	}
-	if persistence.currentContextLimit != 0 {
-		t.Fatalf("unauthorized request reached persistence with limit %d", persistence.currentContextLimit)
-	}
+	_, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "GetCurrentUserContext() error = %v", err)
+	require.Equal(t, 0, persistence.currentContextLimit, "unauthorized request reached persistence with limit")
 }
 
 func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error) {
@@ -171,16 +171,18 @@ func TestUserProfileUpdateIsAuthorizedAndAuditAtomic(t *testing.T) {
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, auditor, func() time.Time { return time.UnixMilli(500) })
 	displayName := "Updated Student"
 	updated, err := service.UpdateUserProfile(context.Background(), Invocation{}, UpdateUserProfileCommand{ID: current.ID, DisplayName: &displayName})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Email != current.Email || !updated.EmailVerified || updated.DisplayName != displayName || persistence.updateInput.ExpectedRevision != 3 || persistence.updateInput.UserID != current.ID || persistence.updateInput.Changes.DisplayName == nil || *persistence.updateInput.Changes.DisplayName != displayName || updated.Revision != 4 {
-		t.Fatalf("updated/input = %#v / %#v", updated, persistence.updateInput)
-	}
-	want := []string{"authorize-manage", "get-user", "audit-begin", "store-update"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, current.Email, updated.Email, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.True(t, updated.EmailVerified, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.Equal(t, displayName, updated.DisplayName, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.Equal(t, int64(3), persistence.updateInput.ExpectedRevision, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.Equal(t, current.ID, persistence.updateInput.UserID, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.NotNil(t, persistence.updateInput.Changes.DisplayName, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.Equal(t, displayName, *persistence.updateInput.Changes.DisplayName, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	require.Equal(t, int64(4), updated.Revision, "updated/input = %#v / %#v", updated, persistence.updateInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update")
 }
 
 func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
@@ -189,15 +191,10 @@ func TestUserProfileSearchReturnsEmptyCollection(t *testing.T) {
 	persistence := &userProfileStoreFake{events: &events}
 	service := newUserProfileService(persistence, &userProfileAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now)
 	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if users == nil || len(users) != 0 {
-		t.Fatalf("users = %#v, want non-nil empty", users)
-	}
-	if !reflect.DeepEqual(persistence.listOptions.Visibility.ClassIDs, []model.ClassID{"class-a"}) {
-		t.Fatalf("visibility = %#v", persistence.listOptions.Visibility)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, users, "users")
+	require.Empty(t, users, "users")
+	require.Equal(t, []model.ClassID{"class-a"}, persistence.listOptions.Visibility.ClassIDs)
 }
 
 func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
@@ -213,23 +210,22 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 			ClassMemberInstitutionWide: true, ActiveAt: model.TimeFromMillis(100),
 		}},
 	} {
-		for _, includeDisabled := range []bool{false, true} {
-			events := []string{}
-			persistence := &userProfileStoreFake{events: &events}
-			service := newUserProfileService(
-				persistence,
-				&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
-				&institutionAuditorFake{events: &events}, time.Now,
-			)
-			if _, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
-				Limit: 10, IncludeDisabled: includeDisabled,
-			}); err != nil {
-				t.Fatal(err)
+		t.Run(test.name, func(t *testing.T) {
+			for _, includeDisabled := range []bool{false, true} {
+				events := []string{}
+				persistence := &userProfileStoreFake{events: &events}
+				service := newUserProfileService(
+					persistence,
+					&userProfileAuthorizerFake{events: &events, searchScope: test.scope},
+					&institutionAuditorFake{events: &events}, time.Now,
+				)
+				_, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
+					Limit: 10, IncludeDisabled: includeDisabled,
+				})
+				require.NoError(t, err)
+				require.False(t, persistence.listOptions.IncludeDisabled, "%s scoped IncludeDisabled=%t reached persistence as true", test.name, includeDisabled)
 			}
-			if persistence.listOptions.IncludeDisabled {
-				t.Fatalf("%s scoped IncludeDisabled=%t reached persistence as true", test.name, includeDisabled)
-			}
-		}
+		})
 	}
 
 	events := []string{}
@@ -239,14 +235,11 @@ func TestScopedUserSearchCannotRequestDisabledUsers(t *testing.T) {
 		&userProfileAuthorizerFake{events: &events, searchScope: store.UserVisibilityScope{InstitutionWide: true}},
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
-	if _, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
+	_, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{
 		Limit: 10, IncludeDisabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if !persistence.listOptions.IncludeDisabled {
-		t.Fatal("institution-wide IncludeDisabled=true was not preserved")
-	}
+	})
+	require.NoError(t, err)
+	require.True(t, persistence.listOptions.IncludeDisabled, "institution-wide IncludeDisabled=true was not preserved")
 }
 
 func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
@@ -265,19 +258,22 @@ func TestScopedUserSearchReturnsOnlySafeDirectoryFields(t *testing.T) {
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
 	users, err := service.SearchUsers(context.Background(), Invocation{}, SearchUsersQuery{Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(users) != 1 || users[0].Username != "student" || users[0].DisplayName != "Student" ||
-		users[0].Email != "" || users[0].EmailVerified || users[0].Locale != "" || users[0].Timezone != "" ||
-		users[0].LastLoginAt.Valid || users[0].LastActivityAt.Valid || users[0].DisabledAt.Valid ||
-		users[0].DefaultProfilePictureSeed != "" || !users[0].DefaultProfilePictureFileID.IsZero() ||
-		!users[0].CustomProfilePictureFileID.IsZero() {
-		t.Fatalf("scoped projection = %#v", users)
-	}
-	if user.Email != "private@example.edu" || !user.EmailVerified {
-		t.Fatal("scoped projection mutated the persisted User")
-	}
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	require.Equal(t, "student", users[0].Username)
+	require.Equal(t, "Student", users[0].DisplayName)
+	require.Empty(t, users[0].Email)
+	require.False(t, users[0].EmailVerified)
+	require.Empty(t, users[0].Locale)
+	require.Empty(t, users[0].Timezone)
+	require.False(t, users[0].LastLoginAt.Valid)
+	require.False(t, users[0].LastActivityAt.Valid)
+	require.False(t, users[0].DisabledAt.Valid)
+	require.Empty(t, users[0].DefaultProfilePictureSeed)
+	require.True(t, users[0].DefaultProfilePictureFileID.IsZero())
+	require.True(t, users[0].CustomProfilePictureFileID.IsZero())
+	require.Equal(t, "private@example.edu", user.Email, "scoped projection mutated the persisted User")
+	require.True(t, user.EmailVerified, "scoped projection mutated the persisted User")
 }
 
 type userProfileSearchStoreFake struct {

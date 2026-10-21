@@ -12,8 +12,9 @@ package app_test
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
@@ -37,9 +38,7 @@ func TestPublicLocalRegistrationRealGraph(t *testing.T) {
 		AdministratorUsername: "registration-admin", AdministratorEmail: "registration-admin@example.edu",
 		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	startIntegrationServer(t, helper)
 
 	const email = "new.public.student@example.edu"
@@ -49,58 +48,50 @@ func TestPublicLocalRegistrationRealGraph(t *testing.T) {
 		"last_name": "Student", "password": password,
 	}
 	disabled := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/register", body, "")
-	if disabled.Code != http.StatusForbidden || !strings.Contains(disabled.Body.String(), "authentication.registration.invitation_required") ||
-		strings.Contains(disabled.Body.String(), email) {
-		t.Fatalf("disabled registration = %d %s", disabled.Code, disabled.Body.String())
-	}
-	if _, getErr := persistence.User().GetByEmail(context.Background(), email); getErr == nil {
-		t.Fatal("disabled registration persisted a User")
-	}
-	if _, err = persistence.GetMaster().Exec(context.Background(), `
+	require.Equal(t, http.StatusForbidden, disabled.Code, "disabled registration")
+	require.Contains(t, disabled.Body.String(), "authentication.registration.invitation_required", "disabled registration")
+	require.NotContains(t, disabled.Body.String(), email, "disabled registration")
+	_, getErr := persistence.User().GetByEmail(context.Background(), email)
+	require.Error(t, getErr, "disabled registration persisted a User")
+	_, err = persistence.GetMaster().Exec(context.Background(), `
 		UPDATE access_policies
 		   SET public_registration_enabled=TRUE, revision=revision+1, updated_at=clock_timestamp()
-		 WHERE singleton=1 AND local_login_enabled=TRUE`); err != nil {
-		t.Fatal(err)
-	}
+		 WHERE singleton=1 AND local_login_enabled=TRUE`)
+	require.NoError(t, err)
 
 	accepted := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/register", body, "")
 	replay := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/register", body, "")
-	if accepted.Code != http.StatusAccepted || replay.Code != http.StatusAccepted || accepted.Body.Len() != 0 || replay.Body.Len() != 0 {
-		t.Fatalf("registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
-	}
+	require.Equal(t, http.StatusAccepted, accepted.Code, "registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
+	require.Equal(t, http.StatusAccepted, replay.Code, "registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
+	require.Equal(t, 0, accepted.Body.Len(), "registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
+	require.Equal(t, 0, replay.Body.Len(), "registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
 	user, err := persistence.User().GetByEmail(context.Background(), email)
-	if err != nil || user.EmailVerified || user.FirstName != "New" || user.LastName != "Student" || user.DisplayName != "" {
-		t.Fatalf("registered User = %#v, %v", user, err)
-	}
+	require.NoError(t, err, "registered User = %#v", user)
+	require.False(t, user.EmailVerified, "registered User = %#v", user)
+	require.Equal(t, "New", user.FirstName, "registered User = %#v", user)
+	require.Equal(t, "Student", user.LastName, "registered User = %#v", user)
+	require.Empty(t, user.DisplayName, "registered User = %#v", user)
 	var relationshipCount int
-	if err = persistence.GetMaster().Get(context.Background(), &relationshipCount, `
+	err = persistence.GetMaster().Get(context.Background(), &relationshipCount, `
 		SELECT (SELECT count(*) FROM affiliations WHERE user_id=$1) +
 		       (SELECT count(*) FROM academic_unit_members WHERE user_id=$1) +
 		       (SELECT count(*) FROM class_members WHERE user_id=$1) +
-		       (SELECT count(*) FROM role_bindings WHERE user_id=$1)`, user.ID.String()); err != nil {
-		t.Fatal(err)
-	}
-	if relationshipCount != 0 {
-		t.Fatalf("public registration granted %d relationships", relationshipCount)
-	}
+		       (SELECT count(*) FROM role_bindings WHERE user_id=$1)`, user.ID.String())
+	require.NoError(t, err)
+	require.Equal(t, 0, relationshipCount, "public registration granted")
 
 	deliveries := waitForRecoveryDeliveries(t, helper, 1)
-	if len(deliveries) != 1 {
-		t.Fatalf("registration deliveries = %d, want exactly one", len(deliveries))
-	}
+	require.Len(t, deliveries, 1, "registration deliveries")
 	token := credentialFromDelivery(t, deliveries[0])
-	if logs := helper.Logs.String(); strings.Contains(logs, email) || strings.Contains(logs, password) || strings.Contains(logs, token) {
-		t.Fatalf("registration secret or mailbox appeared in logs: %s", logs)
-	}
+	logs := helper.Logs.String()
+	require.NotContains(t, logs, email)
+	require.NotContains(t, logs, password)
+	require.NotContains(t, logs, token)
 	verification := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/email-verification/complete",
 		map[string]any{"token": token}, "")
-	if verification.Code != http.StatusNoContent {
-		t.Fatalf("verification = %d %s", verification.Code, verification.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, verification.Code, "verification = %d %s", verification.Code, verification.Body.String())
 	login := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"login_id": email, "password": password, "client_type": model.SessionClientCLI,
 	}, "")
-	if login.Code != http.StatusOK {
-		t.Fatalf("registered login = %d %s", login.Code, login.Body.String())
-	}
+	require.Equal(t, http.StatusOK, login.Code, "registered login = %d %s", login.Code, login.Body.String())
 }

@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -32,9 +34,9 @@ func TestRecursiveWorkspaceDeletionRequiresCandidateSnapshot(t *testing.T) {
 			command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 				EntryID: model.NewAttemptWorkspaceEntryID(), ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
 			test.configure(&command)
-			if _, err := f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, command); err == nil || f.workspace.mutation != nil {
-				t.Fatalf("error=%v mutation=%#v", err, f.workspace.mutation)
-			}
+			_, err := f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, command)
+			require.Error(t, err)
+			require.Nil(t, f.workspace.mutation)
 		})
 	}
 }
@@ -53,16 +55,16 @@ func TestRecursiveWorkspaceDeletionCarriesSnapshotAndSemanticIdentity(t *testing
 	command := DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
 		EntryID: entryID, ExpectedPath: "src", Recursive: true, ExpectedWorkspaceCursor: &cursor, IdempotencyKey: "recursive"}
 	result, err := f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, command)
-	if err != nil || !result.Change.Recursive || f.workspace.mutation == nil || !f.workspace.mutation.Recursive ||
-		f.workspace.mutation.ExpectedWorkspaceCursor == nil || *f.workspace.mutation.ExpectedWorkspaceCursor != 0 {
-		t.Fatalf("result=%#v error=%v mutation=%#v", result, err, f.workspace.mutation)
-	}
+	require.NoError(t, err, "result=%#v error=%v mutation", result, err)
+	require.True(t, result.Change.Recursive, "result=%#v error=%v mutation", result, err)
+	require.NotNil(t, f.workspace.mutation, "result=%#v error=%v mutation", result, err)
+	require.True(t, f.workspace.mutation.Recursive, "result=%#v error=%v mutation", result, err)
+	require.NotNil(t, f.workspace.mutation.ExpectedWorkspaceCursor, "result=%#v error=%v mutation", result, err)
+	require.Equal(t, int64(0), *f.workspace.mutation.ExpectedWorkspaceCursor, "result=%#v error=%v mutation", result, err)
 	first := *f.workspace.idempotency
 	cursor = 1
-	if _, err = f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if first.Fingerprint == f.workspace.idempotency.Fingerprint || first.KeyDigest != f.workspace.idempotency.KeyDigest {
-		t.Fatal("recursive snapshot was not part of the semantic fingerprint")
-	}
+	_, err = f.service.DeleteCandidateExamWorkspaceEntry(context.Background(), f.invocation, command)
+	require.NoError(t, err)
+	require.NotEqual(t, f.workspace.idempotency.Fingerprint, first.Fingerprint, "recursive snapshot was not part of the semantic fingerprint")
+	require.Equal(t, f.workspace.idempotency.KeyDigest, first.KeyDigest, "recursive snapshot was not part of the semantic fingerprint")
 }

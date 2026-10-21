@@ -9,13 +9,15 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type academicPeriodStoreFake struct {
@@ -91,12 +93,8 @@ func TestAcademicPeriodCreateRejectsInvalidHalfOpenIntervalBeforeAudit(t *testin
 		&institutionAuditorFake{events: &events, beginID: model.NewID()}, time.Now, model.NewID,
 	)
 	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewID(), Name: "invalid", DisplayName: "Invalid", StartAt: 200, EndAt: 200})
-	if !apperror.Is(err, "academic_period.invalid") {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if len(events) != 0 {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "academic_period.invalid"), "Create() error = %v", err)
+	require.Empty(t, events)
 }
 
 func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
@@ -117,12 +115,9 @@ func TestAcademicPeriodUpdatePreservesInstitutionOwnership(t *testing.T) {
 	service := newAcademicPeriodService(persistence, &academicPeriodAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	name := "2026-revised"
 	updated, err := service.UpdateAcademicPeriod(context.Background(), Invocation{}, UpdateAcademicPeriodCommand{ID: period.ID, Name: &name})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.Owner != period.Owner || persistence.updateInput.Period.Owner != period.Owner {
-		t.Fatalf("ownership changed: %#v", updated)
-	}
+	require.NoError(t, err)
+	require.Equal(t, period.Owner, updated.Owner)
+	require.Equal(t, period.Owner, persistence.updateInput.Period.Owner)
 }
 
 func TestAcademicPeriodCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T) {
@@ -130,12 +125,8 @@ func TestAcademicPeriodCreateAuthorizationDenialStopsBeforeAuditAndStore(t *test
 	events := []string{}
 	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events}, &academicPeriodAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewID(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize-period-owner"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
+	require.Equal(t, []string{"authorize-period-owner"}, events)
 }
 
 func TestAcademicPeriodLookupOperationsAuthorizeBeforeReading(t *testing.T) {
@@ -160,12 +151,8 @@ func TestAcademicPeriodLookupOperationsAuthorizeBeforeReading(t *testing.T) {
 			events := []string{}
 			service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events}, &academicPeriodAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 			err := operation(service)
-			if !apperror.Is(err, "authorization.denied") {
-				t.Fatalf("operation error = %v", err)
-			}
-			if !reflect.DeepEqual(events, []string{"authorize-period"}) {
-				t.Fatalf("events = %v", events)
-			}
+			require.True(t, apperror.Is(err, "authorization.denied"), "operation error = %v", err)
+			require.Equal(t, []string{"authorize-period"}, events)
 		})
 	}
 }
@@ -176,9 +163,8 @@ func TestAcademicPeriodCreateConflictCompletesFailedAttempt(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newAcademicPeriodService(&academicPeriodStoreFake{events: &events, createErr: store.NewErrConflict("academic_period", "academic_periods_institution_id_name_key", nil)}, &academicPeriodAuthorizerFake{events: &events}, auditor, time.Now, model.NewID)
 	_, err := service.CreateAcademicPeriod(context.Background(), Invocation{}, CreateAcademicPeriodCommand{OwnerType: string(model.ResourceInstitution), OwnerID: model.NewID(), Name: "2026", DisplayName: "2026", StartAt: 100, EndAt: 200})
-	if !apperror.Is(err, "academic_period.conflict") || auditor.failCode != "academic_period.conflict" {
-		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
-	}
+	require.True(t, apperror.Is(err, "academic_period.conflict"), "Create() error = %v, audit code", err)
+	require.Equal(t, "academic_period.conflict", auditor.failCode, "Create() error = %v, audit code", err)
 }
 
 func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) {
@@ -200,27 +186,22 @@ func TestAcademicPeriodCreateOwnsTemporalValidationAndAtomicAudit(t *testing.T) 
 		OwnerType: string(model.ResourceInstitution), OwnerID: institutionID,
 		Name: "2026-2027", DisplayName: "2026-2027", StartAt: 100, EndAt: 200,
 	})
-	if err != nil || got != created {
-		t.Fatalf("Create() = %#v, %v", got, err)
-	}
-	if persistence.createInput == nil ||
-		persistence.createInput.Period.Owner.InstitutionID.String() != institutionID ||
-		persistence.createInput.Period.ID.String() != periodID ||
-		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
-		t.Fatalf("create input = %#v", persistence.createInput)
-	}
-	if auditor.action != model.ActionAcademicPeriodManage || auditor.resource != (model.Resource{Type: model.ResourceAcademicPeriod, ID: periodID}) {
-		t.Fatalf("mutation audit = %q %#v", auditor.action, auditor.resource)
-	}
-	if auditor.scopeType != model.RoleScopeInstitution || auditor.scopeID != institutionID {
-		t.Fatalf("mutation audit scope = %s/%s", auditor.scopeType, auditor.scopeID)
-	}
-	if authorizer.action != model.ActionAcademicPeriodManage || authorizer.period == nil || authorizer.period.ID.String() != periodID {
-		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.period)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize-period-owner", "audit-begin", "store-create"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "Create()")
+	require.Same(t, created, got, "Create()")
+	require.NotNil(t, persistence.createInput)
+	require.Equal(t, institutionID, persistence.createInput.Period.Owner.InstitutionID.String())
+	require.Equal(t, periodID, persistence.createInput.Period.ID.String())
+	require.Equal(t, model.AuditEventID(auditID), persistence.createInput.AuditEventID)
+	require.Equal(t, model.ActionAcademicPeriodManage, auditor.action, "mutation audit")
+	require.Equal(t, model.Resource{Type: model.ResourceAcademicPeriod, ID: periodID}, auditor.resource, "mutation audit")
+	require.Equal(t, model.RoleScopeInstitution, auditor.scopeType, "mutation audit scope")
+	require.Equal(t, institutionID, auditor.scopeID, "mutation audit scope")
+	require.Equal(t, model.ActionAcademicPeriodManage, authorizer.action, "authorization")
+	require.NotNil(t, authorizer.period, "authorization")
+	require.Equal(t, periodID, authorizer.period.ID.String(), "authorization")
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-period-owner", "audit-begin", "store-create")
 }
 
 func TestAcademicPeriodCreateIdempotencyBindsCanonicalOwner(t *testing.T) {
@@ -236,29 +217,26 @@ func TestAcademicPeriodCreateIdempotencyBindsCanonicalOwner(t *testing.T) {
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	institutionID := model.NewInstitutionID().String()
 	institution := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(institution).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
+	_, err := makeService(institution).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: " institution ", OwnerID: " " + institutionID + " ",
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	canonical := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(canonical).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
+	_, err = makeService(canonical).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: string(model.ResourceInstitution), OwnerID: institutionID,
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	unit := &academicPeriodStoreFake{events: &events}
-	if _, err := makeService(unit).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
+	_, err = makeService(unit).CreateAcademicPeriod(context.Background(), invocation, CreateAcademicPeriodCommand{
 		OwnerType: string(model.ResourceAcademicUnit), OwnerID: model.NewAcademicUnitID().String(),
 		Name: "period", DisplayName: "Period", StartAt: 100, EndAt: 200, IdempotencyKey: "same-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if institution.idempotency == nil || canonical.idempotency == nil || unit.idempotency == nil ||
-		institution.idempotency.Fingerprint != canonical.idempotency.Fingerprint ||
-		institution.idempotency.Fingerprint == unit.idempotency.Fingerprint {
-		t.Fatalf("owner fingerprints = %#v %#v %#v", institution.idempotency, canonical.idempotency, unit.idempotency)
-	}
+	})
+	require.NoError(t, err)
+	require.NotNil(t, institution.idempotency, "owner fingerprints")
+	require.NotNil(t, canonical.idempotency, "owner fingerprints")
+	require.NotNil(t, unit.idempotency, "owner fingerprints")
+	require.Equal(t, canonical.idempotency.Fingerprint, institution.idempotency.Fingerprint, "owner fingerprints")
+	require.NotEqual(t, unit.idempotency.Fingerprint, institution.idempotency.Fingerprint, "owner fingerprints")
 }

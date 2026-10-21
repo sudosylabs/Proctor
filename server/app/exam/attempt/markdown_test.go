@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/exam/safemarkdown"
 )
 
@@ -41,14 +43,10 @@ func TestCandidateMarkdownSanitizerSecurityTable(t *testing.T) {
 			t.Parallel()
 			got := safemarkdown.Sanitize(test.input)
 			for _, expected := range test.contains {
-				if !strings.Contains(got, expected) {
-					t.Fatalf("safe Markdown %q was removed: %q", expected, got)
-				}
+				require.Contains(t, got, expected, "safe Markdown")
 			}
 			for _, forbidden := range test.forbidden {
-				if strings.Contains(strings.ToLower(got), strings.ToLower(forbidden)) {
-					t.Fatalf("unsafe construct %q survived: %q", forbidden, got)
-				}
+				require.NotContains(t, strings.ToLower(got), strings.ToLower(forbidden), "unsafe construct")
 			}
 		})
 	}
@@ -61,9 +59,7 @@ func TestCandidateMarkdownSanitizerRetainsInertFormattingAndCode(t *testing.T) {
 	got := safemarkdown.Sanitize(input)
 	for _, safe := range []string{"# Heading", "**bold**", "_emphasis_", "`code <script>x</script> ![sample](https://example.test/x)`",
 		"```html\n<img src=https://example.test/pixel>\n```", "[Safe](https://example.test/guide)"} {
-		if !strings.Contains(got, safe) {
-			t.Fatalf("safe Markdown %q was removed: %q", safe, got)
-		}
+		require.Contains(t, got, safe, "safe Markdown")
 	}
 }
 
@@ -79,13 +75,9 @@ func TestCandidateMarkdownSanitizerRemovesActiveAndRemoteLoadingConstructs(t *te
 	got := safemarkdown.Sanitize(input)
 	for _, forbidden := range []string{"<script", "a.js", "alert(1)", "<iframe", "frame", "<img", "pixel", "javascript:",
 		"data:text", "file:", "![", "evil.test", "[remote]:"} {
-		if strings.Contains(strings.ToLower(got), forbidden) {
-			t.Fatalf("unsafe construct %q survived: %q", forbidden, got)
-		}
+		require.NotContains(t, strings.ToLower(got), forbidden, "unsafe construct")
 	}
 	for _, safe := range []string{"script", "data", "file", "inline", "reference", "[relative](guide/start)", "[mail](mailto:help@example.test)"} {
-		if !strings.Contains(got, safe) {
-			t.Fatalf("safe text/Markdown %q was removed: %q", safe, got)
-		}
+		require.Contains(t, got, safe, "safe text/Markdown")
 	}
 }

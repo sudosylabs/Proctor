@@ -20,6 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
@@ -31,9 +34,7 @@ import (
 
 func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	const (
 		providerID           = "campus-cas"
 		connectionProviderID = "research-cas"
@@ -49,10 +50,8 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		writer http.ResponseWriter,
 		request *http.Request,
 	) {
-		if request.URL.Path != "/cas/p3/serviceValidate" ||
-			request.URL.Query().Get("ticket") != ticket {
-			t.Errorf("CAS validation request = %s", request.URL.String())
-		}
+		assert.Equal(t, "/cas/p3/serviceValidate", request.URL.Path)
+		assert.Equal(t, ticket, request.URL.Query().Get("ticket"))
 		validatedService = request.URL.Query().Get("service")
 		writer.Header().Set("Content-Type", "application/xml")
 		_, _ = writer.Write([]byte(`<?xml version="1.0"?>
@@ -121,9 +120,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			DisplayName: "External Authentication University",
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	providers := performJSONRequest(
 		helper.Handler(),
@@ -137,12 +134,10 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		DisplayName string `json:"display_name"`
 		Type        string `json:"type"`
 	}
-	if providers.Code != http.StatusOK ||
-		json.Unmarshal(providers.Body.Bytes(), &providerList) != nil ||
-		len(providerList) != 3 ||
-		strings.Contains(providers.Body.String(), casServer.URL) {
-		t.Fatalf("provider discovery status=%d body=%s", providers.Code, providers.Body.String())
-	}
+	require.Equal(t, http.StatusOK, providers.Code, "provider discovery status")
+	require.NoError(t, json.Unmarshal(providers.Body.Bytes(), &providerList), "provider discovery status")
+	require.Len(t, providerList, 3, "provider discovery status")
+	require.NotContains(t, providers.Body.String(), casServer.URL, "provider discovery status")
 
 	begin := performJSONRequest(
 		helper.Handler(),
@@ -152,18 +147,13 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		nil,
 		"",
 	)
-	if begin.Code != http.StatusSeeOther {
-		t.Fatalf("begin status = %d: %s", begin.Code, begin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, begin.Code, "begin status = %d: %s", begin.Code, begin.Body.String())
 	loginURL, err := url.Parse(begin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	serviceURL := loginURL.Query().Get("service")
 	callbackURL, err := url.Parse(serviceURL)
-	if err != nil || callbackURL.Query().Get("state") == "" {
-		t.Fatalf("CAS service URL = %q, %v", serviceURL, err)
-	}
+	require.NoError(t, err, "CAS service URL = %q", serviceURL)
+	require.NotEmpty(t, callbackURL.Query().Get("state"), "CAS service URL = %q", serviceURL)
 	var bindingCookie *http.Cookie
 	for _, cookie := range begin.Result().Cookies() {
 		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
@@ -171,10 +161,9 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			break
 		}
 	}
-	if bindingCookie == nil || !bindingCookie.HttpOnly ||
-		bindingCookie.Path != model.APIURLSuffix+"/auth/providers/" {
-		t.Fatalf("external login binding cookie = %#v", bindingCookie)
-	}
+	require.NotNil(t, bindingCookie)
+	require.True(t, bindingCookie.HttpOnly)
+	require.Equal(t, model.APIURLSuffix+"/auth/providers/", bindingCookie.Path)
 
 	callbackQuery := callbackURL.Query()
 	callbackQuery.Set("ticket", ticket)
@@ -184,18 +173,9 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	callbackRequest.AddCookie(bindingCookie)
 	callback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(callback, callbackRequest)
-	if callback.Code != http.StatusSeeOther ||
-		callback.Header().Get("Location") != "/after-login" ||
-		validatedService != serviceURL {
-		t.Fatalf(
-			"callback status=%d location=%q service=%q want=%q body=%s",
-			callback.Code,
-			callback.Header().Get("Location"),
-			validatedService,
-			serviceURL,
-			callback.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusSeeOther, callback.Code, "callback status=%d location=%q service=%q want=%q body=%s", callback.Code, callback.Header().Get("Location"), validatedService, serviceURL, callback.Body.String())
+	require.Equal(t, "/after-login", callback.Header().Get("Location"), "callback status=%d location=%q service=%q want=%q body=%s", callback.Code, callback.Header().Get("Location"), validatedService, serviceURL, callback.Body.String())
+	require.Equal(t, serviceURL, validatedService, "callback status=%d location=%q service=%q want=%q body=%s", callback.Code, callback.Header().Get("Location"), validatedService, serviceURL, callback.Body.String())
 
 	var accessCookie *http.Cookie
 	for _, cookie := range callback.Result().Cookies() {
@@ -203,57 +183,45 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			accessCookie = cookie
 		}
 	}
-	if accessCookie == nil || !accessCookie.HttpOnly {
-		t.Fatalf("access cookie = %#v", accessCookie)
-	}
+	require.NotNil(t, accessCookie)
+	require.True(t, accessCookie.HttpOnly)
 	identity, err := persistence.ExternalIdentity().GetByProviderSubject(
 		context.Background(),
 		providerID,
 		subject,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user, err := persistence.User().Get(context.Background(), identity.UserID)
-	if err != nil || user.Username != "external.student" ||
-		user.Email != "external.student@example.edu" ||
-		!user.EmailVerified {
-		t.Fatalf("provisioned user = %#v, %v", user, err)
-	}
+	require.NoError(t, err, "provisioned user = %#v", user)
+	require.Equal(t, "external.student", user.Username, "provisioned user = %#v", user)
+	require.Equal(t, "external.student@example.edu", user.Email, "provisioned user = %#v", user)
+	require.True(t, user.EmailVerified, "provisioned user = %#v", user)
 	settings, err := persistence.UserSettings().Get(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if settings.Source != model.UserSettingsInitialSource ||
-		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
-		settings.UserID != user.ID || !settings.Revision.IsValid() {
-		t.Fatalf("externally provisioned user settings = %#v", settings)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.UserSettingsInitialSource, settings.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, settings.FormatVersion)
+	require.Equal(t, user.ID, settings.UserID)
+	require.True(t, settings.Revision.IsValid())
 	jobs, err := persistence.Job().List(context.Background(), store.JobListOptions{
 		Types: []model.JobType{model.JobTypeProfilePictureGenerateDefault}, Limit: 200,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	foundDefaultIntent := false
 	for _, job := range jobs {
 		foundDefaultIntent = foundDefaultIntent || job.DedupeKey == user.ID.String()
 	}
-	if !foundDefaultIntent {
-		t.Fatalf("external provision did not commit default-picture intent for %s", user.ID)
-	}
+	require.True(t, foundDefaultIntent, "external provision did not commit default-picture intent for %s", user.ID)
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID,
 		model.NowUTC(),
 	)
-	if err != nil || len(sessions) != 1 ||
-		sessions[0].AuthenticationMethod != "cas" ||
-		sessions[0].AuthenticationProviderID != providerID ||
-		sessions[0].ExternalIdentityID != identity.ID ||
-		sessions[0].AuthenticationStrength != model.AuthenticationMultiFactor {
-		t.Fatalf("external sessions = %#v, %v", sessions, err)
-	}
+	require.NoError(t, err, "external sessions")
+	require.Len(t, sessions, 1, "external sessions")
+	require.Equal(t, "cas", sessions[0].AuthenticationMethod, "external sessions")
+	require.Equal(t, providerID, sessions[0].AuthenticationProviderID, "external sessions")
+	require.Equal(t, identity.ID, sessions[0].ExternalIdentityID, "external sessions")
+	require.Equal(t, model.AuthenticationMultiFactor, sessions[0].AuthenticationStrength, "external sessions")
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{
@@ -262,41 +230,30 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 		},
 	)
-	if err != nil || len(audits) != 2 {
-		t.Fatalf("external authentication audits = %#v, %v", audits, err)
-	}
+	require.NoError(t, err, "external authentication audits")
+	require.Len(t, audits, 2, "external authentication audits")
 	for _, event := range audits {
-		if event.ScopeID != institution.ID.String() ||
-			(event.Action != "authentication.external_provision" &&
-				event.Action != "authentication.external_login") {
-			t.Fatalf("unexpected external authentication audit = %#v", event)
-		}
+		require.Equal(t, institution.ID.String(), event.ScopeID)
+		require.False(t, event.Action != "authentication.external_provision" &&
+			event.Action != "authentication.external_login")
 	}
 
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	meRequest.AddCookie(accessCookie)
 	me := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(me, meRequest)
-	if me.Code != http.StatusOK {
-		t.Fatalf("cookie-authenticated current user = %d: %s", me.Code, me.Body.String())
-	}
+	require.Equal(t, http.StatusOK, me.Code, "cookie-authenticated current user = %d: %s", me.Code, me.Body.String())
 	loginProvider := func(loginProviderID, deviceID string) *httptest.ResponseRecorder {
 		begin := performJSONRequest(
 			helper.Handler(), http.MethodGet,
 			"/api/v1/auth/providers/"+loginProviderID+"/login?client_type=web&device_id="+deviceID,
 			nil, "",
 		)
-		if begin.Code != http.StatusSeeOther {
-			t.Fatalf("repeat begin for %s status = %d: %s", loginProviderID, begin.Code, begin.Body.String())
-		}
+		require.Equal(t, http.StatusSeeOther, begin.Code, "repeat begin for %s status = %d: %s", loginProviderID, begin.Code, begin.Body.String())
 		location, parseErr := url.Parse(begin.Header().Get("Location"))
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
+		require.NoError(t, parseErr)
 		service, parseErr := url.Parse(location.Query().Get("service"))
-		if parseErr != nil {
-			t.Fatal(parseErr)
-		}
+		require.NoError(t, parseErr)
 		query := service.Query()
 		query.Set("ticket", ticket)
 		request := httptest.NewRequest(http.MethodGet, service.Path+"?"+query.Encode(), nil)
@@ -311,19 +268,15 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 
 	unlinkedResponse := loginProvider(connectionProviderID, "unlinked-linked-only")
-	if unlinkedResponse.Code != http.StatusForbidden {
-		t.Fatalf("unlinked linked_only status = %d", unlinkedResponse.Code)
-	}
-	if body := unlinkedResponse.Body.String(); strings.Contains(body, claimedEmail) || strings.Contains(body, user.ID.String()) {
-		t.Fatalf("linked_only response disclosed an existing account: %s", body)
-	}
+	require.Equal(t, http.StatusForbidden, unlinkedResponse.Code, "unlinked linked_only status")
+	body := unlinkedResponse.Body.String()
+	require.NotContains(t, body, claimedEmail)
+	require.NotContains(t, body, user.ID.String())
 	invitationResponse := loginProvider(invitationProviderID, "unclaimed-invitation")
-	if invitationResponse.Code != http.StatusForbidden {
-		t.Fatalf("unclaimed invitation_required status = %d", invitationResponse.Code)
-	}
-	if body := invitationResponse.Body.String(); strings.Contains(body, claimedEmail) || strings.Contains(body, user.ID.String()) {
-		t.Fatalf("invitation_required response disclosed an existing account: %s", body)
-	}
+	require.Equal(t, http.StatusForbidden, invitationResponse.Code, "unclaimed invitation_required status")
+	body = invitationResponse.Body.String()
+	require.NotContains(t, body, claimedEmail)
+	require.NotContains(t, body, user.ID.String())
 
 	invitedEmail := "claimed.external.student@example.edu"
 	claim, pendingInvitation := seedExternalAdmissionInvitation(t, persistence, institution, user, invitedEmail)
@@ -331,24 +284,17 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	disabledBegin := performJSONRequest(helper.Handler(), http.MethodPost,
 		"/api/v1/auth/providers/"+invitationProviderID+"/login",
 		map[string]any{"invitation_claim": claim, "return_to": "/join"}, "")
-	if disabledBegin.Code != http.StatusSeeOther {
-		t.Fatalf("pre-toggle invitation begin = %d body=%s", disabledBegin.Code, disabledBegin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, disabledBegin.Code, "pre-toggle invitation begin = %d body=%s", disabledBegin.Code, disabledBegin.Body.String())
 	disabledLoginURL, err := url.Parse(disabledBegin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	disabledServiceURL, err := url.Parse(disabledLoginURL.Query().Get("service"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(context.Background(), `
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(context.Background(), `
 		UPDATE access_policies
 		   SET invitation_admission_enabled=FALSE, invitation_local_credential_enabled=FALSE,
 		       revision=revision+1, updated_at=clock_timestamp()
-		 WHERE singleton=1`); err != nil {
-		t.Fatal(err)
-	}
+		 WHERE singleton=1`)
+	require.NoError(t, err)
 	disabledQuery := disabledServiceURL.Query()
 	disabledQuery.Set("ticket", ticket)
 	disabledCallbackRequest := httptest.NewRequest(http.MethodGet,
@@ -360,37 +306,28 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	disabledCallback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(disabledCallback, disabledCallbackRequest)
-	if disabledCallback.Code != http.StatusUnauthorized {
-		t.Fatalf("globally disabled invitation callback = %d body=%s", disabledCallback.Code, disabledCallback.Body.String())
-	}
-	if body := disabledCallback.Body.String(); strings.Contains(body, invitedEmail) ||
-		strings.Contains(body, subject) || strings.Contains(body, pendingInvitation.ID.String()) {
-		t.Fatalf("globally disabled invitation callback disclosed private state: %s", body)
-	}
-	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), invitationProviderID, subject); !store.IsNotFound(err) {
-		t.Fatalf("globally disabled invitation persisted identity: %v", err)
-	}
-	if _, err = persistence.GetMaster().Exec(context.Background(), `
+	require.Equal(t, http.StatusUnauthorized, disabledCallback.Code, "globally disabled invitation callback = %d body=%s", disabledCallback.Code, disabledCallback.Body.String())
+	body = disabledCallback.Body.String()
+	require.NotContains(t, body, invitedEmail)
+	require.NotContains(t, body, subject)
+	require.NotContains(t, body, pendingInvitation.ID.String())
+	_, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), invitationProviderID, subject)
+	require.True(t, store.IsNotFound(err), "globally disabled invitation persisted identity")
+	_, err = persistence.GetMaster().Exec(context.Background(), `
 		UPDATE access_policies
 		   SET invitation_admission_enabled=TRUE, invitation_local_credential_enabled=TRUE,
 		       revision=revision+1, updated_at=clock_timestamp()
-		 WHERE singleton=1`); err != nil {
-		t.Fatal(err)
-	}
+		 WHERE singleton=1`)
+	require.NoError(t, err)
 	invitationBegin := performJSONRequest(helper.Handler(), http.MethodPost,
 		"/api/v1/auth/providers/"+invitationProviderID+"/login",
 		map[string]any{"invitation_claim": claim, "return_to": "/join"}, "")
-	if invitationBegin.Code != http.StatusSeeOther || strings.Contains(invitationBegin.Header().Get("Location"), claim) {
-		t.Fatalf("claimed invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, invitationBegin.Code, "claimed invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
+	require.NotContains(t, invitationBegin.Header().Get("Location"), claim, "claimed invitation begin = %d location=%q body=%s", invitationBegin.Code, invitationBegin.Header().Get("Location"), invitationBegin.Body.String())
 	invitationLoginURL, err := url.Parse(invitationBegin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invitationServiceURL, err := url.Parse(invitationLoginURL.Query().Get("service"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invitationQuery := invitationServiceURL.Query()
 	invitationQuery.Set("ticket", ticket)
 	invitationCallbackRequest := httptest.NewRequest(http.MethodGet,
@@ -402,48 +339,39 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	invitationCallback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(invitationCallback, invitationCallbackRequest)
-	if invitationCallback.Code != http.StatusSeeOther || invitationCallback.Header().Get("Location") != "/join" {
-		t.Fatalf("claimed invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, invitationCallback.Code, "claimed invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
+	require.Equal(t, "/join", invitationCallback.Header().Get("Location"), "claimed invitation callback = %d location=%q body=%s", invitationCallback.Code, invitationCallback.Header().Get("Location"), invitationCallback.Body.String())
 	invitationIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), invitationProviderID, subject)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invitationUser, err := persistence.User().Get(context.Background(), invitationIdentity.UserID)
-	if err != nil || invitationUser.Email != invitedEmail || !invitationUser.EmailVerified {
-		t.Fatalf("invitation-admitted User = %#v, %v", invitationUser, err)
-	}
+	require.NoError(t, err, "invitation-admitted User = %#v", invitationUser)
+	require.Equal(t, invitedEmail, invitationUser.Email, "invitation-admitted User = %#v", invitationUser)
+	require.True(t, invitationUser.EmailVerified, "invitation-admitted User = %#v", invitationUser)
 	acceptedInvitation, err := persistence.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || acceptedInvitation.ID != pendingInvitation.ID || acceptedInvitation.State != model.InvitationAccepted ||
-		acceptedInvitation.AcceptedUserID != invitationUser.ID {
-		t.Fatalf("admission terminal Invitation = %#v, %v", acceptedInvitation, err)
-	}
+	require.NoError(t, err, "admission terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, pendingInvitation.ID, acceptedInvitation.ID, "admission terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, model.InvitationAccepted, acceptedInvitation.State, "admission terminal Invitation = %#v", acceptedInvitation)
+	require.Equal(t, invitationUser.ID, acceptedInvitation.AcceptedUserID, "admission terminal Invitation = %#v", acceptedInvitation)
 	invitationAffiliations, _ := persistence.Affiliation().ListByUser(context.Background(), invitationUser.ID)
 	invitationClassMembers, _ := persistence.ClassMember().ListByUser(context.Background(), invitationUser.ID)
 	invitationBindings, _ := persistence.RoleBinding().ListByUser(context.Background(), invitationUser.ID)
-	if len(invitationAffiliations) != 1 || invitationAffiliations[0].ID != acceptedInvitation.AcceptedAffiliationID ||
-		len(invitationClassMembers) != 1 || invitationClassMembers[0].ID != acceptedInvitation.AcceptedClassMemberID ||
-		len(invitationBindings) != 0 {
-		t.Fatalf("invitation admission package: affiliations=%#v class_members=%#v bindings=%#v",
-			invitationAffiliations, invitationClassMembers, invitationBindings)
-	}
+	require.Len(t, invitationAffiliations, 1, "invitation admission package: affiliations")
+	require.Equal(t, acceptedInvitation.AcceptedAffiliationID, invitationAffiliations[0].ID, "invitation admission package: affiliations")
+	require.Len(t, invitationClassMembers, 1, "invitation admission package: affiliations")
+	require.Equal(t, acceptedInvitation.AcceptedClassMemberID, invitationClassMembers[0].ID, "invitation admission package: affiliations")
+	require.Empty(t, invitationBindings, "invitation admission package: affiliations")
 	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID, model.NowUTC())
-	if err != nil || len(invitationSessions) != 0 {
-		t.Fatalf("Invitation proof created an ordinary Session = %#v, %v", invitationSessions, err)
-	}
+	require.NoError(t, err, "Invitation proof created an ordinary Session")
+	require.Empty(t, invitationSessions, "Invitation proof created an ordinary Session")
 	invitationAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{ActorID: invitationUser.ID,
 		Action: "invitation.accept", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	if err != nil || len(invitationAudits) != 1 || invitationAudits[0].AuthMethod != config.ExternalAuthenticationTypeCAS {
-		t.Fatalf("CAS Invitation acceptance audits = %#v, %v", invitationAudits, err)
-	}
+	require.NoError(t, err, "CAS Invitation acceptance audits")
+	require.Len(t, invitationAudits, 1, "CAS Invitation acceptance audits")
+	require.Equal(t, config.ExternalAuthenticationTypeCAS, invitationAudits[0].AuthMethod, "CAS Invitation acceptance audits")
 	invitationReplay := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(invitationReplay, invitationCallbackRequest.Clone(context.Background()))
-	if invitationReplay.Code != http.StatusUnauthorized {
-		t.Fatalf("invitation callback replay = %d body=%s", invitationReplay.Code, invitationReplay.Body.String())
-	}
-	if strings.Contains(helper.Logs.String(), claim) {
-		t.Fatal("raw Invitation claim appeared in CAS logs")
-	}
+	require.Equal(t, http.StatusUnauthorized, invitationReplay.Code, "invitation callback replay = %d body=%s", invitationReplay.Code, invitationReplay.Body.String())
+	require.NotContains(t, helper.Logs.String(), claim, "raw Invitation claim appeared in CAS logs")
 	subject, claimedUsername, claimedEmail = linkedSubject, "external.student", "external.student@example.edu"
 
 	connectRequest := httptest.NewRequest(http.MethodPost,
@@ -453,32 +381,24 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	connectRequest.Header.Set("Authorization", "Bearer "+accessCookie.Value)
 	connect := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(connect, connectRequest)
-	if connect.Code != http.StatusCreated {
-		t.Fatalf("provider connection begin = %d: %s", connect.Code, connect.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, connect.Code, "provider connection begin = %d: %s", connect.Code, connect.Body.String())
 	var connectionStart struct {
 		RedirectURL string    `json:"redirect_url"`
 		ExpiresAt   time.Time `json:"expires_at"`
 	}
-	if err = json.Unmarshal(connect.Body.Bytes(), &connectionStart); err != nil {
-		t.Fatal(err)
-	}
+	err = json.Unmarshal(connect.Body.Bytes(), &connectionStart)
+	require.NoError(t, err)
 	connectionURL, err := url.Parse(connectionStart.RedirectURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	connectionService, err := url.Parse(connectionURL.Query().Get("service"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	connectionStateToken := connectionService.Query().Get("state")
 	connectionState, err := persistence.ExternalLoginState().GetByStateHash(
 		context.Background(), model.HashToken(connectionStateToken),
 	)
-	if err != nil || connectionState.ExpiresAt.Sub(connectionState.CreatedAt) != 10*time.Minute ||
-		!connectionStart.ExpiresAt.Equal(time.UnixMilli(connectionState.ExpiresAt.UnixMilli())) {
-		t.Fatalf("provider connection state = %#v response expiry=%s error=%v", connectionState, connectionStart.ExpiresAt, err)
-	}
+	require.NoError(t, err, "provider connection state = %#v response expiry=%s error", connectionState, connectionStart.ExpiresAt)
+	require.Equal(t, 10*time.Minute, connectionState.ExpiresAt.Sub(connectionState.CreatedAt), "provider connection state = %#v response expiry=%s error", connectionState, connectionStart.ExpiresAt)
+	require.True(t, connectionStart.ExpiresAt.Equal(time.UnixMilli(connectionState.ExpiresAt.UnixMilli())), "provider connection state = %#v response expiry=%s error", connectionState, connectionStart.ExpiresAt)
 	connectionQuery := connectionService.Query()
 	connectionQuery.Set("ticket", ticket)
 	connectionCallbackRequest := httptest.NewRequest(http.MethodGet,
@@ -490,79 +410,58 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	connectionCallback := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(connectionCallback, connectionCallbackRequest)
-	if connectionCallback.Code != http.StatusSeeOther || connectionCallback.Header().Get("Location") != "/connected" {
-		t.Fatalf("provider connection callback = %d location=%q body=%s", connectionCallback.Code,
-			connectionCallback.Header().Get("Location"), connectionCallback.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, connectionCallback.Code, "provider connection callback = %d location=%q body=%s", connectionCallback.Code, connectionCallback.Header().Get("Location"), connectionCallback.Body.String())
+	require.Equal(t, "/connected", connectionCallback.Header().Get("Location"), "provider connection callback = %d location=%q body=%s", connectionCallback.Code, connectionCallback.Header().Get("Location"), connectionCallback.Body.String())
 	connectedIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), connectionProviderID, linkedSubject)
-	if err != nil || connectedIdentity.UserID != user.ID {
-		t.Fatalf("connected identity = %#v, %v", connectedIdentity, err)
-	}
+	require.NoError(t, err, "connected identity = %#v", connectedIdentity)
+	require.Equal(t, user.ID, connectedIdentity.UserID, "connected identity = %#v", connectedIdentity)
 	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID, model.NowUTC())
-	if err != nil || len(connectedSessions) != 1 {
-		t.Fatalf("provider connection created a Session: %#v, %v", connectedSessions, err)
-	}
-	if response := loginProvider(connectionProviderID, "linked-linked-only"); response.Code != http.StatusSeeOther {
-		t.Fatalf("existing linked_only identity login status = %d", response.Code)
-	}
+	require.NoError(t, err, "provider connection created a Session")
+	require.Len(t, connectedSessions, 1, "provider connection created a Session")
+	require.Equal(t, http.StatusSeeOther, loginProvider(connectionProviderID, "linked-linked-only").Code, "existing linked_only identity login status")
 	unlinkRequest := httptest.NewRequest(http.MethodDelete,
 		"/api/v1/authentication-methods/providers/"+connectedIdentity.ID.String(), nil)
 	unlinkRequest.Header.Set("Authorization", "Bearer "+accessCookie.Value)
 	unlink := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(unlink, unlinkRequest)
-	if unlink.Code != http.StatusNoContent {
-		t.Fatalf("provider unlink = %d: %s", unlink.Code, unlink.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, unlink.Code, "provider unlink = %d: %s", unlink.Code, unlink.Body.String())
 	retainedSession, err := persistence.Session().Get(context.Background(), sessions[0].ID)
-	if err != nil || retainedSession.RevokedAt.Valid {
-		t.Fatalf("unrelated provider Session was revoked: %#v, %v", retainedSession, err)
-	}
+	require.NoError(t, err, "unrelated provider Session was revoked: %#v", retainedSession)
+	require.False(t, retainedSession.RevokedAt.Valid, "unrelated provider Session was revoked: %#v", retainedSession)
 
 	replayRequest := httptest.NewRequest(http.MethodGet, callbackPath, nil)
 	replayRequest.AddCookie(bindingCookie)
 	replay := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(replay, replayRequest)
-	if replay.Code != http.StatusUnauthorized {
-		t.Fatalf("callback replay status = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, replay.Code, "callback replay status = %d: %s", replay.Code, replay.Body.String())
 
 	claimedUsername, claimedEmail = "changed.claim", "changed.claim@example.edu"
 	claimedFirstName, claimedLastName = "Changed", "Profile"
-	if response := loginProvider(providerID, "changed-profile"); response.Code != http.StatusSeeOther {
-		t.Fatalf("existing linked user login status = %d", response.Code)
-	}
+	require.Equal(t, http.StatusSeeOther, loginProvider(providerID, "changed-profile").Code, "existing linked user login status")
 	unchangedUser, err := persistence.User().Get(context.Background(), user.ID)
-	if err != nil || unchangedUser.Username != "external.student" ||
-		unchangedUser.Email != "external.student@example.edu" || unchangedUser.FirstName != "External" || unchangedUser.LastName != "Student" {
-		t.Fatalf("provider claim changes overwrote established User = %#v, %v", unchangedUser, err)
-	}
+	require.NoError(t, err, "provider claim changes overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "external.student", unchangedUser.Username, "provider claim changes overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "external.student@example.edu", unchangedUser.Email, "provider claim changes overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "External", unchangedUser.FirstName, "provider claim changes overwrote established User = %#v", unchangedUser)
+	require.Equal(t, "Student", unchangedUser.LastName, "provider claim changes overwrote established User = %#v", unchangedUser)
 
 	subject = "ineligible-subject"
 	claimedUsername, claimedEmail = "ineligible.user", "ineligible.user@example.edu"
 	claimedHomeOrganization = "outside.example"
-	if response := loginProvider(providerID, "ineligible"); response.Code != http.StatusUnauthorized {
-		t.Fatalf("ineligible auto_provision status = %d", response.Code)
-	}
-	if _, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject); !store.IsNotFound(err) {
-		t.Fatalf("ineligible subject persisted an identity: %v", err)
-	}
+	require.Equal(t, http.StatusUnauthorized, loginProvider(providerID, "ineligible").Code, "ineligible auto_provision status")
+	_, err = persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, subject)
+	require.True(t, store.IsNotFound(err), "ineligible subject persisted an identity")
 	subject, claimedHomeOrganization = linkedSubject, "example.edu"
 	claimedUsername, claimedEmail = "external.student", "external.student@example.edu"
 	claimedFirstName, claimedLastName = "External", "Student"
 
 	removalBegin := performJSONRequest(helper.Handler(), http.MethodGet,
 		"/api/v1/auth/providers/"+providerID+"/login?client_type=web&device_id=provider-removal", nil, "")
-	if removalBegin.Code != http.StatusSeeOther {
-		t.Fatalf("provider-removal begin status = %d: %s", removalBegin.Code, removalBegin.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, removalBegin.Code, "provider-removal begin status = %d: %s", removalBegin.Code, removalBegin.Body.String())
 	removalLoginURL, err := url.Parse(removalBegin.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	removalServiceURL, err := url.Parse(removalLoginURL.Query().Get("service"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	removalQuery := removalServiceURL.Query()
 	removalQuery.Set("ticket", ticket)
 	removalCallbackPath := removalServiceURL.Path + "?" + removalQuery.Encode()
@@ -572,9 +471,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			removalBinding = cookie
 		}
 	}
-	if removalBinding == nil {
-		t.Fatal("provider-removal binding cookie is missing")
-	}
+	require.NotNil(t, removalBinding, "provider-removal binding cookie is missing")
 	removedProviderNode := testlib.Setup(t,
 		testlib.WithConfig(func(cfg *config.Config) {
 			cfg.Server.PublicURL = "https://proctor.example.test"
@@ -587,24 +484,18 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	removedRequest.AddCookie(removalBinding)
 	removedResponse := httptest.NewRecorder()
 	removedProviderNode.Handler().ServeHTTP(removedResponse, removedRequest)
-	if removedResponse.Code != http.StatusNotFound {
-		t.Fatalf("removed-provider callback status = %d: %s", removedResponse.Code, removedResponse.Body.String())
-	}
+	require.Equal(t, http.StatusNotFound, removedResponse.Code, "removed-provider callback status = %d: %s", removedResponse.Code, removedResponse.Body.String())
 	preservedIdentity, err := persistence.ExternalIdentity().GetByProviderSubject(context.Background(), providerID, linkedSubject)
-	if err != nil || preservedIdentity.ID != identity.ID || preservedIdentity.UserID != user.ID {
-		t.Fatalf("provider removal changed durable identity = %#v, %v", preservedIdentity, err)
-	}
+	require.NoError(t, err, "provider removal changed durable identity = %#v", preservedIdentity)
+	require.Equal(t, identity.ID, preservedIdentity.ID, "provider removal changed durable identity = %#v", preservedIdentity)
+	require.Equal(t, user.ID, preservedIdentity.UserID, "provider removal changed durable identity = %#v", preservedIdentity)
 	restoredRequest := httptest.NewRequest(http.MethodGet, removalCallbackPath, nil)
 	restoredRequest.AddCookie(removalBinding)
 	restoredResponse := httptest.NewRecorder()
 	helper.Handler().ServeHTTP(restoredResponse, restoredRequest)
-	if restoredResponse.Code != http.StatusSeeOther {
-		t.Fatalf("restored-provider callback status = %d: %s", restoredResponse.Code, restoredResponse.Body.String())
-	}
+	require.Equal(t, http.StatusSeeOther, restoredResponse.Code, "restored-provider callback status = %d: %s", restoredResponse.Code, restoredResponse.Body.String())
 	currentUser, err := persistence.User().Get(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage),
@@ -617,10 +508,8 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		Status:    model.AuditStatusAttempt,
 		NodeID:    "external-authentication-integration",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.User().SetDisabled(
+	require.NoError(t, err)
+	_, err = persistence.User().SetDisabled(
 		context.Background(),
 		storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID:               user.ID,
@@ -631,25 +520,19 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			AuditEventID:     auditAttempt.ID,
 			AuditAt:          disabledAt,
 		}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if response := loginProvider(providerID, "disabled-user"); response.Code != http.StatusUnauthorized {
-		t.Fatalf("disabled linked user login status = %d", response.Code)
-	}
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, loginProvider(providerID, "disabled-user").Code, "disabled linked user login status")
 	subject = conflictingSubject
 	conflictResponse := loginProvider(providerID, "conflicting-email")
-	if conflictResponse.Code != http.StatusConflict {
-		t.Fatalf("conflicting provision status = %d", conflictResponse.Code)
-	}
-	if body := conflictResponse.Body.String(); strings.Contains(body, conflictingSubject) || strings.Contains(body, claimedEmail) || strings.Contains(body, user.ID.String()) {
-		t.Fatalf("conflicting provision response disclosed account or provider claims: %s", body)
-	}
+	require.Equal(t, http.StatusConflict, conflictResponse.Code, "conflicting provision status")
+	body = conflictResponse.Body.String()
+	require.NotContains(t, body, conflictingSubject)
+	require.NotContains(t, body, claimedEmail)
+	require.NotContains(t, body, user.ID.String())
 	for _, logs := range []string{helper.Logs.String(), removedProviderNode.Logs.String()} {
 		for _, secret := range []string{ticket, linkedSubject, conflictingSubject, "ineligible-subject", bindingCookie.Value, removalBinding.Value} {
-			if strings.Contains(logs, secret) {
-				t.Fatalf("external authentication secret appeared in logs")
-			}
+			require.NotContains(t, logs, secret, "external authentication secret appeared in logs")
 		}
 	}
 }
@@ -667,51 +550,36 @@ func seedExternalAdmissionInvitation(
 	unit := &model.AcademicUnit{InstitutionID: institution.ID, Name: "external-admission", DisplayName: "External Admission"}
 	var err error
 	unit, err = storetest.SaveAcademicUnit(ctx, persistence, unit)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	programme := &model.Programme{AcademicUnitID: unit.ID, Name: "external-admission", DisplayName: "External Admission"}
 	programme, err = storetest.SaveProgramme(ctx, persistence, programme)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	level := &model.ProgrammeLevel{ProgrammeID: programme.ID, Name: "external-admission", DisplayName: "External Admission"}
 	level, err = storetest.SaveProgrammeLevel(ctx, persistence, level)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	period := &model.AcademicPeriod{Owner: model.NewAcademicUnitAcademicPeriodOwner(unit.ID),
 		Name: "external-admission", DisplayName: "External Admission", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(24 * time.Hour)}
 	period, err = storetest.SaveAcademicPeriod(ctx, persistence, period)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	class := &model.Class{ProgrammeLevelID: level.ID, AcademicPeriodID: period.ID,
 		Name: "external-admission", DisplayName: "External Admission"}
 	class, err = storetest.SaveClass(ctx, persistence, class)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "external-inviter-" + model.NewID(),
 		DisplayName: "External Invitation Manager",
 		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
-		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: inviter.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), StartsAt: at.Add(-time.Minute)})
+	require.NoError(t, err)
 	claim := model.NewCredentialToken()
 	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
 		ID: model.NewInvitationID(), TargetEmail: targetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
 		IntendedStartsAt: at, InviterUserID: inviter.ID, ScopeType: model.RoleScopeClass,
 		ScopeID: class.ID.String(), ClaimHash: model.HashInvitationClaim(claim), IssuedAt: at,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(ctx, `
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(ctx, `
 		INSERT INTO invitations (
 			id, created_at, updated_at, revision, purpose, state, target_email, class_id, academic_period_id,
 			academic_unit_id, role_id, role_actions, intended_start_at, intended_end_at,
@@ -721,8 +589,7 @@ func seedExternalAdmissionInvitation(
 		invitation.ID.String(), invitation.CreatedAt, invitation.UpdatedAt, invitation.Revision,
 		invitation.Purpose, invitation.State, invitation.TargetEmail, invitation.ClassID.String(), invitation.AcademicPeriodID.String(),
 		invitation.IntendedStartsAt, invitation.InviterUserID.String(), invitation.ScopeType, invitation.ScopeID,
-		invitation.ClaimHash, invitation.ExpiresAt); err != nil {
-		t.Fatal(err)
-	}
+		invitation.ClaimHash, invitation.ExpiresAt)
+	require.NoError(t, err)
 	return claim, invitation
 }

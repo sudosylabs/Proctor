@@ -11,14 +11,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
@@ -29,25 +32,20 @@ func TestCreateOwnsAuthorizationAuditPersistenceAndEffects(t *testing.T) {
 		AcademicUnitID: fixture.unitID, Title: "  Algorithms  ", InstructionsMarkdown: "Use **Go**.",
 		IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if got.Exam.ID.IsZero() || got.Exam.CreatorUserID != fixture.userID || got.Exam.OwnerUserID != fixture.userID || got.Draft.Title != "Algorithms" || got.ManagerCount != 1 {
-		t.Fatalf("view = %#v", got)
-	}
-	if fixture.authorizer.action != model.ActionExamCreate || fixture.authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, ID: fixture.unitID.String()}) {
-		t.Fatalf("authorization = %s %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
-	wantOrder := []string{"membership", "authorize", "audit.begin", "store.create", "effect.created"}
-	if !reflect.DeepEqual(*fixture.order, wantOrder) {
-		t.Fatalf("order = %v, want %v", *fixture.order, wantOrder)
-	}
-	if fixture.persistence.creation.Exam.ID != fixture.persistence.creation.Draft.ExamID || fixture.persistence.creation.Manager.UserID != fixture.userID {
-		t.Fatalf("atomic aggregate = %#v", fixture.persistence.creation)
-	}
-	if !fixture.persistence.creation.Draft.Policy.Equal(model.DefaultExamPolicySet()) {
-		t.Fatalf("policy = %#v", fixture.persistence.creation.Draft.Policy)
-	}
+	require.NoError(t, err)
+	require.False(t, got.Exam.ID.IsZero())
+	require.Equal(t, fixture.userID, got.Exam.CreatorUserID)
+	require.Equal(t, fixture.userID, got.Exam.OwnerUserID)
+	require.Equal(t, "Algorithms", got.Draft.Title)
+	require.Equal(t, 1, got.ManagerCount)
+	require.Equal(t, model.ActionExamCreate, fixture.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceAcademicUnit, ID: fixture.unitID.String()}, fixture.authorizer.resource, "authorization")
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.create", "effect.created")
+	require.Equal(t, fixture.persistence.creation.Draft.ExamID, fixture.persistence.creation.Exam.ID)
+	require.Equal(t, fixture.userID, fixture.persistence.creation.Manager.UserID)
+	require.True(t, fixture.persistence.creation.Draft.Policy.Equal(model.DefaultExamPolicySet()))
 	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationCreate, "test-key",
 		fmt.Sprintf(`{"academic_unit_id":%q,"title":"  Algorithms  ","instructions_markdown":"Use **Go**."}`, fixture.unitID))
 }
@@ -56,12 +54,8 @@ func TestCreateUsesExplicitOverrideWithoutMembership(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionExamCreateOverride {
-		t.Fatalf("action = %s, want override", fixture.authorizer.action)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamCreateOverride, fixture.authorizer.action, "action")
 }
 
 func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) {
@@ -69,12 +63,9 @@ func TestCreateRequiresIdempotencyBeforeResolutionOrAuthorization(t *testing.T) 
 	fixture := newAuthoringFixture(t)
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "idempotency.key_required" {
-		t.Fatalf("error = %v, want idempotency.key_required", err)
-	}
-	if len(*fixture.order) != 0 {
-		t.Fatalf("side effects before required idempotency validation: %v", *fixture.order)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "idempotency.key_required", fault.Code())
+	require.Empty(t, *fixture.order)
 }
 
 func TestCreateRejectsInvalidDraftBeforeResolutionOrAuthorization(t *testing.T) {
@@ -82,12 +73,9 @@ func TestCreateRejectsInvalidDraftBeforeResolutionOrAuthorization(t *testing.T) 
 	fixture := newAuthoringFixture(t)
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "   ", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.invalid" {
-		t.Fatalf("error = %v", err)
-	}
-	if len(*fixture.order) != 0 {
-		t.Fatalf("invalid draft caused effects: %v", *fixture.order)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.invalid", fault.Code())
+	require.Empty(t, *fixture.order)
 }
 
 func TestCreateReplayDoesNotRepublish(t *testing.T) {
@@ -97,12 +85,10 @@ func TestCreateReplayDoesNotRepublish(t *testing.T) {
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	command := "test-key"
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: command})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fixture.persistence.idempotency == nil || fixture.persistence.idempotency.Operation != "exam.create.v1" || fixture.effects.calls != 0 {
-		t.Fatalf("idempotency/effects = %#v/%d", fixture.persistence.idempotency, fixture.effects.calls)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, fixture.persistence.idempotency, "idempotency/effects")
+	require.Equal(t, "exam.create.v1", fixture.persistence.idempotency.Operation, "idempotency/effects")
+	require.Equal(t, 0, fixture.effects.calls, "idempotency/effects")
 }
 
 func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
@@ -112,12 +98,9 @@ func TestCreateFailureCompletesAuditAsFailed(t *testing.T) {
 	fixture.persistence.err = store.NewErrConflict("exam", "exams_pkey", errors.New("duplicate"))
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" {
-		t.Fatalf("error = %v", err)
-	}
-	if fixture.auditor.failedCode != "exam.conflict" {
-		t.Fatalf("failed audit code = %q", fixture.auditor.failedCode)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.conflict", fault.Code())
+	require.Equal(t, "exam.conflict", fixture.auditor.failedCode)
 }
 
 func TestCreateFailedAuditCompletionPreservesStoreFailure(t *testing.T) {
@@ -129,9 +112,9 @@ func TestCreateFailedAuditCompletionPreservesStoreFailure(t *testing.T) {
 	fixture.auditor.failErr = auditErr
 	_, err := fixture.service.CreateExam(context.Background(), fixture.invocation, CreateCommand{AcademicUnitID: fixture.unitID, Title: "Networks", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.conflict" || !errors.Is(err, auditErr) {
-		t.Fatalf("error = %v, want store conflict joined with audit completion failure", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.conflict", fault.Code())
+	require.ErrorIs(t, err, auditErr)
 }
 
 func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
@@ -146,25 +129,24 @@ func TestEditDraftTextOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.
 		ExamID: fixture.examID, ExpectedDraftRevision: 1,
 		Title: &title, InstructionsMarkdown: &instructions, IdempotencyKey: command,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if view.Draft.Title != "Distributed Systems" || view.Draft.InstructionsMarkdown != instructions || view.Draft.Revision != 2 {
-		t.Fatalf("view = %#v", view)
-	}
-	if fixture.authorizer.action != model.ActionExamManage || fixture.persistence.textUpdate == nil || fixture.persistence.idempotency == nil || fixture.persistence.idempotency.Operation != "exam.draft.text.edit.v1" {
-		t.Fatalf("authorization/update = %s / %#v", fixture.authorizer.action, fixture.persistence.textUpdate)
-	}
-	if fixture.auditor.value["title"] != nil || fixture.auditor.value["instructions_markdown"] != nil ||
-		fixture.auditor.scopeType != model.RoleScopeAcademicUnit || fixture.auditor.scopeID != fixture.unitID.String() || fixture.effects.updatedRevision != 2 {
-		t.Fatalf("unsafe audit/scope/effect = %#v / %s:%s / %d", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID, fixture.effects.updatedRevision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Distributed Systems", view.Draft.Title)
+	require.Equal(t, instructions, view.Draft.InstructionsMarkdown)
+	require.Equal(t, int64(2), view.Draft.Revision)
+	require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "authorization/update")
+	require.NotNil(t, fixture.persistence.textUpdate, "authorization/update")
+	require.NotNil(t, fixture.persistence.idempotency, "authorization/update")
+	require.Equal(t, "exam.draft.text.edit.v1", fixture.persistence.idempotency.Operation, "authorization/update")
+	require.Nil(t, fixture.auditor.value["title"], "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
+	require.Nil(t, fixture.auditor.value["instructions_markdown"], "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
+	require.Equal(t, model.RoleScopeAcademicUnit, fixture.auditor.scopeType, "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
+	require.Equal(t, fixture.unitID.String(), fixture.auditor.scopeID, "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
+	require.Equal(t, int64(2), fixture.effects.updatedRevision, "unsafe audit/scope/effect = %#v / %s:%s", fixture.auditor.value, fixture.auditor.scopeType, fixture.auditor.scopeID)
 	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationEditDraftText, command,
 		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":1,"title":"Distributed Systems","instructions_markdown":"Use **Go** and submit all files."}`, fixture.examID))
-	want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_text", "effect.updated"}
-	if !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.update_text", "effect.updated")
 }
 
 func TestEditDraftTextNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
@@ -178,12 +160,12 @@ func TestEditDraftTextNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
 		IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.draft.no_changes" {
-		t.Fatalf("error = %v, want exam.draft.no_changes", err)
-	}
-	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.draft.no_changes", fault.Code())
+	// A no-op edit is authorized but never audited, persisted, or published.
+	require.Nil(t, fixture.auditor.value, "no-op edit was audited")
+	require.Nil(t, fixture.persistence.textUpdate, "no-op edit was persisted")
+	require.Zero(t, fixture.effects.updatedRevision, "no-op edit was published")
 }
 
 func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.T) {
@@ -210,12 +192,12 @@ func TestEditDraftTextRejectsArchivedAndStaleDraftsWithoutPublishing(t *testing.
 				IdempotencyKey: "test-key",
 			})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != test.want {
-				t.Fatalf("error = %v, want %s", err, test.want)
-			}
-			if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != test.want {
-				t.Fatalf("rejected update effects: audit=%#v store=%#v effect=%d failed=%s", fixture.auditor.value, fixture.persistence.textUpdate, fixture.effects.updatedRevision, fixture.auditor.failedCode)
-			}
+			require.ErrorAs(t, err, &fault)
+			require.Equal(t, test.want, fault.Code())
+			require.NotNil(t, fixture.auditor.value, "rejected update effects: audit")
+			require.NotNil(t, fixture.persistence.textUpdate, "rejected update effects: audit")
+			require.Equal(t, int64(0), fixture.effects.updatedRevision, "rejected update effects: audit")
+			require.Equal(t, test.want, fixture.auditor.failedCode, "rejected update effects: audit")
 		})
 	}
 }
@@ -232,12 +214,12 @@ func TestEditDraftTextArchivedNoOpStillRejectsAsArchived(t *testing.T) {
 		IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.archived" {
-		t.Fatalf("error = %v, want exam.archived", err)
-	}
-	if fixture.auditor.value == nil || fixture.persistence.textUpdate == nil || fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != "exam.archived" {
-		t.Fatalf("archived no-op effects: audit=%#v store=%#v effect=%d failed=%s", fixture.auditor.value, fixture.persistence.textUpdate, fixture.effects.updatedRevision, fixture.auditor.failedCode)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.archived", fault.Code())
+	require.NotNil(t, fixture.auditor.value, "archived no-op effects: audit")
+	require.NotNil(t, fixture.persistence.textUpdate, "archived no-op effects: audit")
+	require.Equal(t, int64(0), fixture.effects.updatedRevision, "archived no-op effects: audit")
+	require.Equal(t, "exam.archived", fixture.auditor.failedCode, "archived no-op effects: audit")
 }
 
 func TestEditDraftTextReplayDoesNotRepublish(t *testing.T) {
@@ -247,33 +229,30 @@ func TestEditDraftTextReplayDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	title := "Changed"
-	if _, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	_, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.effects.updatedRevision != 0 {
-		t.Fatalf("replay published revision %d", fixture.effects.updatedRevision)
-	}
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), fixture.effects.updatedRevision, "replay published revision")
 }
 
 func TestEditDraftTextUsesExplicitOverrideWithoutManagerMembership(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	title := "Changed"
-	if _, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
+	_, err := fixture.service.EditExamDraftText(context.Background(), fixture.invocation, EditDraftTextCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Title: &title,
 		IdempotencyKey: "test-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionExamManageOverride || fixture.persistence.textUpdate == nil || !fixture.persistence.textUpdate.ManagerOverride {
-		t.Fatalf("override action/update = %s / %#v", fixture.authorizer.action, fixture.persistence.textUpdate)
-	}
-	if want := []string{"store.access", "authorize", "store.get", "audit.begin", "store.update_text", "effect.updated"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamManageOverride, fixture.authorizer.action, "override action/update")
+	require.NotNil(t, fixture.persistence.textUpdate, "override action/update")
+	require.True(t, fixture.persistence.textUpdate.ManagerOverride, "override action/update")
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect. No membership is consulted for an override.
+	require.NotContains(t, *fixture.order, "membership", "override consulted Manager membership")
+	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.update_text", "effect.updated")
 }
 
 func TestConfigureDraftFocusLossOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
@@ -286,24 +265,25 @@ func TestConfigureDraftFocusLossOwnsAuthorizationAuditPersistenceAndSafeEffect(t
 	view, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: focus.Enabled, MinimumDuration: focus.MinimumDuration, IncidentCount: focus.IncidentCount, Window: focus.Window, Outcome: focus.Outcome, IdempotencyKey: command,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if view.Draft.Policy.FocusLoss != focus || view.Draft.Policy.ConnectionLoss.Outcome != model.IntegrityOutcomeFlagAndSuspend || view.Draft.Revision != 2 {
-		t.Fatalf("view = %#v", view)
-	}
-	if fixture.authorizer.action != model.ActionExamManage || fixture.persistence.focusLossUpdate == nil || fixture.persistence.focusLossUpdate.FocusLoss != focus || fixture.persistence.idempotency == nil || fixture.persistence.idempotency.Operation != "exam.draft.focus_loss.configure.v1" {
-		t.Fatalf("authorization/update = %s / %#v", fixture.authorizer.action, fixture.persistence.focusLossUpdate)
-	}
-	if len(fixture.auditor.value) != 3 || fixture.auditor.value["exam_id"] != fixture.examID.String() || fixture.auditor.value["expected_draft_revision"] != int64(1) || fixture.auditor.value["draft_revision"] != int64(2) || fixture.effects.updatedRevision != 2 {
-		t.Fatalf("unsafe audit/effect = %#v / %d", fixture.auditor.value, fixture.effects.updatedRevision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, focus, view.Draft.Policy.FocusLoss)
+	require.Equal(t, model.IntegrityOutcomeFlagAndSuspend, view.Draft.Policy.ConnectionLoss.Outcome)
+	require.Equal(t, int64(2), view.Draft.Revision)
+	require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "authorization/update")
+	require.NotNil(t, fixture.persistence.focusLossUpdate, "authorization/update")
+	require.Equal(t, focus, fixture.persistence.focusLossUpdate.FocusLoss, "authorization/update")
+	require.NotNil(t, fixture.persistence.idempotency, "authorization/update")
+	require.Equal(t, "exam.draft.focus_loss.configure.v1", fixture.persistence.idempotency.Operation, "authorization/update")
+	require.Len(t, fixture.auditor.value, 3, "unsafe audit/effect")
+	require.Equal(t, fixture.examID.String(), fixture.auditor.value["exam_id"], "unsafe audit/effect")
+	require.Equal(t, int64(1), fixture.auditor.value["expected_draft_revision"], "unsafe audit/effect")
+	require.Equal(t, int64(2), fixture.auditor.value["draft_revision"], "unsafe audit/effect")
+	require.Equal(t, int64(2), fixture.effects.updatedRevision, "unsafe audit/effect")
 	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationConfigureDraftFocusLoss, command,
 		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":1,"enabled":false,"minimum_duration_milliseconds":500,"incident_count":100,"window_milliseconds":14400000,"outcome":"flag_and_suspend"}`, fixture.examID))
-	want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_focus_loss", "effect.updated"}
-	if !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.update_focus_loss", "effect.updated")
 }
 
 func TestConfigureDraftFocusLossNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
@@ -315,12 +295,12 @@ func TestConfigureDraftFocusLossNoChangeSkipsAuditPersistenceAndEffect(t *testin
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: model.DefaultExamPolicySet().FocusLoss.Enabled, MinimumDuration: model.DefaultExamPolicySet().FocusLoss.MinimumDuration, IncidentCount: model.DefaultExamPolicySet().FocusLoss.IncidentCount, Window: model.DefaultExamPolicySet().FocusLoss.Window, Outcome: model.DefaultExamPolicySet().FocusLoss.Outcome, IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.draft.no_changes" {
-		t.Fatalf("error = %v, want exam.draft.no_changes", err)
-	}
-	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.draft.no_changes", fault.Code())
+	// A no-op edit is authorized but never audited, persisted, or published.
+	require.Nil(t, fixture.auditor.value, "no-op edit was audited")
+	require.Nil(t, fixture.persistence.focusLossUpdate, "no-op edit was persisted")
+	require.Zero(t, fixture.effects.updatedRevision, "no-op edit was published")
 }
 
 func TestConfigureDraftFocusLossArchivedNoOpAndStaleEditsReachAuditedStoreGuard(t *testing.T) {
@@ -343,12 +323,11 @@ func TestConfigureDraftFocusLossArchivedNoOpAndStaleEditsReachAuditedStoreGuard(
 				ExamID: fixture.examID, ExpectedDraftRevision: test.revision, Enabled: model.DefaultExamPolicySet().FocusLoss.Enabled, MinimumDuration: model.DefaultExamPolicySet().FocusLoss.MinimumDuration, IncidentCount: model.DefaultExamPolicySet().FocusLoss.IncidentCount, Window: model.DefaultExamPolicySet().FocusLoss.Window, Outcome: model.DefaultExamPolicySet().FocusLoss.Outcome, IdempotencyKey: "test-key",
 			})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != test.want {
-				t.Fatalf("error = %v, want %s", err, test.want)
-			}
-			if fixture.persistence.focusLossUpdate == nil || fixture.auditor.failedCode != test.want || fixture.effects.updatedRevision != 0 {
-				t.Fatalf("guard effects: update=%#v failed=%s effect=%d", fixture.persistence.focusLossUpdate, fixture.auditor.failedCode, fixture.effects.updatedRevision)
-			}
+			require.ErrorAs(t, err, &fault)
+			require.Equal(t, test.want, fault.Code())
+			require.NotNil(t, fixture.persistence.focusLossUpdate, "guard effects: update")
+			require.Equal(t, test.want, fixture.auditor.failedCode, "guard effects: update")
+			require.Equal(t, int64(0), fixture.effects.updatedRevision, "guard effects: update")
 		})
 	}
 }
@@ -361,14 +340,12 @@ func TestConfigureDraftFocusLossReplayDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	focus := model.FocusLossPolicy{Enabled: false, MinimumDuration: time.Second, IncidentCount: 2, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag}
-	if _, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
+	_, err := fixture.service.ConfigureExamDraftFocusLoss(context.Background(), fixture.invocation, ConfigureDraftFocusLossCommand{
 		ExamID: fixture.examID, ExpectedDraftRevision: 1, Enabled: focus.Enabled, MinimumDuration: focus.MinimumDuration, IncidentCount: focus.IncidentCount, Window: focus.Window, Outcome: focus.Outcome, IdempotencyKey: "test-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.persistence.focusLossUpdate == nil || fixture.effects.updatedRevision != 0 {
-		t.Fatalf("replay update/effect = %#v/%d", fixture.persistence.focusLossUpdate, fixture.effects.updatedRevision)
-	}
+	})
+	require.NoError(t, err)
+	require.NotNil(t, fixture.persistence.focusLossUpdate, "replay update/effect")
+	require.Equal(t, int64(0), fixture.effects.updatedRevision, "replay update/effect")
 }
 
 func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
@@ -395,12 +372,9 @@ func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
 			}
 			fixture.authorizer.err = test.authorize
 			err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.examID)
-			if !errors.Is(err, test.authorize) {
-				t.Fatalf("error = %v, want %v", err, test.authorize)
-			}
-			if fixture.authorizer.action != test.want || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}) {
-				t.Fatalf("authorization = %s %#v", fixture.authorizer.action, fixture.authorizer.resource)
-			}
+			require.ErrorIs(t, err, test.authorize)
+			require.Equal(t, test.want, fixture.authorizer.action, "authorization")
+			require.Equal(t, model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}, fixture.authorizer.resource, "authorization")
 		})
 	}
 }
@@ -421,19 +395,14 @@ func TestGetSelectsManagerOrOverrideAuthorization(t *testing.T) {
 				fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			}
 			view, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if view.Exam.ID != fixture.examID || fixture.authorizer.action != test.action || fixture.authorizer.resource.Type != model.ResourceExam {
-				t.Fatalf("view/auth = %#v / %s %#v", view, fixture.authorizer.action, fixture.authorizer.resource)
-			}
-			want := []string{"store.access", "authorize", "store.get"}
-			if test.manager {
-				want = []string{"store.access", "membership", "authorize", "store.get"}
-			}
-			if !reflect.DeepEqual(*fixture.order, want) {
-				t.Fatalf("order = %v, want %v", *fixture.order, want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, fixture.examID, view.Exam.ID, "view/auth = %#v / %s %#v", view, fixture.authorizer.action, fixture.authorizer.resource)
+			require.Equal(t, test.action, fixture.authorizer.action, "view/auth = %#v / %s %#v", view, fixture.authorizer.action, fixture.authorizer.resource)
+			require.Equal(t, model.ResourceExam, fixture.authorizer.resource.Type, "view/auth = %#v / %s %#v", view, fixture.authorizer.action, fixture.authorizer.resource)
+			// Contract: authorization precedes reading the Exam. Only a Manager's
+			// current membership is consulted.
+			ordertest.RequireInOrder(t, *fixture.order, "authorize", "store.get")
+			require.Equal(t, test.manager, slices.Contains(*fixture.order, "membership"), "membership consulted")
 		})
 	}
 }
@@ -444,15 +413,10 @@ func TestGetRequiresOverrideWhenManagerMembershipWasRevoked(t *testing.T) {
 	fixture.persistence.actorIsManager = true
 	denied := errors.New("override denied")
 	fixture.authorizer.err = denied
-	if _, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID}); !errors.Is(err, denied) {
-		t.Fatalf("error = %v, want override denial", err)
-	}
-	if fixture.authorizer.action != model.ActionExamViewOverride {
-		t.Fatalf("action = %s, want override after membership revocation", fixture.authorizer.action)
-	}
-	if want := []string{"store.access", "membership", "authorize"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	_, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID})
+	require.ErrorIs(t, err, denied)
+	require.Equal(t, model.ActionExamViewOverride, fixture.authorizer.action, "action")
+	require.NotContains(t, *fixture.order, "store.get", "a denied caller read the Exam")
 }
 
 func TestGetStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
@@ -463,12 +427,11 @@ func TestGetStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	fixture.memberships.err = failure
 	_, err := fixture.service.GetExam(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.unavailable" || !errors.Is(err, failure) {
-		t.Fatalf("error = %v, want unavailable membership failure", err)
-	}
-	if want := []string{"store.access", "membership"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.unavailable", fault.Code())
+	require.ErrorIs(t, err, failure)
+	require.Empty(t, fixture.authorizer.action, "authorized without current membership")
+	require.NotContains(t, *fixture.order, "store.get", "read the Exam without current membership")
 }
 
 func TestCallClonesCredentialScopes(t *testing.T) {
@@ -483,9 +446,7 @@ func TestCallClonesCredentialScopes(t *testing.T) {
 	invocation := invocation.New(principal, model.RequestMetadata{RequestID: "request"})
 	principal.CredentialScopes[0] = string(model.ActionAuditView)
 	got := invocation.Principal()
-	if got.CredentialScopes[0] != string(model.ActionExamCreate) {
-		t.Fatalf("call principal was aliased: %#v", got)
-	}
+	require.Equal(t, string(model.ActionExamCreate), got.CredentialScopes[0])
 }
 
 type authoringFixture struct {
@@ -533,9 +494,7 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 		NewID:             func() model.ExamID { return examID },
 		InstitutionOrigin: "https://institution.example",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return authoringFixture{service: service, invocation: invocation.New(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, mail: mail, auditor: auditor, outcomes: outcomes, persistence: persistence, effects: effects}
 }
 

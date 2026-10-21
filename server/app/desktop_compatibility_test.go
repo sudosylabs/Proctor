@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -54,9 +56,7 @@ func desktopCompatibilityServiceFixture(
 		"",
 		at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy := model.NewInitialDesktopCompatibilityPolicy(institution.ID, at)
 	persistence := &desktopCompatibilityPolicyStoreFake{policy: policy}
 	authorization := &accessPolicyAuthorizationFake{}
@@ -79,9 +79,7 @@ func desktopCompatibilityServiceFixture(
 		time.Minute,
 		func() time.Time { return at.Add(30 * time.Second) },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID:                 model.NewUserID(),
 		SessionID:              model.NewSessionID(),
@@ -111,9 +109,8 @@ func TestDesktopBuildCatalogRejectsInvalidAndAmbiguousEntries(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := newDesktopBuildCatalog(test.entries); err == nil {
-				t.Fatal("newDesktopBuildCatalog() accepted invalid entries")
-			}
+			_, err := newDesktopBuildCatalog(test.entries)
+			require.Error(t, err, "newDesktopBuildCatalog() accepted invalid entries")
 		})
 	}
 }
@@ -126,18 +123,14 @@ func TestDesktopCompatibilityEvaluationUsesCatalogAndInstitutionPolicy(t *testin
 		testDesktopBuildTuple("1.4.0", "darwin-current", model.DesktopPlatformDarwin, model.DesktopArchitectureARM64, 3),
 		testDesktopBuildTuple("1.3.0", "linux-current", model.DesktopPlatformLinux, model.DesktopArchitectureX64, 1),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy := model.NewInitialDesktopCompatibilityPolicy(model.NewInstitutionID(), time.UnixMilli(100))
-	if err := policy.Replace(1, model.DesktopCompatibilityPolicySettings{
+	require.NoError(t, policy.Replace(1, model.DesktopCompatibilityPolicySettings{
 		MinimumDesktopRelease:  "1.2.3",
 		RevokedDesktopBuildIDs: []string{"darwin-old"},
 		AdministratorMessage:   "Update before the next exam.",
 		Availability:           model.DesktopAvailabilityReady,
-	}, time.UnixMilli(200)); err != nil {
-		t.Fatal(err)
-	}
+	}, time.UnixMilli(200)))
 
 	tests := []struct {
 		name              string
@@ -207,16 +200,14 @@ func TestDesktopCompatibilityEvaluationUsesCatalogAndInstitutionPolicy(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			result, err := catalog.evaluate(policy, test.query)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if result.Compatibility != test.wantCompatibility || result.Reason != test.wantReason {
-				t.Fatalf("evaluate() = %#v", result)
-			}
-			if test.query.Platform == "darwin" &&
-				(result.MinimumDesktopRelease != "1.2.3" || result.MaximumDesktopRelease != "1.4.0" ||
-					result.MinimumRealtimeProtocol != 2 || result.MaximumRealtimeProtocol != 3) {
-				t.Fatalf("Darwin bounds = %#v", result)
+			require.NoError(t, err)
+			require.Equal(t, test.wantCompatibility, result.Compatibility)
+			require.Equal(t, test.wantReason, result.Reason)
+			if test.query.Platform == "darwin" {
+				require.Equal(t, "1.2.3", result.MinimumDesktopRelease)
+				require.Equal(t, "1.4.0", result.MaximumDesktopRelease)
+				require.Equal(t, 2, result.MinimumRealtimeProtocol)
+				require.Equal(t, 3, result.MaximumRealtimeProtocol)
 			}
 		})
 	}
@@ -228,9 +219,7 @@ func TestDesktopCompatibilityEvaluationRejectsMalformedSelectors(t *testing.T) {
 	catalog, err := newDesktopBuildCatalog([]model.DesktopBuildTuple{
 		testDesktopBuildTuple("1.2.3", "build-123", model.DesktopPlatformDarwin, model.DesktopArchitectureARM64, 1),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	policy := model.NewInitialDesktopCompatibilityPolicy(model.NewInstitutionID(), time.UnixMilli(100))
 	tests := []struct {
 		name  string
@@ -245,9 +234,8 @@ func TestDesktopCompatibilityEvaluationRejectsMalformedSelectors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := catalog.evaluate(policy, test.query); !apperror.Is(err, "request.invalid") {
-				t.Fatalf("evaluate() error = %v", err)
-			}
+			_, err := catalog.evaluate(policy, test.query)
+			require.True(t, apperror.Is(err, "request.invalid"), "evaluate() error = %v", err)
 		})
 	}
 }
@@ -255,13 +243,11 @@ func TestDesktopCompatibilityEvaluationRejectsMalformedSelectors(t *testing.T) {
 func TestDesktopCompatibilityServiceEvaluatesAuthoritativePolicy(t *testing.T) {
 	t.Parallel()
 	service, persistence, _, _, _ := desktopCompatibilityServiceFixture(t)
-	if err := persistence.policy.Replace(1, model.DesktopCompatibilityPolicySettings{
+	require.NoError(t, persistence.policy.Replace(1, model.DesktopCompatibilityPolicySettings{
 		RevokedDesktopBuildIDs: []string{"darwin-current"},
 		AdministratorMessage:   "Use another verified build.",
 		Availability:           model.DesktopAvailabilityReady,
-	}, time.UnixMilli(11_000)); err != nil {
-		t.Fatal(err)
-	}
+	}, time.UnixMilli(11_000)))
 
 	result, err := service.EvaluateDesktopCompatibility(context.Background(), DesktopCompatibilityQuery{
 		DesktopRelease:   "1.2.3",
@@ -270,14 +256,11 @@ func TestDesktopCompatibilityServiceEvaluatesAuthoritativePolicy(t *testing.T) {
 		Architecture:     "arm64",
 		RealtimeProtocol: 1,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Compatibility != DesktopCompatibilityUpdateRequired ||
-		result.Reason != "build_revoked" ||
-		result.AdministratorMessage != "Use another verified build." || result.PolicyRevision != 2 {
-		t.Fatalf("evaluation = %#v", result)
-	}
+	require.NoError(t, err)
+	require.Equal(t, DesktopCompatibilityUpdateRequired, result.Compatibility)
+	require.Equal(t, "build_revoked", result.Reason)
+	require.Equal(t, "Use another verified build.", result.AdministratorMessage)
+	require.Equal(t, int64(2), result.PolicyRevision)
 }
 
 func TestDesktopCompatibilityPolicyReadUsesAdministrativeViewAuthorization(t *testing.T) {
@@ -285,13 +268,10 @@ func TestDesktopCompatibilityPolicyReadUsesAdministrativeViewAuthorization(t *te
 	service, persistence, authorization, _, invocation := desktopCompatibilityServiceFixture(t)
 
 	policy, err := service.GetDesktopCompatibilityPolicy(context.Background(), invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if authorization.action != model.ActionAccessPolicyView || policy == persistence.policy ||
-		policy.InstitutionID != persistence.policy.InstitutionID {
-		t.Fatalf("authorization=%q policy=%#v", authorization.action, policy)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionAccessPolicyView, authorization.action, "authorization")
+	require.NotSame(t, persistence.policy, policy, "authorization")
+	require.Equal(t, persistence.policy.InstitutionID, policy.InstitutionID, "authorization")
 }
 
 func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdministratorSession(t *testing.T) {
@@ -304,9 +284,7 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 		Availability:           model.DesktopAvailabilityReady,
 	}
 	updated := persistence.policy.Clone()
-	if err := updated.Replace(1, settings, time.UnixMilli(11_000)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, updated.Replace(1, settings, time.UnixMilli(11_000)))
 	persistence.result = &store.DesktopCompatibilityPolicyReplacementResult{
 		Policy:  updated,
 		Changed: true,
@@ -317,25 +295,22 @@ func TestDesktopCompatibilityPolicyReplacementRequiresStrongRecentSystemAdminist
 		Settings:         settings,
 		IdempotencyKey:   "desktop-policy-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Revision != 2 || authorization.action != model.ActionDesktopCompatibilityPolicyManage ||
-		persistence.replaceInput == nil || persistence.replaceInput.ActorID != invocation.Principal().UserID ||
-		persistence.replaceInput.AuditEventID != model.AuditEventID(audit.beginID) || persistence.command == nil ||
-		persistence.command.Operation != "desktop_compatibility_policy.replace.v1" ||
-		audit.attempt.Action != model.ActionDesktopCompatibilityPolicyManage ||
-		audit.attempt.ScopeType != model.RoleScopeInstitution {
-		t.Fatalf("result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(2), result.Revision, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, model.ActionDesktopCompatibilityPolicyManage, authorization.action, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.NotNil(t, persistence.replaceInput, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, invocation.Principal().UserID, persistence.replaceInput.ActorID, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, model.AuditEventID(audit.beginID), persistence.replaceInput.AuditEventID, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.NotNil(t, persistence.command, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, "desktop_compatibility_policy.replace.v1", persistence.command.Operation, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, model.ActionDesktopCompatibilityPolicyManage, audit.attempt.Action, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
+	require.Equal(t, model.RoleScopeInstitution, audit.attempt.ScopeType, "result=%#v input=%#v command=%#v audit=%#v", result, persistence.replaceInput, persistence.command, audit.attempt)
 	encodedAudit := ""
 	for key, value := range audit.attempt.Value {
 		encodedAudit += key + "=" + valueString(value)
 	}
 	for _, secret := range append(settings.RevokedDesktopBuildIDs, settings.AdministratorMessage) {
-		if strings.Contains(encodedAudit, secret) {
-			t.Fatalf("audit attempt exposed policy content %q: %s", secret, encodedAudit)
-		}
+		require.NotContains(t, encodedAudit, secret, "audit attempt exposed policy content")
 	}
 }
 
@@ -378,14 +353,10 @@ func TestDesktopCompatibilityPolicyReplacementRejectsWeakOrStaleCredentialsBefor
 					IdempotencyKey:   "desktop-policy-assurance",
 				},
 			)
-			if !apperror.Is(err, test.wantCode) {
-				t.Fatalf("error = %v, want %s", err, test.wantCode)
-			}
+			require.True(t, apperror.Is(err, test.wantCode), "error = %v, want %s", err, test.wantCode)
 		})
 	}
-	if persistence.replaceInput != nil {
-		t.Fatal("persistence was called for a rejected assurance level")
-	}
+	require.Nil(t, persistence.replaceInput, "persistence was called for a rejected assurance level")
 }
 
 func TestDesktopCompatibilityPolicyReplacementFailsClosedWhenAuditBeginFails(t *testing.T) {
@@ -399,12 +370,8 @@ func TestDesktopCompatibilityPolicyReplacementFailsClosedWhenAuditBeginFails(t *
 		Settings:         persistence.policy.Settings(),
 		IdempotencyKey:   "desktop-policy-audit-unavailable",
 	})
-	if !errors.Is(err, auditError) {
-		t.Fatalf("Replace() error = %v, want audit failure", err)
-	}
-	if persistence.replaceInput != nil {
-		t.Fatal("persistence was called after the audit begin failed")
-	}
+	require.ErrorIs(t, err, auditError, "Replace() error")
+	require.Nil(t, persistence.replaceInput, "persistence was called after the audit begin failed")
 }
 
 func TestDesktopCompatibilityPolicyReplacementMapsRevisionAndSystemAdministratorRaces(t *testing.T) {
@@ -443,9 +410,8 @@ func TestDesktopCompatibilityPolicyReplacementMapsRevisionAndSystemAdministrator
 				Settings:         persistence.policy.Settings(),
 				IdempotencyKey:   "failed-" + test.name,
 			})
-			if !apperror.Is(err, test.wantCode) || audit.failCode != test.wantCode {
-				t.Fatalf("error=%v fail_code=%q", err, audit.failCode)
-			}
+			require.True(t, apperror.Is(err, test.wantCode), "error=%v fail_code", err)
+			require.Equal(t, test.wantCode, audit.failCode, "error=%v fail_code", err)
 		})
 	}
 }
@@ -478,9 +444,7 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 	t.Parallel()
 	strict, persistence, _, _, _ := desktopCompatibilityServiceFixture(t)
 	development, err := newDesktopCompatibilityService(strict.policies, strict.institutions, strict.authorization, strict.audit, nil, true, time.Minute, strict.now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence.policy.MinimumDesktopRelease = "9.0.0"
 	persistence.policy.RevokedDesktopBuildIDs = []string{"dev-build"}
 	for _, query := range []DesktopCompatibilityQuery{
@@ -488,35 +452,31 @@ func TestDevelopmentCompatibilitySkipsBuildChecksButKeepsAvailabilityAndValidati
 		{DesktopRelease: "100.0.0", DesktopBuildID: "next-build", Platform: "linux", Architecture: "x64", RealtimeProtocol: 99},
 	} {
 		result, evaluateErr := development.EvaluateDesktopCompatibility(t.Context(), query)
-		if evaluateErr != nil || result.Compatibility != DesktopCompatibilityCompatible || result.PolicyRevision != persistence.policy.Revision {
-			t.Fatalf("dev build rejected: %#v, %v", result, evaluateErr)
-		}
-		if result.MinimumDesktopRelease != "" || result.MaximumDesktopRelease != "" || result.MinimumRealtimeProtocol != 0 || result.MaximumRealtimeProtocol != 0 {
-			t.Fatal("bypass invented supported bounds")
-		}
+		require.NoError(t, evaluateErr, "dev build rejected: %#v", result)
+		require.Equal(t, DesktopCompatibilityCompatible, result.Compatibility, "dev build rejected: %#v", result)
+		require.Equal(t, persistence.policy.Revision, result.PolicyRevision, "dev build rejected: %#v", result)
+		require.Empty(t, result.MinimumDesktopRelease, "bypass invented supported bounds")
+		require.Empty(t, result.MaximumDesktopRelease, "bypass invented supported bounds")
+		require.Equal(t, 0, result.MinimumRealtimeProtocol, "bypass invented supported bounds")
+		require.Equal(t, 0, result.MaximumRealtimeProtocol, "bypass invented supported bounds")
 		enforced, evaluateErr := strict.EvaluateDesktopCompatibility(t.Context(), query)
-		if evaluateErr != nil || enforced.Compatibility == DesktopCompatibilityCompatible {
-			t.Fatalf("strict environment admitted build: %#v, %v", enforced, evaluateErr)
-		}
+		require.NoError(t, evaluateErr, "strict environment admitted build: %#v", enforced)
+		require.NotEqual(t, DesktopCompatibilityCompatible, enforced.Compatibility, "strict environment admitted build: %#v", enforced)
 	}
 	query := DesktopCompatibilityQuery{DesktopRelease: "0.0.0-private", DesktopBuildID: "dev-build", Platform: "darwin", Architecture: "arm64", RealtimeProtocol: 1}
 	persistence.policy.Availability = model.DesktopAvailabilityMaintenance
 	result, err := development.EvaluateDesktopCompatibility(t.Context(), query)
-	if err != nil || result.Availability != model.DesktopAvailabilityMaintenance {
-		t.Fatalf("maintenance ignored: %#v, %v", result, err)
-	}
-	if _, err := development.EvaluateDesktopCompatibility(t.Context(), DesktopCompatibilityQuery{}); !apperror.Is(err, "request.invalid") {
-		t.Fatalf("malformed selectors accepted: %v", err)
-	}
+	require.NoError(t, err, "maintenance ignored: %#v", result)
+	require.Equal(t, model.DesktopAvailabilityMaintenance, result.Availability, "maintenance ignored: %#v", result)
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), DesktopCompatibilityQuery{})
+	require.True(t, apperror.Is(err, "request.invalid"), "malformed selectors accepted: %v", err)
 	persistence.getErr = errors.New("store offline")
-	if _, err := development.EvaluateDesktopCompatibility(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
-		t.Fatalf("policy outage ignored: %v", err)
-	}
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), query)
+	require.True(t, apperror.Is(err, "desktop_compatibility_policy.unavailable"), "policy outage ignored: %v", err)
 	persistence.getErr = nil
 	persistence.policy.Revision = 0
-	if _, err := development.EvaluateDesktopCompatibility(t.Context(), query); !apperror.Is(err, "desktop_compatibility_policy.unavailable") {
-		t.Fatalf("corrupt policy ignored: %v", err)
-	}
+	_, err = development.EvaluateDesktopCompatibility(t.Context(), query)
+	require.True(t, apperror.Is(err, "desktop_compatibility_policy.unavailable"), "corrupt policy ignored: %v", err)
 }
 
 func TestDevelopmentLoginDoesNotBypassProtectedAttemptBuildChecks(t *testing.T) {
@@ -533,18 +493,13 @@ func TestDevelopmentLoginDoesNotBypassProtectedAttemptBuildChecks(t *testing.T) 
 	principal.DesktopPlatform = model.DesktopPlatformDarwin
 	principal.DesktopArchitecture = model.DesktopArchitectureARM64
 	principal.DesktopRealtimeProtocol = 1
-	if err := principal.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err == nil {
-		t.Fatal("uncataloged dev build obtained Attempt authority")
-	}
+	require.NoError(t, principal.Validate())
+	_, err := service.ResolveAttemptDesktopBuild(t.Context(), principal)
+	require.Error(t, err, "uncataloged dev build obtained Attempt authority")
 	principal.DesktopBuildID = "darwin-current"
-	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err != nil {
-		t.Fatalf("verified build could not resolve: %v", err)
-	}
+	_, err = service.ResolveAttemptDesktopBuild(t.Context(), principal)
+	require.NoError(t, err)
 	persistence.policy.RevokedDesktopBuildIDs = []string{principal.DesktopBuildID}
-	if _, err := service.ResolveAttemptDesktopBuild(t.Context(), principal); err == nil {
-		t.Fatal("revoked build obtained Attempt authority in dev")
-	}
+	_, err = service.ResolveAttemptDesktopBuild(t.Context(), principal)
+	require.Error(t, err, "revoked build obtained Attempt authority in dev")
 }

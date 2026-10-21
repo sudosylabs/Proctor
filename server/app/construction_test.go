@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"sort"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
@@ -61,27 +63,21 @@ func TestActiveMailPayloadKeysAreValidatedBeforeWorkersStart(t *testing.T) {
 	keyID := "0123456789abcdef0123456789abcdef"
 	validState := &store.MailKeyState{RequiredPrimaryKeyID: keyID,
 		Active: []store.MailPayloadKeyUsage{{KeyID: keyID, ActiveReferences: 7}}}
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{keyID: true}}); err != nil {
-		t.Fatalf("validateActiveMailPayloadKeys() = %v", err)
-	}
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{}}); err == nil || !strings.Contains(err.Error(), keyID) || !strings.Contains(err.Error(), "7") {
-		t.Fatal("missing active key was accepted")
-	}
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{err: errors.New("database unavailable")}, mailPayloadKeyRingFake{}); err == nil {
-		t.Fatal("persistence failure was accepted")
-	}
+	require.NoError(t, validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{keyID: true}}))
+	err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: keyID, keys: map[string]bool{}})
+	require.Error(t, err, "missing active key was accepted")
+	require.Contains(t, err.Error(), keyID, "missing active key was accepted")
+	require.Contains(t, err.Error(), "7", "missing active key was accepted")
+	require.Error(t, validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{err: errors.New("database unavailable")}, mailPayloadKeyRingFake{}), "persistence failure was accepted")
 	otherPrimary := "11111111111111111111111111111111"
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}}); err == nil || !strings.Contains(err.Error(), keyID) || !strings.Contains(err.Error(), otherPrimary) {
-		t.Fatal("stale configured primary was accepted")
-	}
+	err = validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: validState}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}})
+	require.Error(t, err, "stale configured primary was accepted")
+	require.Contains(t, err.Error(), keyID, "stale configured primary was accepted")
+	require.Contains(t, err.Error(), otherPrimary, "stale configured primary was accepted")
 	promotable := *validState
 	promotable.PrimaryPromotionAllowed = true
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}}); err != nil {
-		t.Fatalf("staged next-primary restart was rejected: %v", err)
-	}
-	if err := validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{otherPrimary: true}}); err == nil {
-		t.Fatal("staged next-primary restart without the required fallback was accepted")
-	}
+	require.NoError(t, validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{keyID: true, otherPrimary: true}}))
+	require.Error(t, validateActiveMailPayloadKeys(context.Background(), activeMailPayloadKeyStoreFake{state: &promotable}, mailPayloadKeyRingFake{primary: otherPrimary, keys: map[string]bool{otherPrimary: true}}), "staged next-primary restart without the required fallback was accepted")
 }
 
 func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
@@ -99,9 +95,7 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 		RealtimeDiagnostics:       constructionRealtimeDiagnosticsStub{},
 		RecoveryDiagnostics:       constructionRecoveryDiagnosticsStub{},
 	}
-	if err := validateApplicationDependencies(valid); err != nil {
-		t.Fatalf("validate complete dependencies: %v", err)
-	}
+	require.NoError(t, validateApplicationDependencies(valid))
 
 	tests := []struct {
 		name    string
@@ -126,22 +120,19 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 			deps := valid
 			test.missing(&deps)
 			_, err := New(deps)
-			if err == nil || err.Error() != test.want {
-				t.Fatalf("New validation error = %v, want %q", err, test.want)
-			}
+			require.Error(t, err, "New validation error")
+			require.Equal(t, test.want, err.Error(), "New validation error")
 		})
 	}
 
 	_, err := New(Dependencies{})
-	if err == nil || err.Error() != "store is required" {
-		t.Fatalf("New with every dependency missing = %v, want store precedence", err)
-	}
+	require.Error(t, err, "New with every dependency missing")
+	require.Equal(t, "store is required", err.Error(), "New with every dependency missing")
 	deps := valid
 	deps.Cache = nil
 	_, err = New(deps)
-	if err == nil || err.Error() != "cache is required" {
-		t.Fatalf("New with cache and mailer missing = %v, want cache precedence", err)
-	}
+	require.Error(t, err, "New with cache and mailer missing")
+	require.Equal(t, "cache is required", err.Error(), "New with cache and mailer missing")
 }
 
 type constructionCatalogWithoutJobs struct{ store.Catalog }
@@ -159,12 +150,9 @@ func TestJobRecipePreservesLifecycleOnlyGraphs(t *testing.T) {
 		examinationConstruction{},
 		profileFileConstruction{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if constructed.runtime != nil || constructed.operations != nil {
-		t.Fatalf("constructed Jobs = %#v, want empty lifecycle-only result", constructed)
-	}
+	require.NoError(t, err)
+	require.Nil(t, constructed.runtime, "constructed Jobs = %#v, want empty lifecycle-only result", constructed)
+	require.Nil(t, constructed.operations, "constructed Jobs = %#v, want empty lifecycle-only result", constructed)
 }
 
 type constructionCatalogWithJobs struct {
@@ -260,23 +248,17 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 		examinationConstruction{sittings: &examsitting.Service{}, attempts: &examattempt.Service{}},
 		profiles,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if jobs.runtime == nil || jobs.operations == nil {
-		t.Fatalf("constructed Jobs = %#v, want runtime and operations", jobs)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, jobs.runtime, "constructed Jobs = %#v, want runtime and operations", jobs)
+	require.NotNil(t, jobs.operations, "constructed Jobs = %#v, want runtime and operations", jobs)
 	_, ok := profiles.profilePictures.reads.defaultJobs.(*jobhandler.DefaultProfilePictureJobs)
-	if !ok {
-		t.Fatalf("profile default Jobs = %#v, want attached proposer with wake backlink", profiles.profilePictures.reads.defaultJobs)
-	}
+	require.True(t, ok, "profile default Jobs = %#v, want attached proposer with wake backlink", profiles.profilePictures.reads.defaultJobs)
 	application := assembleApplication(
 		Dependencies{}, applicationFoundation{}, identityConstruction{}, accessAcademicConstruction{},
 		examinationConstruction{}, profiles, jobs, administrationConstruction{},
 	)
-	if application.jobs != jobs.runtime || application.jobOperationsService != jobs.operations {
-		t.Fatal("assembled application did not retain the constructed Job runtime and operations")
-	}
+	require.Same(t, jobs.runtime, application.jobs, "assembled application did not retain the constructed Job runtime and operations")
+	require.Same(t, jobs.operations, application.jobOperationsService, "assembled application did not retain the constructed Job runtime and operations")
 }
 
 func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *testing.T) {
@@ -298,154 +280,106 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		jobhandler.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
 		newMailHealth(false),
 	)
-	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
-		t.Fatalf("descriptor registry: %v", err)
-	}
+	_, err := jobengine.NewRegistry(definitions.descriptors)
+	require.NoError(t, err)
 	descriptors := make(map[model.JobType]jobengine.Descriptor, len(definitions.descriptors))
 	for _, descriptor := range definitions.descriptors {
 		descriptors[descriptor.Type] = descriptor
 	}
 	lifecycle, exists := descriptors[model.JobTypeExamSittingLifecycle]
-	if !exists {
-		t.Fatal("Exam Sitting lifecycle descriptor is absent from the application Job graph")
-	}
-	if lifecycle.Handler == nil {
-		t.Fatalf("lifecycle handler = %#v", lifecycle.Handler)
-	}
+	require.True(t, exists, "Exam Sitting lifecycle descriptor is absent from the application Job graph")
+	require.NotNil(t, lifecycle.Handler)
 	sealing, exists := descriptors[model.JobTypeExamSittingSealing]
-	if !exists {
-		t.Fatal("Exam Sitting sealing descriptor is absent from the application Job graph")
-	}
-	if sealing.Handler == nil {
-		t.Fatalf("sealing handler = %#v", sealing.Handler)
-	}
+	require.True(t, exists, "Exam Sitting sealing descriptor is absent from the application Job graph")
+	require.NotNil(t, sealing.Handler)
 	recovery, exists := descriptors[model.JobTypeExamSittingLifecycleRecovery]
-	if !exists {
-		t.Fatal("Exam Sitting lifecycle recovery descriptor is absent from the application Job graph")
-	}
-	if recovery.Handler == nil {
-		t.Fatalf("recovery handler = %#v", recovery.Handler)
-	}
+	require.True(t, exists, "Exam Sitting lifecycle recovery descriptor is absent from the application Job graph")
+	require.NotNil(t, recovery.Handler)
 	invitationMaintenance, exists := descriptors[model.JobTypeInvitationMaintenance]
-	if !exists {
-		t.Fatal("Invitation maintenance descriptor is absent from the application Job graph")
-	}
-	if invitationMaintenance.Handler == nil {
-		t.Fatalf("Invitation maintenance handler = %#v", invitationMaintenance.Handler)
-	}
-	if descriptor, ok := descriptors[model.JobTypeOnboardingImportParse]; !ok || !descriptor.Cancelable {
-		t.Fatalf("Onboarding import parse descriptor = %#v", descriptor)
-	}
-	if descriptor, ok := descriptors[model.JobTypeOnboardingImportExecute]; !ok || !descriptor.Cancelable || len(descriptor.CheckpointVersions) != 1 {
-		t.Fatalf("Onboarding import execution descriptor = %#v", descriptor)
-	}
-	if descriptor, ok := descriptors[model.JobTypeStudentProgressionPreview]; !ok || !descriptor.Cancelable {
-		t.Fatalf("Student progression preview descriptor = %#v", descriptor)
-	}
+	require.True(t, exists, "Invitation maintenance descriptor is absent from the application Job graph")
+	require.NotNil(t, invitationMaintenance.Handler)
+	descriptor, ok := descriptors[model.JobTypeOnboardingImportParse]
+	require.True(t, ok)
+	require.True(t, descriptor.Cancelable)
+	descriptor, ok = descriptors[model.JobTypeOnboardingImportExecute]
+	require.True(t, ok)
+	require.True(t, descriptor.Cancelable)
+	require.Len(t, descriptor.CheckpointVersions, 1)
+	descriptor, ok = descriptors[model.JobTypeStudentProgressionPreview]
+	require.True(t, ok)
+	require.True(t, descriptor.Cancelable)
 
 	recurrenceCount := 0
 	invitationMaintenanceRecurrenceCount := 0
 	for _, recurrence := range definitions.recurrences {
 		if recurrence.Name == "invitation-maintenance" {
 			invitationMaintenanceRecurrenceCount++
-			if recurrence.Proposer == nil {
-				t.Fatalf("Invitation maintenance proposer = %#v", recurrence.Proposer)
-			}
+			require.NotNil(t, recurrence.Proposer)
 		}
 		if recurrence.Name != "exam-sitting-lifecycle-recovery" {
 			continue
 		}
 		recurrenceCount++
-		if recurrence.Proposer == nil {
-			t.Fatalf("recovery proposer = %#v", recurrence.Proposer)
-		}
+		require.NotNil(t, recurrence.Proposer)
 	}
-	if recurrenceCount != 1 {
-		t.Fatalf("lifecycle recovery recurrence count = %d", recurrenceCount)
-	}
-	if invitationMaintenanceRecurrenceCount != 1 {
-		t.Fatalf("Invitation maintenance recurrence count = %d", invitationMaintenanceRecurrenceCount)
-	}
+	require.Equal(t, 1, recurrenceCount, "lifecycle recovery recurrence count")
+	require.Equal(t, 1, invitationMaintenanceRecurrenceCount, "Invitation maintenance recurrence count")
 	periodicByName := make(map[string]jobengine.PeriodicTask, len(definitions.periodicTasks))
 	for _, task := range definitions.periodicTasks {
 		periodicByName[task.Name] = task
 	}
 	periodic, exists := periodicByName[examAttemptExpiryPeriodicTaskName]
-	if !exists {
-		t.Fatal("Attempt expiry periodic task is absent")
-	}
-	if periodic.Name != examAttemptExpiryPeriodicTaskName || periodic.Interval != examAttemptExpiryScanInterval {
-		t.Fatalf("Attempt expiry periodic task = %#v", periodic)
-	}
-	if runner, ok := periodic.Runner.(examAttemptExpiryPeriodicRunner); !ok || runner.attempts == nil {
-		t.Fatalf("Attempt expiry periodic runner = %#v", periodic.Runner)
-	}
+	require.True(t, exists, "Attempt expiry periodic task is absent")
+	require.Equal(t, examAttemptExpiryPeriodicTaskName, periodic.Name)
+	require.Equal(t, examAttemptExpiryScanInterval, periodic.Interval)
+	runner, ok := periodic.Runner.(examAttemptExpiryPeriodicRunner)
+	require.True(t, ok)
+	require.NotNil(t, runner.attempts)
 	browserPeriodic, exists := periodicByName["browser-authentication-maintenance"]
-	if !exists || browserPeriodic.Interval != browserAuthenticationMaintenanceInterval {
-		t.Fatalf("Browser authentication maintenance periodic task = %#v", browserPeriodic)
-	}
-	if runner, ok := browserPeriodic.Runner.(browserAuthenticationMaintenancePeriodicRunner); !ok || runner.transactions == nil {
-		t.Fatalf("Browser authentication maintenance runner = %#v", browserPeriodic.Runner)
-	}
+	require.True(t, exists)
+	require.Equal(t, browserAuthenticationMaintenanceInterval, browserPeriodic.Interval)
+	browserRunner, ok := browserPeriodic.Runner.(browserAuthenticationMaintenancePeriodicRunner)
+	require.True(t, ok, "Browser authentication maintenance runner = %#v", browserPeriodic.Runner)
+	require.NotNil(t, browserRunner.transactions)
 	externalPeriodic, exists := periodicByName["external-authentication-maintenance"]
-	if !exists || externalPeriodic.Interval != externalAuthenticationMaintenanceInterval {
-		t.Fatalf("External authentication maintenance periodic task = %#v", externalPeriodic)
-	}
-	if runner, ok := externalPeriodic.Runner.(externalAuthenticationMaintenancePeriodicRunner); !ok || runner.states == nil {
-		t.Fatalf("External authentication maintenance runner = %#v", externalPeriodic.Runner)
-	}
+	require.True(t, exists)
+	require.Equal(t, externalAuthenticationMaintenanceInterval, externalPeriodic.Interval)
+	externalRunner, ok := externalPeriodic.Runner.(externalAuthenticationMaintenancePeriodicRunner)
+	require.True(t, ok, "External authentication maintenance runner = %#v", externalPeriodic.Runner)
+	require.NotNil(t, externalRunner.states)
 	personalAccessTokenPeriodic, exists := periodicByName["personal-access-token-maintenance"]
-	if !exists || personalAccessTokenPeriodic.Interval != personalAccessTokenMaintenanceInterval {
-		t.Fatalf("Personal access token maintenance periodic task = %#v", personalAccessTokenPeriodic)
-	}
-	if runner, ok := personalAccessTokenPeriodic.Runner.(personalAccessTokenMaintenancePeriodicRunner); !ok || runner.tokens == nil {
-		t.Fatalf("Personal access token maintenance runner = %#v", personalAccessTokenPeriodic.Runner)
-	}
-	if _, exists = descriptors[model.JobType("authentication.desktop_authorization_maintenance")]; exists {
-		t.Fatal("Browser authentication maintenance must not create a durable Job descriptor")
-	}
-	if _, exists = descriptors[model.JobType("personal_access_token.mutation_maintenance")]; exists {
-		t.Fatal("Personal access token maintenance must not create a durable Job descriptor")
-	}
+	require.True(t, exists)
+	require.Equal(t, personalAccessTokenMaintenanceInterval, personalAccessTokenPeriodic.Interval)
+	personalAccessTokenRunner, ok := personalAccessTokenPeriodic.Runner.(personalAccessTokenMaintenancePeriodicRunner)
+	require.True(t, ok, "Personal access token maintenance runner = %#v", personalAccessTokenPeriodic.Runner)
+	require.NotNil(t, personalAccessTokenRunner.tokens)
+	_, exists = descriptors[model.JobType("authentication.desktop_authorization_maintenance")]
+	require.False(t, exists, "Browser authentication maintenance must not create a durable Job descriptor")
+	_, exists = descriptors[model.JobType("personal_access_token.mutation_maintenance")]
+	require.False(t, exists, "Personal access token maintenance must not create a durable Job descriptor")
 
 	cleanup, exists := descriptors[model.JobTypeCleanup]
-	if !exists {
-		t.Fatal("Job cleanup descriptor is absent")
-	}
-	if cleanup.Handler == nil {
-		t.Fatalf("cleanup handler = %#v", cleanup.Handler)
-	}
+	require.True(t, exists, "Job cleanup descriptor is absent")
+	require.NotNil(t, cleanup.Handler)
 }
 
 func TestApplicationAssemblyNamesEveryAppField(t *testing.T) {
 	t.Parallel()
 
 	source, err := os.ReadFile("app.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	parsedApp, err := parser.ParseFile(token.NewFileSet(), "app.go", source, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := structFieldNames(t, parsedApp, "App")
 
 	source, err = os.ReadFile("construction.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	parsedConstruction, err := parser.ParseFile(token.NewFileSet(), "construction.go", source, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got := compositeLiteralFieldNames(t, parsedConstruction, "App")
-	if len(got) != len(want) {
-		t.Fatalf("assembled App fields = %v, want %v", got, want)
-	}
+	require.Len(t, got, len(want), "assembled App fields")
 	for index := range want {
-		if got[index] != want[index] {
-			t.Fatalf("assembled App fields = %v, want %v", got, want)
-		}
+		require.Equal(t, want[index], got[index], "assembled App fields = %v, want %v", got, want)
 	}
 }
 
@@ -462,7 +396,7 @@ func embeddedFieldName(t *testing.T, expression ast.Expr) string {
 	case *ast.SelectorExpr:
 		return typeName.Sel.Name
 	default:
-		t.Fatalf("unsupported embedded field type %T", expression)
+		require.FailNow(t, fmt.Sprintf("unsupported embedded field type %T", expression))
 		return ""
 	}
 }
@@ -476,9 +410,7 @@ func structFieldNames(t *testing.T, file *ast.File, typeName string) []string {
 			return true
 		}
 		definition, ok := typeSpec.Type.(*ast.StructType)
-		if !ok {
-			t.Fatalf("%s is not a struct", typeName)
-		}
+		require.True(t, ok, "%s is not a struct", typeName)
 		for _, field := range definition.Fields.List {
 			if len(field.Names) == 0 {
 				names = append(names, embeddedFieldName(t, field.Type))
@@ -508,13 +440,9 @@ func compositeLiteralFieldNames(t *testing.T, file *ast.File, typeName string) [
 		}
 		for _, element := range literal.Elts {
 			keyed, ok := element.(*ast.KeyValueExpr)
-			if !ok {
-				t.Fatalf("%s assembly uses an unkeyed field", typeName)
-			}
+			require.True(t, ok, "%s assembly uses an unkeyed field", typeName)
 			key, ok := keyed.Key.(*ast.Ident)
-			if !ok {
-				t.Fatalf("%s assembly has a non-identifier field", typeName)
-			}
+			require.True(t, ok, "%s assembly has a non-identifier field", typeName)
 			names = append(names, key.Name)
 		}
 		return false

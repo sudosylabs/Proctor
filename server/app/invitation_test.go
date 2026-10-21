@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -107,9 +109,12 @@ func TestOnboardingInvitationNoOpDoesNotRequireMail(t *testing.T) {
 	view, err := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{TargetEmail: "existing@example.edu", ClassID: classID.String(), IdempotencyKey: "import-row",
 			onboardingImportID: model.NewOnboardingImportID(), onboardingImportRowNumber: 1})
-	if err != nil || !view.NoOp || persistence.issued == nil || persistence.issued.Occurrence != nil || persistence.issued.Delivery != nil || persistence.issued.DeliveryJob != nil {
-		t.Fatalf("mail-disabled no-op = %#v / %#v / %v", view, persistence.issued, err)
-	}
+	require.NoError(t, err, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
+	require.True(t, view.NoOp, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
+	require.NotNil(t, persistence.issued, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
+	require.Nil(t, persistence.issued.Occurrence, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
+	require.Nil(t, persistence.issued.Delivery, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
+	require.Nil(t, persistence.issued.DeliveryJob, "mail-disabled no-op = %#v / %#v", view, persistence.issued)
 }
 func (f *invitationStoreFake) IssueTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
 	f.teacherIssued = input
@@ -251,9 +256,7 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 		TargetEmail: "invited@example.edu", ClassID: classID, AcademicPeriodID: periodID,
 		IntendedStartsAt: now.Add(time.Hour), InviterUserID: inviterID, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
@@ -267,36 +270,42 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 	capabilities := store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus": {}}}
 	result, err := service.acceptExternalIdentity(context.Background(), state, assertion, capabilities,
 		model.RequestMetadata{RequestID: "request-1", IPAddress: "192.0.2.10"}, "oidc")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	accepted := persistence.externalAccepted
-	if accepted == nil || result.User != accepted.User || accepted.ExternalStateID != state.ID ||
-		accepted.ProviderEmail != "provider.mailbox@example.edu" || accepted.User.Email != invitation.TargetEmail ||
-		!accepted.User.EmailVerified || accepted.Identity.Provider != "campus" || accepted.Identity.Subject != assertion.Subject ||
-		accepted.Affiliation == nil || accepted.Affiliation.Kind != model.AffiliationStudent ||
-		accepted.ClassMember == nil || accepted.ClassMember.ClassID != classID || accepted.ClassMember.AcademicPeriodID != periodID ||
-		accepted.ClassMember.UserID != accepted.User.ID || accepted.Notice == nil ||
-		accepted.Notice.Delivery.TargetUserID != accepted.User.ID || accepted.AuditEvent.AuthMethod != "oidc" ||
-		!strings.Contains(string(accepted.AuditEvent.Parameters), `"provider":"campus"`) ||
-		!slices.Equal(accepted.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}) {
-		t.Fatalf("external Invitation package/result = %#v / %#v", accepted, result)
-	}
-	if mail.directJobType != model.JobTypeMailDeliver {
-		t.Fatalf("acceptance notice Job type = %q", mail.directJobType)
-	}
+	require.NotNil(t, accepted, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Same(t, accepted.User, result.User, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, state.ID, accepted.ExternalStateID, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, "provider.mailbox@example.edu", accepted.ProviderEmail, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, invitation.TargetEmail, accepted.User.Email, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.True(t, accepted.User.EmailVerified, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, "campus", accepted.Identity.Provider, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, assertion.Subject, accepted.Identity.Subject, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.NotNil(t, accepted.Affiliation, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.AffiliationStudent, accepted.Affiliation.Kind, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.NotNil(t, accepted.ClassMember, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, classID, accepted.ClassMember.ClassID, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, periodID, accepted.ClassMember.AcademicPeriodID, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, accepted.User.ID, accepted.ClassMember.UserID, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.NotNil(t, accepted.Notice, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, accepted.User.ID, accepted.Notice.Delivery.TargetUserID, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, "oidc", accepted.AuditEvent.AuthMethod, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Contains(t, string(accepted.AuditEvent.Parameters), `"provider":"campus"`, "external Invitation package/result = %#v / %#v", accepted, result)
+	require.True(t, slices.Equal(accepted.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}), "external Invitation package/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.JobTypeMailDeliver, mail.directJobType)
 	mail.directErr = fmt.Errorf("mail preparation unavailable")
 	assertion.Username = strings.Repeat("x", 1_000)
 	result, err = service.acceptExternalIdentity(context.Background(), state, assertion, capabilities,
 		model.RequestMetadata{RequestID: "request-2"}, "oidc")
-	if err != nil || result == nil {
-		t.Fatalf("existing-User candidate fallback result=%#v error=%v", result, err)
-	}
+	require.NoError(t, err, "existing-User candidate fallback result")
+	require.NotNil(t, result, "existing-User candidate fallback result")
 	accepted = persistence.externalAccepted
-	if accepted == nil || !accepted.User.ID.IsValid() || accepted.Settings != nil || accepted.DefaultProfilePictureJob != nil ||
-		accepted.Notice != nil || accepted.ClassMember == nil || accepted.ClassMember.UserID != accepted.User.ID {
-		t.Fatalf("existing-User candidate fallback package = %#v", accepted)
-	}
+	require.NotNil(t, accepted)
+	require.True(t, accepted.User.ID.IsValid())
+	require.Nil(t, accepted.Settings)
+	require.Nil(t, accepted.DefaultProfilePictureJob)
+	require.Nil(t, accepted.Notice)
+	require.NotNil(t, accepted.ClassMember)
+	require.Equal(t, accepted.User.ID, accepted.ClassMember.UserID)
 }
 
 func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
@@ -331,19 +340,16 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
-	if err != nil {
-		t.Fatalf("IssueTeacherAcademicUnit() error = %v", err)
-	}
-	if view.AcademicUnitID != unitID || view.RoleID != roleID || persistence.teacherIssued == nil ||
-		persistence.teacherIssued.Lifetime != model.InvitationLifetime ||
-		!slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionExamManage), string(model.ActionProgrammeManage)}) {
-		t.Fatalf("teacher issue view/input = %#v / %#v", view, persistence.teacherIssued)
-	}
-	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||
-		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
-		authorizer.delegatedScopeID != unitID.String() {
-		t.Fatalf("teacher issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, unitID, view.AcademicUnitID, "teacher issue view/input = %#v", view)
+	require.Equal(t, roleID, view.RoleID, "teacher issue view/input = %#v", view)
+	require.NotNil(t, persistence.teacherIssued, "teacher issue view/input = %#v", view)
+	require.Equal(t, model.InvitationLifetime, persistence.teacherIssued.Lifetime, "teacher issue view/input = %#v", view)
+	require.True(t, slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionExamManage), string(model.ActionProgrammeManage)}), "teacher issue view/input = %#v", view)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}), "teacher issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.True(t, slices.Equal(authorizer.delegatedActions, role.Permissions), "teacher issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.Equal(t, model.RoleScopeAcademicUnit, authorizer.delegatedScopeType, "teacher issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.Equal(t, unitID.String(), authorizer.delegatedScopeID, "teacher issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
 }
 
 func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.T) {
@@ -359,9 +365,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
 		&mutationAttemptAuditorFake{events: &auditEvents}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-a", "https://proctor.example.edu", time.Hour,
 		model.NewCredentialToken, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), IdempotencyKey: "batch-once", Items: []InvitationBatchItemCommand{
 			{IdempotencyKey: "row-1", TargetEmail: "first@example.edu"},
@@ -370,31 +374,32 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 		}}
 	invocation := NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
 	first, err := service.RunInvitationBatch(context.Background(), invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Succeeded != 1 || first.NoOp != 0 || first.Failed != 2 || len(first.Items) != 3 ||
-		first.Items[0].Status != InvitationBatchItemSucceeded || !first.Items[0].InvitationID.IsValid() ||
-		first.Items[1].ErrorCode != "request.invalid" || first.Items[2].ErrorCode != "onboarding_batch.duplicate" ||
-		persistence.issueExecutions != 1 {
-		t.Fatalf("first batch result=%#v executions=%d", first, persistence.issueExecutions)
-	}
-	if len(authorizer.actions) < 3 || authorizer.actions[0] != model.ActionOnboardingBatchManage ||
-		authorizer.actions[1] != model.ActionInvitationCreate || authorizer.actions[2] != model.ActionClassMembersManage {
-		t.Fatalf("batch authorization order = %v", authorizer.actions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, first.Succeeded, "first batch result=%#v executions", first)
+	require.Equal(t, 0, first.NoOp, "first batch result=%#v executions", first)
+	require.Equal(t, 2, first.Failed, "first batch result=%#v executions", first)
+	require.Len(t, first.Items, 3, "first batch result=%#v executions", first)
+	require.Equal(t, InvitationBatchItemSucceeded, first.Items[0].Status, "first batch result=%#v executions", first)
+	require.True(t, first.Items[0].InvitationID.IsValid(), "first batch result=%#v executions", first)
+	require.Equal(t, "request.invalid", first.Items[1].ErrorCode, "first batch result=%#v executions", first)
+	require.Equal(t, "onboarding_batch.duplicate", first.Items[2].ErrorCode, "first batch result=%#v executions", first)
+	require.Equal(t, 1, persistence.issueExecutions, "first batch result=%#v executions", first)
+	require.GreaterOrEqual(t, len(authorizer.actions), 3)
+	require.Equal(t, model.ActionOnboardingBatchManage, authorizer.actions[0])
+	require.Equal(t, model.ActionInvitationCreate, authorizer.actions[1])
+	require.Equal(t, model.ActionClassMembersManage, authorizer.actions[2])
 
 	command.Items = []InvitationBatchItemCommand{command.Items[2], command.Items[1], command.Items[0]}
 	mail.disabled = true
 	second, err := service.RunInvitationBatch(context.Background(), invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Succeeded != 0 || second.NoOp != 1 || second.Failed != 2 ||
-		second.Items[0].ErrorCode != "onboarding_batch.duplicate" || second.Items[2].InvitationID != first.Items[0].InvitationID ||
-		second.Items[2].Status != InvitationBatchItemNoOp || persistence.issueExecutions != 1 {
-		t.Fatalf("replayed batch result=%#v executions=%d", second, persistence.issueExecutions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, second.Succeeded, "replayed batch result=%#v executions", second)
+	require.Equal(t, 1, second.NoOp, "replayed batch result=%#v executions", second)
+	require.Equal(t, 2, second.Failed, "replayed batch result=%#v executions", second)
+	require.Equal(t, "onboarding_batch.duplicate", second.Items[0].ErrorCode, "replayed batch result=%#v executions", second)
+	require.Equal(t, first.Items[0].InvitationID, second.Items[2].InvitationID, "replayed batch result=%#v executions", second)
+	require.Equal(t, InvitationBatchItemNoOp, second.Items[2].Status, "replayed batch result=%#v executions", second)
+	require.Equal(t, 1, persistence.issueExecutions, "replayed batch result=%#v executions", second)
 }
 
 func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSessions(t *testing.T) {
@@ -406,33 +411,28 @@ func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSes
 	command := RunInvitationBatchCommand{Operation: InvitationBatchTeacherAcademicUnitCreate, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unitID.String(), IdempotencyKey: "authorize-first", Items: []InvitationBatchItemCommand{{IdempotencyKey: "row-1", RoleID: "not-an-id"}}}
 	_, err := service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !apperror.Is(err, "authorization.denied") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
-		t.Fatalf("batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}), "batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
 
 	authorizer.err = nil
 	authorizer.actions = nil
 	command.Operation = InvitationBatchAcademicUnitRoleCreate
 	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
 	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !apperror.Is(err, "authentication.token_invalid") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
-		t.Fatalf("Role batch assurance error/actions = %v / %v", err, authorizer.actions)
-	}
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}), "Role batch assurance error/actions = %v / %v", err, authorizer.actions)
 
 	authorizer.actions = nil
 	command.Operation = InvitationBatchTeacherAcademicUnitCreate
 	command.Items = make([]InvitationBatchItemCommand, MaximumInvitationBatchItems+1)
 	_, err = service.RunInvitationBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if !apperror.Is(err, "request.invalid") || len(authorizer.actions) != 0 {
-		t.Fatalf("oversized batch error/actions = %v / %v", err, authorizer.actions)
-	}
+	require.True(t, apperror.Is(err, "request.invalid"), "oversized batch error/actions = %v", err)
+	require.Empty(t, authorizer.actions, "oversized batch error/actions = %v", err)
 }
 
 func TestInvitationBatchItemIdempotencyKeyUnambiguouslyEncodesTheTuple(t *testing.T) {
 	t.Parallel()
-	if left, right := invitationBatchItemIdempotencyKey("a.b", "c"), invitationBatchItemIdempotencyKey("a", "b.c"); left == right {
-		t.Fatalf("distinct batch/item tuples collided at %q", left)
-	}
+	require.NotEqual(t, invitationBatchItemIdempotencyKey("a", "b.c"), invitationBatchItemIdempotencyKey("a.b", "c"))
 }
 
 func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
@@ -454,13 +454,11 @@ func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
 
 	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Failed != 2 || result.Items[0].ErrorCode != "authorization.denied" ||
-		result.Items[1].ErrorCode != "authorization.denied" || len(persistence.batchDuplicates) != 0 {
-		t.Fatalf("duplicate row authorization result=%#v durable duplicates=%v", result, persistence.batchDuplicates)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Failed, "duplicate row authorization result=%#v durable duplicates", result)
+	require.Equal(t, "authorization.denied", result.Items[0].ErrorCode, "duplicate row authorization result=%#v durable duplicates", result)
+	require.Equal(t, "authorization.denied", result.Items[1].ErrorCode, "duplicate row authorization result=%#v durable duplicates", result)
+	require.Empty(t, persistence.batchDuplicates, "duplicate row authorization result=%#v durable duplicates", result)
 }
 
 func TestInvitationBatchDuplicateIdentityIncludesRole(t *testing.T) {
@@ -469,20 +467,11 @@ func TestInvitationBatchDuplicateIdentityIncludesRole(t *testing.T) {
 	first := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: firstRole.String()}
 	caseVariant := InvitationBatchItemCommand{TargetEmail: " TEACHER@example.edu ", RoleID: firstRole.String()}
 	second := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: secondRole.String()}
-	if firstKey, caseKey := invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first),
-		invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, caseVariant); firstKey != caseKey {
-		t.Fatalf("same teacher package produced distinct duplicate keys %q and %q", firstKey, caseKey)
-	}
-	if firstKey, secondKey := invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first),
-		invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, second); firstKey == secondKey {
-		t.Fatalf("different teacher roles produced the same duplicate key %q", firstKey)
-	}
+	require.Equal(t, invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, caseVariant), invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first), "same teacher package produced distinct duplicate keys")
+	require.NotEqual(t, invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, second), invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first))
 	plain := InvitationBatchItemCommand{TargetEmail: "same@example.edu"}
 	blockedControl := InvitationBatchItemCommand{TargetEmail: "same@example.edu\u202e"}
-	if plainKey, blockedKey := invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, plain),
-		invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, blockedControl); plainKey != blockedKey {
-		t.Fatalf("model-equivalent mailboxes produced distinct duplicate keys %q and %q", plainKey, blockedKey)
-	}
+	require.Equal(t, invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, blockedControl), invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, plain), "model-equivalent mailboxes produced distinct duplicate keys")
 }
 
 func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
@@ -502,13 +491,12 @@ func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
 
 	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Succeeded != 1 || result.Failed != 1 || result.Items[0].Status != InvitationBatchItemSucceeded ||
-		result.Items[1].ErrorCode != "invitation.invalid" || len(persistence.batchDuplicates) != 0 {
-		t.Fatalf("invalid duplicate package result=%#v durable duplicates=%v", result, persistence.batchDuplicates)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Succeeded, "invalid duplicate package result=%#v durable duplicates", result)
+	require.Equal(t, 1, result.Failed, "invalid duplicate package result=%#v durable duplicates", result)
+	require.Equal(t, InvitationBatchItemSucceeded, result.Items[0].Status, "invalid duplicate package result=%#v durable duplicates", result)
+	require.Equal(t, "invitation.invalid", result.Items[1].ErrorCode, "invalid duplicate package result=%#v durable duplicates", result)
+	require.Empty(t, persistence.batchDuplicates, "invalid duplicate package result=%#v durable duplicates", result)
 }
 
 func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.T) {
@@ -519,9 +507,7 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 		IntendedStartsAt: now, InviterUserID: actorID, ScopeType: model.RoleScopeClass, ScopeID: classID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{disabled: true}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
@@ -532,9 +518,8 @@ func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.
 			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
 			BatchScopeType: model.RoleScopeClass, BatchScopeID: classID.String(), batchDuplicate: true,
 			batchCanonicalKey: invitationBatchItemIdempotencyKey("mail-disabled", "canonical")})
-	if !apperror.Is(err, "invitation.mail_unavailable") || len(persistence.batchDuplicates) != 0 {
-		t.Fatalf("fresh resend duplicate with disabled mail error=%v durable duplicates=%v", err, persistence.batchDuplicates)
-	}
+	require.True(t, apperror.Is(err, "invitation.mail_unavailable"), "fresh resend duplicate with disabled mail error=%v durable duplicates", err)
+	require.Empty(t, persistence.batchDuplicates, "fresh resend duplicate with disabled mail error=%v durable duplicates", err)
 }
 
 func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
@@ -554,14 +539,13 @@ func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
 
 	result, err := service.RunInvitationBatch(context.Background(),
 		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Succeeded != 1 || result.Failed != 2 || result.Items[0].ErrorCode != "request.invalid" ||
-		result.Items[1].ErrorCode != "request.invalid" || result.Items[2].Status != InvitationBatchItemSucceeded ||
-		persistence.issueExecutions != 1 {
-		t.Fatalf("repeated-key result=%#v executions=%d", result, persistence.issueExecutions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Succeeded, "repeated-key result=%#v executions", result)
+	require.Equal(t, 2, result.Failed, "repeated-key result=%#v executions", result)
+	require.Equal(t, "request.invalid", result.Items[0].ErrorCode, "repeated-key result=%#v executions", result)
+	require.Equal(t, "request.invalid", result.Items[1].ErrorCode, "repeated-key result=%#v executions", result)
+	require.Equal(t, InvitationBatchItemSucceeded, result.Items[2].Status, "repeated-key result=%#v executions", result)
+	require.Equal(t, 1, persistence.issueExecutions, "repeated-key result=%#v executions", result)
 }
 
 func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
@@ -577,18 +561,16 @@ func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
 		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
 		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID.String(),
 			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
-	if err != nil {
-		t.Fatalf("IssueAcademicUnitRole() error = %v", err)
-	}
-	if view.Purpose != model.InvitationPurposeAcademicUnitRole || view.AcademicUnitID != unitID || view.RoleID != roleID ||
-		persistence.scopedIssued == nil || persistence.scopedIssued.Lifetime != model.InvitationLifetime {
-		t.Fatalf("academic-unit Role issue view/input = %#v / %#v", view, persistence.scopedIssued)
-	}
-	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
-		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
-		authorizer.delegatedScopeID != unitID.String() {
-		t.Fatalf("academic-unit Role issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.InvitationPurposeAcademicUnitRole, view.Purpose, "academic-unit Role issue view/input = %#v", view)
+	require.Equal(t, unitID, view.AcademicUnitID, "academic-unit Role issue view/input = %#v", view)
+	require.Equal(t, roleID, view.RoleID, "academic-unit Role issue view/input = %#v", view)
+	require.NotNil(t, persistence.scopedIssued, "academic-unit Role issue view/input = %#v", view)
+	require.Equal(t, model.InvitationLifetime, persistence.scopedIssued.Lifetime, "academic-unit Role issue view/input = %#v", view)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}), "academic-unit Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.True(t, slices.Equal(authorizer.delegatedActions, role.Permissions), "academic-unit Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.Equal(t, model.RoleScopeAcademicUnit, authorizer.delegatedScopeType, "academic-unit Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.Equal(t, unitID.String(), authorizer.delegatedScopeID, "academic-unit Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
 }
 
 func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWithoutMail(t *testing.T) {
@@ -601,9 +583,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 		IntendedStartsAt: now, InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	events := []string{}
 	auditID := model.NewAuditEventID().String()
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
@@ -613,35 +593,38 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
 		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	result, err := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
-	if err != nil {
-		t.Fatalf("AcceptAcademicUnitRole() error = %v", err)
-	}
+	require.NoError(t, err)
 	accepted := persistence.scopedAccepted
-	if accepted == nil || accepted.UserID != userID || accepted.RoleBinding.UserID != userID ||
-		accepted.RoleBinding.RoleID != roleID || accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit ||
-		accepted.RoleBinding.ScopeID != unitID.String() || accepted.RoleBinding.OriginInvitationID != invitation.ID ||
-		accepted.AuditEventID != model.AuditEventID(auditID) || accepted.AuditAt != model.MillisFromTime(now.Add(time.Minute)) ||
-		result.User == nil || result.User.ID != userID || result.RoleBinding == nil || mail.directJobType != "" {
-		t.Fatalf("scoped Role acceptance/result = %#v / %#v", accepted, result)
-	}
-	if !slices.Equal(events, []string{"resolve", "begin-at-scope", "accept"}) ||
-		auditor.attempt.Action != model.Action("invitation.accept") || auditor.attempt.Resource.Type != model.ResourceAcademicUnit ||
-		auditor.attempt.Resource.ID != unitID.String() || auditor.attempt.ScopeType != model.RoleScopeAcademicUnit ||
-		auditor.attempt.ScopeID != unitID.String() || auditor.attempt.Operation != "accept_scoped_role_invitation" {
-		t.Fatalf("scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
-	}
+	require.NotNil(t, accepted, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, userID, accepted.UserID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, userID, accepted.RoleBinding.UserID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, roleID, accepted.RoleBinding.RoleID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.RoleScopeAcademicUnit, accepted.RoleBinding.ScopeType, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, unitID.String(), accepted.RoleBinding.ScopeID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, invitation.ID, accepted.RoleBinding.OriginInvitationID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.AuditEventID(auditID), accepted.AuditEventID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.MillisFromTime(now.Add(time.Minute)), accepted.AuditAt, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.NotNil(t, result.User, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Equal(t, userID, result.User.ID, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.NotNil(t, result.RoleBinding, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.Empty(t, mail.directJobType, "scoped Role acceptance/result = %#v / %#v", accepted, result)
+	require.True(t, slices.Equal(events, []string{"resolve", "begin-at-scope", "accept"}), "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, model.Action("invitation.accept"), auditor.attempt.Action, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, model.ResourceAcademicUnit, auditor.attempt.Resource.Type, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, unitID.String(), auditor.attempt.Resource.ID, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, model.RoleScopeAcademicUnit, auditor.attempt.ScopeType, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, unitID.String(), auditor.attempt.ScopeID, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	require.Equal(t, "accept_scoped_role_invitation", auditor.attempt.Operation, "scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
 	encoded, encodeErr := model.EncodeAuditData(auditor.attempt.Value)
-	if encodeErr != nil || strings.Contains(string(encoded), raw) || strings.Contains(string(encoded), invitation.ClaimHash) {
-		t.Fatalf("scoped Role audit attempt leaked claim material: %s / %v", encoded, encodeErr)
-	}
+	require.NoError(t, encodeErr, "scoped Role audit attempt leaked claim material")
+	require.NotContains(t, string(encoded), raw, "scoped Role audit attempt leaked claim material")
+	require.NotContains(t, string(encoded), invitation.ClaimHash, "scoped Role audit attempt leaked claim material")
 }
 
 func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T) {
@@ -654,9 +637,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 		InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	events := []string{}
 	auditID := model.NewAuditEventID().String()
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
@@ -666,18 +647,16 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{},
 		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	_, appErr := service.AcceptAcademicUnitRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
-	if !apperror.Is(appErr, "invitation.invalid") || auditor.failID != auditID || auditor.failCode != "invitation.invalid" ||
-		!slices.Equal(events, []string{"resolve", "begin-at-scope", "accept", "fail"}) {
-		t.Fatalf("scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
-	}
+	require.True(t, apperror.Is(appErr, "invitation.invalid"), "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
+	require.Equal(t, auditID, auditor.failID, "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
+	require.Equal(t, "invitation.invalid", auditor.failCode, "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
+	require.True(t, slices.Equal(events, []string{"resolve", "begin-at-scope", "accept", "fail"}), "scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
 }
 
 func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(t *testing.T) {
@@ -693,24 +672,21 @@ func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
 	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
-	if _, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !apperror.Is(err, "authentication.strong_required") {
-		t.Fatalf("weak IssueInstitutionRole() error = %v", err)
-	}
+	_, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak IssueInstitutionRole() error = %v", err)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	view, err := service.IssueInstitutionRoleInvitation(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
-	if err != nil {
-		t.Fatalf("strong IssueInstitutionRole() error = %v", err)
-	}
-	if view.Purpose != model.InvitationPurposeInstitutionRole || view.RoleID != roleID || view.AcademicUnitID.IsValid() ||
-		persistence.scopedIssued == nil || persistence.scopedIssued.Invitation.ScopeType != model.RoleScopeInstitution ||
-		persistence.scopedIssued.Invitation.ScopeID != institutionID.String() {
-		t.Fatalf("institution Role issue = %#v / %#v", view, persistence.scopedIssued)
-	}
-	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
-		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeInstitution {
-		t.Fatalf("institution Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.InvitationPurposeInstitutionRole, view.Purpose, "institution Role issue = %#v", view)
+	require.Equal(t, roleID, view.RoleID, "institution Role issue = %#v", view)
+	require.False(t, view.AcademicUnitID.IsValid(), "institution Role issue = %#v", view)
+	require.NotNil(t, persistence.scopedIssued, "institution Role issue = %#v", view)
+	require.Equal(t, model.RoleScopeInstitution, persistence.scopedIssued.Invitation.ScopeType, "institution Role issue = %#v", view)
+	require.Equal(t, institutionID.String(), persistence.scopedIssued.Invitation.ScopeID, "institution Role issue = %#v", view)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}), "institution Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.True(t, slices.Equal(authorizer.delegatedActions, role.Permissions), "institution Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
+	require.Equal(t, model.RoleScopeInstitution, authorizer.delegatedScopeType, "institution Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
 }
 
 func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
@@ -722,9 +698,8 @@ func TestInvitationServiceRejectsInertTeacherRoleAction(t *testing.T) {
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
 	_, err := service.IssueTeacherAcademicUnitInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueTeacherAcademicUnitInvitationCommand{TargetEmail: "teacher@example.edu", AcademicUnitID: unitID.String(), RoleID: roleID.String()})
-	if !apperror.Is(err, "invitation.role_not_delegable") || persistence.teacherIssued != nil {
-		t.Fatalf("IssueTeacherAcademicUnit() = %v / %#v", err, persistence.teacherIssued)
-	}
+	require.True(t, apperror.Is(err, "invitation.role_not_delegable"), "IssueTeacherAcademicUnit() = %v", err)
+	require.Nil(t, persistence.teacherIssued, "IssueTeacherAcademicUnit() = %v", err)
 }
 
 func TestInvitationServiceAcceptsTeacherPackageArtifacts(t *testing.T) {
@@ -737,25 +712,24 @@ func TestInvitationServiceAcceptsTeacherPackageArtifacts(t *testing.T) {
 		InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
 		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now.Add(time.Minute))
 	result, err := service.AcceptTeacherAcademicUnitInvitation(context.Background(), Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "teacher-one", Source: "127.0.0.1",
 	})
-	if err != nil {
-		t.Fatalf("AcceptTeacherAcademicUnit() error = %v", err)
-	}
+	require.NoError(t, err)
 	accepted := persistence.teacherAccepted
-	if accepted == nil || accepted.Affiliation.Kind != model.AffiliationTeacher || accepted.AcademicUnitMember.AcademicUnitID != unitID ||
-		accepted.RoleBinding.RoleID != roleID || accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit ||
-		accepted.RoleBinding.ScopeID != unitID.String() || accepted.RoleBinding.OriginInvitationID != invitation.ID ||
-		result.AcademicUnitMember == nil || result.RoleBinding == nil {
-		t.Fatalf("teacher acceptance artifacts/result = %#v / %#v", accepted, result)
-	}
+	require.NotNil(t, accepted, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.AffiliationTeacher, accepted.Affiliation.Kind, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, unitID, accepted.AcademicUnitMember.AcademicUnitID, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, roleID, accepted.RoleBinding.RoleID, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, model.RoleScopeAcademicUnit, accepted.RoleBinding.ScopeType, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, unitID.String(), accepted.RoleBinding.ScopeID, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.Equal(t, invitation.ID, accepted.RoleBinding.OriginInvitationID, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.NotNil(t, result.AcademicUnitMember, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
+	require.NotNil(t, result.RoleBinding, "teacher acceptance artifacts/result = %#v / %#v", accepted, result)
 }
 
 type invitationMailPreparerFake struct {
@@ -821,9 +795,7 @@ func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, units, roles,
 		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
 		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 
@@ -834,9 +806,7 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 		TargetEmail: "student@example.edu", ClassID: classID, AcademicPeriodID: model.NewAcademicPeriodID(),
 		IntendedStartsAt: now, InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeClass,
 		ScopeID: classID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	authorizer := &invitationAuthorizerFake{}
 	mail := &invitationMailPreparerFake{}
@@ -844,34 +814,26 @@ func TestInvitationAdministrationUsesAuthorizedSafeLifecycleCommands(t *testing.
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 
 	page, err := service.ListInvitations(context.Background(), invocation, ListInvitationsQuery{TargetEmail: "STUDENT@example.edu", Limit: 25})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].TargetEmail != invitation.TargetEmail ||
-		persistence.listOptions.TargetEmail != invitation.TargetEmail || persistence.listOptions.Limit != 25 {
-		t.Fatalf("Invitation list = %#v / %#v", page, persistence.listOptions)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1, "Invitation list = %#v / %#v", page, persistence.listOptions)
+	require.Equal(t, invitation.TargetEmail, page.Items[0].TargetEmail, "Invitation list = %#v / %#v", page, persistence.listOptions)
+	require.Equal(t, invitation.TargetEmail, persistence.listOptions.TargetEmail, "Invitation list = %#v / %#v", page, persistence.listOptions)
+	require.Equal(t, 25, persistence.listOptions.Limit, "Invitation list = %#v / %#v", page, persistence.listOptions)
 
 	resent, err := service.ResendInvitation(context.Background(), invocation, ResendInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.resent == nil || persistence.resent.ClaimHash == invitation.ClaimHash ||
-		strings.Contains(resent.String(), persistence.resent.ClaimHash) || !strings.Contains(mail.issueURL, "/join#token=") {
-		t.Fatalf("Invitation resend = %#v / %#v / %q", resent, persistence.resent, mail.issueURL)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.resent, "Invitation resend = %#v / %#v", resent, persistence.resent)
+	require.NotEqual(t, invitation.ClaimHash, persistence.resent.ClaimHash, "Invitation resend = %#v / %#v", resent, persistence.resent)
+	require.NotContains(t, resent.String(), persistence.resent.ClaimHash, "Invitation resend = %#v / %#v", resent, persistence.resent)
+	require.Contains(t, mail.issueURL, "/join#token=", "Invitation resend = %#v / %#v", resent, persistence.resent)
 
 	revoked, err := service.RevokeInvitation(context.Background(), invocation, RevokeInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.revoked == nil || revoked.State != model.InvitationRevoked ||
-		persistence.revoked.RevocationNotice == nil || persistence.revoked.RevocationNotice.Delivery.TemplateKey != model.MailTemplateAccessInvitationRevoked {
-		t.Fatalf("Invitation revoke = %#v / %#v", revoked, persistence.revoked)
-	}
-	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationView, model.ActionInvitationManage, model.ActionInvitationManage}) {
-		t.Fatalf("Invitation administration authorization = %v", authorizer.actions)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.revoked, "Invitation revoke = %#v", revoked)
+	require.Equal(t, model.InvitationRevoked, revoked.State, "Invitation revoke = %#v", revoked)
+	require.NotNil(t, persistence.revoked.RevocationNotice, "Invitation revoke = %#v", revoked)
+	require.Equal(t, model.MailTemplateAccessInvitationRevoked, persistence.revoked.RevocationNotice.Delivery.TemplateKey, "Invitation revoke = %#v", revoked)
+	require.True(t, slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationView, model.ActionInvitationManage, model.ActionInvitationManage}), "Invitation administration authorization = %v", authorizer.actions)
 }
 
 func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testing.T) {
@@ -883,9 +845,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 		TargetEmail: "old@example.edu", ClassID: currentClassID, AcademicPeriodID: period.ID,
 		IntendedStartsAt: period.StartsAt, InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeClass,
 		ScopeID: currentClassID.String(), ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	authorizer := &invitationAuthorizerFake{}
 	mail := &invitationMailPreparerFake{}
@@ -896,35 +856,31 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
 		auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
 		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Hour) })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	actor := model.NewUserID()
 	result, err := service.ReplaceInvitation(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		ReplaceInvitationCommand{ID: invitation.ID, ExpectedRevision: invitation.Revision,
 			Purpose: string(model.InvitationPurposeStudentClass), TargetEmail: "new@example.edu", ClassID: class.ID.String(),
 			SuggestedUsername: "new-student"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.replaced == nil || result.ID == invitation.ID || result.TargetEmail != "new@example.edu" ||
-		persistence.replaced.Replacement.InviterUserID != actor || persistence.replaced.Replacement.ClassID != class.ID ||
-		persistence.replaced.Replacement.AcademicPeriodID != period.ID || persistence.replaced.Replacement.ClaimHash == invitation.ClaimHash ||
-		persistence.replaced.ExpectedCurrentRevision != invitation.Revision ||
-		persistence.replaced.CurrentAuditEventID != model.AuditEventID(auditIDs[0]) || persistence.replaced.ReplacementAuditEventID != model.AuditEventID(auditIDs[1]) ||
-		!strings.Contains(mail.issueURL, "/join#token=") {
-		t.Fatalf("Invitation replacement = %#v / %#v / %q", result, persistence.replaced, mail.issueURL)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.replaced, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.NotEqual(t, invitation.ID, result.ID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, "new@example.edu", result.TargetEmail, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, actor, persistence.replaced.Replacement.InviterUserID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, class.ID, persistence.replaced.Replacement.ClassID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, period.ID, persistence.replaced.Replacement.AcademicPeriodID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.NotEqual(t, invitation.ClaimHash, persistence.replaced.Replacement.ClaimHash, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, invitation.Revision, persistence.replaced.ExpectedCurrentRevision, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, model.AuditEventID(auditIDs[0]), persistence.replaced.CurrentAuditEventID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Equal(t, model.AuditEventID(auditIDs[1]), persistence.replaced.ReplacementAuditEventID, "Invitation replacement = %#v / %#v", result, persistence.replaced)
+	require.Contains(t, mail.issueURL, "/join#token=", "Invitation replacement = %#v / %#v", result, persistence.replaced)
 	wantActions := []model.Action{model.ActionInvitationManage, model.ActionInvitationCreate, model.ActionClassMembersManage}
-	if !slices.Equal(authorizer.actions, wantActions) {
-		t.Fatalf("Invitation replacement authorization = %v, want %v", authorizer.actions, wantActions)
-	}
-	if len(auditor.attempts) != 2 || auditor.attempts[0].ScopeID != currentClassID.String() ||
-		auditor.attempts[1].ScopeID != class.ID.String() ||
-		strings.Contains(fmt.Sprint(auditor.attempts[0].Value), class.ID.String()) ||
-		strings.Contains(fmt.Sprint(auditor.attempts[1].Value), currentClassID.String()) {
-		t.Fatalf("Invitation replacement audit attempts = %#v", auditor.attempts)
-	}
+	require.True(t, slices.Equal(authorizer.actions, wantActions), "Invitation replacement authorization = %v, want %v", authorizer.actions, wantActions)
+	require.Len(t, auditor.attempts, 2)
+	require.Equal(t, currentClassID.String(), auditor.attempts[0].ScopeID)
+	require.Equal(t, class.ID.String(), auditor.attempts[1].ScopeID)
+	require.NotContains(t, fmt.Sprint(auditor.attempts[0].Value), class.ID.String())
+	require.NotContains(t, fmt.Sprint(auditor.attempts[1].Value), currentClassID.String())
 }
 
 func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
@@ -937,14 +893,12 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, appErr := service.IssueStudentClassInvitation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		IssueStudentClassInvitationCommand{ClassID: classID.String(), TargetEmail: "student@example.edu"})
-	if !apperror.Is(appErr, "authorization.denied") || len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionInvitationCreate {
-		t.Fatalf("IssueStudentClass() error/actions = %v / %v", appErr, authorizer.actions)
-	}
+	require.True(t, apperror.Is(appErr, "authorization.denied"), "IssueStudentClass() error/actions = %v", appErr)
+	require.Len(t, authorizer.actions, 1, "IssueStudentClass() error/actions = %v", appErr)
+	require.Equal(t, model.ActionInvitationCreate, authorizer.actions[0], "IssueStudentClass() error/actions = %v", appErr)
 }
 
 func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *testing.T) {
@@ -954,26 +908,21 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{ID: model.NewInvitationID(), TargetEmail: "student@example.edu",
 		ClassID: classID, AcademicPeriodID: periodID, IntendedStartsAt: now, InviterUserID: inviterID,
 		ScopeType: model.RoleScopeClass, ScopeID: classID.String(), ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{disabled: true}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
-		Password: "correct horse battery staple", Username: "student-one", Source: "127.0.0.1"}); appErr != nil {
-		t.Fatalf("AcceptStudentClass() error = %v", appErr)
-	}
-	if mail.directJobType != model.JobTypeMailDeliver || persistence.accepted.Delivery.State != model.MailDeliverySuppressed ||
-		persistence.accepted.Delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.accepted.Delivery.EncryptedPayload) != 0 ||
-		persistence.accepted.DeliveryJob.Status != model.JobStatusCanceled {
-		t.Fatalf("disabled acceptance mail = %#v / %#v / %s", persistence.accepted.Delivery, persistence.accepted.DeliveryJob, mail.directJobType)
-	}
+	require.NoError(t, err)
+	_, appErr := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{Claim: raw,
+		Password: "correct horse battery staple", Username: "student-one", Source: "127.0.0.1"})
+	require.NoError(t, appErr)
+	require.Equal(t, model.JobTypeMailDeliver, mail.directJobType, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.accepted.Delivery.State, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
+	require.Equal(t, model.MailDeliveryDisabledCode, persistence.accepted.Delivery.PublicFailureCode, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
+	require.Empty(t, persistence.accepted.Delivery.EncryptedPayload, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
+	require.Equal(t, model.JobStatusCanceled, persistence.accepted.DeliveryJob.Status, "disabled acceptance mail = %#v / %#v", persistence.accepted.Delivery, persistence.accepted.DeliveryJob)
 }
 
 func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
@@ -998,9 +947,10 @@ func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
 						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
 					})
 				}
-				if result != nil || persistence.accepted != nil || persistence.teacherAccepted != nil || mail.directJobType != "" {
-					t.Fatal("failed password work accepted an Invitation or prepared mail")
-				}
+				require.Nil(t, result, "failed password work accepted an Invitation or prepared mail")
+				require.Nil(t, persistence.accepted, "failed password work accepted an Invitation or prepared mail")
+				require.Nil(t, persistence.teacherAccepted, "failed password work accepted an Invitation or prepared mail")
+				require.Empty(t, mail.directJobType, "failed password work accepted an Invitation or prepared mail")
 				return err
 			})
 		})
@@ -1030,50 +980,42 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	raw := model.NewCredentialToken()
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
-	if err != nil {
-		t.Fatalf("newInvitationService() error = %v", err)
-	}
+	require.NoError(t, err)
 	invocation := NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{})
 	view, err := service.IssueStudentClassInvitation(context.Background(), invocation, IssueStudentClassInvitationCommand{
 		TargetEmail: " Student@Example.edu ", ClassID: classID.String(), IntendedStartsAt: model.MillisFromTime(period.StartsAt),
 		IntendedEndsAt: model.MillisFromTime(period.EndsAt), SuggestedUsername: "student-one", SuggestedDisplayName: "Student One", SuggestedLocale: "en",
 	})
-	if err != nil {
-		t.Fatalf("IssueStudentClass() error = %v", err)
-	}
-	if view.ID != persistence.invitation.ID || strings.Contains(view.String(), raw) || persistence.issued.Invitation.ClaimHash != model.HashInvitationClaim(raw) ||
-		strings.Contains(string(persistence.issued.Delivery.EncryptedPayload), raw) || !strings.Contains(mail.issueURL, "/join#token=") {
-		t.Fatalf("unsafe or incomplete issue: view=%#v input=%#v url=%q", view, persistence.issued, mail.issueURL)
-	}
-	if len(authorizer.actions) != 2 || authorizer.actions[0] != model.ActionInvitationCreate || authorizer.actions[1] != model.ActionClassMembersManage {
-		t.Fatalf("authorization actions = %v", authorizer.actions)
-	}
+	require.NoError(t, err)
+	require.Equal(t, persistence.invitation.ID, view.ID, "unsafe or incomplete issue: view=%#v input=%#v url", view, persistence.issued)
+	require.NotContains(t, view.String(), raw, "unsafe or incomplete issue: view=%#v input=%#v url", view, persistence.issued)
+	require.Equal(t, model.HashInvitationClaim(raw), persistence.issued.Invitation.ClaimHash, "unsafe or incomplete issue: view=%#v input=%#v url", view, persistence.issued)
+	require.NotContains(t, string(persistence.issued.Delivery.EncryptedPayload), raw, "unsafe or incomplete issue: view=%#v input=%#v url", view, persistence.issued)
+	require.Contains(t, mail.issueURL, "/join#token=", "unsafe or incomplete issue: view=%#v input=%#v url", view, persistence.issued)
+	require.Len(t, authorizer.actions, 2)
+	require.Equal(t, model.ActionInvitationCreate, authorizer.actions[0])
+	require.Equal(t, model.ActionClassMembersManage, authorizer.actions[1])
 	result, err := service.AcceptStudentClassInvitation(context.Background(), Invocation{}, AcceptStudentClassInvitationCommand{
 		Claim: raw, Password: "correct horse battery staple", Username: "student-one", DisplayName: "Student One", Locale: "en",
 	})
-	if err != nil {
-		t.Fatalf("AcceptStudentClass() error = %v", err)
-	}
-	if result.User == nil || result.User.Email != "student@example.edu" || !result.User.EmailVerified ||
-		persistence.accepted.PasswordCredential.PasswordHash != "encoded:correct horse battery staple" ||
-		persistence.accepted.ClaimHash != model.HashInvitationClaim(raw) {
-		t.Fatalf("acceptance result/input = %#v / %#v", result, persistence.accepted)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result.User, "acceptance result/input = %#v / %#v", result, persistence.accepted)
+	require.Equal(t, "student@example.edu", result.User.Email, "acceptance result/input = %#v / %#v", result, persistence.accepted)
+	require.True(t, result.User.EmailVerified, "acceptance result/input = %#v / %#v", result, persistence.accepted)
+	require.Equal(t, "encoded:correct horse battery staple", persistence.accepted.PasswordCredential.PasswordHash, "acceptance result/input = %#v / %#v", result, persistence.accepted)
+	require.Equal(t, model.HashInvitationClaim(raw), persistence.accepted.ClaimHash, "acceptance result/input = %#v / %#v", result, persistence.accepted)
 }
 
 func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *testing.T) {
 	now := time.Now()
 	accounting, err := newAuthenticationAttemptAccounting(newExpiringAuthenticationAttemptCache(func() time.Time { return now }))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	limiter := invitationAttemptAccounting{attempts: accounting, policy: LoginRateLimitPolicy{
 		Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 2,
 	}}
 	identity := model.HashInvitationClaim("malformed")
-	if err = limiter.Check(context.Background(), identity, "127.0.0.1"); err != nil {
-		t.Fatalf("first Check() error = %v", err)
-	}
+	err = limiter.Check(context.Background(), identity, "127.0.0.1")
+	require.NoError(t, err)
 	purpose, _ := authenticationAttemptPurposeInvitation.keySegment()
 	identityLimit := authenticationAttemptLimit{dimension: authenticationAttemptDimensionIdentity, identity: identity}
 	intent := authenticationAttemptIntent{purpose: authenticationAttemptPurposeInvitation, qualifier: invitationAcceptanceAttemptQualifier}
@@ -1082,15 +1024,12 @@ func TestInvitationAttemptAccountingLimitsClaimAndSourceBeforeValidation(t *test
 	legacyIntent.qualifier = "student-class-accept"
 	legacyKey := "authentication/attempts/" + purpose + "/identity/" + digestAuthenticationAttempt(legacyIntent, identityLimit)
 	entries := accounting.cache.(*expiringAuthenticationAttemptCache).snapshot()
-	if _, ok := entries[expectedKey]; !ok {
-		t.Fatalf("purpose-neutral Invitation acceptance counter was not recorded: %#v", entries)
-	}
-	if _, ok := entries[legacyKey]; ok {
-		t.Fatalf("teacher-capable Invitation accounting used legacy student qualifier: %#v", entries)
-	}
+	_, ok := entries[expectedKey]
+	require.True(t, ok, "purpose-neutral Invitation acceptance counter was not recorded: %#v", entries)
+	_, ok = entries[legacyKey]
+	require.False(t, ok, "teacher-capable Invitation accounting used legacy student qualifier: %#v", entries)
 	err = limiter.Check(context.Background(), identity, "127.0.0.1")
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.rate_limited" {
-		t.Fatalf("second Check() error = %v", err)
-	}
+	require.True(t, ok)
+	require.Equal(t, "authentication.rate_limited", failure.Code())
 }

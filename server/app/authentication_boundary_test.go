@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -20,14 +22,10 @@ func TestAuthenticationDoesNotRetainRootStore(t *testing.T) {
 	rootStore := reflect.TypeOf((*store.Store)(nil)).Elem()
 	service := reflect.TypeOf(authenticationService{})
 	for index := 0; index < service.NumField(); index++ {
-		if service.Field(index).Type == rootStore {
-			t.Fatalf("authenticationService retains root store in field %q", service.Field(index).Name)
-		}
+		require.NotEqual(t, rootStore, service.Field(index).Type, "authenticationService retains root store in field")
 	}
 	selfSessions := reflect.TypeOf(selfSessionService{})
 	for index := 0; index < selfSessions.NumField(); index++ {
-		if selfSessions.Field(index).Type == rootStore {
-			t.Fatalf("selfSessionService retains root store in field %q", selfSessions.Field(index).Name)
-		}
+		require.NotEqual(t, rootStore, selfSessions.Field(index).Type, "selfSessionService retains root store in field")
 	}
 }

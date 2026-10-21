@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 )
 
@@ -23,15 +25,11 @@ func BenchmarkPasswordHasherDefault(b *testing.B) {
 		ArgonKeyBytes: settings.ArgonKeyBytes, MaximumConcurrentOperations: settings.MaximumConcurrentOperations,
 	}
 	hasher, err := newPasswordHasher(policy, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	ctx := context.Background()
 	password := "correct horse battery staple"
 	encoded, err := hasher.Hash(ctx, password)
-	if err != nil {
-		b.Fatal(err)
-	}
+	require.NoError(b, err)
 	for _, operation := range []string{"Hash", "Verify", "VerifyDummy"} {
 		b.Run(operation, func(b *testing.B) {
 			b.ReportAllocs()
@@ -44,9 +42,7 @@ func BenchmarkPasswordHasherDefault(b *testing.B) {
 				case "VerifyDummy":
 					err = hasher.VerifyDummy(ctx, password)
 				}
-				if err != nil {
-					b.Fatal(err)
-				}
+				require.NoError(b, err)
 			}
 		})
 	}

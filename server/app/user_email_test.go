@@ -11,9 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -38,18 +39,13 @@ func TestEmailChangeAuditOmitsOldAndNewMailboxes(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
 		AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now), ClientType: model.SessionClientWeb}
 
-	if _, err := application.ChangeUserEmail(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
-		ChangeUserEmailCommand{UserID: user.ID, Email: "new-private@example.edu"}); err != nil {
-		t.Fatal(err)
-	}
+	_, err := application.ChangeUserEmail(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		ChangeUserEmailCommand{UserID: user.ID, Email: "new-private@example.edu"})
+	require.NoError(t, err)
 	encoded, err := json.Marshal(map[string]any{"parameters": auditor.attempt.Value, "prior": auditor.attempt.Prior})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, mailbox := range []string{"old-private@example.edu", "new-private@example.edu"} {
-		if strings.Contains(string(encoded), mailbox) {
-			t.Fatalf("audit projection exposed mailbox %q: %s", mailbox, encoded)
-		}
+		require.NotContains(t, string(encoded), mailbox, "audit projection exposed mailbox")
 	}
 }
 
@@ -63,21 +59,21 @@ func TestEmailChangePreparesFrozenOldWarningAndNewTargetVerification(t *testing.
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
 		tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer, now: func() time.Time { return now }})
 	result, err := app.accountTokenService.changeUserEmail(context.Background(), user, "new@example.edu", now, mutationAttemptReference{ID: model.NewAuditEventID(), MutationAtMillis: now.UnixMilli()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Email != "new@example.edu" || tokens.emailChange == nil || tokens.emailChange.Token.Target != "new@example.edu" ||
-		tokens.emailChange.TokenLifetime != 24*time.Hour || tokens.emailChange.WarningLifetime != 24*time.Hour {
-		t.Fatalf("result/aggregate = %#v / %#v", result, tokens.emailChange)
-	}
-	if len(mailer.requests) != 2 || mailer.requests[0].Recipient.Email != "old@example.edu" || mailer.requests[0].TemplateKey != model.MailTemplateIdentityEmailChangeWarningOld ||
-		mailer.requests[1].Recipient.Email != "new@example.edu" || mailer.requests[1].TemplateKey != model.MailTemplateIdentityEmailChangeVerifyNew || mailer.requests[1].ActionURL == "" {
-		t.Fatalf("mail requests = %#v", mailer.requests)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "new@example.edu", result.Email, "result/aggregate = %#v", result)
+	require.NotNil(t, tokens.emailChange, "result/aggregate = %#v", result)
+	require.Equal(t, "new@example.edu", tokens.emailChange.Token.Target, "result/aggregate = %#v", result)
+	require.Equal(t, 24*time.Hour, tokens.emailChange.TokenLifetime, "result/aggregate = %#v", result)
+	require.Equal(t, 24*time.Hour, tokens.emailChange.WarningLifetime, "result/aggregate = %#v", result)
+	require.Len(t, mailer.requests, 2)
+	require.Equal(t, "old@example.edu", mailer.requests[0].Recipient.Email)
+	require.Equal(t, model.MailTemplateIdentityEmailChangeWarningOld, mailer.requests[0].TemplateKey)
+	require.Equal(t, "new@example.edu", mailer.requests[1].Recipient.Email)
+	require.Equal(t, model.MailTemplateIdentityEmailChangeVerifyNew, mailer.requests[1].TemplateKey)
+	require.NotEmpty(t, mailer.requests[1].ActionURL)
 	user.Email = "later@example.edu"
-	if mailer.requests[0].Recipient.Email != "old@example.edu" || mailer.requests[1].Recipient.Email != "new@example.edu" {
-		t.Fatal("prepared recipients followed a later profile mutation")
-	}
+	require.Equal(t, "old@example.edu", mailer.requests[0].Recipient.Email, "prepared recipients followed a later profile mutation")
+	require.Equal(t, "new@example.edu", mailer.requests[1].Recipient.Email, "prepared recipients followed a later profile mutation")
 }
 
 type emailTransitionMailerFake struct{ requests []DirectMailPreparation }

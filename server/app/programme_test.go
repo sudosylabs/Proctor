@@ -9,14 +9,16 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type programmeStoreFake struct {
@@ -120,12 +122,8 @@ func TestProgrammeCreateAuthorizationDenialStopsBeforeAuditAndStore(t *testing.T
 	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
+	require.Equal(t, []string{"authorize"}, events)
 }
 
 func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
@@ -140,12 +138,12 @@ func TestProgrammeCreateConflictCompletesFailedAttempt(t *testing.T) {
 	_, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.NewAcademicUnitID(), Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if !apperror.Is(err, "programme.conflict") || auditor.failCode != "programme.conflict" {
-		t.Fatalf("Create() error = %v, audit code = %q", err, auditor.failCode)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create", "audit-fail"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "programme.conflict"), "Create() error = %v, audit code", err)
+	require.Equal(t, "programme.conflict", auditor.failCode, "Create() error = %v, audit code", err)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create", "audit-fail")
 }
 func (*programmeAuthorizerFake) Installation(context.Context) (model.Resource, error) {
 	return model.Resource{}, nil
@@ -166,21 +164,17 @@ func TestProgrammeCreatePreservesAcademicUnitOwnershipAndAtomicAudit(t *testing.
 	got, err := service.CreateProgramme(context.Background(), Invocation{}, CreateProgrammeCommand{
 		AcademicUnitID: model.AcademicUnitID(unitID), Name: "computer-science", DisplayName: "Computer Science",
 	})
-	if err != nil || got != created {
-		t.Fatalf("Create() = %#v, %v", got, err)
-	}
-	if authorizer.action != model.ActionProgrammeManage || authorizer.resource != (model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}) {
-		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
-	}
-	if persistence.createInput == nil ||
-		persistence.createInput.Programme.AcademicUnitID.String() != unitID ||
-		persistence.createInput.Programme.ID.String() != programmeID ||
-		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
-		t.Fatalf("create input = %#v", persistence.createInput)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "Create()")
+	require.Same(t, created, got, "Create()")
+	require.Equal(t, model.ActionProgrammeManage, authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}, authorizer.resource, "authorization")
+	require.NotNil(t, persistence.createInput)
+	require.Equal(t, unitID, persistence.createInput.Programme.AcademicUnitID.String())
+	require.Equal(t, programmeID, persistence.createInput.Programme.ID.String())
+	require.Equal(t, model.AuditEventID(auditID), persistence.createInput.AuditEventID)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
 }
 
 func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
@@ -196,15 +190,12 @@ func TestProgrammeUpdateCannotMoveOwnership(t *testing.T) {
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	name := "computing"
 	updated, err := service.UpdateProgramme(context.Background(), Invocation{}, UpdateProgrammeCommand{ID: current.ID, Name: &name})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.AcademicUnitID != current.AcademicUnitID || persistence.updateInput.Programme.AcademicUnitID != current.AcademicUnitID {
-		t.Fatalf("ownership changed: %#v", updated)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "get", "audit-begin", "store-update"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err)
+	require.Equal(t, current.AcademicUnitID, updated.AcademicUnitID)
+	require.Equal(t, current.AcademicUnitID, persistence.updateInput.Programme.AcademicUnitID)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update")
 }
 
 func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
@@ -214,12 +205,10 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	persistence := &programmeStoreFake{events: &events, current: current}
 	auditID := model.NewID()
 	service := newProgrammeService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
-	if err := service.ArchiveProgramme(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID || persistence.archiveInput.AuditEventID != model.AuditEventID(auditID) {
-		t.Fatalf("archive input = %#v", persistence.archiveInput)
-	}
+	require.NoError(t, service.ArchiveProgramme(context.Background(), Invocation{}, ArchiveProgrammeCommand{ID: current.ID}))
+	require.NotNil(t, persistence.archiveInput)
+	require.Equal(t, current.ID, persistence.archiveInput.ID)
+	require.Equal(t, model.AuditEventID(auditID), persistence.archiveInput.AuditEventID)
 }
 
 func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
@@ -240,15 +229,11 @@ func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
 			got, err := service.ListProgrammes(context.Background(), Invocation{}, ListProgrammesQuery{
 				AcademicUnitID: model.NewAcademicUnitID(), Query: term, Limit: 1,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(got) != 1 || got[0] != first {
-				t.Fatalf("List(limit=1, q=%q) = %#v", term, got)
-			}
-			if persistence.searchTerm != strings.TrimSpace(term) || persistence.searchLimit != 1 {
-				t.Fatalf("bounded query = %q, %d", persistence.searchTerm, persistence.searchLimit)
-			}
+			require.NoError(t, err)
+			require.Len(t, got, 1, "List(limit=1, q=%q)", term)
+			require.Same(t, first, got[0], "List(limit=1, q=%q)", term)
+			require.Equal(t, strings.TrimSpace(term), persistence.searchTerm, "bounded query")
+			require.Equal(t, 1, persistence.searchLimit, "bounded query")
 		})
 	}
 }

@@ -15,9 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestAccountTokenServiceDoesNotRetainRootStore(t *testing.T) {
@@ -27,9 +30,8 @@ func TestAccountTokenServiceDoesNotRetainRootStore(t *testing.T) {
 	typeOfService := reflect.TypeOf(accountTokenService{})
 	for i := 0; i < typeOfService.NumField(); i++ {
 		field := typeOfService.Field(i)
-		if field.Type == typeOfStore || field.Type.Implements(typeOfStore) {
-			t.Fatalf("account token service field %q retains root store", field.Name)
-		}
+		require.NotEqual(t, typeOfStore, field.Type, "account token service field %q retains root store", field.Name)
+		require.False(t, field.Type.Implements(typeOfStore), "account token service field %q retains root store", field.Name)
 	}
 }
 
@@ -58,9 +60,8 @@ func TestAccountTokenServiceRequiresDependencies(t *testing.T) {
 			t.Parallel()
 			args := validAccountTokenConstructorArgs()
 			test.remove(&args)
-			if _, err := args.build(); err == nil {
-				t.Fatal("constructor accepted missing dependency")
-			}
+			_, err := args.build()
+			require.Error(t, err, "constructor accepted missing dependency")
 		})
 	}
 }
@@ -82,34 +83,23 @@ func TestAccountRecoveryAttemptAccountingIsolatesAndNormalizesOperations(t *test
 		accountRecoveryAttemptPasswordResetComplete,
 	}
 	for _, operation := range operations {
-		if err := service.checkAccountRecoveryRateLimit(
+		require.NoError(t, service.checkAccountRecoveryRateLimit(
 			context.Background(), operation, " Student@Example.EDU ", " Example.COM:443 ",
-		); err != nil {
-			t.Fatal(err)
-		}
-		if err := service.checkAccountRecoveryRateLimit(
+		))
+		require.NoError(t, service.checkAccountRecoveryRateLimit(
 			context.Background(), operation, "student@example.edu", "example.com:8443",
-		); err != nil {
-			t.Fatal(err)
-		}
+		))
 	}
 
 	entries := cache.snapshot()
-	if len(entries) != len(operations)*2 {
-		t.Fatalf("recovery counters = %d, want %d", len(entries), len(operations)*2)
-	}
+	require.Len(t, entries, len(operations)*2, "recovery counters")
 	for key, entry := range entries {
-		if !strings.HasPrefix(key, "authentication/attempts/account-recovery/") {
-			t.Fatalf("counter key = %q", key)
-		}
-		if strings.Contains(strings.ToLower(key), "student") ||
-			strings.Contains(strings.ToLower(key), "example") ||
-			strings.Contains(key, "verification") || strings.Contains(key, "reset") {
-			t.Fatalf("counter key exposes recovery material: %q", key)
-		}
-		if entry.count != 2 {
-			t.Fatalf("counter %q = %d, want 2", key, entry.count)
-		}
+		require.True(t, strings.HasPrefix(key, "authentication/attempts/account-recovery/"), "counter key = %q", key)
+		require.NotContains(t, strings.ToLower(key), "student")
+		require.NotContains(t, strings.ToLower(key), "example")
+		require.NotContains(t, key, "verification")
+		require.NotContains(t, key, "reset")
+		require.Equal(t, int64(2), entry.count, "counter %q", key)
 	}
 }
 
@@ -134,16 +124,13 @@ func TestAccountRecoveryAttemptAccountingUsesExactThresholdForEveryOperation(t *
 					Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 100,
 				}},
 			}
-			if err := service.checkAccountRecoveryRateLimit(
+			require.NoError(t, service.checkAccountRecoveryRateLimit(
 				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
-			); err != nil {
-				t.Fatalf("attempt at maximum = %v", err)
-			}
-			if err := service.checkAccountRecoveryRateLimit(
+			))
+			err := service.checkAccountRecoveryRateLimit(
 				context.Background(), operation, "student@example.edu", "192.0.2.10:443",
-			); !apperror.Is(err, "authentication.rate_limited") {
-				t.Fatalf("attempt beyond maximum = %v", err)
-			}
+			)
+			require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt beyond maximum = %v", err)
 		})
 	}
 }
@@ -169,26 +156,16 @@ func TestAccountRecoveryAttemptAccountingFailsClosedWithoutCounterRollback(t *te
 				context.Background(), accountRecoveryAttemptPasswordResetRequest,
 				"student@example.edu", "192.0.2.10:443",
 			)
-			if !apperror.Is(err, "authentication.rate_limit_unavailable") {
-				t.Fatalf("cache failure = %v", err)
-			}
-			if len(cache.calls) != failAt {
-				t.Fatalf("counter calls = %d, want %d", len(cache.calls), failAt)
-			}
-			if !strings.Contains(cache.calls[0], "/identity/") {
-				t.Fatalf("first counter = %q, want identity", cache.calls[0])
-			}
+			require.True(t, apperror.Is(err, "authentication.rate_limit_unavailable"), "cache failure = %v", err)
+			require.Len(t, cache.calls, failAt, "counter calls")
+			require.Contains(t, cache.calls[0], "/identity/", "first counter")
 			entries := cache.snapshot()
-			if failAt == 1 && len(entries) != 0 {
-				t.Fatalf("first-counter failure retained %d counters", len(entries))
+			if failAt == 1 {
+				require.Empty(t, entries, "first-counter failure retained")
 			}
 			if failAt == 2 {
-				if !strings.Contains(cache.calls[1], "/source/") {
-					t.Fatalf("second counter = %q, want source", cache.calls[1])
-				}
-				if len(entries) != 1 {
-					t.Fatalf("second-counter failure retained %d counters, want 1", len(entries))
-				}
+				require.Contains(t, cache.calls[1], "/source/", "second counter")
+				require.Len(t, entries, 1, "second-counter failure retained")
 			}
 		})
 	}
@@ -224,27 +201,15 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
 		Email: "  STUDENT@EXAMPLE.EDU  ", Source: "192.0.2.10",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tokens.issued == nil {
-		t.Fatal("password-reset token was not issued")
-	}
-	if tokens.issued.Target != "student@example.edu" {
-		t.Fatalf("token target = %q", tokens.issued.Target)
-	}
-	if tokens.issued.Purpose != model.UserTokenPasswordReset {
-		t.Fatalf("token purpose = %q", tokens.issued.Purpose)
-	}
-	if want := now.Add(45 * time.Minute); !tokens.issued.ExpiresAt.Equal(want) {
-		t.Fatalf("token expiry = %s, want %s", tokens.issued.ExpiresAt, want)
-	}
-	if tokens.event == nil || tokens.event.Action != string(model.ActionAuthenticationPasswordResetRequest) {
-		t.Fatalf("issue audit = %#v", tokens.event)
-	}
-	if len(mailer.messages) != 1 || !strings.Contains(mailer.messages[0], "#token="+accountTokenTestRawToken) {
-		t.Fatalf("credential mail = %#v", mailer.messages)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, tokens.issued, "password-reset token was not issued")
+	require.Equal(t, "student@example.edu", tokens.issued.Target)
+	require.Equal(t, model.UserTokenPasswordReset, tokens.issued.Purpose)
+	require.True(t, tokens.issued.ExpiresAt.Equal(now.Add(45*time.Minute)), "token expiry = %s", tokens.issued.ExpiresAt)
+	require.NotNil(t, tokens.event)
+	require.Equal(t, string(model.ActionAuthenticationPasswordResetRequest), tokens.event.Action)
+	require.Len(t, mailer.messages, 1)
+	require.Contains(t, mailer.messages[0], "#token="+accountTokenTestRawToken)
 
 	unknown := newAccountTokenTestApp(t, accountTokenTestDependencies{
 		users:     &accountTokenUserStoreFake{byEmailErr: store.NewErrNotFound("user", "")},
@@ -252,12 +217,10 @@ func TestRequestPasswordResetPreservesGenericResponseAndIssuedToken(t *testing.T
 		institution: institution, mailer: &accountTokenMailerFake{enabled: true},
 		now: func() time.Time { return now },
 	})
-	if err := unknown.RequestPasswordReset(
+	require.NoError(t, unknown.RequestPasswordReset(
 		context.Background(), Invocation{},
 		RequestPasswordResetCommand{Email: "unknown@example.edu"},
-	); err != nil {
-		t.Fatalf("unknown account exposed failure: %v", err)
-	}
+	))
 }
 
 func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(t *testing.T) {
@@ -271,9 +234,7 @@ func TestRequestPasswordResetReportsMailUnavailableWhenLocalLoginRemainsEnabled(
 	err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
 		Email: "student@example.edu", Source: "192.0.2.10",
 	})
-	if !apperror.Is(err, "authentication.account_recovery.unavailable") {
-		t.Fatalf("enabled-local disabled-mail error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.account_recovery.unavailable"), "enabled-local disabled-mail error = %v", err)
 }
 
 func TestRequestPasswordResetConcealsAtomicEnqueueFailure(t *testing.T) {
@@ -287,12 +248,10 @@ func TestRequestPasswordResetConcealsAtomicEnqueueFailure(t *testing.T) {
 		passwords: &accountTokenPasswordStoreFake{credential: &model.PasswordCredential{UserID: user.ID}},
 		tokens:    tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 	})
-	if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: user.Email}); err != nil {
-		t.Fatalf("atomic enqueue failure escaped generic response: %v", err)
-	}
-	if tokens.issuedMail == nil || tokens.issuedMail.Job.Type != model.JobTypeMailDeliverCredential || len(mailer.messages) != 1 {
-		t.Fatalf("prepared durable reset aggregate = %#v, links=%#v", tokens.issuedMail, mailer.messages)
-	}
+	require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: user.Email}))
+	require.NotNil(t, tokens.issuedMail, "prepared durable reset aggregate")
+	require.Equal(t, model.JobTypeMailDeliverCredential, tokens.issuedMail.Job.Type, "prepared durable reset aggregate")
+	require.Len(t, mailer.messages, 1, "prepared durable reset aggregate")
 }
 
 func TestRequestPasswordResetCreatesNoIntentForDisabledOrExternalOnlyAccount(t *testing.T) {
@@ -315,12 +274,9 @@ func TestRequestPasswordResetCreatesNoIntentForDisabledOrExternalOnlyAccount(t *
 				users: &accountTokenUserStoreFake{byEmail: test.user}, passwords: test.password,
 				tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 			})
-			if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: test.user.Email}); err != nil {
-				t.Fatalf("ineligible account exposed response difference: %v", err)
-			}
-			if tokens.issuedMail != nil || len(mailer.messages) != 0 {
-				t.Fatalf("ineligible account intent=%#v links=%#v", tokens.issuedMail, mailer.messages)
-			}
+			require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{Email: test.user.Email}))
+			require.Nil(t, tokens.issuedMail, "ineligible account intent")
+			require.Empty(t, mailer.messages, "ineligible account intent")
 		})
 	}
 }
@@ -337,14 +293,11 @@ func TestRequestPasswordResetIsGenericAndInertWhenCurrentPolicyDisablesLocalLogi
 		}, tokens: tokens, institution: &model.Institution{ID: model.NewInstitutionID()}, mailer: mailer,
 		accessPolicy: authenticationAccessPolicyFake{local: false},
 	})
-	if err := app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
+	require.NoError(t, app.RequestPasswordReset(context.Background(), Invocation{}, RequestPasswordResetCommand{
 		Email: user.Email, Source: "192.0.2.7",
-	}); err != nil {
-		t.Fatalf("disabled local recovery exposed failure: %v", err)
-	}
-	if tokens.issued != nil || len(mailer.messages) != 0 {
-		t.Fatalf("disabled local recovery issued=%#v messages=%#v", tokens.issued, mailer.messages)
-	}
+	}))
+	require.Nil(t, tokens.issued, "disabled local recovery issued")
+	require.Empty(t, mailer.messages, "disabled local recovery issued")
 }
 
 func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
@@ -358,18 +311,11 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 		byHash: &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset},
 		consumeReset: func(hash, passwordHash string, at int64, event *model.AuditEvent) (*store.PasswordResetResult, error) {
 			order = append(order, "commit")
-			if hash != model.HashToken(accountTokenTestRawToken) {
-				t.Fatalf("token hash = %q", hash)
-			}
-			if passwordHash != "encoded-new-password" {
-				t.Fatalf("password hash = %q", passwordHash)
-			}
-			if at != now.UnixMilli() {
-				t.Fatalf("consume time = %d, want %d", at, now.UnixMilli())
-			}
-			if event == nil || event.Action != string(model.ActionAuthenticationPasswordResetComplete) {
-				t.Fatalf("completion audit = %#v", event)
-			}
+			require.Equal(t, model.HashToken(accountTokenTestRawToken), hash)
+			require.Equal(t, "encoded-new-password", passwordHash)
+			require.Equal(t, now.UnixMilli(), at, "consume time")
+			require.NotNil(t, event)
+			require.Equal(t, string(model.ActionAuthenticationPasswordResetComplete), event.Action)
 			return &store.PasswordResetResult{
 				User: user, RevokedSessions: []*model.Session{session},
 				RevokedAccessHashes: []string{"access-hash"},
@@ -378,10 +324,9 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 	}
 	effects := &accountTokenEffectsFake{called: func(userID string, sessionIDs, hashes []string) {
 		order = append(order, "effects")
-		if userID != user.ID.String() || !reflect.DeepEqual(sessionIDs, []string{session.ID.String()}) ||
-			!reflect.DeepEqual(hashes, []string{"access-hash"}) {
-			t.Fatalf("effects = user %q sessions %#v hashes %#v", userID, sessionIDs, hashes)
-		}
+		require.Equal(t, user.ID.String(), userID, "effects = user")
+		require.Equal(t, []string{session.ID.String()}, sessionIDs, "effects = user")
+		require.Equal(t, []string{"access-hash"}, hashes, "effects = user")
 	}}
 	app := newAccountTokenTestApp(t, accountTokenTestDependencies{
 		users: &accountTokenUserStoreFake{byID: user}, passwords: &accountTokenPasswordStoreFake{},
@@ -395,12 +340,10 @@ func TestCompletePasswordResetCommitsBeforeEffects(t *testing.T) {
 		context.Background(), Invocation{},
 		CompletePasswordResetCommand{Token: accountTokenTestRawToken, Password: "new password"},
 	)
-	if err != nil || got != user {
-		t.Fatalf("complete password reset = %#v, %v", got, err)
-	}
-	if !reflect.DeepEqual(order, []string{"commit", "effects"}) {
-		t.Fatalf("operation order = %#v", order)
-	}
+	require.NoError(t, err, "complete password reset")
+	require.Same(t, user, got, "complete password reset")
+	// Contract (guardrail 14): the reset commits before its effects.
+	ordertest.RequireInOrder(t, order, "commit", "effects")
 }
 
 func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t *testing.T) {
@@ -417,9 +360,8 @@ func TestCompletePasswordResetMapsTerminalAccessPolicyFenceToInvalidCredential(t
 	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
 		Token: accountTokenTestRawToken, Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.8",
 	})
-	if result != nil || !apperror.Is(err, "authentication.account_token.invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.account_token.invalid"), "result=%#v err=%v", result, err)
 }
 
 func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
@@ -440,9 +382,8 @@ func TestAccountTokenCompletionConcealsTerminalTokenStates(t *testing.T) {
 				CompleteEmailVerificationCommand{Token: accountTokenTestRawToken},
 			)
 			var appErr *apperror.Error
-			if !errors.As(err, &appErr) || appErr.Code() != "authentication.account_token.invalid" {
-				t.Fatalf("completion error = %v", err)
-			}
+			require.ErrorAs(t, err, &appErr)
+			require.Equal(t, "authentication.account_token.invalid", appErr.Code())
 		})
 	}
 }
@@ -460,9 +401,7 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 		context.Background(), Invocation{},
 		CompleteEmailVerificationCommand{Token: "malformed"},
 	)
-	if !apperror.Is(err, "authentication.account_token.invalid") {
-		t.Fatalf("completion error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.account_token.invalid"), "completion error = %v", err)
 }
 
 func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
@@ -482,9 +421,9 @@ func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
 		user, err := application.CompletePasswordReset(ctx, Invocation{}, CompletePasswordResetCommand{
 			Token: accountTokenTestRawToken, Password: "correct horse battery staple", Source: "192.0.2.34",
 		})
-		if user != nil || consumed || tokens.event != nil {
-			t.Fatal("failed password work reached password reset mutation")
-		}
+		require.Nil(t, user, "failed password work reached password reset mutation")
+		require.False(t, consumed, "failed password work reached password reset mutation")
+		require.Nil(t, tokens.event, "failed password work reached password reset mutation")
 		return err
 	})
 }
@@ -550,9 +489,7 @@ func newAccountTokenTestApp(t *testing.T, deps accountTokenTestDependencies) *Ap
 		func() string { return accountTokenTestRawToken },
 		deps.now,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return &App{accountTokenService: service}
 }
 
@@ -787,10 +724,7 @@ func TestCompletePasswordResetUnknownTokenDoesNotSpendPasswordWork(t *testing.T)
 	result, err := app.CompletePasswordReset(context.Background(), Invocation{}, CompletePasswordResetCommand{
 		Token: model.NewCredentialToken(), Password: "NewCorrectHorseBatteryStaple1!", Source: "192.0.2.9",
 	})
-	if result != nil || !apperror.Is(err, "authentication.account_token.invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if hashes != 0 {
-		t.Fatalf("unknown reset token spent %d password hashes", hashes)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.account_token.invalid"), "result=%#v err=%v", result, err)
+	require.Equal(t, 0, hashes, "unknown reset token spent")
 }

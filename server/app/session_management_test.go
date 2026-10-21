@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T) {
@@ -33,30 +35,23 @@ func TestSelfSessionServiceUsesCallerOwnershipAndPostCommitEffects(t *testing.T)
 	}
 	effects := &selfSessionEffectsFake{events: &events}
 	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}, effects, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	invocation := NewInvocation(principal, model.RequestMetadata{})
-	if err = service.RevokeSession(
+	err = service.RevokeSession(
 		context.Background(),
 		invocation,
 		RevokeSessionCommand{SessionID: session.ID.String()},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"get", "begin", "revoke", "effects"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if persistence.revokedUserID != principal.UserID.String() ||
-		persistence.revokedAt != now.UnixMilli() {
-		t.Fatalf("revocation = user %q at %d", persistence.revokedUserID, persistence.revokedAt)
-	}
-	if effects.userID != principal.UserID.String() ||
-		!reflect.DeepEqual(effects.sessionIDs, []string{session.ID.String()}) ||
-		!reflect.DeepEqual(effects.hashes, []string{"access-hash"}) {
-		t.Fatalf("effects = %#v", effects)
-	}
+	)
+	require.NoError(t, err)
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// and the write commits before its effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "begin", "revoke", "effects")
+	require.Equal(t, principal.UserID.String(), persistence.revokedUserID, "revocation = user")
+	require.Equal(t, now.UnixMilli(), persistence.revokedAt, "revocation = user")
+	require.Equal(t, principal.UserID.String(), effects.userID)
+	require.Equal(t, []string{session.ID.String()}, effects.sessionIDs)
+	require.Equal(t, []string{"access-hash"}, effects.hashes)
 }
 
 func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
@@ -74,21 +69,15 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 		&selfSessionEffectsFake{},
 		func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	err = service.RevokeSession(
 		context.Background(),
 		NewInvocation(principal, model.RequestMetadata{}),
 		RevokeSessionCommand{SessionID: persistence.session.ID.String()},
 	)
-	if !apperror.Is(err, "session.not_found") {
-		t.Fatalf("error = %v, want session.not_found", err)
-	}
-	if persistence.revokeCalls != 0 {
-		t.Fatalf("revoke calls = %d, want 0", persistence.revokeCalls)
-	}
+	require.True(t, apperror.Is(err, "session.not_found"), "error = %v, want session.not_found", err)
+	require.Equal(t, 0, persistence.revokeCalls, "revoke calls")
 }
 
 func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
@@ -97,32 +86,24 @@ func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
 	principal := selfSessionPrincipal(model.TimeUTC(at))
 	persistence := &selfSessionStoreFake{session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}}
 	service, err := newSelfSessionService(persistence, &mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewID()}, &selfSessionEffectsFake{}, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.ListSessions(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListSessionsQuery{}); err != nil {
-		t.Fatal(err)
-	}
-	if !persistence.listedAt.Equal(model.TimeUTC(at)) || persistence.listedAt.Location() != time.UTC {
-		t.Fatalf("active Session listing time = %v, want %v", persistence.listedAt, model.TimeUTC(at))
-	}
+	require.NoError(t, err)
+	_, err = service.ListSessions(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListSessionsQuery{})
+	require.NoError(t, err)
+	require.True(t, persistence.listedAt.Equal(model.TimeUTC(at)), "active Session listing time = %v", persistence.listedAt)
+	require.Same(t, time.UTC, persistence.listedAt.Location(), "active Session listing time = %v", persistence.listedAt)
 }
 
 func TestSelfSessionServiceRequiresFocusedDependencies(t *testing.T) {
 	t.Parallel()
 
-	if _, err := newSelfSessionService(&selfSessionStoreFake{}, nil, &selfSessionEffectsFake{}, time.Now); err == nil {
-		t.Fatal("nil self-session audit was accepted")
-	}
-	if _, err := newSelfSessionService(nil, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, time.Now); err == nil {
-		t.Fatal("nil self-session store was accepted")
-	}
-	if _, err := newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, nil, time.Now); err == nil {
-		t.Fatal("nil self-session effects were accepted")
-	}
-	if _, err := newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, nil); err == nil {
-		t.Fatal("nil self-session clock was accepted")
-	}
+	_, err := newSelfSessionService(&selfSessionStoreFake{}, nil, &selfSessionEffectsFake{}, time.Now)
+	require.Error(t, err, "nil self-session audit was accepted")
+	_, err = newSelfSessionService(nil, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, time.Now)
+	require.Error(t, err, "nil self-session store was accepted")
+	_, err = newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, nil, time.Now)
+	require.Error(t, err, "nil self-session effects were accepted")
+	_, err = newSelfSessionService(&selfSessionStoreFake{}, &mutationAttemptAuditorFake{}, &selfSessionEffectsFake{}, nil)
+	require.Error(t, err, "nil self-session clock was accepted")
 }
 
 func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T) {
@@ -144,9 +125,7 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 					persistence.revokeErr = errors.New("audit completion unavailable")
 				}
 				self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				invocation := NewInvocation(principal, model.RequestMetadata{})
 				switch operation {
 				case "revoke_own_session":
@@ -158,38 +137,40 @@ func TestSelfSessionRevocationsRequireAuditBeforeMutationAndEffects(t *testing.T
 					err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
 				}
 				if outcome != "success" {
-					if err == nil || persistence.session.RevokedAt.Valid || effects.userID != "" {
-						t.Fatalf("failed audit allowed revocation/effect: error=%v session=%#v effects=%#v", err, persistence.session, effects)
+					require.Error(t, err, "failed audit allowed revocation/effect: error=%v session=%#v effects=%#v", err, persistence.session, effects)
+					require.False(t, persistence.session.RevokedAt.Valid, "failed audit allowed revocation/effect: error=%v session=%#v effects=%#v", err, persistence.session, effects)
+					require.Empty(t, effects.userID, "failed audit allowed revocation/effect: error=%v session=%#v effects=%#v", err, persistence.session, effects)
+					if outcome == "attempt unavailable" {
+						require.Equal(t, 0, persistence.revokeCalls, "Store mutation ran before durable attempt")
 					}
-					if outcome == "attempt unavailable" && persistence.revokeCalls != 0 {
-						t.Fatal("Store mutation ran before durable attempt")
-					}
-					if outcome == "completion unavailable" && audit.failID != audit.beginID {
-						t.Fatal("mutation rollback was not recorded against its audit attempt")
+					if outcome == "completion unavailable" {
+						require.Equal(t, audit.beginID, audit.failID, "mutation rollback was not recorded against its audit attempt")
 					}
 					return
 				}
-				if err != nil {
-					t.Fatal(err)
+				require.NoError(t, err)
+				require.True(t, persistence.session.RevokedAt.Valid, "revocation/effects = %#v / %#v", persistence.session, effects)
+				require.Equal(t, principal.UserID.String(), effects.userID, "revocation/effects = %#v / %#v", persistence.session, effects)
+				// Contract (guardrails 8 and 14): the audit begins before the durable
+				// revocation, which commits before its effects.
+				ordertest.RequireInOrder(t, events, "begin", "revoke", "effects")
+				require.Equal(t, operation, audit.attempt.Operation)
+				require.Equal(t, principal.UserID.String(), audit.attempt.Resource.ID)
+				require.Equal(t, model.ActionSessionManage, audit.attempt.Action)
+				input := persistence.revocation
+				if input != nil {
+					require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
+					require.Equal(t, now.UnixMilli(), input.AuditAt)
+					require.Nil(t, input.Occurrence)
+					require.Nil(t, input.Delivery)
+					require.Nil(t, input.DeliveryJob)
 				}
-				if !persistence.session.RevokedAt.Valid || effects.userID != principal.UserID.String() {
-					t.Fatalf("revocation/effects = %#v / %#v", persistence.session, effects)
-				}
-				want := []string{"begin", "revoke", "effects"}
-				if operation == "revoke_own_session" {
-					want = append([]string{"get"}, want...)
-				}
-				if !reflect.DeepEqual(events, want) {
-					t.Fatalf("events = %v, want %v", events, want)
-				}
-				if audit.attempt.Operation != operation || audit.attempt.Resource.ID != principal.UserID.String() || audit.attempt.Action != model.ActionSessionManage {
-					t.Fatalf("audit context = %#v", audit.attempt)
-				}
-				if input := persistence.revocation; input != nil && (input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
-					t.Fatalf("single revocation audit/notice = %#v", input)
-				}
-				if input := persistence.allRevocation; input != nil && (input.AuditEventID != model.AuditEventID(audit.beginID) || input.AuditAt != now.UnixMilli() || input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil) {
-					t.Fatalf("all revocation audit/notice = %#v", input)
+				if input := persistence.allRevocation; input != nil {
+					require.Equal(t, model.AuditEventID(audit.beginID), input.AuditEventID)
+					require.Equal(t, now.UnixMilli(), input.AuditAt)
+					require.Nil(t, input.Occurrence)
+					require.Nil(t, input.Delivery)
+					require.Nil(t, input.DeliveryJob)
 				}
 			})
 		}
@@ -209,31 +190,24 @@ func TestSelfSessionRevocationRepeatOutcomes(t *testing.T) {
 			audit := &mutationAttemptAuditorFake{events: &events, beginID: model.NewID()}
 			effects := &selfSessionEffectsFake{events: &events}
 			self, err := newSelfSessionService(persistence, audit, effects, func() time.Time { return now })
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			invocation := NewInvocation(principal, model.RequestMetadata{})
 			switch operation {
 			case "revoke_own_session":
 				err = self.RevokeSession(context.Background(), invocation, RevokeSessionCommand{SessionID: principal.SessionID.String()})
-				if !apperror.Is(err, "session.not_found") || audit.failCode != "session.not_found" {
-					t.Fatalf("repeat = %v audit=%#v", err, audit)
-				}
+				require.True(t, apperror.Is(err, "session.not_found"), "repeat = %v audit=%#v", err, audit)
+				require.Equal(t, "session.not_found", audit.failCode, "repeat = %v audit=%#v", err, audit)
 			case "revoke_own_sessions":
 				err = self.RevokeAllSessions(context.Background(), invocation, RevokeAllSessionsCommand{})
-				if err != nil || !persistence.allRevocation.NoOp {
-					t.Fatalf("repeat = %v", err)
-				}
+				require.NoError(t, err)
+				require.True(t, persistence.allRevocation.NoOp)
 			case "logout":
 				authentication := &authenticationService{sessions: persistence, audit: audit, securityEffects: effects, now: self.now}
 				err = authentication.Logout(context.Background(), invocation, LogoutCommand{})
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
-			if persistence.revokeCalls != 1 || effects.userID != "" {
-				t.Fatalf("repeat bypassed audit or repeated effects: events=%v", events)
-			}
+			require.Equal(t, 1, persistence.revokeCalls)
+			require.Empty(t, effects.userID)
 		})
 	}
 }

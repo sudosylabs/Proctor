@@ -12,23 +12,24 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestPersonalAccessTokenScopesRejectRelationshipOnlyParticipationAction(t *testing.T) {
 	t.Parallel()
 
 	_, err := normalizePersonalAccessTokenScopes([]string{string(model.ActionExamSittingParticipate)})
-	if err == nil || !apperror.Is(err, "personal_access_token.invalid") {
-		t.Fatalf("normalizePersonalAccessTokenScopes() error = %v, want personal_access_token.invalid", err)
-	}
+	require.Error(t, err, "normalizePersonalAccessTokenScopes() error")
+	require.True(t, apperror.Is(err, "personal_access_token.invalid"), "normalizePersonalAccessTokenScopes() error")
 }
 
 func TestPersonalAccessTokenScopesRejectInteractiveOnlyAdministration(t *testing.T) {
@@ -40,9 +41,8 @@ func TestPersonalAccessTokenScopesRejectInteractiveOnlyAdministration(t *testing
 		model.ActionRoleBindingManage,
 		model.ActionRoleManage,
 	} {
-		if _, err := normalizePersonalAccessTokenScopes([]string{string(action)}); !apperror.Is(err, "personal_access_token.invalid") {
-			t.Fatalf("scope %q error = %v, want personal_access_token.invalid", action, err)
-		}
+		_, err := normalizePersonalAccessTokenScopes([]string{string(action)})
+		require.True(t, apperror.Is(err, "personal_access_token.invalid"), "scope %q error = %v, want personal_access_token.invalid", action, err)
 	}
 }
 
@@ -66,9 +66,7 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 		func() string { return "must-not-be-generated" },
 		func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = service.CreatePersonalAccessToken(
 		context.Background(),
 		NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}),
@@ -77,12 +75,8 @@ func TestPersonalAccessTokenCreationCannotExceedCurrentRoleAuthority(t *testing.
 			ExpiresAt: now.Add(time.Hour).UnixMilli(),
 		},
 	)
-	if !apperror.Is(err, "personal_access_token.invalid") {
-		t.Fatalf("error = %v, want personal_access_token.invalid", err)
-	}
-	if tokens.saveCalls != 0 {
-		t.Fatalf("save calls = %d", tokens.saveCalls)
-	}
+	require.True(t, apperror.Is(err, "personal_access_token.invalid"), "error = %v, want personal_access_token.invalid", err)
+	require.Equal(t, 0, tokens.saveCalls, "save calls")
 }
 
 func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *testing.T) {
@@ -112,9 +106,7 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 		func() string { return raw },
 		func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	created, err := service.CreatePersonalAccessToken(
 		context.Background(),
@@ -124,41 +116,31 @@ func TestPersonalAccessTokenAdministrationCreatesThroughFocusedContracts(t *test
 			AcademicUnitID: unitID.String(), ExpiresAt: now.Add(time.Hour).UnixMilli(),
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.Credential != raw || created.Token != tokens.saved {
-		t.Fatalf("creation = %#v", created)
-	}
-	if tokens.candidate.TokenHash != model.HashToken(raw) || tokens.candidate.TokenHash == raw {
-		t.Fatalf("persisted token hash = %q", tokens.candidate.TokenHash)
-	}
-	if tokens.candidate.UserID != userID || tokens.maximum != 3 {
-		t.Fatalf("save candidate = %#v, maximum = %d", tokens.candidate, tokens.maximum)
-	}
-	if len(mail.requests) != 1 {
-		t.Fatalf("mail requests = %d, want 1", len(mail.requests))
-	}
+	require.NoError(t, err)
+	require.Equal(t, raw, created.Credential)
+	require.Same(t, tokens.saved, created.Token)
+	require.Equal(t, model.HashToken(raw), tokens.candidate.TokenHash)
+	require.NotEqual(t, raw, tokens.candidate.TokenHash)
+	require.Equal(t, userID, tokens.candidate.UserID, "save candidate = %#v, maximum", tokens.candidate)
+	require.Equal(t, 3, tokens.maximum, "save candidate = %#v, maximum", tokens.candidate)
+	require.Len(t, mail.requests, 1, "mail requests")
 	request := mail.requests[0]
-	if request.TemplateKey != model.MailTemplateIdentityPersonalAccessTokenCreated ||
-		request.Description != "automation" || request.ActionCount != 1 ||
-		!request.AcademicUnitScoped || !request.ExpiresAt.Equal(now.Add(time.Hour)) ||
-		!request.ActionAt.Equal(now) {
-		t.Fatalf("mail request = %#v", request)
-	}
-	if got := fmt.Sprintf("%#v", request); strings.Contains(got, raw) || strings.Contains(got, tokens.candidate.TokenHash) || strings.Contains(got, string(model.ActionClassView)) {
-		t.Fatalf("credential, hash, or full scopes entered mail request: %s", got)
-	}
-	if audit.action != model.ActionPersonalAccessTokenCreate ||
-		audit.resource != (model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}) {
-		t.Fatalf("audit action=%q resource=%#v", audit.action, audit.resource)
-	}
-	if got := fmt.Sprintf("%#v %#v %#v", audit.parameters, audit.prior, audit.result); strings.Contains(got, raw) {
-		t.Fatalf("raw credential entered audit data: %s", got)
-	}
-	if want := []string{"academic_unit", "authorize_scopes", "institution", "audit_begin", "prepare", "create"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, model.MailTemplateIdentityPersonalAccessTokenCreated, request.TemplateKey)
+	require.Equal(t, "automation", request.Description)
+	require.Equal(t, 1, request.ActionCount)
+	require.True(t, request.AcademicUnitScoped)
+	require.True(t, request.ExpiresAt.Equal(now.Add(time.Hour)))
+	require.True(t, request.ActionAt.Equal(now))
+	got := fmt.Sprintf("%#v", request)
+	require.NotContains(t, got, raw)
+	require.NotContains(t, got, tokens.candidate.TokenHash)
+	require.NotContains(t, got, string(model.ActionClassView))
+	require.Equal(t, model.ActionPersonalAccessTokenCreate, audit.action, "audit action")
+	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}, audit.resource, "audit action")
+	require.NotContains(t, fmt.Sprintf("%#v %#v %#v", audit.parameters, audit.prior, audit.result), raw)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize_scopes", "audit_begin", "create")
 }
 
 func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *testing.T) {
@@ -177,26 +159,22 @@ func TestPersonalAccessTokenAdministrationExactStateReplayEmitsNoAuditOrMail(t *
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	got, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
-	if appErr != nil || got != token {
-		t.Fatalf("SetDisabled(replay) = %#v, %v", got, appErr)
-	}
-	if audit.beginCalls != 0 || len(mail.requests) != 0 || tokens.stateCalls != 0 {
-		t.Fatalf("replay audit=%d mail=%d mutations=%d", audit.beginCalls, len(mail.requests), tokens.stateCalls)
-	}
+	require.NoError(t, appErr, "SetDisabled(replay)")
+	require.Same(t, token, got, "SetDisabled(replay)")
+	require.Equal(t, 0, audit.beginCalls, "replay audit")
+	require.Empty(t, mail.requests, "replay audit")
+	require.Equal(t, 0, tokens.stateCalls, "replay audit")
 
 	token.RevokedAt = model.OptionalTimeFrom(now)
 	got, appErr = service.RevokePersonalAccessToken(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), RevokePersonalAccessTokenCommand{TokenID: token.ID})
-	if appErr != nil || got != token {
-		t.Fatalf("Revoke(replay) = %#v, %v", got, appErr)
-	}
-	if audit.beginCalls != 0 || len(mail.requests) != 0 || tokens.revokeCalls != 0 {
-		t.Fatalf("replay audit=%d mail=%d revocations=%d", audit.beginCalls, len(mail.requests), tokens.revokeCalls)
-	}
+	require.NoError(t, appErr, "Revoke(replay)")
+	require.Same(t, token, got, "Revoke(replay)")
+	require.Equal(t, 0, audit.beginCalls, "replay audit")
+	require.Empty(t, mail.requests, "replay audit")
+	require.Equal(t, 0, tokens.revokeCalls, "replay audit")
 }
 
 func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T) {
@@ -217,12 +195,9 @@ func TestPersonalAccessTokenAdministrationConcealsAnotherUsersToken(t *testing.T
 		NewInvocation(personalAccessTokenSessionPrincipal(callerID, now), model.RequestMetadata{}),
 		RevokePersonalAccessTokenCommand{TokenID: token.ID},
 	)
-	if !apperror.Is(err, "resource.not_found") {
-		t.Fatalf("error = %v, want resource.not_found", err)
-	}
-	if tokens.revokeCalls != 0 || audit.beginCalls != 0 {
-		t.Fatalf("revoke calls=%d audit begins=%d", tokens.revokeCalls, audit.beginCalls)
-	}
+	require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want resource.not_found", err)
+	require.Equal(t, 0, tokens.revokeCalls, "revoke calls")
+	require.Equal(t, 0, audit.beginCalls, "revoke calls")
 }
 
 func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *testing.T) {
@@ -240,49 +215,37 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invocation := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
 
-	if _, err := service.SetPersonalAccessTokenDisabled(
+	_, err = service.SetPersonalAccessTokenDisabled(
 		context.Background(), invocation,
 		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if tokens.stateAt != now.UnixMilli() || tokens.stateMaximum != 3 {
-		t.Fatalf("state change at=%d maximum=%d", tokens.stateAt, tokens.stateMaximum)
-	}
-	if _, err := service.SetPersonalAccessTokenDisabled(
+	)
+	require.NoError(t, err)
+	require.Equal(t, now.UnixMilli(), tokens.stateAt, "state change at")
+	require.Equal(t, 3, tokens.stateMaximum, "state change at")
+	_, err = service.SetPersonalAccessTokenDisabled(
 		context.Background(), invocation,
 		SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: false},
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 
 	tokens.current = token
-	if _, err := service.RevokePersonalAccessToken(
+	_, err = service.RevokePersonalAccessToken(
 		context.Background(), invocation,
 		RevokePersonalAccessTokenCommand{TokenID: token.ID},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if tokens.revokedAt != now.UnixMilli() {
-		t.Fatalf("revoked at = %d, want %d", tokens.revokedAt, now.UnixMilli())
-	}
+	)
+	require.NoError(t, err)
+	require.Equal(t, now.UnixMilli(), tokens.revokedAt, "revoked at")
 	wantKeys := []model.MailTemplateKey{
 		model.MailTemplateIdentityPersonalAccessTokenDisabled,
 		model.MailTemplateIdentityPersonalAccessTokenEnabled,
 		model.MailTemplateIdentityPersonalAccessTokenRevoked,
 	}
-	if len(mail.requests) != len(wantKeys) {
-		t.Fatalf("mail requests = %d, want %d", len(mail.requests), len(wantKeys))
-	}
+	require.Len(t, mail.requests, len(wantKeys), "mail requests")
 	for index, key := range wantKeys {
-		if mail.requests[index].TemplateKey != key {
-			t.Fatalf("mail request %d key = %q, want %q", index, mail.requests[index].TemplateKey, key)
-		}
+		require.Equal(t, key, mail.requests[index].TemplateKey, "mail request %d key", index)
 	}
 }
 
@@ -300,18 +263,13 @@ func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEna
 	invocation := NewInvocation(stale, model.RequestMetadata{})
 
 	_, err := service.CreatePersonalAccessToken(context.Background(), invocation, CreatePersonalAccessTokenCommand{})
-	if !apperror.Is(err, "authentication.reauthentication_required") {
-		t.Fatalf("create error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "create error = %v", err)
 	_, err = service.SetPersonalAccessTokenDisabled(context.Background(), invocation, SetPersonalAccessTokenDisabledCommand{
 		TokenID: model.NewPersonalAccessTokenID(), Disabled: false,
 	})
-	if !apperror.Is(err, "authentication.reauthentication_required") {
-		t.Fatalf("enable error = %v", err)
-	}
-	if tokens.saveCalls != 0 || tokens.stateCalls != 0 {
-		t.Fatalf("store calls: save=%d state=%d", tokens.saveCalls, tokens.stateCalls)
-	}
+	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "enable error = %v", err)
+	require.Equal(t, 0, tokens.saveCalls, "store calls: save")
+	require.Equal(t, 0, tokens.stateCalls, "store calls: save")
 }
 
 func TestPersonalAccessTokenAdministrationJudgesRecencyByInjectedClock(t *testing.T) {
@@ -328,14 +286,10 @@ func TestPersonalAccessTokenAdministrationJudgesRecencyByInjectedClock(t *testin
 	)
 	fresh := NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{})
 	_, err := service.CreatePersonalAccessToken(context.Background(), fresh, CreatePersonalAccessTokenCommand{})
-	if !apperror.Is(err, "personal_access_token.invalid") {
-		t.Fatalf("fresh create error = %v, want the expires_at validation after the recency check", err)
-	}
+	require.True(t, apperror.Is(err, "personal_access_token.invalid"), "fresh create error = %v, want the expires_at validation after the recency check", err)
 	stale := NewInvocation(personalAccessTokenSessionPrincipal(userID, now.Add(-16*time.Minute)), model.RequestMetadata{})
 	_, err = service.CreatePersonalAccessToken(context.Background(), stale, CreatePersonalAccessTokenCommand{})
-	if !apperror.Is(err, "authentication.reauthentication_required") {
-		t.Fatalf("stale create error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "stale create error = %v", err)
 }
 
 func TestPersonalAccessTokenAdministrationRequiresFocusedDependencies(t *testing.T) {
@@ -385,9 +339,8 @@ func TestPersonalAccessTokenAdministrationRequiresFocusedDependencies(t *testing
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := test.make(); err == nil {
-				t.Fatal("nil dependency was accepted")
-			}
+			_, err := test.make()
+			require.Error(t, err, "nil dependency was accepted")
 		})
 	}
 }
@@ -399,9 +352,8 @@ func TestPersonalAccessTokenAdministrationDoesNotRetainRootStore(t *testing.T) {
 	serviceType := reflect.TypeOf(personalAccessTokenAdministrationService{})
 	for index := range serviceType.NumField() {
 		field := serviceType.Field(index)
-		if field.Type == rootStoreType || field.Type.Implements(rootStoreType) {
-			t.Fatalf("field %q retains store.Store", field.Name)
-		}
+		require.NotEqual(t, rootStoreType, field.Type, "field %q retains store.Store", field.Name)
+		require.False(t, field.Type.Implements(rootStoreType), "field %q retains store.Store", field.Name)
 	}
 }
 
@@ -420,9 +372,7 @@ func mustPersonalAccessTokenAdministrationService(
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 
@@ -455,9 +405,7 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	tokens := &personalAccessTokenStoreFake{current: token, preparedAt: databaseAt}
 	sealer := mailTestSealer(t)
 	mail, err := newDirectMailPreparer(personalAccessTokenActionTimeRenderer{}, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := newPersonalAccessTokenAdministrationService(
 		tokens, &personalAccessTokenUserStoreFake{}, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
@@ -465,23 +413,14 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return nodeAt },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, nodeAt), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if tokens.notice.Delivery == nil || len(tokens.notice.Delivery.EncryptedPayload) == 0 {
-		t.Fatalf("prepared notice = %#v", tokens.notice)
-	}
+	require.NoError(t, appErr)
+	require.NotNil(t, tokens.notice.Delivery)
+	require.NotEmpty(t, tokens.notice.Delivery.EncryptedPayload)
 	payload, err := appmail.OpenDelivery(sealer, tokens.notice.Delivery)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(payload.Text, databaseAt.Format(time.RFC3339Nano)) {
-		t.Fatalf("rendered text %q does not contain PostgreSQL action time %s", payload.Text, databaseAt)
-	}
+	require.NoError(t, err)
+	require.Contains(t, payload.Text, databaseAt.Format(time.RFC3339Nano), "rendered text %q does not contain PostgreSQL action time %s", payload.Text, databaseAt)
 }
 
 type personalAccessTokenActionTimeRenderer struct{}
@@ -507,9 +446,8 @@ func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.
 		&personalAccessTokenInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 		&personalAccessTokenAuditorFake{}, now)
 	got, err := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
-	if err != nil || got != token {
-		t.Fatalf("SetDisabled(concurrent replay) = %#v, %v", got, err)
-	}
+	require.NoError(t, err, "SetDisabled(concurrent replay)")
+	require.Same(t, token, got, "SetDisabled(concurrent replay)")
 }
 
 func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFails(t *testing.T) {
@@ -525,15 +463,11 @@ func TestPersonalAccessTokenAdministrationTerminalizesPreparationWhenRenderingFa
 		&personalAccessTokenAuditorFake{}, &personalAccessTokenScopeAuthorizerFake{allowed: true}, mail,
 		PersonalAccessTokenPolicy{MinimumLifetime: time.Minute, MaximumLifetime: 24 * time.Hour, MaximumPerUser: 3},
 		15*time.Minute, func() string { return "credential" }, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true}); !apperror.Is(appErr, "personal_access_token.unavailable") {
-		t.Fatalf("SetDisabled(render failure) error = %v", appErr)
-	}
-	if tokens.failCalls != 1 || tokens.stateCalls != 0 {
-		t.Fatalf("render failure terminalizations=%d state calls=%d", tokens.failCalls, tokens.stateCalls)
-	}
+	require.NoError(t, err)
+	_, appErr := service.SetPersonalAccessTokenDisabled(context.Background(), NewInvocation(personalAccessTokenSessionPrincipal(userID, now), model.RequestMetadata{}), SetPersonalAccessTokenDisabledCommand{TokenID: token.ID, Disabled: true})
+	require.True(t, apperror.Is(appErr, "personal_access_token.unavailable"), "SetDisabled(render failure) error = %v", appErr)
+	require.Equal(t, 1, tokens.failCalls, "render failure terminalizations")
+	require.Equal(t, 0, tokens.stateCalls, "render failure terminalizations")
 }
 
 func personalAccessTokenSessionPrincipal(userID model.UserID, authenticatedAt time.Time) model.Principal {

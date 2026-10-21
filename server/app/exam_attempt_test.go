@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -36,14 +38,10 @@ func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentMan
 	}
 	principal := examAttemptPrincipal()
 	call := NewInvocation(principal, model.RequestMetadata{RequestID: "submission-view"})
-	if err := adapter.AuthorizeSubmissionView(context.Background(), call, submissionID); err != nil {
-		t.Fatal(err)
-	}
-	if sittings.examID != examID || sittings.submissionID != submissionID ||
-		sittings.invocation.Principal().UserID != principal.UserID {
-		t.Fatalf("authorization call = exam %s submission %s principal %s", sittings.examID,
-			sittings.submissionID, sittings.invocation.Principal().UserID)
-	}
+	require.NoError(t, adapter.AuthorizeSubmissionView(context.Background(), call, submissionID))
+	require.Equal(t, examID, sittings.examID, "authorization call = exam")
+	require.Equal(t, submissionID, sittings.submissionID, "authorization call = exam")
+	require.Equal(t, principal.UserID, sittings.invocation.Principal().UserID, "authorization call = exam")
 }
 
 type submissionAuthorizationAuditFake struct {
@@ -82,15 +80,15 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization}, audit: audit}
 		err := adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID)
 		var fault *apperror.Error
-		if !errors.As(err, &fault) || fault.Code() != "exam.attempt.not_found" {
-			t.Fatalf("AuthorizeSubmissionView() error = %v, want concealed not found", err)
-		}
-		if audit.principal.UserID != principal.UserID || audit.action != model.ActionSubmissionView ||
-			audit.resource != (model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}) ||
-			audit.scopeType != model.RoleScopeAcademicUnit || audit.scopeID != unitID.String() ||
-			audit.metadata.RequestID != metadata.RequestID || audit.allowed {
-			t.Fatalf("denied authorization audit = %#v", audit)
-		}
+		require.ErrorAs(t, err, &fault, "AuthorizeSubmissionView() error")
+		require.Equal(t, "exam.attempt.not_found", fault.Code(), "AuthorizeSubmissionView() error")
+		require.Equal(t, principal.UserID, audit.principal.UserID)
+		require.Equal(t, model.ActionSubmissionView, audit.action)
+		require.Equal(t, model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, audit.resource)
+		require.Equal(t, model.RoleScopeAcademicUnit, audit.scopeType)
+		require.Equal(t, unitID.String(), audit.scopeID)
+		require.Equal(t, metadata.RequestID, audit.metadata.RequestID)
+		require.False(t, audit.allowed)
 	})
 	t.Run("audit failure fails closed", func(t *testing.T) {
 		t.Parallel()
@@ -98,9 +96,7 @@ func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing
 		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
 			submissions: &submissionAuthorizationStoreFake{authorization: authorization},
 			audit:       &submissionAuthorizationAuditFake{err: auditErr}}
-		if err := adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID); !errors.Is(err, auditErr) {
-			t.Fatalf("AuthorizeSubmissionView() error = %v, want audit failure", err)
-		}
+		require.ErrorIs(t, adapter.AuthorizeSubmissionView(context.Background(), NewInvocation(principal, metadata), submissionID), auditErr, "AuthorizeSubmissionView() error")
 	})
 }
 
@@ -131,12 +127,8 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
 	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
@@ -146,41 +138,35 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 		Flag:             model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" || events[0].Action != model.ActionExamSittingView ||
-		events[1].Name != "exam_attempt_suspended" || events[1].Action != model.ActionExamSittingView ||
-		events[2].Name != "exam_attempt_access_suspended" || events[2].Action != model.ActionExamSittingParticipate ||
-		events[2].UserID != result.CandidateUserID.String() || events[3].Name != "candidate.exam_activity.changed" ||
-		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "current_user.context.changed" {
-		t.Fatalf("events = %#v", events)
-	}
+	require.Len(t, events, 6)
+	require.Equal(t, "exam_attempt_connection_closed", events[0].Name)
+	require.Equal(t, model.ActionExamSittingView, events[0].Action)
+	require.Equal(t, "exam_attempt_suspended", events[1].Name)
+	require.Equal(t, model.ActionExamSittingView, events[1].Action)
+	require.Equal(t, "exam_attempt_access_suspended", events[2].Name)
+	require.Equal(t, model.ActionExamSittingParticipate, events[2].Action)
+	require.Equal(t, result.CandidateUserID.String(), events[2].UserID)
+	require.Equal(t, "candidate.exam_activity.changed", events[3].Name)
+	require.Equal(t, "manager.sitting_board.changed", events[4].Name)
+	require.Equal(t, "current_user.context.changed", events[5].Name)
 	for _, event := range events {
 		for _, forbidden := range []string{"continuity_credential", "credential_hash", "private_reason"} {
-			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
-				t.Fatalf("expiry event contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, strings.ToLower(string(event.Data)), forbidden, "expiry event contains %q: %s", forbidden, event.Data)
 		}
 	}
-	if got := string(events[2].Data); !strings.Contains(got, `"reason_code":"secure_connectivity_lost"`) {
-		t.Fatalf("candidate expiry event lacks safe reason: %s", got)
-	}
+	require.Contains(t, string(events[2].Data), `"reason_code":"secure_connectivity_lost"`)
 }
 
 func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
 	result := examattempt.ManualSuspensionResult{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		CandidateUserID: model.NewUserID(), Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 3},
@@ -189,31 +175,26 @@ func TestManualSuspensionEffectPublishesKickedCloseAndSafeCandidateReason(t *tes
 		ConnectionClosed: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), Source: model.AttemptSuspensionSourceManual,
 			CandidateReason: model.AttemptSuspensionCandidateReasonManagerSuspended, StartedAt: at, SuspendedByUserID: model.NewUserID()}}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSuspendedByManager(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSuspendedByManager(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" || events[1].Name != "exam_attempt_suspended" ||
-		events[2].Name != "exam_attempt_access_suspended" || events[2].UserID != result.CandidateUserID.String() ||
-		strings.Contains(string(events[1].Data), "integrity_flag_id") ||
-		!strings.Contains(string(events[0].Data), `"kicked"`) ||
-		!strings.Contains(string(events[2].Data), `"reason_code":"manager_suspended"`) {
-		t.Fatalf("events = %#v", events)
-	}
+	require.Len(t, events, 6)
+	require.Equal(t, "exam_attempt_connection_closed", events[0].Name)
+	require.Equal(t, "exam_attempt_suspended", events[1].Name)
+	require.Equal(t, "exam_attempt_access_suspended", events[2].Name)
+	require.Equal(t, result.CandidateUserID.String(), events[2].UserID)
+	require.NotContains(t, string(events[1].Data), "integrity_flag_id")
+	require.Contains(t, string(events[0].Data), `"kicked"`)
+	require.Contains(t, string(events[2].Data), `"reason_code":"manager_suspended"`)
 }
 
 func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactConnection(t *testing.T) {
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	result := examattempt.SubmissionResult{Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1},
 		SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(), State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 13, ManifestDigest: strings.Repeat("d", 64),
@@ -221,26 +202,25 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 	}, Provenance: model.ExamSubmissionCandidateSubmitted, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		ConnectionID: model.NewAttemptConnectionID()}
 
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSubmitted(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSubmitted(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	if len(events) != 5 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
-		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
-		events[2].Name != "candidate.exam_activity.changed" || events[3].Name != "manager.sitting_board.changed" ||
-		events[4].Name != "current_user.context.changed" ||
-		len(unbound) != 1 || unbound[0] != result.ConnectionID {
-		t.Fatalf("events=%#v unbound=%#v", events, unbound)
-	}
+	require.Len(t, events, 5, "events")
+	require.Equal(t, "exam_attempt_submitted", events[0].Name, "events")
+	require.Empty(t, events[0].UserID, "events")
+	require.Equal(t, "exam_attempt_submitted", events[1].Name, "events")
+	require.Equal(t, result.CandidateUserID.String(), events[1].UserID, "events")
+	require.Equal(t, "candidate.exam_activity.changed", events[2].Name, "events")
+	require.Equal(t, "manager.sitting_board.changed", events[3].Name, "events")
+	require.Equal(t, "current_user.context.changed", events[4].Name, "events")
+	require.Len(t, unbound, 1, "events")
+	require.Equal(t, result.ConnectionID, unbound[0], "events")
 	for _, event := range events {
 		encoded := strings.ToLower(string(event.Data))
 		for _, forbidden := range []string{"path", "content", "source", "evidence", "sequence", "credential", "session", "private"} {
-			if strings.Contains(encoded, forbidden) {
-				t.Fatalf("Submission event contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, encoded, forbidden, "Submission event contains %q: %s", forbidden, event.Data)
 		}
 	}
 }
@@ -249,12 +229,8 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	result := examattempt.AutomaticSubmissionResult{SubmissionResult: examattempt.SubmissionResult{
 		Receipt: store.ExamSubmissionReceipt{BrowserActivity: model.BrowserSubmissionSettlement{State: "not_applicable", InventoryRevision: 1}, SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
 			State: model.ExamAttemptSubmitted, WorkspaceCursor: 21, ManifestDigest: strings.Repeat("e", 64),
@@ -262,29 +238,27 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 		Provenance: model.ExamSubmissionSittingClosed, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		CandidateUserID: model.NewUserID(), ConnectionID: model.NewAttemptConnectionID()},
 		ConnectionClosed: true}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSealedForSittingClose(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).AttemptSealedForSittingClose(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	if len(events) != 6 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
-		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
-		events[2].Name != "exam_attempt_connection_closed" || events[3].Name != "candidate.exam_activity.changed" ||
-		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "current_user.context.changed" ||
-		len(unbound) != 1 || unbound[0] != result.ConnectionID {
-		t.Fatalf("events=%#v unbound=%#v", events, unbound)
-	}
-	if encoded := string(events[2].Data); !strings.Contains(encoded, `"close_reason":"sitting_closed"`) {
-		t.Fatalf("automatic close event = %s", encoded)
-	}
+	require.Len(t, events, 6, "events")
+	require.Equal(t, "exam_attempt_submitted", events[0].Name, "events")
+	require.Empty(t, events[0].UserID, "events")
+	require.Equal(t, "exam_attempt_submitted", events[1].Name, "events")
+	require.Equal(t, result.CandidateUserID.String(), events[1].UserID, "events")
+	require.Equal(t, "exam_attempt_connection_closed", events[2].Name, "events")
+	require.Equal(t, "candidate.exam_activity.changed", events[3].Name, "events")
+	require.Equal(t, "manager.sitting_board.changed", events[4].Name, "events")
+	require.Equal(t, "current_user.context.changed", events[5].Name, "events")
+	require.Len(t, unbound, 1, "events")
+	require.Equal(t, result.ConnectionID, unbound[0], "events")
+	require.Contains(t, string(events[2].Data), `"close_reason":"sitting_closed"`)
 	for _, event := range events {
 		encoded := strings.ToLower(string(event.Data))
 		for _, forbidden := range []string{"path", "content", "source", "evidence", "sequence", "credential", "session", "private"} {
-			if strings.Contains(encoded, forbidden) {
-				t.Fatalf("automatic Submission event contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, encoded, forbidden, "automatic Submission event contains %q: %s", forbidden, event.Data)
 		}
 	}
 }
@@ -293,33 +267,25 @@ func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWar
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
 	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndWarn,
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()}, RetainedEvidenceCount: 3,
 		FlagCreated: true, ManagerNotificationRequired: true, CandidateWarningCreated: true}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 3 || events[0].Name != "exam_attempt_integrity_flagged" ||
-		events[1].Name != "exam_attempt_focus_warning" || events[1].UserID != result.CandidateUserID.String() ||
-		events[2].Name != "manager.sitting_board.changed" {
-		t.Fatalf("events=%#v", events)
-	}
+	require.Len(t, events, 3)
+	require.Equal(t, "exam_attempt_integrity_flagged", events[0].Name)
+	require.Equal(t, "exam_attempt_focus_warning", events[1].Name)
+	require.Equal(t, result.CandidateUserID.String(), events[1].UserID)
+	require.Equal(t, "manager.sitting_board.changed", events[2].Name)
 	for _, event := range events {
 		for _, forbidden := range []string{"duration", "source", "sequence", "credential", "session", "threshold"} {
-			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
-				t.Fatalf("Focus Loss effect contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, strings.ToLower(string(event.Data)), forbidden, "Focus Loss effect contains %q: %s", forbidden, event.Data)
 		}
 	}
 }
@@ -328,12 +294,8 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 20, 10, 5, 0, 0, time.UTC)
 	flagID := model.NewIntegrityFlagID()
 	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
@@ -345,28 +307,25 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), FlagID: flagID,
 			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" ||
-		events[1].Name != "exam_attempt_integrity_flagged" || events[2].Name != "exam_attempt_suspended" ||
-		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() ||
-		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "candidate.exam_activity.changed" ||
-		len(unbound) != 1 || unbound[0] != result.Connection.ID {
-		t.Fatalf("events=%#v unbound=%#v", events, unbound)
-	}
-	if encoded := string(events[3].Data); !strings.Contains(encoded, `"reason_code":"focus_policy_review_required"`) {
-		t.Fatalf("candidate suspension lacks neutral reason: %s", encoded)
-	}
+	require.Len(t, events, 6, "events")
+	require.Equal(t, "exam_attempt_connection_closed", events[0].Name, "events")
+	require.Equal(t, "exam_attempt_integrity_flagged", events[1].Name, "events")
+	require.Equal(t, "exam_attempt_suspended", events[2].Name, "events")
+	require.Equal(t, "exam_attempt_access_suspended", events[3].Name, "events")
+	require.Equal(t, result.CandidateUserID.String(), events[3].UserID, "events")
+	require.Equal(t, "manager.sitting_board.changed", events[4].Name, "events")
+	require.Equal(t, "candidate.exam_activity.changed", events[5].Name, "events")
+	require.Len(t, unbound, 1, "events")
+	require.Equal(t, result.Connection.ID, unbound[0], "events")
+	require.Contains(t, string(events[3].Data), `"reason_code":"focus_policy_review_required"`)
 	for _, event := range events {
 		for _, forbidden := range []string{"duration", "source", "sequence", "credential", "session", "threshold", "private"} {
-			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
-				t.Fatalf("Focus Loss suspension effect contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, strings.ToLower(string(event.Data)), forbidden, "Focus Loss suspension effect contains %q: %s", forbidden, event.Data)
 		}
 	}
 }
@@ -375,12 +334,8 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 	t.Parallel()
 	realtime := newTestRealtimeService(t, noopAuthenticationCache{})
 	sink := &recordingRealtimeSink{}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(&recordingRealtimeCluster{}))
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
 	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
@@ -389,17 +344,16 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()},
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(),
 			CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost}}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, (examAttemptRealtimeEffects{realtime: realtime}).ParticipationExpired(context.Background(), result))
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 5 || events[0].Name != "exam_attempt_suspended" || events[1].Name != "exam_attempt_access_suspended" ||
-		events[2].Name != "candidate.exam_activity.changed" || events[3].Name != "manager.sitting_board.changed" ||
-		events[4].Name != "current_user.context.changed" {
-		t.Fatalf("events = %#v", events)
-	}
+	require.Len(t, events, 5)
+	require.Equal(t, "exam_attempt_suspended", events[0].Name)
+	require.Equal(t, "exam_attempt_access_suspended", events[1].Name)
+	require.Equal(t, "candidate.exam_activity.changed", events[2].Name)
+	require.Equal(t, "manager.sitting_board.changed", events[3].Name)
+	require.Equal(t, "current_user.context.changed", events[4].Name)
 }
 
 func examAttemptPrincipal() model.Principal {

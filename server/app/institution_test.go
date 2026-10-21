@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type institutionStoreFake struct {
@@ -105,16 +107,11 @@ func TestInstitutionGetAuthorizesSingletonResource(t *testing.T) {
 		&institutionAuditorFake{events: &events}, time.Now,
 	)
 	got, err := service.GetInstitution(context.Background(), Invocation{}, GetInstitutionQuery{})
-	if err != nil || got != institution {
-		t.Fatalf("Get() = %#v, %v", got, err)
-	}
-	if authorizer.action != model.ActionInstitutionManage ||
-		authorizer.resource != (model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}) {
-		t.Fatalf("authorization = %q %#v", authorizer.action, authorizer.resource)
-	}
-	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "Get()")
+	require.Same(t, institution, got, "Get()")
+	require.Equal(t, model.ActionInstitutionManage, authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, authorizer.resource, "authorization")
+	require.NotContains(t, events, "audit-begin", "reading the Institution began an audit")
 }
 
 func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
@@ -142,19 +139,16 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	got, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{
 		DisplayName: &displayName, ExamCapacity: &capacity,
 	})
-	if err != nil || got != &updated {
-		t.Fatalf("Update() = %#v, %v", got, err)
-	}
-	if persistence.updateInput == nil ||
-		persistence.updateInput.Institution.DisplayName != displayName ||
-		persistence.updateInput.Institution.ExamCapacity != capacity ||
-		!persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
-		persistence.updateInput.AuditEventID != model.AuditEventID(auditor.beginID) {
-		t.Fatalf("update input = %#v", persistence.updateInput)
-	}
-	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "Update()")
+	require.Same(t, &updated, got, "Update()")
+	require.NotNil(t, persistence.updateInput)
+	require.Equal(t, displayName, persistence.updateInput.Institution.DisplayName)
+	require.Equal(t, capacity, persistence.updateInput.Institution.ExamCapacity)
+	require.True(t, persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()))
+	require.Equal(t, model.AuditEventID(auditor.beginID), persistence.updateInput.AuditEventID)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update")
 }
 
 func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
@@ -175,12 +169,12 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 	)
 	name := "duplicate"
 	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{Name: &name})
-	if !apperror.Is(err, "institution.conflict") || auditor.failCode != "institution.conflict" {
-		t.Fatalf("Update() error = %v, audit code = %q", err, auditor.failCode)
-	}
-	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update", "audit-fail"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "institution.conflict"), "Update() error = %v, audit code", err)
+	require.Equal(t, "institution.conflict", auditor.failCode, "Update() error = %v, audit code", err)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-update", "audit-fail")
 }
 
 func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
@@ -199,10 +193,6 @@ func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
 	)
 
 	_, err := service.UpdateInstitution(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
-	if !apperror.Is(err, "institution.invalid") {
-		t.Fatalf("Update() error = %v", err)
-	}
-	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "institution.invalid"), "Update() error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 }

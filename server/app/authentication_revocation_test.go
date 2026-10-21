@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -31,12 +33,8 @@ func cacheLegacyAuthentication(t *testing.T, cache authenticationCache, credenti
 		User       *model.User              `json:"user"`
 	}{Credential: credential, Session: session, User: user}
 	data, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cache.SetAlways(context.Background(), authenticationCachePrefix+credential.TokenHash, data, time.Hour); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, cache.SetAlways(context.Background(), authenticationCachePrefix+credential.TokenHash, data, time.Hour))
 }
 
 func TestSessionAuthenticationUsesCurrentStoreStateWithWarmCache(t *testing.T) {
@@ -84,15 +82,13 @@ func TestSessionAuthenticationUsesCurrentStoreStateWithWarmCache(t *testing.T) {
 					session := persistence.sessionByCredential[hash]
 					session.ClientType = clientType
 					cacheLegacyAuthentication(t, cache, credential, session, user)
-					if _, err := service.authenticateAccess(context.Background(), rawAccess); err != nil {
-						t.Fatalf("initial authentication: %v", err)
-					}
+					_, err := service.authenticateAccess(context.Background(), rawAccess)
+					require.NoError(t, err)
 
 					test.change(persistence, user, credential, session, at)
 					principal, err := service.authenticateAccess(context.Background(), rawAccess)
-					if principal != nil || !apperror.Is(err, test.wantCode) {
-						t.Fatalf("authentication after durable change = %#v, %v; want %s", principal, err, test.wantCode)
-					}
+					require.Nil(t, principal, "authentication after durable change = %#v, %v; want %s", principal, err, test.wantCode)
+					require.True(t, apperror.Is(err, test.wantCode), "authentication after durable change = %#v, %v; want %s", principal, err, test.wantCode)
 				})
 			}
 		})
@@ -109,9 +105,8 @@ func TestSessionAuthenticationFailsClosedWhenCredentialStoreUnavailableWithWarmC
 	cacheLegacyAuthentication(t, cache, persistence.accessByHash[hash], persistence.sessionByCredential[hash], user)
 	service.sessionCredentials = unavailableAuthenticationCredentialStore{SessionCredentialStore: persistence.SessionCredential()}
 	principal, err := service.authenticateAccess(context.Background(), rawAccess)
-	if principal != nil || !apperror.Is(err, "authentication.internal") {
-		t.Fatalf("authentication with unavailable Store = %#v, %v", principal, err)
-	}
+	require.Nil(t, principal, "authentication with unavailable Store = %#v, %v", principal, err)
+	require.True(t, apperror.Is(err, "authentication.internal"), "authentication with unavailable Store = %#v, %v", principal, err)
 }
 
 type unavailableAuthenticationCredentialStore struct{ store.SessionCredentialStore }
@@ -133,22 +128,15 @@ func TestSessionRevocationRejectsAfterLocalCacheDeleteFailure(t *testing.T) {
 	hash := model.HashToken(rawAccess)
 	cacheLegacyAuthentication(t, cache, persistence.accessByHash[hash], persistence.sessionByCredential[hash], user)
 	principal, err := service.authenticateAccess(context.Background(), rawAccess)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	cache.fail = true
-	if err := service.Logout(context.Background(), NewInvocation(*principal, model.RequestMetadata{}), LogoutCommand{}); err != nil {
-		t.Fatalf("logout after cache failure: %v", err)
-	}
-	if cache.failures == 0 {
-		t.Fatal("logout did not attempt local cache invalidation")
-	}
-	if _, err := cache.Get(context.Background(), authenticationCachePrefix+hash); err != nil {
-		t.Fatalf("failed delete must retain the positive cache: %v", err)
-	}
-	if principal, err := service.authenticateAccess(context.Background(), rawAccess); principal != nil || !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("authentication after committed logout = %#v, %v", principal, err)
-	}
+	require.NoError(t, service.Logout(context.Background(), NewInvocation(*principal, model.RequestMetadata{}), LogoutCommand{}))
+	require.NotEqual(t, 0, cache.failures, "logout did not attempt local cache invalidation")
+	_, err = cache.Get(context.Background(), authenticationCachePrefix+hash)
+	require.NoError(t, err)
+	principal, err = service.authenticateAccess(context.Background(), rawAccess)
+	require.Nil(t, principal, "authentication after committed logout = %#v, %v", principal, err)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "authentication after committed logout = %#v, %v", principal, err)
 }
 
 type failingAuthenticationCacheDelete struct {
@@ -188,32 +176,26 @@ func TestSessionAuthenticationPreservesDebouncedActivityAndAbsoluteLimit(t *test
 			initialIdleExpiry := session.IdleExpiresAt
 
 			now = at.Add(service.sessionPolicy.ActivityUpdateInterval - time.Millisecond)
-			if _, err := service.authenticateAccess(context.Background(), rawAccess); err != nil {
-				t.Fatal(err)
-			}
-			if !session.LastActivityAt.Equal(at) || !session.IdleExpiresAt.Equal(initialIdleExpiry) {
-				t.Fatal("activity changed before the debounce interval")
-			}
+			_, err := service.authenticateAccess(context.Background(), rawAccess)
+			require.NoError(t, err)
+			require.True(t, session.LastActivityAt.Equal(at), "activity changed before the debounce interval")
+			require.True(t, session.IdleExpiresAt.Equal(initialIdleExpiry), "activity changed before the debounce interval")
 
 			now = at.Add(service.sessionPolicy.ActivityUpdateInterval)
-			if _, err := service.authenticateAccess(context.Background(), rawAccess); err != nil {
-				t.Fatal(err)
-			}
+			_, err = service.authenticateAccess(context.Background(), rawAccess)
+			require.NoError(t, err)
 			wantIdleExpiry := now.Add(service.sessionPolicy.IdleTTL)
 			if session.ExpiresAt.Before(wantIdleExpiry) {
 				wantIdleExpiry = session.ExpiresAt
 			}
-			if !session.LastActivityAt.Equal(now) || !session.IdleExpiresAt.Equal(wantIdleExpiry) {
-				t.Fatalf("activity update = %v/%v, want %v/%v", session.LastActivityAt, session.IdleExpiresAt, now, wantIdleExpiry)
-			}
+			require.True(t, session.LastActivityAt.Equal(now), "activity update = %v/%v, want %v", session.LastActivityAt, session.IdleExpiresAt, now)
+			require.True(t, session.IdleExpiresAt.Equal(wantIdleExpiry), "activity update = %v/%v, want %v", session.LastActivityAt, session.IdleExpiresAt, now)
 			updatedAt := now
 			now = now.Add(time.Second)
-			if _, err := service.authenticateAccess(context.Background(), rawAccess); err != nil {
-				t.Fatal(err)
-			}
-			if !session.LastActivityAt.Equal(updatedAt) || !session.IdleExpiresAt.Equal(wantIdleExpiry) {
-				t.Fatal("another request repeated the debounced activity write")
-			}
+			_, err = service.authenticateAccess(context.Background(), rawAccess)
+			require.NoError(t, err)
+			require.True(t, session.LastActivityAt.Equal(updatedAt), "another request repeated the debounced activity write")
+			require.True(t, session.IdleExpiresAt.Equal(wantIdleExpiry), "another request repeated the debounced activity write")
 		})
 	}
 }

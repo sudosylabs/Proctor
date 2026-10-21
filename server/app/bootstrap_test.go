@@ -10,15 +10,17 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type installationStoreFake struct {
@@ -130,9 +132,7 @@ func (c *bootstrapAttemptCacheFake) snapshot() map[string]int64 {
 func bootstrapAttemptAccounting(t *testing.T, cache authenticationAttemptCache) *authenticationAttemptAccounting {
 	t.Helper()
 	accounting, err := newAuthenticationAttemptAccounting(cache)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return accounting
 }
 
@@ -158,9 +158,8 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 		administratorRecoveryPolicy{},
 	)
 	status, err := service.GetInstallationStatus(context.Background(), GetInstallationStatusQuery{})
-	if err != nil || status.Initialized {
-		t.Fatalf("status=%#v err=%v", status, err)
-	}
+	require.NoError(t, err, "status=%#v err", status)
+	require.False(t, status.Initialized, "status=%#v err", status)
 }
 
 func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
@@ -174,9 +173,9 @@ func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
 			InstitutionName: "test", AdministratorUsername: "administrator", AdministratorEmail: "administrator@example.edu",
 			Password: "correct horse battery staple", BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.35",
 		})
-		if result != nil || persistence.input != nil || len(events) != 0 {
-			t.Fatal("failed password work reached installation bootstrap")
-		}
+		require.Nil(t, result, "failed password work reached installation bootstrap")
+		require.Nil(t, persistence.input, "failed password work reached installation bootstrap")
+		require.Empty(t, events, "failed password work reached installation bootstrap")
 		return err
 	})
 }
@@ -205,40 +204,28 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com",
 		Password: "password-value", BootstrapSecret: bootstrapProtection().Secret, Source: "127.0.0.1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.State.InstitutionID != result.State.InstitutionID || persistence.input.PasswordHash != "encoded" {
-		t.Fatalf("result/input = %#v / %#v", got, persistence.input)
-	}
-	if persistence.input.AuditEvent.NodeID != "node-a" || persistence.input.Role.BuiltIn != true {
-		t.Fatalf("bootstrap input = %#v", persistence.input)
-	}
-	if persistence.input.AccessPolicy == nil || persistence.input.AccessPolicy.Revision != 1 ||
-		!persistence.input.AccessPolicy.LocalLoginEnabled ||
-		persistence.input.AccessPolicy.PublicRegistrationEnabled ||
-		!persistence.input.AccessPolicy.DesktopAuthorizationEnabled ||
-		persistence.input.BootstrapSecretDigest == ([32]byte{}) ||
-		persistence.input.CommandFingerprint == ([32]byte{}) {
-		t.Fatalf("bootstrap protection/policy input = %#v", persistence.input)
-	}
-	if !reflect.DeepEqual(persistence.input.Role.Permissions, model.AllActions()) {
-		t.Fatalf("bootstrap system-administrator permissions = %#v, want %#v", persistence.input.Role.Permissions, model.AllActions())
-	}
-	if persistence.input.DefaultProfilePictureJob == nil ||
-		persistence.input.DefaultProfilePictureJob.DedupeKey != persistence.input.Administrator.ID.String() {
-		t.Fatalf("bootstrap default-picture job = %#v", persistence.input.DefaultProfilePictureJob)
-	}
-	if persistence.input.AdministratorSettings == nil ||
-		persistence.input.AdministratorSettings.UserID != persistence.input.Administrator.ID ||
-		persistence.input.AdministratorSettings.Source != model.UserSettingsInitialSource ||
-		persistence.input.AdministratorSettings.FormatVersion != model.UserSettingsFormatVersion1 {
-		t.Fatalf("bootstrap administrator settings = %#v", persistence.input.AdministratorSettings)
-	}
-	want := []string{"rate-limit", "hash-password", "bootstrap"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, result.State.InstitutionID, got.State.InstitutionID, "result/input = %#v / %#v", got, persistence.input)
+	require.Equal(t, "encoded", persistence.input.PasswordHash, "result/input = %#v / %#v", got, persistence.input)
+	require.Equal(t, "node-a", persistence.input.AuditEvent.NodeID)
+	require.True(t, persistence.input.Role.BuiltIn)
+	require.NotNil(t, persistence.input.AccessPolicy)
+	require.Equal(t, int64(1), persistence.input.AccessPolicy.Revision)
+	require.True(t, persistence.input.AccessPolicy.LocalLoginEnabled)
+	require.False(t, persistence.input.AccessPolicy.PublicRegistrationEnabled)
+	require.True(t, persistence.input.AccessPolicy.DesktopAuthorizationEnabled)
+	require.NotEqual(t, [32]byte{}, persistence.input.BootstrapSecretDigest)
+	require.NotEqual(t, [32]byte{}, persistence.input.CommandFingerprint)
+	require.Equal(t, model.AllActions(), persistence.input.Role.Permissions, "bootstrap system-administrator permissions")
+	require.NotNil(t, persistence.input.DefaultProfilePictureJob)
+	require.Equal(t, persistence.input.Administrator.ID.String(), persistence.input.DefaultProfilePictureJob.DedupeKey)
+	require.NotNil(t, persistence.input.AdministratorSettings)
+	require.Equal(t, persistence.input.Administrator.ID, persistence.input.AdministratorSettings.UserID)
+	require.Equal(t, model.UserSettingsInitialSource, persistence.input.AdministratorSettings.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, persistence.input.AdministratorSettings.FormatVersion)
+	// Contract: the rate limit is consulted before the expensive password hash,
+	// which precedes the durable bootstrap.
+	ordertest.RequireInOrder(t, events, "rate-limit", "hash-password", "bootstrap")
 }
 
 func TestBootstrapAlreadyInitialized(t *testing.T) {
@@ -261,13 +248,10 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
-	if !apperror.Is(err, "installation.already_initialized") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"rate-limit", "hash-password", "bootstrap"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "installation.already_initialized"), "error = %v", err)
+	// Contract: the rate limit is consulted before the expensive password hash,
+	// which precedes the durable bootstrap.
+	ordertest.RequireInOrder(t, events, "rate-limit", "hash-password", "bootstrap")
 }
 
 func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
@@ -291,9 +275,7 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 		AdministratorUsername: "admin", AdministratorEmail: "admin@example.com", Password: "x",
 		BootstrapSecret: bootstrapProtection().Secret,
 	})
-	if !apperror.Is(err, "installation.already_initialized") {
-		t.Fatalf("error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "installation.already_initialized"), "error = %v", err)
 }
 
 func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testing.T) {
@@ -312,12 +294,8 @@ func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testin
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: "wrong-bootstrap-secret-that-is-still-long-enough", Source: "192.0.2.10:443",
 	})
-	if !apperror.Is(err, "installation.bootstrap_denied") {
-		t.Fatalf("error = %v", err)
-	}
-	if want := []string{"rate-limit"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "installation.bootstrap_denied"), "error = %v", err)
+	require.Equal(t, []string{"rate-limit"}, events, "events")
 }
 
 func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testing.T) {
@@ -343,9 +321,9 @@ func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testin
 		AdministratorEmail: "admin@example.com", Password: "password-value",
 		BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.10:443",
 	})
-	if err != nil || result != committed || persistence.calls != 2 {
-		t.Fatalf("result=%#v calls=%d error=%v", result, persistence.calls, err)
-	}
+	require.NoError(t, err, "result")
+	require.Same(t, committed, result, "result")
+	require.Equal(t, 2, persistence.calls, "result")
 }
 
 func TestBootstrapCommandFingerprintIsExactAndDeploymentSecretKeyed(t *testing.T) {
@@ -357,25 +335,20 @@ func TestBootstrapCommandFingerprintIsExactAndDeploymentSecretKeyed(t *testing.T
 		BootstrapSecret: bootstrapProtection().Secret,
 	}
 	first, err := fingerprintBootstrapCommand(command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	second, err := fingerprintBootstrapCommand(command)
-	if err != nil || first != second {
-		t.Fatalf("same command fingerprint = %x / %x, error=%v", first, second, err)
-	}
+	require.NoError(t, err, "same command fingerprint")
+	require.Equal(t, second, first, "same command fingerprint")
 	changedPassword := command
 	changedPassword.Password = "different-password"
 	passwordFingerprint, err := fingerprintBootstrapCommand(changedPassword)
-	if err != nil || passwordFingerprint == first {
-		t.Fatalf("changed password fingerprint = %x, error=%v", passwordFingerprint, err)
-	}
+	require.NoError(t, err, "changed password fingerprint")
+	require.NotEqual(t, first, passwordFingerprint, "changed password fingerprint")
 	changedSecret := command
 	changedSecret.BootstrapSecret = "different-operator-bootstrap-secret-32-bytes"
 	secretFingerprint, err := fingerprintBootstrapCommand(changedSecret)
-	if err != nil || secretFingerprint == first {
-		t.Fatalf("changed secret fingerprint = %x, error=%v", secretFingerprint, err)
-	}
+	require.NoError(t, err, "changed secret fingerprint")
+	require.NotEqual(t, first, secretFingerprint, "changed secret fingerprint")
 }
 
 func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
@@ -400,30 +373,21 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 		Source:          " 192.0.2.10:443 ",
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, err := service.BootstrapInstallation(context.Background(), Invocation{}, command); err != nil {
-			t.Fatalf("attempt %d error = %v", attempt, err)
-		}
+		_, err := service.BootstrapInstallation(context.Background(), Invocation{}, command)
+		require.NoError(t, err, "attempt %d error", attempt)
 	}
-	if _, err := service.BootstrapInstallation(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("attempt after maximum error = %v", err)
-	}
+	_, err := service.BootstrapInstallation(context.Background(), Invocation{}, command)
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "attempt after maximum error = %v", err)
 
 	command.Source = "192.0.2.11:443"
-	if _, err := service.BootstrapInstallation(context.Background(), Invocation{}, command); err != nil {
-		t.Fatalf("isolated source error = %v", err)
-	}
+	_, err = service.BootstrapInstallation(context.Background(), Invocation{}, command)
+	require.NoError(t, err)
 
 	entries := cache.snapshot()
-	if len(entries) != 2 {
-		t.Fatalf("source counters = %d, want 2 isolated keys", len(entries))
-	}
+	require.Len(t, entries, 2, "source counters")
 	for key := range entries {
-		if !strings.HasPrefix(key, "authentication/attempts/installation-bootstrap/source/") {
-			t.Fatalf("counter key = %q", key)
-		}
-		if strings.Contains(key, "192.0.2") {
-			t.Fatalf("counter key exposes source: %q", key)
-		}
+		require.True(t, strings.HasPrefix(key, "authentication/attempts/installation-bootstrap/source/"), "counter key = %q", key)
+		require.NotContains(t, key, "192.0.2")
 	}
 }
 
@@ -448,13 +412,10 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 		BootstrapSecret: bootstrapProtection().Secret,
 		Source:          "192.0.2.10:443",
 	})
-	if !apperror.Is(err, "administration.unavailable") || !errors.Is(err, cacheFailure) {
-		t.Fatalf("error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "administration.unavailable"))
+	require.ErrorIs(t, err, cacheFailure)
 	want := []string{"rate-limit"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, want, events, "events")
 }
 
 func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
@@ -477,11 +438,7 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 		BootstrapSecret: bootstrapProtection().Secret,
 		Source:          "192.0.2.10:443",
 	})
-	if !apperror.Is(err, "administration.unavailable") {
-		t.Fatalf("error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
 	want := []string{}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, want, events, "events")
 }

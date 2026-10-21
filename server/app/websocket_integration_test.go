@@ -13,7 +13,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -25,6 +24,8 @@ import (
 	"time"
 
 	gwebsocket "github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -38,18 +39,14 @@ import (
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
 func TestWebSocketIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(
 		t,
@@ -78,13 +75,9 @@ func TestWebSocketIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	var installation model.InstallationBootstrapResult
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &installation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &installation))
 	login := loginIntegrationUser(
 		t,
 		helper.Handler(),
@@ -101,55 +94,42 @@ func TestWebSocketIntegration(t *testing.T) {
 	invalidOriginHeaders := headers.Clone()
 	invalidOriginHeaders.Set("Origin", "https://attacker.example")
 	_, response, err := gwebsocket.DefaultDialer.Dial(socketURL, invalidOriginHeaders)
-	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-origin WebSocket response = %#v, %v", response, err)
-	}
+	require.Error(t, err, "cross-origin WebSocket response")
+	require.NotNil(t, response, "cross-origin WebSocket response")
+	require.Equal(t, http.StatusForbidden, response.StatusCode, "cross-origin WebSocket response")
 
 	resyncURL := socketURL + "?connection_id=" + model.NewID() + "&sequence_number=0"
 	resyncConnection, response, err := gwebsocket.DefaultDialer.Dial(resyncURL, headers)
-	if err != nil {
-		t.Fatalf("WebSocket resync dial = %v, response = %#v", err, response)
-	}
+	require.NoError(t, err, "WebSocket resync dial = %v, response = %#v", err, response)
 	resyncHello := readWebSocketEvent(t, resyncConnection)
-	if resyncHello.Event != "hello" || resyncHello.Sequence != 1 {
-		t.Fatalf("resync hello = %#v", resyncHello)
-	}
+	require.Equal(t, "hello", resyncHello.Event)
+	require.Equal(t, int64(1), resyncHello.Sequence)
 	resyncRequired := readWebSocketEvent(t, resyncConnection)
-	if resyncRequired.Event != "resync_required" ||
-		resyncRequired.Sequence != 2 {
-		t.Fatalf("resync event = %#v", resyncRequired)
-	}
+	require.Equal(t, "resync_required", resyncRequired.Event)
+	require.Equal(t, int64(2), resyncRequired.Sequence)
 	_ = resyncConnection.Close()
 
 	connection, response, err := gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
-		if response != nil {
-			t.Fatalf("WebSocket dial = %v, status = %d", err, response.StatusCode)
-		}
-		t.Fatal(err)
+		require.Nil(t, response, "WebSocket dial")
+		require.NoError(t, err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 
 	hello := readWebSocketEvent(t, connection)
-	if hello.Event != "hello" ||
-		hello.Sequence != 1 ||
-		!model.IsValidOpaqueID(hello.ID) {
-		t.Fatalf("hello event = %#v", hello)
-	}
+	require.Equal(t, "hello", hello.Event)
+	require.Equal(t, int64(1), hello.Sequence)
+	require.True(t, model.IsValidOpaqueID(hello.ID))
 	var helloData websocket.Hello
-	if err := json.Unmarshal(hello.Data, &helloData); err != nil {
-		t.Fatal(err)
-	}
-	if !model.IsValidOpaqueID(helloData.ConnectionID) ||
-		helloData.NodeID != helper.ConfigStore.Get().Cluster.NodeID ||
-		helloData.Resumed {
-		t.Fatalf("hello data = %#v", helloData)
-	}
+	require.NoError(t, json.Unmarshal(hello.Data, &helloData))
+	require.True(t, model.IsValidOpaqueID(helloData.ConnectionID))
+	require.Equal(t, helper.ConfigStore.Get().Cluster.NodeID, helloData.NodeID)
+	require.False(t, helloData.Resumed)
 	writeWebSocketRequest(t, connection, 1, "ping", nil)
 	ping := readWebSocketResponse(t, connection)
-	if ping.Status != "ok" || ping.Sequence != 1 || string(ping.Data) != `{"pong":true}` {
-		t.Fatalf("ping response = %#v", ping)
-	}
+	require.Equal(t, "ok", ping.Status)
+	require.Equal(t, int64(1), ping.Sequence)
+	require.Equal(t, `{"pong":true}`, string(ping.Data))
 
 	subscription := websocket.Subscription{
 		Action: model.ActionInstitutionManage,
@@ -160,12 +140,11 @@ func TestWebSocketIntegration(t *testing.T) {
 	}
 	writeWebSocketRequest(t, connection, 2, "subscribe", subscription)
 	responseMessage := readWebSocketResponse(t, connection)
-	if responseMessage.Status != "ok" || responseMessage.Sequence != 2 {
-		t.Fatalf("subscribe response = %#v", responseMessage)
-	}
+	require.Equal(t, "ok", responseMessage.Status)
+	require.Equal(t, int64(2), responseMessage.Sequence)
 
 	eventData := json.RawMessage(`{"version":1}`)
-	if appErr := helper.App.PublishRealtimeEvent(
+	require.NoError(t, helper.App.PublishRealtimeEvent(
 		context.Background(),
 		apprealtime.RealtimeEvent{
 			Name:   "institution.updated",
@@ -176,15 +155,11 @@ func TestWebSocketIntegration(t *testing.T) {
 			},
 			Data: eventData,
 		},
-	); appErr != nil {
-		t.Fatal(appErr)
-	}
+	))
 	event := readWebSocketEvent(t, connection)
-	if event.Event != "institution.updated" ||
-		event.Sequence != 2 ||
-		string(event.Data) != string(eventData) {
-		t.Fatalf("published event = %#v", event)
-	}
+	require.Equal(t, "institution.updated", event.Event)
+	require.Equal(t, int64(2), event.Sequence)
+	require.Equal(t, string(eventData), string(event.Data))
 	_ = connection.WriteMessage(
 		gwebsocket.CloseMessage,
 		gwebsocket.FormatCloseMessage(gwebsocket.CloseNormalClosure, "reconnect"),
@@ -196,9 +171,7 @@ func TestWebSocketIntegration(t *testing.T) {
 	var resumed *gwebsocket.Conn
 	for attempt := 0; attempt < 20; attempt++ {
 		candidate, candidateResponse, dialErr := gwebsocket.DefaultDialer.Dial(resumeURL, headers)
-		if dialErr != nil {
-			t.Fatalf("WebSocket resume dial = %v, response = %#v", dialErr, candidateResponse)
-		}
+		require.NoError(t, dialErr, "WebSocket resume dial = %v, response = %#v", dialErr, candidateResponse)
 		first := readWebSocketEvent(t, candidate)
 		if first.Event == "institution.updated" && first.Sequence == 2 {
 			resumed = candidate
@@ -207,70 +180,49 @@ func TestWebSocketIntegration(t *testing.T) {
 		_ = candidate.Close()
 		time.Sleep(10 * time.Millisecond)
 	}
-	if resumed == nil {
-		t.Fatal("WebSocket replay state was not available")
-	}
+	require.NotNil(t, resumed, "WebSocket replay state was not available")
 	connection = resumed
 	resumedHello := readWebSocketEvent(t, connection)
 	var resumedData websocket.Hello
-	if err := json.Unmarshal(resumedHello.Data, &resumedData); err != nil {
-		t.Fatal(err)
-	}
-	if resumedHello.Event != "hello" ||
-		resumedHello.Sequence != 3 || !resumedData.Resumed ||
-		resumedData.ConnectionID != helloData.ConnectionID {
-		t.Fatalf("resumed hello = %#v, data = %#v", resumedHello, resumedData)
-	}
+	require.NoError(t, json.Unmarshal(resumedHello.Data, &resumedData))
+	require.Equal(t, "hello", resumedHello.Event, "resumed hello = %#v, data = %#v", resumedHello, resumedData)
+	require.Equal(t, int64(3), resumedHello.Sequence, "resumed hello = %#v, data = %#v", resumedHello, resumedData)
+	require.True(t, resumedData.Resumed, "resumed hello = %#v, data = %#v", resumedHello, resumedData)
+	require.Equal(t, helloData.ConnectionID, resumedData.ConnectionID, "resumed hello = %#v, data = %#v", resumedHello, resumedData)
 
 	writeWebSocketRequest(t, connection, 3, "unsubscribe", subscription)
-	if responseMessage = readWebSocketResponse(t, connection); responseMessage.Status != "ok" {
-		t.Fatalf("unsubscribe response = %#v", responseMessage)
-	}
+	responseMessage = readWebSocketResponse(t, connection)
+	require.Equal(t, "ok", responseMessage.Status)
 
 	principal, appErr := helper.App.AuthenticateAccess(
 		context.Background(),
 		login.Tokens.AccessToken,
 	)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if err := helper.App.RevokeSession(
+	require.NoError(t, appErr)
+	require.NoError(t, helper.App.RevokeSession(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{}),
 		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, _, err = connection.ReadMessage()
 	var closeError *gwebsocket.CloseError
-	if !errors.As(err, &closeError) ||
-		closeError.Code != websocket.CloseSessionRevoked {
-		t.Fatalf("revoked WebSocket close = %v", err)
-	}
+	require.ErrorAs(t, err, &closeError)
+	require.Equal(t, websocket.CloseSessionRevoked, closeError.Code)
 
 	unauthenticatedURL, err := url.Parse(socketURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, response, err = gwebsocket.DefaultDialer.Dial(unauthenticatedURL.String(), nil)
-	if err == nil {
-		t.Fatal("unauthenticated WebSocket connection succeeded")
-	}
-	if response == nil || response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated WebSocket response = %#v, %v", response, err)
-	}
+	require.Error(t, err, "unauthenticated WebSocket connection succeeded")
+	require.NotNil(t, response, "unauthenticated WebSocket response = %#v, %v", response, err)
+	require.Equal(t, http.StatusUnauthorized, response.StatusCode, "unauthenticated WebSocket response = %#v, %v", response, err)
 }
 
 func TestWebSocketTwoNodeConformance(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is required")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is required")
 	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
-	if redisAddress == "" {
-		t.Fatal("PROCTOR_TEST_REDIS_ADDRESS is required for clustered cache coherence")
-	}
+	require.NotEmpty(t, redisAddress, "PROCTOR_TEST_REDIS_ADDRESS is required for clustered cache coherence")
 	persistenceA := openAuthenticationStore(t, dataSource)
 	database := config.Default().Database
 	database.DataSource = dataSource
@@ -278,9 +230,7 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		context.Background(),
 		sqlstore.SettingsFromConfig(database),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	clusterKeyMaterial := make([]byte, 32)
 	clusterKeyMaterial[0] = 1
 	clusterKey := base64.StdEncoding.EncodeToString(clusterKeyMaterial)
@@ -340,13 +290,9 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		},
 		"",
 	)
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	var installation model.InstallationBootstrapResult
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &installation); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &installation))
 	login := loginIntegrationUser(
 		t,
 		nodeA.Handler(),
@@ -362,10 +308,8 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	headers := http.Header{"Authorization": []string{"Bearer " + login.Tokens.AccessToken}}
 	connection, response, err := gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
-		if response != nil {
-			t.Fatalf("node B WebSocket dial = %v, status = %d", err, response.StatusCode)
-		}
-		t.Fatal(err)
+		require.Nil(t, response, "node B WebSocket dial")
+		require.NoError(t, err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 	_ = readWebSocketEvent(t, connection)
@@ -378,11 +322,9 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 		},
 	}
 	writeWebSocketRequest(t, connection, 1, "subscribe", subscription)
-	if response := readWebSocketResponse(t, connection); response.Status != "ok" {
-		t.Fatalf("node B subscription = %#v", response)
-	}
+	require.Equal(t, "ok", readWebSocketResponse(t, connection).Status)
 
-	if appErr := nodeA.App.PublishRealtimeEvent(
+	require.NoError(t, nodeA.App.PublishRealtimeEvent(
 		context.Background(),
 		apprealtime.RealtimeEvent{
 			Name:   "institution.cluster_updated",
@@ -393,22 +335,16 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 			},
 			Data: json.RawMessage(`{"source":"node-a"}`),
 		},
-	); appErr != nil {
-		t.Fatal(appErr)
-	}
+	))
 	event := readWebSocketEvent(t, connection)
-	if event.Event != "institution.cluster_updated" ||
-		string(event.Data) != `{"source":"node-a"}` {
-		t.Fatalf("node B cluster event = %#v", event)
-	}
+	require.Equal(t, "institution.cluster_updated", event.Event)
+	require.Equal(t, `{"source":"node-a"}`, string(event.Data))
 
 	principal, appErr := nodeA.App.AuthenticateAccess(
 		context.Background(),
 		login.Tokens.AccessToken,
 	)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	role, err := nodeA.App.CreateRole(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-create"}),
@@ -417,48 +353,37 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 			Permissions: []string{string(model.ActionUserView)},
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	updatedDisplayName := "Updated Cluster Observer"
-	if _, err := nodeA.App.UpdateRole(
+	_, err = nodeA.App.UpdateRole(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "two-node-role-patch"}),
 		app.UpdateRoleCommand{ID: role.ID, DisplayName: &updatedDisplayName},
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()
 	var closeError *gwebsocket.CloseError
-	if !errors.As(err, &closeError) ||
-		closeError.Code != websocket.CloseAuthorizationChanged {
-		t.Fatalf("node B authorization-change close = %v", err)
-	}
+	require.ErrorAs(t, err, &closeError)
+	require.Equal(t, websocket.CloseAuthorizationChanged, closeError.Code)
 
 	connection, response, err = gwebsocket.DefaultDialer.Dial(socketURL, headers)
 	if err != nil {
-		if response != nil {
-			t.Fatalf("node B reconnect = %v, status = %d", err, response.StatusCode)
-		}
-		t.Fatal(err)
+		require.Nil(t, response, "node B reconnect")
+		require.NoError(t, err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 	_ = readWebSocketEvent(t, connection)
-	if err := nodeA.App.RevokeSession(
+	require.NoError(t, nodeA.App.RevokeSession(
 		context.Background(),
 		app.NewInvocation(*principal, model.RequestMetadata{}),
 		app.RevokeSessionCommand{SessionID: login.Session.ID.String()},
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 	_ = connection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, _, err = connection.ReadMessage()
 	closeError = nil
-	if !errors.As(err, &closeError) ||
-		closeError.Code != websocket.CloseSessionRevoked {
-		t.Fatalf("node B revocation close = %v", err)
-	}
+	require.ErrorAs(t, err, &closeError)
+	require.Equal(t, websocket.CloseSessionRevoked, closeError.Code)
 }
 
 func startIntegrationServer(t *testing.T, helper *testlib.Helper) {
@@ -471,17 +396,15 @@ func startIntegrationServer(t *testing.T, helper *testlib.Helper) {
 	for !helper.Server.Ready() {
 		select {
 		case err := <-done:
-			t.Fatalf("start integration server before readiness: %v", err)
+			require.FailNow(t, fmt.Sprintf("start integration server before readiness: %v", err))
 		case <-deadline.C:
-			t.Fatal("integration server did not become ready")
+			require.FailNow(t, "integration server did not become ready")
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
 	t.Cleanup(func() {
 		cancel()
-		if err := <-done; err != nil {
-			t.Errorf("stop integration server: %v", err)
-		}
+		assert.NoError(t, (<-done))
 	})
 }
 
@@ -494,14 +417,10 @@ func writeWebSocketRequest(
 ) {
 	t.Helper()
 	raw, err := json.Marshal(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := connection.WriteJSON(&websocket.Request{
+	require.NoError(t, err)
+	require.NoError(t, connection.WriteJSON(&websocket.Request{
 		Sequence: sequence, Action: action, Data: raw,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	}))
 }
 
 func readWebSocketEvent(
@@ -511,18 +430,14 @@ func readWebSocketEvent(
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, payload, err := connection.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertWebSocketJSONKeys(
 		t,
 		payload,
 		[]string{"id", "event", "sequence"},
 	)
 	var event websocket.Event
-	if err := json.Unmarshal(payload, &event); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(payload, &event))
 	return &event
 }
 
@@ -533,18 +448,14 @@ func readWebSocketResponse(
 	t.Helper()
 	_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
 	_, payload, err := connection.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertWebSocketJSONKeys(
 		t,
 		payload,
 		[]string{"status", "sequence"},
 	)
 	var response websocket.Response
-	if err := json.Unmarshal(payload, &response); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(payload, &response))
 	return &response
 }
 
@@ -555,12 +466,9 @@ func assertWebSocketJSONKeys(
 ) {
 	t.Helper()
 	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &envelope); err != nil {
-		t.Fatalf("decode WebSocket envelope: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(payload, &envelope))
 	for _, key := range required {
-		if _, exists := envelope[key]; !exists {
-			t.Fatalf("WebSocket envelope %s is missing %q", payload, key)
-		}
+		_, exists := envelope[key]
+		require.True(t, exists, "WebSocket envelope %s is missing %q", payload, key)
 	}
 }

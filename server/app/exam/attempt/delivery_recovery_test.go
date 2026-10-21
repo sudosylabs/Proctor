@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -70,9 +72,7 @@ func TestBrowserDeliveryRefusalRequiresFreshOwnedRecovery(t *testing.T) {
 			f.service.deps.Persistence = p
 			_, err := f.service.BrowserDeliveryReceipts(context.Background(), f.invocation, BrowserSourceQuery{Access: CandidateAccess{AttemptID: f.attemptID}, SourceSessionID: source, ParticipationID: part}, 1, 32)
 			var fault *apperror.Error
-			if !errors.As(err, &fault) {
-				t.Fatalf("missing application fault: %v", err)
-			}
+			require.ErrorAs(t, err, &fault)
 			var carrier interface {
 				DeliveryRecovery() *model.DeliveryRecovery
 			}
@@ -80,16 +80,16 @@ func TestBrowserDeliveryRefusalRequiresFreshOwnedRecovery(t *testing.T) {
 			if errors.As(err, &carrier) {
 				recovery = carrier.DeliveryRecovery()
 			}
-			if (recovery != nil) != (name == "current") {
-				t.Fatalf("recovery disclosure for %s: %#v", name, recovery)
-			}
+			require.Equal(t, name == "current", recovery != nil, "recovery disclosure for %s: %#v", name, recovery)
 			if name == "current" {
-				if recovery.Validate() != nil || p.reads != 2 || p.budgetSelector.ParticipationID != part || p.budgetSelector.Access != p.selector.Access || !errors.Is(err, p.refusal) {
-					t.Fatal("recovery changed ownership, cause or bounds")
-				}
+				require.NoError(t, recovery.Validate(), "recovery changed ownership, cause or bounds")
+				require.Equal(t, 2, p.reads, "recovery changed ownership, cause or bounds")
+				require.Equal(t, part, p.budgetSelector.ParticipationID, "recovery changed ownership, cause or bounds")
+				require.Equal(t, p.selector.Access, p.budgetSelector.Access, "recovery changed ownership, cause or bounds")
+				require.ErrorIs(t, err, p.refusal, "recovery changed ownership, cause or bounds")
 			}
-			if (name == "unrelated error" || name == "admission full") && p.reads != 0 {
-				t.Fatal("unrelated failure caused recovery reads")
+			if name == "unrelated error" || name == "admission full" {
+				require.Equal(t, 0, p.reads, "unrelated failure caused recovery reads")
 			}
 		})
 	}

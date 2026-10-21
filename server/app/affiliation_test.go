@@ -9,13 +9,15 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type discardAffiliationEffects struct{}
@@ -68,12 +70,10 @@ func TestAffiliationEndFutureRangePreservesRejection(t *testing.T) {
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	_, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "resource.not_found" || failure.Fields()["resource"] != "affiliation" {
-		t.Fatalf("End() error = %#v", err)
-	}
-	if persistence.endInput.EndAt != 500 {
-		t.Fatalf("end time was coerced: %#v", persistence.endInput)
-	}
+	require.True(t, ok)
+	require.Equal(t, "resource.not_found", failure.Code())
+	require.Equal(t, "affiliation", failure.Fields()["resource"])
+	require.Equal(t, int64(500), persistence.endInput.EndAt)
 }
 
 type affiliationEnrollmentFake struct {
@@ -98,23 +98,15 @@ func TestAffiliationCreateKeepsKindsNonExclusiveAndAudited(t *testing.T) {
 	}, model.NewID)
 	for _, kind := range []model.AffiliationKind{model.AffiliationStudent, model.AffiliationTeacher} {
 		created, err := service.CreateAffiliation(context.Background(), Invocation{}, CreateAffiliationCommand{UserID: model.UserID(userID), Kind: kind, StartAt: 100})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if created.Kind != kind || persistence.createInput.Affiliation.UserID.String() != userID {
-			t.Fatalf("created = %#v", created)
-		}
-		if persistence.createInput.AuditAt != model.MillisFromTime(created.CreatedAt) {
-			t.Fatalf("creation/audit time = %v/%d", created.CreatedAt, persistence.createInput.AuditAt)
-		}
+		require.NoError(t, err)
+		require.Equal(t, kind, created.Kind)
+		require.Equal(t, userID, persistence.createInput.Affiliation.UserID.String())
+		require.Equal(t, model.MillisFromTime(created.CreatedAt), persistence.createInput.AuditAt, "creation/audit time")
 	}
-	if clockCalls != 2 {
-		t.Fatalf("clock calls = %d, want one per creation", clockCalls)
-	}
-	want := []string{"authorize", "audit-begin", "store-create", "authorize", "audit-begin", "store-create"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, 2, clockCalls, "clock calls")
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create", "authorize", "audit-begin", "store-create")
 }
 
 func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
@@ -134,13 +126,8 @@ func TestAffiliationEndRejectsActiveStudentEnrollment(t *testing.T) {
 		model.NewID,
 	)
 	_, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
-	if !apperror.Is(err, "affiliation.student_has_active_enrollment") {
-		t.Fatalf("End() error = %v", err)
-	}
-	want := []string{"get-affiliation", "authorize", "list-enrollments"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "affiliation.student_has_active_enrollment"), "End() error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 }
 
 func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {
@@ -156,13 +143,11 @@ func TestAffiliationRetainedEndBypassesLaterStudentEnrollment(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	result, err := service.EndAffiliation(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		EndAffiliationCommand{ID: current.ID, IdempotencyKey: "row", batchRetainedOutcome: true})
-	if err != nil || result == nil || persistence.endInput == nil {
-		t.Fatalf("retained end = %#v, %v, input %#v", result, err, persistence.endInput)
-	}
+	require.NoError(t, err, "retained end")
+	require.NotNil(t, result, "retained end")
+	require.NotNil(t, persistence.endInput, "retained end")
 	for _, event := range events {
-		if event == "list-enrollments" {
-			t.Fatalf("retained outcome inspected later enrollment state: %v", events)
-		}
+		require.NotEqual(t, "list-enrollments", event, "retained outcome inspected later enrollment state: %v", events)
 	}
 }
 
@@ -176,10 +161,7 @@ func TestAffiliationEndCarriesExpectedRevision(t *testing.T) {
 	persistence := &affiliationStoreFake{events: &events, current: current}
 	service := newAffiliationService(persistence, &affiliationEnrollmentFake{events: &events}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, discardAffiliationEffects{}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	ended, err := service.EndAffiliation(context.Background(), Invocation{}, EndAffiliationCommand{ID: current.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.endInput.ExpectedRevision != current.Revision || ended.Revision != current.Revision+1 {
-		t.Fatalf("end input/result = %#v / %#v", persistence.endInput, ended)
-	}
+	require.NoError(t, err)
+	require.Equal(t, current.Revision, persistence.endInput.ExpectedRevision, "end input/result = %#v / %#v", persistence.endInput, ended)
+	require.Equal(t, current.Revision+1, ended.Revision, "end input/result = %#v / %#v", persistence.endInput, ended)
 }

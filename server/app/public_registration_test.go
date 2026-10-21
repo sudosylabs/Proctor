@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -36,34 +38,42 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 		FirstName: "  New  ", LastName: " Student ", Password: "correct horse battery staple",
 		Source: "192.0.2.10:443",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := persistence.input
-	if input == nil || input.User == nil || input.PasswordCredential == nil || input.Settings == nil ||
-		input.DefaultProfilePictureJob == nil || input.VerificationToken == nil || input.VerificationOccurrence == nil ||
-		input.VerificationDelivery == nil || input.VerificationJob == nil || input.AuditEvent == nil {
-		t.Fatalf("registration aggregate = %#v", input)
-	}
-	if input.User.Username != "new.student" || input.User.Email != "new.student@example.edu" ||
-		input.User.FirstName != "New" || input.User.LastName != "Student" || input.User.DisplayName != "" || input.User.EmailVerified ||
-		input.PasswordCredential.UserID != input.User.ID || input.Settings.UserID != input.User.ID ||
-		input.VerificationToken.UserID != input.User.ID || input.VerificationToken.Target != input.User.Email ||
-		input.VerificationToken.Purpose != model.UserTokenEmailVerification ||
-		input.VerificationDelivery.TargetUserID != input.User.ID ||
-		input.VerificationDelivery.TemplateKey != model.MailTemplateIdentityVerifyEmail ||
-		input.VerificationJob.Type != model.JobTypeMailDeliverCredential {
-		t.Fatalf("registration aggregate = %#v", input)
-	}
-	if input.AuditEvent.ActorID.IsValid() || input.AuditEvent.Action != string(model.ActionAuthenticationPublicRegistration) ||
-		strings.Contains(string(input.AuditEvent.Parameters), input.User.Email) || strings.Contains(string(input.AuditEvent.Parameters), "correct horse") {
-		t.Fatalf("registration audit leaked private input: %#v", input.AuditEvent)
-	}
-	if mail.actionURL == "" || !strings.Contains(mail.actionURL, rawToken) ||
-		strings.Contains(mail.actionURL, input.VerificationToken.TokenHash) || input.VerificationToken.TokenHash == rawToken ||
-		strings.Contains(string(input.AuditEvent.Parameters), rawToken) || strings.Contains(string(input.AuditEvent.Result), rawToken) {
-		t.Fatalf("verification action URL = %q", mail.actionURL)
-	}
+	require.NotNil(t, input)
+	require.NotNil(t, input.User)
+	require.NotNil(t, input.PasswordCredential)
+	require.NotNil(t, input.Settings)
+	require.NotNil(t, input.DefaultProfilePictureJob)
+	require.NotNil(t, input.VerificationToken)
+	require.NotNil(t, input.VerificationOccurrence)
+	require.NotNil(t, input.VerificationDelivery)
+	require.NotNil(t, input.VerificationJob)
+	require.NotNil(t, input.AuditEvent)
+	require.Equal(t, "new.student", input.User.Username)
+	require.Equal(t, "new.student@example.edu", input.User.Email)
+	require.Equal(t, "New", input.User.FirstName)
+	require.Equal(t, "Student", input.User.LastName)
+	require.Empty(t, input.User.DisplayName)
+	require.False(t, input.User.EmailVerified)
+	require.Equal(t, input.User.ID, input.PasswordCredential.UserID)
+	require.Equal(t, input.User.ID, input.Settings.UserID)
+	require.Equal(t, input.User.ID, input.VerificationToken.UserID)
+	require.Equal(t, input.User.Email, input.VerificationToken.Target)
+	require.Equal(t, model.UserTokenEmailVerification, input.VerificationToken.Purpose)
+	require.Equal(t, input.User.ID, input.VerificationDelivery.TargetUserID)
+	require.Equal(t, model.MailTemplateIdentityVerifyEmail, input.VerificationDelivery.TemplateKey)
+	require.Equal(t, model.JobTypeMailDeliverCredential, input.VerificationJob.Type)
+	require.False(t, input.AuditEvent.ActorID.IsValid())
+	require.Equal(t, string(model.ActionAuthenticationPublicRegistration), input.AuditEvent.Action)
+	require.NotContains(t, string(input.AuditEvent.Parameters), input.User.Email)
+	require.NotContains(t, string(input.AuditEvent.Parameters), "correct horse")
+	require.NotEmpty(t, mail.actionURL)
+	require.Contains(t, mail.actionURL, rawToken)
+	require.NotContains(t, mail.actionURL, input.VerificationToken.TokenHash)
+	require.NotEqual(t, rawToken, input.VerificationToken.TokenHash)
+	require.NotContains(t, string(input.AuditEvent.Parameters), rawToken)
+	require.NotContains(t, string(input.AuditEvent.Result), rawToken)
 }
 
 func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDisallowsIt(t *testing.T) {
@@ -90,12 +100,9 @@ func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDi
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.20",
 			})
-			if !apperror.Is(err, test.wantCode) {
-				t.Fatalf("Register() = %v, want %s", err, test.wantCode)
-			}
-			if persistence.input != nil || mail.prepareCalls != 0 {
-				t.Fatalf("disabled registration reached preparation: input=%#v mail_calls=%d", persistence.input, mail.prepareCalls)
-			}
+			require.True(t, apperror.Is(err, test.wantCode), "Register() = %v, want %s", err, test.wantCode)
+			require.Nil(t, persistence.input, "disabled registration reached preparation: input")
+			require.Equal(t, 0, mail.prepareCalls, "disabled registration reached preparation: input")
 		})
 	}
 }
@@ -109,12 +116,10 @@ func TestPublicRegistrationConcealsDuplicateIdentity(t *testing.T) {
 			t.Parallel()
 			persistence := &publicRegistrationStoreFake{err: store.NewErrConflict("user", constraint, nil)}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
-			if err := service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
+			require.NoError(t, service.RegisterLocalUser(context.Background(), Invocation{}, RegisterLocalUserCommand{
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
-			}); err != nil {
-				t.Fatalf("duplicate registration disclosed its outcome: %v", err)
-			}
+			}))
 		})
 	}
 }
@@ -137,9 +142,7 @@ func TestPublicRegistrationDoesNotConcealUnrelatedPersistenceConflicts(t *testin
 				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 				Password: "correct horse battery staple", Source: "192.0.2.30",
 			})
-			if !apperror.Is(err, "authentication.registration.unavailable") {
-				t.Fatalf("unrelated persistence conflict = %v, want authentication.registration.unavailable", err)
-			}
+			require.True(t, apperror.Is(err, "authentication.registration.unavailable"), "unrelated persistence conflict = %v, want authentication.registration.unavailable", err)
 		})
 	}
 }
@@ -155,17 +158,13 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "correct horse battery staple", Source: "192.0.2.31",
 	}
-	if err := mailFailure.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
-		t.Fatalf("mail preparation failure = %v", err)
-	}
-	if mailFailureStore.input != nil {
-		t.Fatalf("mail preparation failure reached Store: %#v", mailFailureStore.input)
-	}
+	err := mailFailure.RegisterLocalUser(context.Background(), Invocation{}, command)
+	require.True(t, apperror.Is(err, "authentication.registration.unavailable"), "mail preparation failure = %v", err)
+	require.Nil(t, mailFailureStore.input)
 
 	persistenceFailure := newTestPublicRegistrationService(t, &publicRegistrationStoreFake{err: errors.New("database unavailable")}, &publicRegistrationMailFake{enabled: true}, time.Now())
-	if err := persistenceFailure.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.registration.unavailable") {
-		t.Fatalf("persistence failure = %v", err)
-	}
+	err = persistenceFailure.RegisterLocalUser(context.Background(), Invocation{}, command)
+	require.True(t, apperror.Is(err, "authentication.registration.unavailable"), "persistence failure = %v", err)
 }
 
 func TestPublicRegistrationPasswordWorkFailuresStopBeforeMailAndPersistence(t *testing.T) {
@@ -178,9 +177,8 @@ func TestPublicRegistrationPasswordWorkFailuresStopBeforeMailAndPersistence(t *t
 			Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 			Password: "correct horse battery staple", Source: "192.0.2.33",
 		})
-		if persistence.input != nil || mail.prepareCalls != 0 {
-			t.Fatal("failed password work reached registration mail or persistence")
-		}
+		require.Nil(t, persistence.input, "failed password work reached registration mail or persistence")
+		require.Equal(t, 0, mail.prepareCalls, "failed password work reached registration mail or persistence")
 		return err
 	})
 }
@@ -195,12 +193,9 @@ func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *te
 		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
 		Password: "", Source: "192.0.2.32",
 	})
-	if !apperror.Is(err, "authentication.password.invalid") {
-		t.Fatalf("invalid password = %v", err)
-	}
-	if persistence.input != nil || mail.prepareCalls != 0 {
-		t.Fatalf("invalid password reached mail/Store: calls=%d input=%#v", mail.prepareCalls, persistence.input)
-	}
+	require.True(t, apperror.Is(err, "authentication.password.invalid"), "invalid password = %v", err)
+	require.Nil(t, persistence.input, "invalid password reached mail/Store: calls")
+	require.Equal(t, 0, mail.prepareCalls, "invalid password reached mail/Store: calls")
 }
 
 func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(t *testing.T) {
@@ -225,12 +220,9 @@ func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(
 				Username: "student", Email: "student@example.edu", FirstName: test.firstName,
 				LastName: test.lastName, Password: "correct horse battery staple", Source: "192.0.2.33",
 			})
-			if !apperror.Is(err, "authentication.registration.invalid") {
-				t.Fatalf("missing personal name = %v", err)
-			}
-			if persistence.input != nil || mail.prepareCalls != 0 {
-				t.Fatalf("invalid personal name reached mail/Store: calls=%d input=%#v", mail.prepareCalls, persistence.input)
-			}
+			require.True(t, apperror.Is(err, "authentication.registration.invalid"), "missing personal name = %v", err)
+			require.Nil(t, persistence.input, "invalid personal name reached mail/Store: calls")
+			require.Equal(t, 0, mail.prepareCalls, "invalid personal name reached mail/Store: calls")
 		})
 	}
 }
@@ -243,17 +235,14 @@ func TestPublicRegistrationUsesPrivateSharedAttemptAccounting(t *testing.T) {
 	service.attempts = mustAuthenticationAttemptAccounting(t, cache)
 	service.rateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 10}
 	command := RegisterLocalUserCommand{Username: "student", Email: " Student@Example.EDU ", FirstName: "New", LastName: "Student", Password: "correct horse battery staple", Source: "192.0.2.40:443"}
-	if err := service.RegisterLocalUser(context.Background(), Invocation{}, command); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.RegisterLocalUser(context.Background(), Invocation{}, command))
 	command.Email = "student@example.edu"
-	if err := service.RegisterLocalUser(context.Background(), Invocation{}, command); !apperror.Is(err, "authentication.rate_limited") {
-		t.Fatalf("second registration = %v", err)
-	}
+	err := service.RegisterLocalUser(context.Background(), Invocation{}, command)
+	require.True(t, apperror.Is(err, "authentication.rate_limited"), "second registration = %v", err)
 	for key := range cache.snapshot() {
-		if !strings.HasPrefix(key, "authentication/attempts/public-registration/") || strings.Contains(strings.ToLower(key), "student") || strings.Contains(key, "192.0.2.40") {
-			t.Fatalf("unsafe registration attempt key = %q", key)
-		}
+		require.True(t, strings.HasPrefix(key, "authentication/attempts/public-registration/"))
+		require.NotContains(t, strings.ToLower(key), "student")
+		require.NotContains(t, key, "192.0.2.40")
 	}
 }
 
@@ -324,9 +313,7 @@ func newTestPublicRegistrationService(t *testing.T, persistence publicRegistrati
 		newToken:      model.NewCredentialToken,
 		now:           func() time.Time { return at },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 

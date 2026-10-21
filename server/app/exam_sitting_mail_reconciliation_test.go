@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -21,20 +23,17 @@ func TestSittingMailReconciliationPeriodicRunnerPreparesOneBoundedFanout(t *test
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &sittingMailReconciliationStoreFake{candidates: []store.ExamSittingMailReconciliationCandidate{{
 		Sitting: sitting, ActorUserID: model.NewUserID(),
 	}}}
 	mail := &sittingMailReconciliationPreparerFake{prepared: &store.ExamSittingMailFanout{}}
-	if err = (sittingMailReconciliationPeriodicRunner{sittings: persistence, mail: mail}).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.reconciled == nil || persistence.reconciled.SittingID != sitting.ID ||
-		mail.request.ChangeKind != store.ExamSittingMailReconciled || mail.request.SittingRevision != sitting.Revision {
-		t.Fatalf("reconciliation=%#v request=%#v", persistence.reconciled, mail.request)
-	}
+	err = (sittingMailReconciliationPeriodicRunner{sittings: persistence, mail: mail}).Run(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, persistence.reconciled, "reconciliation=%#v request=%#v", persistence.reconciled, mail.request)
+	require.Equal(t, sitting.ID, persistence.reconciled.SittingID, "reconciliation=%#v request=%#v", persistence.reconciled, mail.request)
+	require.Equal(t, store.ExamSittingMailReconciled, mail.request.ChangeKind, "reconciliation=%#v request=%#v", persistence.reconciled, mail.request)
+	require.Equal(t, sitting.Revision, mail.request.SittingRevision, "reconciliation=%#v request=%#v", persistence.reconciled, mail.request)
 }
 
 type sittingMailReconciliationStoreFake struct {

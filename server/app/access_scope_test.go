@@ -10,9 +10,10 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -29,15 +30,11 @@ func TestAccessScopeResolverRejectsArchivedAndIncompatibleResources(t *testing.T
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}); !apperror.Is(err, "resource.not_found") {
-		t.Fatalf("archived institution error = %v", err)
-	}
-	if _, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewID()}); !apperror.Is(err, "authorization.request.invalid") {
-		t.Fatalf("incompatible resource error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()})
+	require.True(t, apperror.Is(err, "resource.not_found"), "archived institution error = %v", err)
+	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceType("future"), ID: model.NewID()})
+	require.True(t, apperror.Is(err, "authorization.request.invalid"), "incompatible resource error = %v", err)
 }
 
 func TestAccessScopeResolverRequiresAcademicPeriodReader(t *testing.T) {
@@ -48,9 +45,7 @@ func TestAccessScopeResolverRequiresAcademicPeriodReader(t *testing.T) {
 		&accessUserStoreFake{}, &accessClassMemberStoreFake{}, &accessExamAuthoringStoreFake{},
 		&accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{}, nil,
 	)
-	if err == nil {
-		t.Fatal("newAccessScopeResolver() accepted a nil Academic Period reader")
-	}
+	require.Error(t, err, "newAccessScopeResolver() accepted a nil Academic Period reader")
 }
 
 func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
@@ -59,9 +54,7 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 	rootID, unitID := model.NewAcademicUnitID(), model.NewAcademicUnitID()
 	examID := model.NewExamID()
 	exam, err := model.NewExam(examID, unitID, model.NewUserID(), model.NowUTC())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{},
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{unitID.String(): {
@@ -71,19 +64,15 @@ func TestAccessScopeResolverMapsExamToExactAcademicUnit(t *testing.T) {
 		&accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolved, err := resolver.resolve(context.Background(), model.Resource{Type: model.ResourceExam, ID: examID.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID || len(resolved.academicUnitID) != 2 {
-		t.Fatalf("resolved = %#v", resolved)
-	}
-	if scope, id := authorizationAuditScope(model.Resource{Type: model.ResourceExam, ID: examID.String()}, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
-		t.Fatalf("audit scope = %s/%s", scope, id)
-	}
+	require.NoError(t, err)
+	require.Equal(t, institutionID, resolved.institutionID)
+	require.Equal(t, unitID, resolved.targetAcademicUnitID)
+	require.Len(t, resolved.academicUnitID, 2)
+	scope, id := authorizationAuditScope(model.Resource{Type: model.ResourceExam, ID: examID.String()}, resolved)
+	require.Equal(t, model.RoleScopeAcademicUnit, scope, "audit scope")
+	require.Equal(t, unitID.String(), id, "audit scope")
 }
 
 func TestAccessScopeResolverMapsAcademicPeriodOwnerScope(t *testing.T) {
@@ -105,20 +94,16 @@ func TestAccessScopeResolverMapsAcademicPeriodOwnerScope(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{period: period},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: periodID.String()}
 	resolved, err := resolver.resolve(context.Background(), resource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID || len(resolved.academicUnitID) != 2 {
-		t.Fatalf("resolved = %#v", resolved)
-	}
-	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
-		t.Fatalf("audit scope = %s/%s", scope, id)
-	}
+	require.NoError(t, err)
+	require.Equal(t, institutionID, resolved.institutionID)
+	require.Equal(t, unitID, resolved.targetAcademicUnitID)
+	require.Len(t, resolved.academicUnitID, 2)
+	scope, id := authorizationAuditScope(resource, resolved)
+	require.Equal(t, model.RoleScopeAcademicUnit, scope, "audit scope")
+	require.Equal(t, unitID.String(), id, "audit scope")
 }
 
 func TestAccessScopeResolverMapsProgrammeAndLevelToOwningSubtree(t *testing.T) {
@@ -145,9 +130,7 @@ func TestAccessScopeResolverMapsProgrammeAndLevelToOwningSubtree(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolver.programmes = &accessProgrammeStoreFake{programme: programme}
 	resolver.programmeLevels = &accessProgrammeLevelStoreFake{level: level}
 
@@ -156,17 +139,13 @@ func TestAccessScopeResolverMapsProgrammeAndLevelToOwningSubtree(t *testing.T) {
 		{Type: model.ResourceProgrammeLevel, ID: levelID.String()},
 	} {
 		resolved, resolveErr := resolver.resolve(context.Background(), resource)
-		if resolveErr != nil {
-			t.Fatalf("resolve %s: %v", resource.Type, resolveErr)
-		}
-		if resolved.institutionID != institutionID ||
-			resolved.targetAcademicUnitID != unitID ||
-			len(resolved.academicUnitID) != 2 {
-			t.Fatalf("resolved %s = %#v", resource.Type, resolved)
-		}
-		if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
-			t.Fatalf("audit scope for %s = %s/%s", resource.Type, scope, id)
-		}
+		require.NoError(t, resolveErr, "resolve %s", resource.Type)
+		require.Equal(t, institutionID, resolved.institutionID, "resolved %s = %#v", resource.Type, resolved)
+		require.Equal(t, unitID, resolved.targetAcademicUnitID, "resolved %s = %#v", resource.Type, resolved)
+		require.Len(t, resolved.academicUnitID, 2, "resolved %s = %#v", resource.Type, resolved)
+		scope, id := authorizationAuditScope(resource, resolved)
+		require.Equal(t, model.RoleScopeAcademicUnit, scope, "audit scope for %s = %s", resource.Type, scope)
+		require.Equal(t, unitID.String(), id, "audit scope for %s = %s", resource.Type, scope)
 	}
 }
 
@@ -203,15 +182,11 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 		&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{}, periods,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
@@ -219,20 +194,17 @@ func TestAccessControlAcademicPeriodPreflightDeniesBeforeInspection(t *testing.T
 	}
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	resource := model.Resource{Type: model.ResourceAcademicPeriod, ID: model.NewAcademicPeriodID().String()}
-	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata()); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("target preflight error = %v, want authorization.denied", err)
-	}
+	err = access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, resource, invocation.RequestMetadata())
+	require.True(t, apperror.Is(err, "authorization.denied"), "target preflight error = %v, want authorization.denied", err)
 	period := &model.AcademicPeriod{
 		ID: model.NewAcademicPeriodID(), Owner: model.NewAcademicUnitAcademicPeriodOwner(unitID),
 		CreatedAt: model.NowUTC(), UpdatedAt: model.NowUTC(), Revision: 1,
 		Name: "period", DisplayName: "Period", StartsAt: model.TimeFromMillis(1), EndsAt: model.TimeFromMillis(2),
 	}
-	if err := access.AuthorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("owner preflight error = %v, want authorization.denied", err)
-	}
-	if periods.gets != 0 || units.listAncestors != 0 {
-		t.Fatalf("preflight inspected target or owner: period gets=%d unit ancestor reads=%d", periods.gets, units.listAncestors)
-	}
+	err = access.AuthorizeAcademicPeriodOwner(context.Background(), invocation, model.ActionAcademicPeriodManage, period)
+	require.True(t, apperror.Is(err, "authorization.denied"), "owner preflight error = %v, want authorization.denied", err)
+	require.Equal(t, 0, periods.gets, "preflight inspected target or owner: period gets")
+	require.Equal(t, 0, units.listAncestors, "preflight inspected target or owner: period gets")
 }
 
 func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *testing.T) {
@@ -246,29 +218,22 @@ func TestAccessControlMembershipPreflightDeniesBeforeOpaqueTargetInspection(t *t
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
 	invocation := NewInvocation(principal, model.RequestMetadata{})
-	if err := access.AuthorizePreflight(
+	err = access.AuthorizePreflight(
 		context.Background(), invocation, model.ActionClassMembersManage, model.ResourceClass,
-	); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("preflight error = %v, want authorization.denied", err)
-	}
-	if classes.gets != 0 {
-		t.Fatalf("preflight inspected %d opaque class targets", classes.gets)
-	}
+	)
+	require.True(t, apperror.Is(err, "authorization.denied"), "preflight error = %v, want authorization.denied", err)
+	require.Equal(t, 0, classes.gets, "preflight inspected")
 }
 
 func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testing.T) {
@@ -302,48 +267,41 @@ func TestAccessControlAcademicPeriodScopeInheritanceAndInstitutionView(t *testin
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{periods: periods},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	userID, roleID := model.NewUserID(), model.NewRoleID()
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage)}}}},
 		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: rootID.String()}}},
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password",
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: now, ClientType: model.SessionClientWeb,
 	}
 	unitResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: unitPeriodID.String()}
-	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, unitResource); err != nil || !allowed {
-		t.Fatalf("descendant view = %v, %v", allowed, err)
-	}
-	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, unitResource); err != nil || !allowed {
-		t.Fatalf("descendant manage = %v, %v", allowed, err)
-	}
+	allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, unitResource)
+	require.NoError(t, err, "descendant view")
+	require.True(t, allowed, "descendant view")
+	allowed, err = access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, unitResource)
+	require.NoError(t, err, "descendant manage")
+	require.True(t, allowed, "descendant manage")
 	siblingResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: siblingPeriodID.String()}
-	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource); err != nil || allowed {
-		t.Fatalf("cross-subtree view = %v, %v", allowed, err)
-	}
+	allowed, err = access.Can(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource)
+	require.NoError(t, err, "cross-subtree view")
+	require.False(t, allowed, "cross-subtree view")
 	invocation := NewInvocation(principal, model.RequestMetadata{})
-	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, unitResource, invocation.RequestMetadata()); err != nil {
-		t.Fatalf("preflight plus terminal descendant view = %v", err)
-	}
-	if err := access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata()); !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("preflight plus terminal cross-subtree view = %v", err)
-	}
+	require.NoError(t, access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, unitResource, invocation.RequestMetadata()))
+	err = access.authorizeCurrentState(context.Background(), principal, model.ActionAcademicPeriodView, siblingResource, invocation.RequestMetadata())
+	require.True(t, apperror.Is(err, "authorization.denied"), "preflight plus terminal cross-subtree view = %v", err)
 	institutionResource := model.Resource{Type: model.ResourceAcademicPeriod, ID: institutionPeriodID.String()}
-	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodView, institutionResource); err != nil || !allowed {
-		t.Fatalf("applicable institution view = %v, %v", allowed, err)
-	}
-	if allowed, err := access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, institutionResource); err != nil || allowed {
-		t.Fatalf("institution manage from unit = %v, %v", allowed, err)
-	}
+	allowed, err = access.Can(context.Background(), principal, model.ActionAcademicPeriodView, institutionResource)
+	require.NoError(t, err, "applicable institution view")
+	require.True(t, allowed, "applicable institution view")
+	allowed, err = access.Can(context.Background(), principal, model.ActionAcademicPeriodManage, institutionResource)
+	require.NoError(t, err, "institution manage from unit")
+	require.False(t, allowed, "institution manage from unit")
 }
 
 func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
@@ -351,13 +309,9 @@ func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
 	institutionID, unitID := model.NewInstitutionID(), model.NewAcademicUnitID()
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	exam, err := model.NewExam(examID, unitID, model.NewUserID(), model.NowUTC())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	sitting, err := model.NewExamSitting(sittingID, examID, model.NewExamRevisionID(), model.NewClassID(), model.NowUTC().Add(time.Hour), model.NowUTC().Add(2*time.Hour), model.NowUTC())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{},
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{unitID.String(): {{ID: unitID, InstitutionID: institutionID}}}},
@@ -366,20 +320,15 @@ func TestAccessScopeResolverMapsExamSittingThroughOwningExam(t *testing.T) {
 		&accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}
 	resolved, err := resolver.resolve(context.Background(), resource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID {
-		t.Fatalf("resolved = %#v", resolved)
-	}
-	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
-		t.Fatalf("audit scope = %s/%s", scope, id)
-	}
+	require.NoError(t, err)
+	require.Equal(t, institutionID, resolved.institutionID)
+	require.Equal(t, unitID, resolved.targetAcademicUnitID)
+	scope, id := authorizationAuditScope(resource, resolved)
+	require.Equal(t, model.RoleScopeAcademicUnit, scope, "audit scope")
+	require.Equal(t, unitID.String(), id, "audit scope")
 }
 
 func TestAccessScopeResolverMapsSubmissionToOwningAcademicUnit(t *testing.T) {
@@ -400,21 +349,16 @@ func TestAccessScopeResolverMapsSubmissionToOwningAcademicUnit(t *testing.T) {
 		}},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resource := model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}
 	resolved, err := resolver.resolve(context.Background(), resource)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.institutionID != institutionID || resolved.targetAcademicUnitID != unitID ||
-		len(resolved.academicUnitID) != 1 {
-		t.Fatalf("resolved = %#v", resolved)
-	}
-	if scope, id := authorizationAuditScope(resource, resolved); scope != model.RoleScopeAcademicUnit || id != unitID.String() {
-		t.Fatalf("audit scope = %s/%s", scope, id)
-	}
+	require.NoError(t, err)
+	require.Equal(t, institutionID, resolved.institutionID)
+	require.Equal(t, unitID, resolved.targetAcademicUnitID)
+	require.Len(t, resolved.academicUnitID, 1)
+	scope, id := authorizationAuditScope(resource, resolved)
+	require.Equal(t, model.RoleScopeAcademicUnit, scope, "audit scope")
+	require.Equal(t, unitID.String(), id, "audit scope")
 }
 
 func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
@@ -422,9 +366,7 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 	institutionID := model.NewInstitutionID()
 	unitID, examID, userID, roleID := model.NewAcademicUnitID(), model.NewExamID(), model.NewUserID(), model.NewRoleID()
 	exam, err := model.NewExam(examID, unitID, model.NewUserID(), model.NowUTC())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resolver, err := newAccessScopeResolver(
 		&accessInstitutionStoreFake{},
 		&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
@@ -434,17 +376,13 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 		&accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionExamView)}}}},
 		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String()}}},
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
@@ -452,9 +390,8 @@ func TestAccessControlGrantsExamViewThroughAcademicUnitScope(t *testing.T) {
 		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
 	allowed, err := access.Can(context.Background(), principal, model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
-	if err != nil || !allowed {
-		t.Fatalf("exam view = %v, %v", allowed, err)
-	}
+	require.NoError(t, err, "exam view")
+	require.True(t, allowed, "exam view")
 }
 
 func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing.T) {
@@ -470,17 +407,13 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 		&accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionExamCreateOverride)}}}},
 		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()}}},
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
@@ -488,9 +421,8 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 		AuthenticatedAt: model.NowUTC(), ClientType: model.SessionClientWeb,
 	}
 	allowed, err := access.Can(context.Background(), principal, model.ActionExamCreateOverride, model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()})
-	if err != nil || !allowed {
-		t.Fatalf("exam create override = %v, %v", allowed, err)
-	}
+	require.NoError(t, err, "exam create override")
+	require.True(t, allowed, "exam create override")
 }
 
 func TestAccessControlUsesNativeRoleBindingDecisionTime(t *testing.T) {
@@ -532,9 +464,7 @@ func TestAccessControlUsesNativeRoleBindingDecisionTime(t *testing.T) {
 				&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 				&accessAcademicPeriodStoreFake{},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			bindings := &accessRoleBindingStoreFake{lookup: func(at time.Time) ([]*model.RoleBinding, error) {
 				if binding.IsActiveAt(at) {
 					return []*model.RoleBinding{binding}, nil
@@ -545,24 +475,18 @@ func TestAccessControlUsesNativeRoleBindingDecisionTime(t *testing.T) {
 				&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicUnitView)}}}},
 				bindings, resolver, accessDecisionAuditFake{},
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			authorization.now = func() time.Time { return test.at }
 			allowed, err := authorization.Can(context.Background(), principal, model.ActionAcademicUnitView,
 				model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()})
-			if err != nil || allowed != test.want {
-				t.Fatalf("Can = %v, %v; want %v", allowed, err, test.want)
-			}
+			require.NoError(t, err, "Can")
+			require.Equal(t, test.want, allowed, "Can")
 			scope, err := authorization.authorizedScopesAt(context.Background(), principal,
 				model.ActionAcademicUnitView, model.ResourceAcademicUnit, test.at)
-			if err != nil || scope.InstitutionWide != test.want {
-				t.Fatalf("authorizedScopesAt = %#v, %v; want institution-wide %v", scope, err, test.want)
-			}
+			require.NoError(t, err, "authorizedScopesAt = %#v, %v; want institution-wide", scope, err)
+			require.Equal(t, test.want, scope.InstitutionWide, "authorizedScopesAt = %#v, %v; want institution-wide", scope, err)
 			wantAt := model.TimeUTC(test.at)
-			if !reflect.DeepEqual(bindings.activeAt, []time.Time{wantAt, wantAt}) {
-				t.Fatalf("binding decision times = %v, want %v twice", bindings.activeAt, wantAt)
-			}
+			require.Equal(t, []time.Time{wantAt, wantAt}, bindings.activeAt, "binding decision times = %v, want %v twice", bindings.activeAt, wantAt)
 		})
 	}
 }
@@ -585,17 +509,13 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 		&accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorization, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicUnitView)}}}},
 		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{{RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: childID.String()}}},
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorization.now = func() time.Time { return now }
 	principal := model.Principal{
 		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
@@ -607,20 +527,17 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 		context.Background(), principal, model.ActionAcademicUnitView,
 		model.ResourceAcademicUnit,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(query.AcademicUnitRootIDs) != 1 || query.AcademicUnitRootIDs[0] != childID || query.InstitutionWide {
-		t.Fatalf("query = %#v", query)
-	}
+	require.NoError(t, err)
+	require.Len(t, query.AcademicUnitRootIDs, 1)
+	require.Equal(t, childID, query.AcademicUnitRootIDs[0])
+	require.False(t, query.InstitutionWide)
 	principal.CredentialScopes = []string{string(model.ActionClassView)}
 	query, err = authorization.authorizedScopes(context.Background(), principal, model.ActionAcademicUnitView, model.ResourceAcademicUnit)
-	if err != nil || query.InstitutionWide || len(query.AcademicUnitRootIDs) != 0 {
-		t.Fatalf("ceiling query=%#v err=%v", query, err)
-	}
-	if _, err = authorization.authorizedScopes(context.Background(), principal, model.ActionAcademicUnitView, model.ResourceClass); !apperror.Is(err, "authorization.request.invalid") {
-		t.Fatalf("compatibility error = %v", err)
-	}
+	require.NoError(t, err, "ceiling query=%#v err", query)
+	require.False(t, query.InstitutionWide, "ceiling query=%#v err", query)
+	require.Empty(t, query.AcademicUnitRootIDs, "ceiling query=%#v err", query)
+	_, err = authorization.authorizedScopes(context.Background(), principal, model.ActionAcademicUnitView, model.ResourceClass)
+	require.True(t, apperror.Is(err, "authorization.request.invalid"), "compatibility error = %v", err)
 }
 
 func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *testing.T) {
@@ -640,9 +557,7 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	bindings := &accessRoleBindingStoreFake{bindings: []*model.RoleBinding{
 		{RoleID: userViewRoleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String()},
 		{RoleID: classMembersRoleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()},
@@ -655,9 +570,7 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 		bindings,
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	clockCalls := 0
 	authorization.now = func() time.Time {
 		clockCalls++
@@ -671,19 +584,16 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 	}
 
 	visibility, err := authorization.userVisibilityScope(context.Background(), principal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if visibility.InstitutionWide || !visibility.ClassMemberInstitutionWide ||
-		!reflect.DeepEqual(visibility.AcademicUnitRootIDs, []model.AcademicUnitID{unitID}) ||
-		len(visibility.ClassMemberAcademicUnitRootIDs) != 0 || len(visibility.ClassIDs) != 0 ||
-		!visibility.ActiveAt.Equal(model.TimeUTC(now)) {
-		t.Fatalf("user visibility = %#v", visibility)
-	}
+	require.NoError(t, err)
+	require.False(t, visibility.InstitutionWide)
+	require.True(t, visibility.ClassMemberInstitutionWide)
+	require.Equal(t, []model.AcademicUnitID{unitID}, visibility.AcademicUnitRootIDs)
+	require.Empty(t, visibility.ClassMemberAcademicUnitRootIDs)
+	require.Empty(t, visibility.ClassIDs)
+	require.True(t, visibility.ActiveAt.Equal(model.TimeUTC(now)))
 	wantAt := model.TimeUTC(now)
-	if clockCalls != 1 || !reflect.DeepEqual(bindings.activeAt, []time.Time{wantAt, wantAt}) {
-		t.Fatalf("clock calls/binding decision times = %d/%v, want one clock call and %v twice", clockCalls, bindings.activeAt, wantAt)
-	}
+	require.Equal(t, 1, clockCalls, "clock calls/binding decision times = %d/%v, want one clock call and %v twice", clockCalls, bindings.activeAt, wantAt)
+	require.Equal(t, []time.Time{wantAt, wantAt}, bindings.activeAt, "clock calls/binding decision times = %d/%v, want one clock call and %v twice", clockCalls, bindings.activeAt, wantAt)
 }
 
 func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
@@ -703,9 +613,7 @@ func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorization, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{
 			ID: roleID, Permissions: []string{string(model.ActionClassMembersView)},
@@ -715,9 +623,7 @@ func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
 		}}},
 		resolver, accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorization.now = func() time.Time { return now }
 	principal := model.Principal{
 		UserID: viewerID, CredentialID: model.PrincipalCredentialID(model.NewID()),
@@ -729,13 +635,11 @@ func TestUserReadMatchesInstitutionWideClassMemberVisibility(t *testing.T) {
 	fullProfile, err := authorization.authorizeUserRead(
 		context.Background(), NewInvocation(principal, model.RequestMetadata{}), targetID.String(),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fullProfile || users.matchCalls != 1 || !users.matchVisibility.ClassMemberInstitutionWide ||
-		users.matchVisibility.InstitutionWide {
-		t.Fatalf("fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
-	}
+	require.NoError(t, err)
+	require.False(t, fullProfile, "fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
+	require.Equal(t, 1, users.matchCalls, "fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
+	require.True(t, users.matchVisibility.ClassMemberInstitutionWide, "fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
+	require.False(t, users.matchVisibility.InstitutionWide, "fullProfile=%t calls=%d visibility=%#v", fullProfile, users.matchCalls, users.matchVisibility)
 }
 
 func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
@@ -755,9 +659,7 @@ func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{
 			string(model.ActionProgrammeManage), string(model.ActionRoleBindingManage),
@@ -768,9 +670,7 @@ func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 		resolver,
 		accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
@@ -794,9 +694,8 @@ func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 				context.Background(), principal, test.actions,
 				model.RoleScopeAcademicUnit, test.target.String(),
 			)
-			if delegationErr != nil || got != test.want {
-				t.Fatalf("delegation = %v, %v; want %v", got, delegationErr, test.want)
-			}
+			require.NoError(t, delegationErr, "delegation")
+			require.Equal(t, test.want, got, "delegation")
 		})
 	}
 
@@ -808,19 +707,19 @@ func TestDelegationCeilingRequiresOwnedActionAndContainingScope(t *testing.T) {
 	principal.ClientType = model.SessionClientCLI
 	principal.CredentialScopes = []string{string(model.ActionProgrammeManage)}
 	principal.AcademicUnitID = rootID
-	if allowed, delegationErr := access.canDelegateActionsAtScope(
+	allowed, delegationErr := access.canDelegateActionsAtScope(
 		context.Background(), principal, []string{string(model.ActionProgrammeManage)},
 		model.RoleScopeAcademicUnit, childID.String(),
-	); delegationErr != nil || !allowed {
-		t.Fatalf("PAT descendant delegation = %v, %v", allowed, delegationErr)
-	}
+	)
+	require.NoError(t, delegationErr, "PAT descendant delegation")
+	require.True(t, allowed, "PAT descendant delegation")
 	principal.CredentialScopes = []string{string(model.ActionClassView)}
-	if allowed, delegationErr := access.canDelegateActionsAtScope(
+	allowed, delegationErr = access.canDelegateActionsAtScope(
 		context.Background(), principal, []string{string(model.ActionProgrammeManage)},
 		model.RoleScopeAcademicUnit, childID.String(),
-	); delegationErr != nil || allowed {
-		t.Fatalf("PAT action ceiling = %v, %v", allowed, delegationErr)
-	}
+	)
+	require.NoError(t, delegationErr, "PAT action ceiling")
+	require.False(t, allowed, "PAT action ceiling")
 }
 
 func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
@@ -832,13 +731,9 @@ func TestAccessScopeResolutionFailsClosedOnPersistenceFailure(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = resolver.resolve(context.Background(), model.Resource{Type: model.ResourceInstitution, ID: model.NewID()})
-	if !apperror.Is(err, "authorization.unavailable") {
-		t.Fatalf("error = %v, want authorization.unavailable", err)
-	}
+	require.True(t, apperror.Is(err, "authorization.unavailable"), "error = %v, want authorization.unavailable", err)
 }
 
 func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
@@ -856,16 +751,12 @@ func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	access, err := newAccessControlService(
 		&accessRoleStoreFake{}, &accessRoleBindingStoreFake{}, resolver,
 		accessDecisionAuditFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: user.ID, CredentialID: model.PrincipalCredentialID(model.NewID()),
 		CredentialType: model.CredentialSessionAccess,
@@ -875,13 +766,11 @@ func TestAccessControlPreservesIntrinsicSelfRead(t *testing.T) {
 	}
 	resource := model.Resource{Type: model.ResourceUser, ID: user.ID.String()}
 	allowed, err := access.Can(context.Background(), principal, model.ActionUserView, resource)
-	if err != nil || !allowed {
-		t.Fatalf("self read = %v, %v", allowed, err)
-	}
+	require.NoError(t, err, "self read")
+	require.True(t, allowed, "self read")
 	allowed, err = access.Can(context.Background(), principal, model.ActionUserManage, resource)
-	if err != nil || allowed {
-		t.Fatalf("self management = %v, %v", allowed, err)
-	}
+	require.NoError(t, err, "self management")
+	require.False(t, allowed, "self management")
 }
 
 type accessInstitutionStoreFake struct {

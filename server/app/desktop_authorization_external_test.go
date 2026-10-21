@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -32,18 +34,18 @@ func TestDesktopExternalAuthenticationStartUsesBoundTransactionOwner(t *testing.
 	result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
 		ProviderID: "campus", Binding: binding, State: state, Source: "192.0.2.10",
 	})
-	if err != nil || result == nil {
-		t.Fatalf("begin Desktop external authentication = %#v, %v", result, err)
-	}
+	require.NoError(t, err, "begin Desktop external authentication")
+	require.NotNil(t, result, "begin Desktop external authentication")
 	saved := service.loginStates.(*externalLoginStateStoreFake).saved
-	if saved == nil || saved.Purpose != model.ExternalAuthenticationPurposeDesktopAuthorization ||
-		saved.BrowserAuthenticationTransactionID != transactionID || saved.ClientType != model.SessionClientWeb ||
-		saved.ReturnTo != "/authorize/desktop?state="+state || saved.TargetUserID != "" || saved.InvitationID != "" {
-		t.Fatalf("Desktop login state = %#v", saved)
-	}
-	if transactions.contextCalls != 1 || transactions.contextBinding != model.HashToken(binding) {
-		t.Fatalf("Desktop lookup calls = %d, binding = %q", transactions.contextCalls, transactions.contextBinding)
-	}
+	require.NotNil(t, saved)
+	require.Equal(t, model.ExternalAuthenticationPurposeDesktopAuthorization, saved.Purpose)
+	require.Equal(t, transactionID, saved.BrowserAuthenticationTransactionID)
+	require.Equal(t, model.SessionClientWeb, saved.ClientType)
+	require.Equal(t, "/authorize/desktop?state="+state, saved.ReturnTo)
+	require.Empty(t, saved.TargetUserID)
+	require.Empty(t, saved.InvitationID)
+	require.Equal(t, 1, transactions.contextCalls, "Desktop lookup calls")
+	require.Equal(t, model.HashToken(binding), transactions.contextBinding, "Desktop lookup calls")
 }
 
 func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testing.T) {
@@ -79,12 +81,11 @@ func TestDesktopExternalAuthenticationRejectsUnboundProofBeforeProvider(t *testi
 			result, err := application.BeginDesktopExternalAuthentication(t.Context(), Invocation{}, BeginDesktopExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: test.binding, State: test.state, Source: "192.0.2.10",
 			})
-			if result != nil || !apperror.Is(err, test.code) {
-				t.Fatalf("begin = %#v, %v; want %s", result, err, test.code)
-			}
-			if test.transactions.contextCalls != test.lookups || provider.beginCalls != 0 || service.loginStates.(*externalLoginStateStoreFake).saved != nil {
-				t.Fatal("invalid Desktop proof reached provider or login-state persistence")
-			}
+			require.Nil(t, result, "begin = %#v, %v; want %s", result, err, test.code)
+			require.True(t, apperror.Is(err, test.code), "begin = %#v, %v; want %s", result, err, test.code)
+			require.Equal(t, test.lookups, test.transactions.contextCalls, "invalid Desktop proof reached provider or login-state persistence")
+			require.Equal(t, 0, provider.beginCalls, "invalid Desktop proof reached provider or login-state persistence")
+			require.Nil(t, service.loginStates.(*externalLoginStateStoreFake).saved, "invalid Desktop proof reached provider or login-state persistence")
 		})
 	}
 }
@@ -128,30 +129,33 @@ func TestExternalAuthenticationCompletionIsolatesDesktopPurpose(t *testing.T) {
 			result, err := application.CompleteExternalAuthentication(t.Context(), Invocation{}, CompleteExternalAuthenticationCommand{
 				ProviderID: "campus", Binding: binding,
 			})
-			if err != nil || result == nil || result.ReturnTo != state.ReturnTo {
-				t.Fatalf("complete %s = %#v, %v", purpose, result, err)
-			}
+			require.NoError(t, err, "complete %s", purpose)
+			require.NotNil(t, result, "complete %s", purpose)
+			require.Equal(t, state.ReturnTo, result.ReturnTo, "complete %s", purpose)
 			if purpose == model.ExternalAuthenticationPurposeDesktopAuthorization {
 				proof := transactions.authenticated
-				if proof == nil || proof.TransactionID != state.BrowserAuthenticationTransactionID || proof.UserID != user.ID ||
-					proof.ExternalIdentityID != identity.ID || proof.AuthenticationProviderID != "campus" || proof.AuthenticationMethod != "oidc" ||
-					proof.AuthenticatedAt != at.UnixMilli() || proof.MFACompletedAt != at.UnixMilli() {
-					t.Fatalf("Desktop authentication proof = %#v", proof)
-				}
-			} else if transactions.authenticated != nil {
-				t.Fatalf("%s authenticated a Desktop transaction", purpose)
+				require.NotNil(t, proof)
+				require.Equal(t, state.BrowserAuthenticationTransactionID, proof.TransactionID)
+				require.Equal(t, user.ID, proof.UserID)
+				require.Equal(t, identity.ID, proof.ExternalIdentityID)
+				require.Equal(t, "campus", proof.AuthenticationProviderID)
+				require.Equal(t, "oidc", proof.AuthenticationMethod)
+				require.Equal(t, at.UnixMilli(), proof.AuthenticatedAt)
+				require.Equal(t, at.UnixMilli(), proof.MFACompletedAt)
+			} else {
+				require.Nil(t, transactions.authenticated, "%s authenticated a Desktop transaction", purpose)
 			}
 			if purpose == model.ExternalAuthenticationPurposeLogin {
-				if issuer.calls != 1 || result.Session != issuer.session || result.Tokens != issuer.tokens {
-					t.Fatalf("ordinary login did not issue its Web Session: %#v", result)
-				}
-			} else if issuer.calls != 0 || result.Session != nil || result.Tokens != nil {
-				t.Fatalf("%s created an ordinary Session", purpose)
+				require.Equal(t, 1, issuer.calls)
+				require.Same(t, issuer.session, result.Session)
+				require.Same(t, issuer.tokens, result.Tokens)
+			} else {
+				require.Zero(t, issuer.calls, "%s created an ordinary Session", purpose)
+				require.Nil(t, result.Session, "%s created an ordinary Session", purpose)
+				require.Nil(t, result.Tokens, "%s created an ordinary Session", purpose)
 			}
-			if (identities.linkCalls == 1) != (purpose == model.ExternalAuthenticationPurposeConnect) ||
-				(acceptor.state != nil) != (purpose == model.ExternalAuthenticationPurposeInvitationAdmission) {
-				t.Fatal("callback crossed a different authentication purpose")
-			}
+			require.Equal(t, purpose == model.ExternalAuthenticationPurposeConnect, identities.linkCalls == 1, "callback crossed a different authentication purpose")
+			require.Equal(t, purpose == model.ExternalAuthenticationPurposeInvitationAdmission, acceptor.state != nil, "callback crossed a different authentication purpose")
 		})
 	}
 }
@@ -164,9 +168,7 @@ func newDesktopExternalAuthenticationFixture(t *testing.T, transactions *desktop
 		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.test"}, model.NewCredentialToken, time.Now,
 		testDesktopAuthorizationIdentity(t, "https://proctor.example.test", time.Now))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := (externalAuthenticationConstructorArgs{
 		registry: externalProviderSourceFake{provider: externalProviderFake{}}, loginStates: &externalLoginStateStoreFake{},
 		institutions: providerConnectionInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
@@ -175,9 +177,7 @@ func newDesktopExternalAuthenticationFixture(t *testing.T, transactions *desktop
 		invalidator: externalInvalidatorFake{}, audit: externalAuditFake{}, diagnostics: &securityEffectsDiagnosticsFake{},
 		acceptor: &externalInvitationAcceptorFake{}, desktop: desktop, newCredential: model.NewCredentialToken, now: time.Now,
 	}).build()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service.policy = ExternalAuthenticationPolicy{PublicURL: "https://proctor.example.test", LoginStateTTL: 5 * time.Minute,
 		LoginRateLimit: LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 10}}
 	return service

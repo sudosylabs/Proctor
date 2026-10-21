@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
@@ -40,64 +42,51 @@ func TestOfflineAdministratorMFAResetReconcilesAndRequiresReenrollment(t *testin
 		"administrator":    map[string]any{"username": "offline-mfa-admin", "email": "offline-mfa-admin@example.edu"},
 		"password":         password,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap=%d %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap=%d %s", bootstrap.Code, bootstrap.Body.String())
 	installation, err := persistence.Installation().Get(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	before, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-old", Source: "127.0.0.1:1"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	strengthenRoleAdministratorSession(t, helper.Handler(), before.Tokens.AccessToken)
 	reset, err := helper.Server.ResetAdministratorMFA(ctx, server.AdministratorMFAResetCommand{InstitutionID: installation.InstitutionID.String(), UserID: installation.AdministratorUserID.String()})
-	if err != nil || reset == nil || !reset.ReenrollmentRequired || reset.RecoveryGeneration != 1 {
-		t.Fatalf("reset=%#v error=%v", reset, err)
-	}
+	require.NoError(t, err, "reset")
+	require.NotNil(t, reset, "reset")
+	require.True(t, reset.ReenrollmentRequired, "reset")
+	require.Equal(t, int64(1), reset.RecoveryGeneration, "reset")
 	events, err := persistence.Audit().List(ctx, store.AuditListOptions{Action: "authentication.administrator_mfa_reset", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	if err != nil || len(events) != 0 {
-		t.Fatalf("pre-start recovery audit=%#v error=%v", events, err)
-	}
+	require.NoError(t, err, "pre-start recovery audit")
+	require.Empty(t, events, "pre-start recovery audit")
 	startIntegrationServer(t, helper)
 	events, err = persistence.Audit().List(ctx, store.AuditListOptions{Action: "authentication.administrator_mfa_reset", Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-	if err != nil || len(events) != 1 || !events[0].ActorID.IsZero() || events[0].Status != model.AuditStatusSuccess {
-		t.Fatalf("reconciled recovery audit=%#v error=%v", events, err)
-	}
+	require.NoError(t, err, "reconciled recovery audit")
+	require.Len(t, events, 1, "reconciled recovery audit")
+	require.True(t, events[0].ActorID.IsZero(), "reconciled recovery audit")
+	require.Equal(t, model.AuditStatusSuccess, events[0].Status, "reconciled recovery audit")
 	old := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, before.Tokens.AccessToken)
-	if old.Code == http.StatusOK {
-		t.Fatal("old Session remained usable after offline reset")
-	}
+	require.NotEqual(t, http.StatusOK, old.Code, "old Session remained usable after offline reset")
 	_, err = helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientCLI, DeviceID: "offline-cli", Source: "127.0.0.1:2"})
-	if err == nil {
-		t.Fatal("CLI login bypassed mandatory reenrollment")
-	}
+	require.Error(t, err, "CLI login bypassed mandatory reenrollment")
 	fresh, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{LoginID: "offline-mfa-admin", Password: password, ClientType: model.SessionClientWeb, DeviceID: "offline-web", Source: "127.0.0.1:3"})
-	if err != nil || fresh == nil || fresh.Session == nil || !fresh.Session.MFARecoveryRequired || fresh.Session.AuthenticationGeneration != 1 {
-		t.Fatalf("restricted fresh Session=%#v error=%v", fresh, err)
-	}
+	require.NoError(t, err, "restricted fresh Session")
+	require.NotNil(t, fresh, "restricted fresh Session")
+	require.NotNil(t, fresh.Session, "restricted fresh Session")
+	require.True(t, fresh.Session.MFARecoveryRequired, "restricted fresh Session")
+	require.Equal(t, int64(1), fresh.Session.AuthenticationGeneration, "restricted fresh Session")
 	ordinary := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, fresh.Tokens.AccessToken)
-	if ordinary.Code == http.StatusOK {
-		t.Fatal("restricted browser Session accessed ordinary account endpoint")
-	}
+	require.NotEqual(t, http.StatusOK, ordinary.Code, "restricted browser Session accessed ordinary account endpoint")
 	status := performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/me/mfa", nil, fresh.Tokens.AccessToken)
-	if status.Code != http.StatusOK {
-		t.Fatalf("recovery status=%d %s", status.Code, status.Body.String())
-	}
+	require.Equal(t, http.StatusOK, status.Code, "recovery status=%d %s", status.Code, status.Body.String())
 	var state struct {
 		Required bool `json:"mfa_recovery_required"`
 	}
-	if err = json.Unmarshal(status.Body.Bytes(), &state); err != nil || !state.Required {
-		t.Fatalf("recovery status=%s error=%v", status.Body.String(), err)
-	}
+	err = json.Unmarshal(status.Body.Bytes(), &state)
+	require.NoError(t, err, "recovery status=%s error", status.Body.String())
+	require.True(t, state.Required, "recovery status=%s error", status.Body.String())
 	strengthenRoleAdministratorSession(t, helper.Handler(), fresh.Tokens.AccessToken)
 	recovery, err := persistence.MFA().GetRecoveryState(ctx, installation.AdministratorUserID)
-	if err != nil || recovery.ReenrollmentRequired || recovery.Generation != 1 {
-		t.Fatalf("activated recovery=%#v error=%v", recovery, err)
-	}
+	require.NoError(t, err, "activated recovery=%#v error", recovery)
+	require.False(t, recovery.ReenrollmentRequired, "activated recovery=%#v error", recovery)
+	require.Equal(t, int64(1), recovery.Generation, "activated recovery=%#v error", recovery)
 	ordinary = performJSONRequest(helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, fresh.Tokens.AccessToken)
-	if ordinary.Code != http.StatusOK {
-		t.Fatalf("post-enrollment account=%d %s", ordinary.Code, ordinary.Body.String())
-	}
+	require.Equal(t, http.StatusOK, ordinary.Code, "post-enrollment account=%d %s", ordinary.Code, ordinary.Body.String())
 }

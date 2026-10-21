@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -43,9 +45,7 @@ func TestDesktopDevelopmentAuthorizationCreatesAnOrdinaryRotatingSession(t *test
 func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	primaryStore := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, primaryStore)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
@@ -76,15 +76,13 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	institution, err := primaryStore.Institution().Save(ctx, &model.Institution{
 		Name: "desktop-auth", DisplayName: "Desktop Authorization",
 	})
-	if err != nil || institution == nil {
-		t.Fatalf("save institution: %#v, %v", institution, err)
-	}
+	require.NoError(t, err, "save institution")
+	require.NotNil(t, institution, "save institution")
 	compatibility, err := primary.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
 		DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 	})
-	if err != nil || compatibility.Compatibility != app.DesktopCompatibilityCompatible {
-		t.Fatalf("configured build unavailable: %#v, %v", compatibility, err)
-	}
+	require.NoError(t, err, "configured build unavailable: %#v", compatibility)
+	require.Equal(t, app.DesktopCompatibilityCompatible, compatibility.Compatibility, "configured build unavailable: %#v", compatibility)
 
 	if development {
 		// The test graph must ignore the host environment and default to strict
@@ -93,28 +91,21 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		result, err := strict.App.EvaluateDesktopCompatibility(t.Context(), app.DesktopCompatibilityQuery{
 			DesktopRelease: build.DesktopRelease, DesktopBuildID: build.DesktopBuildID, Platform: string(build.Platform), Architecture: string(build.Architecture), RealtimeProtocol: build.RealtimeProtocol,
 		})
-		if err != nil || result.Compatibility != app.DesktopCompatibilityUnsupportedTarget {
-			t.Fatalf("default test graph bypassed compatibility: %#v, %v", result, err)
-		}
+		require.NoError(t, err, "default test graph bypassed compatibility: %#v", result)
+		require.Equal(t, app.DesktopCompatibilityUnsupportedTarget, result.Compatibility, "default test graph bypassed compatibility: %#v", result)
 	}
 
 	user, err := primary.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "desktop-user", Email: "desktop-user@example.edu",
 	}, Password: "correct horse battery staple"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	web, err := primary.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: "correct horse battery staple",
 		ClientType: model.SessionClientWeb, DeviceID: "browser", Source: "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal, err := secondary.App.AuthenticateAccess(ctx, web.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	state := model.NewCredentialToken()
 	verifier := model.NewCredentialToken()
@@ -127,37 +118,26 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		Platform: build.Platform, Architecture: build.Architecture, RealtimeProtocol: build.RealtimeProtocol,
 		Source: "127.0.0.1:2",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authorizationURL, err := url.Parse(started.AuthorizationURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding, err := secondary.App.BindDesktopAuthorization(ctx, app.Invocation{}, app.BindDesktopAuthorizationCommand{
 		Handle: authorizationURL.Query().Get("request"), BrowserProof: authorizationURL.Fragment[len("proof="):], State: state,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authenticated, err := secondary.App.AuthenticateDesktopAuthorizationSession(ctx,
 		app.NewInvocation(*principal, model.RequestMetadata{RequestID: "desktop-node-b"}),
 		app.AuthenticateDesktopAuthorizationCommand{Binding: binding.Binding})
-	if err != nil || authenticated.Account == nil || authenticated.Account.ID != user.ID {
-		t.Fatalf("authenticate Desktop authorization: %#v, %v", authenticated, err)
-	}
+	require.NoError(t, err, "authenticate Desktop authorization: %#v", authenticated)
+	require.NotNil(t, authenticated.Account, "authenticate Desktop authorization: %#v", authenticated)
+	require.Equal(t, user.ID, authenticated.Account.ID, "authenticate Desktop authorization: %#v", authenticated)
 	approved, err := secondary.App.ApproveDesktopAuthorization(ctx, app.Invocation{},
 		app.ApproveDesktopAuthorizationCommand{Binding: binding.Binding, State: state})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	callback, err := url.Parse(approved.RedirectURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if callback.Query().Get("state") != state || len(callback.Query()) != 2 {
-		t.Fatalf("callback query = %#v", callback.Query())
-	}
+	require.NoError(t, err)
+	require.Equal(t, state, callback.Query().Get("state"))
+	require.Len(t, callback.Query(), 2)
 	proof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
 		"htu": origin + "/api/v1/auth/desktop/token",
@@ -170,26 +150,26 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		Platform: build.Platform, Architecture: build.Architecture, RealtimeProtocol: build.RealtimeProtocol,
 		Source: "127.0.0.1:2",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exchanged.Session.ClientType != model.SessionClientDesktop || exchanged.Session.UserID != user.ID ||
-		exchanged.Registration == nil || exchanged.Session.DesktopRegistrationID != exchanged.Registration.ID ||
-		exchanged.Tokens == nil || exchanged.Tokens.TokenType != "DPoP" || exchanged.Tokens.AccessToken == "" || exchanged.Tokens.RefreshToken == "" {
-		t.Fatalf("desktop exchange = %#v", exchanged)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.SessionClientDesktop, exchanged.Session.ClientType)
+	require.Equal(t, user.ID, exchanged.Session.UserID)
+	require.NotNil(t, exchanged.Registration)
+	require.Equal(t, exchanged.Registration.ID, exchanged.Session.DesktopRegistrationID)
+	require.NotNil(t, exchanged.Tokens)
+	require.Equal(t, "DPoP", exchanged.Tokens.TokenType)
+	require.NotEmpty(t, exchanged.Tokens.AccessToken)
+	require.NotEmpty(t, exchanged.Tokens.RefreshToken)
 	for _, action := range []string{"authentication.desktop_authorization", "authentication.desktop_session_issue"} {
 		events, listErr := primaryStore.Audit().List(ctx, store.AuditListOptions{Action: action, ActorID: user.ID,
 			Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true}})
-		if listErr != nil || len(events) != 1 || events[0].Status != model.AuditStatusSuccess {
-			t.Fatalf("%s audits for approving account = %#v, %v", action, events, listErr)
-		}
+		require.NoError(t, listErr, "%s audits for approving account", action)
+		require.Len(t, events, 1, "%s audits for approving account", action)
+		require.Equal(t, model.AuditStatusSuccess, events[0].Status, "%s audits for approving account", action)
 	}
-	if _, _, bearerErr := secondary.App.RefreshSession(ctx, app.Invocation{}, app.RefreshSessionCommand{
+	_, _, bearerErr := secondary.App.RefreshSession(ctx, app.Invocation{}, app.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
-	}); !apperror.Is(bearerErr, "authentication.token_invalid") {
-		t.Fatalf("Desktop refresh accepted as Bearer: %v", bearerErr)
-	}
+	})
+	require.True(t, apperror.Is(bearerErr, "authentication.token_invalid"), "Desktop refresh accepted as Bearer: %v", bearerErr)
 	refreshProof := integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
 		"htu": origin + "/api/v1/auth/refresh",
@@ -201,13 +181,9 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 	})
 	// The two test nodes have independent disposable caches, so the secondary
 	// challenges the primary's nonce before the client retries with fresh proof.
-	if !apperror.Is(err, "authentication.dpop.use_nonce") {
-		t.Fatalf("cross-node refresh error = %v, want nonce challenge", err)
-	}
+	require.True(t, apperror.Is(err, "authentication.dpop.use_nonce"), "cross-node refresh error = %v, want nonce challenge", err)
 	refreshNonce, ok := app.DPoPChallengeNonce(err)
-	if !ok {
-		t.Fatal("cross-node refresh challenge did not provide a replacement nonce")
-	}
+	require.True(t, ok, "cross-node refresh challenge did not provide a replacement nonce")
 	refreshProof = integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
 		"jti": model.NewCredentialToken(), "htm": "POST",
 		"htu": origin + "/api/v1/auth/refresh",
@@ -217,24 +193,18 @@ func testDesktopAuthorizationRotatingSession(t *testing.T, development bool) {
 		RefreshToken: exchanged.Tokens.RefreshToken,
 		DPoP:         &app.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rotatedSession.ID != exchanged.Session.ID || rotated.AccessToken == exchanged.Tokens.AccessToken ||
-		rotated.RefreshToken == exchanged.Tokens.RefreshToken {
-		t.Fatalf("desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
-	}
-	if _, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("old desktop access after rotation error = %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, exchanged.Session.ID, rotatedSession.ID, "desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
+	require.NotEqual(t, exchanged.Tokens.AccessToken, rotated.AccessToken, "desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
+	require.NotEqual(t, exchanged.Tokens.RefreshToken, rotated.RefreshToken, "desktop refresh did not use ordinary rotation: session=%#v tokens=%#v", rotatedSession, rotated)
+	_, err = primary.App.AuthenticateAccess(ctx, exchanged.Tokens.AccessToken)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "old desktop access after rotation error = %v", err)
 }
 
 func integrationDesktopDPoPKey(t *testing.T) (*ecdsa.PrivateKey, model.DesktopPublicJWK) {
 	t.Helper()
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return privateKey, model.DesktopPublicJWK{
 		Kty: "EC", Crv: "P-256",
 		X: base64.RawURLEncoding.EncodeToString(privateKey.X.FillBytes(make([]byte, 32))),
@@ -250,20 +220,14 @@ func integrationDesktopDPoPProof(
 ) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]any{"typ": "dpop+jwt", "alg": "ES256", "jwk": publicJWK})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	payload, err := json.Marshal(claims)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encodedHeader := base64.RawURLEncoding.EncodeToString(header)
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
 	digest := sha256.Sum256([]byte(encodedHeader + "." + encodedPayload))
 	r, signatureS, err := ecdsa.Sign(rand.Reader, privateKey, digest[:])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	signature := append(r.FillBytes(make([]byte, 32)), signatureS.FillBytes(make([]byte, 32))...)
 	return encodedHeader + "." + encodedPayload + "." + base64.RawURLEncoding.EncodeToString(signature)
 }

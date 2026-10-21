@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -22,25 +24,20 @@ func TestClassTransitionMailPreparerCreatesOneBoundedOrdinaryNotice(t *testing.T
 	renderer := &classTransitionRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	details := ClassTransitionMailDetails{PreviousClassDisplayName: `Old <Class>`, ClassDisplayName: `New & Class`,
 		StartsAt: at.Add(24 * time.Hour), EndsAt: at.Add(180 * 24 * time.Hour)}
 	prepared, err := preparer.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
 		OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: model.MailTemplateAcademicClassTransferred,
 		Details: details, ActionAt: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceAcademicAdministration || prepared.Occurrence.ActorUserID != recipient.ID ||
-		prepared.Delivery.TargetUserID != recipient.ID || prepared.Delivery.TemplateKey != model.MailTemplateAcademicClassTransferred ||
-		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour || prepared.Job.Type != model.JobTypeMailDeliver {
-		t.Fatalf("prepared Class transition mail = %#v", prepared)
-	}
-	if renderer.details != details {
-		t.Fatalf("render details = %#v, want %#v", renderer.details, details)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceAcademicAdministration, prepared.Occurrence.Kind)
+	require.Equal(t, recipient.ID, prepared.Occurrence.ActorUserID)
+	require.Equal(t, recipient.ID, prepared.Delivery.TargetUserID)
+	require.Equal(t, model.MailTemplateAcademicClassTransferred, prepared.Delivery.TemplateKey)
+	require.Equal(t, 72*time.Hour, prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt))
+	require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type)
+	require.Equal(t, details, renderer.details, "render details")
 }
 
 func TestClassTransitionMailPreparerRecordsDisabledSuppression(t *testing.T) {
@@ -52,26 +49,19 @@ func TestClassTransitionMailPreparerRecordsDisabledSuppression(t *testing.T) {
 	renderer := &classTransitionRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PrepareClassTransition(ClassTransitionMailPreparation{
 		Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 		TemplateKey: model.MailTemplateAcademicClassEnrolled,
 		Details:     ClassTransitionMailDetails{ClassDisplayName: "Class A", StartsAt: at.Add(24 * time.Hour)},
 		ActionAt:    at,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Delivery.State != model.MailDeliverySuppressed ||
-		prepared.Delivery.PublicFailureCode != model.MailDeliveryRecipientIneligibleCode ||
-		len(prepared.Delivery.EncryptedPayload) != 0 || prepared.Job.Status != model.JobStatusCanceled {
-		t.Fatalf("disabled Class transition mail = %#v / %#v", prepared.Delivery, prepared.Job)
-	}
-	if renderer.calls != 0 {
-		t.Fatalf("renderer calls=%d, want 0", renderer.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, prepared.Delivery.State, "disabled Class transition mail = %#v / %#v", prepared.Delivery, prepared.Job)
+	require.Equal(t, model.MailDeliveryRecipientIneligibleCode, prepared.Delivery.PublicFailureCode, "disabled Class transition mail = %#v / %#v", prepared.Delivery, prepared.Job)
+	require.Empty(t, prepared.Delivery.EncryptedPayload, "disabled Class transition mail = %#v / %#v", prepared.Delivery, prepared.Job)
+	require.Equal(t, model.JobStatusCanceled, prepared.Job.Status, "disabled Class transition mail = %#v / %#v", prepared.Delivery, prepared.Job)
+	require.Equal(t, 0, renderer.calls, "renderer calls")
 }
 
 type classTransitionRendererFake struct {

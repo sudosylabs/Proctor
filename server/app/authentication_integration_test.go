@@ -17,9 +17,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -65,40 +66,27 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 		Username: "fanout-failure-user",
 		Email:    "fanout-failure-user@example.edu",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,
 		Source:     "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := helper.App.Logout(
+	require.NoError(t, err)
+	require.NoError(t, helper.App.Logout(
 		ctx,
 		app.NewInvocation(*principal, model.RequestMetadata{}),
 		app.LogoutCommand{},
-	); err != nil {
-		t.Fatalf("Logout() error = %v, want committed success", err)
-	}
-	if _, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("AuthenticateAccess() after logout error = %v, want invalid token", err)
-	}
-	if !strings.Contains(helper.Logs.String(), "session revocation broadcast failed") ||
-		!strings.Contains(helper.Logs.String(), "realtime cluster fan-out failed") {
-		t.Fatal("failed best-effort security fan-out was not diagnosed")
-	}
+	), "Logout() error")
+	_, err = helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "AuthenticateAccess() after logout error = %v, want invalid token", err)
+	require.Contains(t, helper.Logs.String(), "session revocation broadcast failed", "failed best-effort security fan-out was not diagnosed")
+	require.Contains(t, helper.Logs.String(), "realtime cluster fan-out failed", "failed best-effort security fan-out was not diagnosed")
 	for _, secret := range []string{password, login.Tokens.AccessToken, login.Tokens.RefreshToken} {
-		if strings.Contains(helper.Logs.String(), secret) {
-			t.Fatal("authentication secret appeared in fan-out diagnostics")
-		}
+		require.NotContains(t, helper.Logs.String(), secret, "authentication secret appeared in fan-out diagnostics")
 	}
 }
 
@@ -115,41 +103,31 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 		user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 			Username: identity, Email: identity + "@example.edu",
 		}, Password: "correct horse battery staple"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		result, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 			LoginID: user.Username, Password: "correct horse battery staple",
 			ClientType: model.SessionClientCLI, Source: "127.0.0.1:1",
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return result.Session, result.Tokens
 	}
 	expire := func(sessionID model.SessionID, accessToken string) {
 		t.Helper()
-		if _, err := persistence.GetMaster().Exec(ctx, `UPDATE sessions
+		_, err := persistence.GetMaster().Exec(ctx, `UPDATE sessions
 			SET last_activity_at=created_at, idle_expires_at=created_at+interval '1 millisecond'
-			WHERE id=?`, sessionID.String()); err != nil {
-			t.Fatal(err)
-		}
+			WHERE id=?`, sessionID.String())
+		require.NoError(t, err)
 		// The test shortens an already-cached deadline out of band. Production
 		// deadline changes flow through the application and its invalidation
 		// effects, so mirror that invalidation before exercising the read path.
-		if err := helper.Cache.Delete(ctx, "authentication/access/"+model.HashToken(accessToken)); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, helper.Cache.Delete(ctx, "authentication/access/"+model.HashToken(accessToken)))
 	}
 	assertExpired := func(sessionID model.SessionID) {
 		t.Helper()
 		session, err := persistence.Session().Get(ctx, sessionID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !session.RevokedAt.Valid || session.RevocationReason != model.SessionRevocationExpired {
-			t.Fatalf("expired Session = %#v", session)
-		}
+		require.NoError(t, err)
+		require.True(t, session.RevokedAt.Valid)
+		require.Equal(t, model.SessionRevocationExpired, session.RevocationReason)
 	}
 
 	httpSession, httpTokens := login("expiry-http")
@@ -157,9 +135,7 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	response := performJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, httpTokens.AccessToken,
 	)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expired HTTP access status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, response.Code, "expired HTTP access status = %d: %s", response.Code, response.Body.String())
 	assertProblemCode(t, response, "authentication.token_invalid")
 	assertExpired(httpSession.ID)
 
@@ -168,29 +144,22 @@ func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *tes
 	response = performJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh", nil, refreshTokens.RefreshToken,
 	)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expired refresh status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, response.Code, "expired refresh status = %d: %s", response.Code, response.Body.String())
 	assertProblemCode(t, response, "authentication.token_invalid")
 	assertExpired(refreshSession.ID)
 
 	websocketSession, websocketTokens := login("expiry-websocket")
 	principal, err := helper.App.AuthenticateAccess(ctx, websocketTokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expire(websocketSession.ID, websocketTokens.AccessToken)
-	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("expired WebSocket principal error = %v", err)
-	}
+	err = helper.App.ValidateWebSocketPrincipal(ctx, *principal)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "expired WebSocket principal error = %v", err)
 	assertExpired(websocketSession.ID)
 }
 
 func TestPersonalAccessTokenIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(
@@ -203,30 +172,22 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 			Name: "northbridge", DisplayName: "Northbridge University",
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	parentUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "engineering",
 		DisplayName: "Engineering",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	childUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, ParentID: parentUnit.ID,
 		Name: "computing", DisplayName: "Computing",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	siblingUnit, err := storetest.SaveAcademicUnit(context.Background(), persistence, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "health",
 		DisplayName: "Health",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(
 		context.Background(),
@@ -235,22 +196,17 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 			DisplayName: "PAT User",
 		}, Password: password},
 	)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	role, err := storetest.SaveRole(context.Background(), persistence, &model.Role{
 		Name: "academic_reader", DisplayName: "Academic reader",
 		Permissions: []string{string(model.ActionAcademicUnitView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(context.Background(), persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(context.Background(), persistence, &model.RoleBinding{
 		UserID: user.ID, RoleID: role.ID,
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	login := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -261,9 +217,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if login.Code != http.StatusOK {
-		t.Fatalf("login status = %d: %s", login.Code, login.Body.String())
-	}
+	require.Equal(t, http.StatusOK, login.Code, "login status = %d: %s", login.Code, login.Body.String())
 	session := decodeAuthenticationResponse(t, login)
 	create := performJSONRequest(
 		helper.Handler(),
@@ -277,9 +231,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		},
 		session.Tokens.AccessToken,
 	)
-	if create.Code != http.StatusCreated {
-		t.Fatalf("create PAT status = %d: %s", create.Code, create.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, create.Code, "create PAT status = %d: %s", create.Code, create.Body.String())
 	var created struct {
 		Token *struct {
 			ID        model.PersonalAccessTokenID `json:"id"`
@@ -287,13 +239,11 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		} `json:"token"`
 		Credential string `json:"credential"`
 	}
-	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
-		t.Fatal(err)
-	}
-	if created.Token == nil || created.Credential == "" || created.Token.TokenHash != nil ||
-		create.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("create PAT response = %s", create.Body.String())
-	}
+	require.NoError(t, json.Unmarshal(create.Body.Bytes(), &created))
+	require.NotNil(t, created.Token)
+	require.NotEmpty(t, created.Credential)
+	require.Nil(t, created.Token.TokenHash)
+	require.Equal(t, "no-store", create.Header().Get("Cache-Control"))
 	me := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -301,9 +251,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if me.Code != http.StatusOK {
-		t.Fatalf("PAT current-user status = %d: %s", me.Code, me.Body.String())
-	}
+	require.Equal(t, http.StatusOK, me.Code, "PAT current-user status = %d: %s", me.Code, me.Body.String())
 	descendant := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -311,13 +259,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if descendant.Code != http.StatusOK {
-		t.Fatalf(
-			"PAT descendant status = %d: %s",
-			descendant.Code,
-			descendant.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusOK, descendant.Code, "PAT descendant status = %d: %s", descendant.Code, descendant.Body.String())
 	outsideConstraint := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -325,13 +267,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if outsideConstraint.Code != http.StatusForbidden {
-		t.Fatalf(
-			"PAT sibling status = %d: %s",
-			outsideConstraint.Code,
-			outsideConstraint.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusForbidden, outsideConstraint.Code, "PAT sibling status = %d: %s", outsideConstraint.Code, outsideConstraint.Body.String())
 	outsideScope := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -339,13 +275,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if outsideScope.Code != http.StatusForbidden {
-		t.Fatalf(
-			"PAT institution status = %d: %s",
-			outsideScope.Code,
-			outsideScope.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusForbidden, outsideScope.Code, "PAT institution status = %d: %s", outsideScope.Code, outsideScope.Body.String())
 	sessionOnly := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -353,9 +283,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if sessionOnly.Code != http.StatusUnauthorized {
-		t.Fatalf("PAT session-only status = %d: %s", sessionOnly.Code, sessionOnly.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, sessionOnly.Code, "PAT session-only status = %d: %s", sessionOnly.Code, sessionOnly.Body.String())
 	list := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -363,26 +291,18 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		session.Tokens.AccessToken,
 	)
-	if list.Code != http.StatusOK ||
-		strings.Contains(list.Body.String(), created.Credential) ||
-		strings.Contains(list.Body.String(), model.HashToken(created.Credential)) {
-		t.Fatalf("list PAT response = %d: %s", list.Code, list.Body.String())
-	}
+	require.Equal(t, http.StatusOK, list.Code, "list PAT response")
+	require.NotContains(t, list.Body.String(), created.Credential, "list PAT response")
+	require.NotContains(t, list.Body.String(), model.HashToken(created.Credential), "list PAT response")
 	audits, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encodedAudits, err := json.Marshal(audits)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(encodedAudits, []byte(created.Credential)) ||
-		bytes.Contains(encodedAudits, []byte(model.HashToken(created.Credential))) {
-		t.Fatal("personal access token credential or hash leaked into audit events")
-	}
+	require.NoError(t, err)
+	require.False(t, bytes.Contains(encodedAudits, []byte(created.Credential)), "personal access token credential or hash leaked into audit events")
+	require.False(t, bytes.Contains(encodedAudits, []byte(model.HashToken(created.Credential))), "personal access token credential or hash leaked into audit events")
 	disable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -390,9 +310,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		session.Tokens.AccessToken,
 	)
-	if disable.Code != http.StatusOK {
-		t.Fatalf("disable PAT status = %d: %s", disable.Code, disable.Body.String())
-	}
+	require.Equal(t, http.StatusOK, disable.Code, "disable PAT status = %d: %s", disable.Code, disable.Body.String())
 	whileDisabled := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -400,13 +318,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if whileDisabled.Code != http.StatusUnauthorized {
-		t.Fatalf(
-			"disabled PAT status = %d: %s",
-			whileDisabled.Code,
-			whileDisabled.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusUnauthorized, whileDisabled.Code, "disabled PAT status = %d: %s", whileDisabled.Code, whileDisabled.Body.String())
 	enable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -414,9 +326,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		session.Tokens.AccessToken,
 	)
-	if enable.Code != http.StatusOK {
-		t.Fatalf("enable PAT status = %d: %s", enable.Code, enable.Body.String())
-	}
+	require.Equal(t, http.StatusOK, enable.Code, "enable PAT status = %d: %s", enable.Code, enable.Body.String())
 	afterEnable := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -424,13 +334,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if afterEnable.Code != http.StatusOK {
-		t.Fatalf(
-			"reenabled PAT status = %d: %s",
-			afterEnable.Code,
-			afterEnable.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusOK, afterEnable.Code, "reenabled PAT status = %d: %s", afterEnable.Code, afterEnable.Body.String())
 	revoke := performJSONRequest(
 		helper.Handler(),
 		http.MethodDelete,
@@ -438,9 +342,7 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		session.Tokens.AccessToken,
 	)
-	if revoke.Code != http.StatusNoContent {
-		t.Fatalf("revoke PAT status = %d: %s", revoke.Code, revoke.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, revoke.Code, "revoke PAT status = %d: %s", revoke.Code, revoke.Body.String())
 	afterRevoke := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -448,16 +350,12 @@ func TestPersonalAccessTokenIntegration(t *testing.T) {
 		nil,
 		created.Credential,
 	)
-	if afterRevoke.Code != http.StatusUnauthorized {
-		t.Fatalf("revoked PAT status = %d: %s", afterRevoke.Code, afterRevoke.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, afterRevoke.Code, "revoked PAT status = %d: %s", afterRevoke.Code, afterRevoke.Body.String())
 }
 
 func TestAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	seedAuthenticationAuditInstitution(t, persistence)
@@ -476,9 +374,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		Email:       "integration-user@example.edu",
 		DisplayName: "Integration User",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 
 	wrong := performJSONRequest(
 		helper.Handler(),
@@ -490,9 +386,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if wrong.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong-password status = %d: %s", wrong.Code, wrong.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, wrong.Code, "wrong-password status = %d: %s", wrong.Code, wrong.Body.String())
 	assertProblemCode(t, wrong, "authentication.credentials_invalid")
 
 	login := performJSONRequest(
@@ -506,40 +400,36 @@ func TestAuthenticationIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if login.Code != http.StatusOK {
-		t.Fatalf("login status = %d: %s", login.Code, login.Body.String())
-	}
+	require.Equal(t, http.StatusOK, login.Code, "login status = %d: %s", login.Code, login.Body.String())
 	first := decodeAuthenticationResponse(t, login)
-	if first.User == nil || first.User.ID != user.ID || first.Tokens.AccessToken == "" ||
-		first.Tokens.RefreshToken == "" {
-		t.Fatalf("login response = %#v", first)
-	}
-	if cookies := login.Result().Cookies(); len(cookies) != 0 {
-		t.Fatalf("CLI login unexpectedly set browser cookies = %#v", cookies)
-	}
+	require.NotNil(t, first.User)
+	require.Equal(t, user.ID, first.User.ID)
+	require.NotEmpty(t, first.Tokens.AccessToken)
+	require.NotEmpty(t, first.Tokens.RefreshToken)
+	require.Empty(t, login.Result().Cookies())
 	loginAudits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
 		Action: "authentication.login", Resource: &model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		Limit: 10, Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil || len(loginAudits) != 2 {
-		t.Fatalf("login audits = %#v, %v", loginAudits, err)
-	}
+	require.NoError(t, err, "login audits")
+	require.Len(t, loginAudits, 2, "login audits")
 	outcomes := map[model.AuditStatus]*model.AuditEvent{}
 	for _, event := range loginAudits {
 		outcomes[event.Status] = event
 	}
-	if failed := outcomes[model.AuditStatusFail]; failed == nil || failed.ActorID != "" ||
-		failed.ErrorCode != "authentication.credentials_invalid" || failed.AuthMethod != "password" {
-		t.Fatalf("failed login audit = %#v", failed)
-	}
-	if succeeded := outcomes[model.AuditStatusSuccess]; succeeded == nil || succeeded.ActorID != user.ID ||
-		!strings.Contains(string(succeeded.Result), first.Session.ID.String()) {
-		t.Fatalf("successful login audit = %#v", succeeded)
-	}
+	failed := outcomes[model.AuditStatusFail]
+	require.NotNil(t, failed)
+	require.Empty(t, failed.ActorID)
+	require.Equal(t, "authentication.credentials_invalid", failed.ErrorCode)
+	require.Equal(t, "password", failed.AuthMethod)
+	succeeded := outcomes[model.AuditStatusSuccess]
+	require.NotNil(t, succeeded)
+	require.Equal(t, user.ID, succeeded.ActorID)
+	require.Contains(t, string(succeeded.Result), first.Session.ID.String())
 	encodedLoginAudits, err := json.Marshal(loginAudits)
-	if err != nil || strings.Contains(string(encodedLoginAudits), password) || strings.Contains(string(encodedLoginAudits), "wrong password") {
-		t.Fatalf("login audit leaked a password or failed to encode: %v", err)
-	}
+	require.NoError(t, err)
+	require.NotContains(t, string(encodedLoginAudits), password)
+	require.NotContains(t, string(encodedLoginAudits), "wrong password")
 
 	me := performJSONRequest(
 		helper.Handler(),
@@ -548,9 +438,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		first.Tokens.AccessToken,
 	)
-	if me.Code != http.StatusOK {
-		t.Fatalf("me status = %d: %s", me.Code, me.Body.String())
-	}
+	require.Equal(t, http.StatusOK, me.Code, "me status = %d: %s", me.Code, me.Body.String())
 
 	refresh := performJSONRequest(
 		helper.Handler(),
@@ -559,14 +447,10 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		first.Tokens.RefreshToken,
 	)
-	if refresh.Code != http.StatusOK {
-		t.Fatalf("refresh status = %d: %s", refresh.Code, refresh.Body.String())
-	}
+	require.Equal(t, http.StatusOK, refresh.Code, "refresh status = %d: %s", refresh.Code, refresh.Body.String())
 	second := decodeAuthenticationResponse(t, refresh)
-	if second.Tokens.AccessToken == first.Tokens.AccessToken ||
-		second.Tokens.RefreshToken == first.Tokens.RefreshToken {
-		t.Fatal("refresh did not rotate both credentials")
-	}
+	require.NotEqual(t, first.Tokens.AccessToken, second.Tokens.AccessToken, "refresh did not rotate both credentials")
+	require.NotEqual(t, first.Tokens.RefreshToken, second.Tokens.RefreshToken, "refresh did not rotate both credentials")
 	oldAccess := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -574,9 +458,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		first.Tokens.AccessToken,
 	)
-	if oldAccess.Code != http.StatusUnauthorized {
-		t.Fatalf("old access status = %d", oldAccess.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, oldAccess.Code, "old access status")
 	assertProblemCode(t, oldAccess, "authentication.token_invalid")
 
 	replay := performJSONRequest(
@@ -586,9 +468,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		first.Tokens.RefreshToken,
 	)
-	if replay.Code != http.StatusUnauthorized {
-		t.Fatalf("refresh replay status = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, replay.Code, "refresh replay status = %d: %s", replay.Code, replay.Body.String())
 	assertProblemCode(t, replay, "authentication.token_invalid")
 	revokedByReplay := performJSONRequest(
 		helper.Handler(),
@@ -597,9 +477,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		second.Tokens.AccessToken,
 	)
-	if revokedByReplay.Code != http.StatusUnauthorized {
-		t.Fatalf("replay-family access status = %d", revokedByReplay.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, revokedByReplay.Code, "replay-family access status")
 	assertProblemCode(t, revokedByReplay, "authentication.token_invalid")
 
 	loginAgain := performJSONRequest(
@@ -612,9 +490,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if loginAgain.Code != http.StatusOK {
-		t.Fatalf("second login status = %d: %s", loginAgain.Code, loginAgain.Body.String())
-	}
+	require.Equal(t, http.StatusOK, loginAgain.Code, "second login status = %d: %s", loginAgain.Code, loginAgain.Body.String())
 	third := decodeAuthenticationResponse(t, loginAgain)
 	logout := performJSONRequest(
 		helper.Handler(),
@@ -623,9 +499,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		third.Tokens.AccessToken,
 	)
-	if logout.Code != http.StatusNoContent {
-		t.Fatalf("logout status = %d: %s", logout.Code, logout.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, logout.Code, "logout status = %d: %s", logout.Code, logout.Body.String())
 	afterLogout := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -633,9 +507,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		third.Tokens.AccessToken,
 	)
-	if afterLogout.Code != http.StatusUnauthorized {
-		t.Fatalf("post-logout access status = %d", afterLogout.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, afterLogout.Code, "post-logout access status")
 	assertProblemCode(t, afterLogout, "authentication.token_invalid")
 
 	loginBeforeDisable := performJSONRequest(
@@ -648,33 +520,22 @@ func TestAuthenticationIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if loginBeforeDisable.Code != http.StatusOK {
-		t.Fatalf(
-			"pre-disable login status = %d: %s",
-			loginBeforeDisable.Code,
-			loginBeforeDisable.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusOK, loginBeforeDisable.Code, "pre-disable login status = %d: %s", loginBeforeDisable.Code, loginBeforeDisable.Body.String())
 	fourth := decodeAuthenticationResponse(t, loginBeforeDisable)
 	currentUser, err := persistence.User().Get(context.Background(), user.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	disabledAt := model.GetMillis()
 	auditAttempt, err := persistence.Audit().Save(context.Background(), &model.AuditEvent{
 		Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: model.NewID(), Status: model.AuditStatusAttempt, NodeID: "authentication-integration",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.User().SetDisabled(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	require.NoError(t, err)
+	_, err = persistence.User().SetDisabled(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID, ExpectedRevision: currentUser.Revision, Disabled: true,
 		ChangedAt: disabledAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: auditAttempt.ID, AuditAt: disabledAt,
-	})); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, err)
 	refreshAfterDisable := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -682,9 +543,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		nil,
 		fourth.Tokens.RefreshToken,
 	)
-	if refreshAfterDisable.Code != http.StatusUnauthorized {
-		t.Fatalf("disabled-user refresh status = %d", refreshAfterDisable.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, refreshAfterDisable.Code, "disabled-user refresh status")
 	assertProblemCode(t, refreshAfterDisable, "authentication.token_invalid")
 	for attempt := 1; attempt <= 3; attempt++ {
 		rateLimited := performJSONRequest(
@@ -702,15 +561,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 		if attempt == 3 {
 			want = http.StatusTooManyRequests
 		}
-		if rateLimited.Code != want {
-			t.Fatalf(
-				"rate-limit attempt %d status = %d, want %d: %s",
-				attempt,
-				rateLimited.Code,
-				want,
-				rateLimited.Body.String(),
-			)
-		}
+		require.Equal(t, want, rateLimited.Code, "rate-limit attempt %d status = %d, want %d: %s", attempt, rateLimited.Code, want, rateLimited.Body.String())
 		wantCode := "authentication.credentials_invalid"
 		if attempt == 3 {
 			wantCode = "authentication.rate_limited"
@@ -732,17 +583,13 @@ func TestAuthenticationIntegration(t *testing.T) {
 		fourth.Tokens.AccessToken,
 		fourth.Tokens.RefreshToken,
 	} {
-		if strings.Contains(logs, secret) {
-			t.Fatal("authentication secret appeared in logs")
-		}
+		require.NotContains(t, logs, secret, "authentication secret appeared in logs")
 	}
 }
 
 func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	seedAuthenticationAuditInstitution(t, persistence)
@@ -758,9 +605,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		Username: "browser-user", Email: "browser-user@example.edu",
 		DisplayName: "Browser User",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 
 	login := performJSONRequest(
 		helper.Handler(),
@@ -772,63 +617,41 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if login.Code != http.StatusOK {
-		t.Fatalf("browser login status = %d: %s", login.Code, login.Body.String())
-	}
+	require.Equal(t, http.StatusOK, login.Code, "browser login status = %d: %s", login.Code, login.Body.String())
 	var loginBody authenticationResponse
-	if err := json.Unmarshal(login.Body.Bytes(), &loginBody); err != nil {
-		t.Fatal(err)
-	}
-	if loginBody.User == nil || loginBody.Session == nil || loginBody.Tokens != nil {
-		t.Fatalf("browser login response = %#v", loginBody)
-	}
+	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &loginBody))
+	require.NotNil(t, loginBody.User)
+	require.NotNil(t, loginBody.Session)
+	require.Nil(t, loginBody.Tokens)
 	loginCookies := cookieMap(login.Result().Cookies())
 	assertBrowserCookieContract(t, loginCookies)
 	for _, cookie := range loginCookies {
-		if strings.Contains(login.Body.String(), cookie.Value) ||
-			strings.Contains(helper.Logs.String(), cookie.Value) {
-			t.Fatal("browser credential appeared in body or logs")
-		}
+		require.NotContains(t, login.Body.String(), cookie.Value, "browser credential appeared in body or logs")
+		require.NotContains(t, helper.Logs.String(), cookie.Value, "browser credential appeared in body or logs")
 	}
 
 	me := performBrowserJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "", "",
 	)
-	if me.Code != http.StatusOK {
-		t.Fatalf("browser current-user status = %d: %s", me.Code, me.Body.String())
-	}
+	require.Equal(t, http.StatusOK, me.Code, "browser current-user status = %d: %s", me.Code, me.Body.String())
 	ambiguous := performBrowserJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "another-access-token", "",
 	)
-	if ambiguous.Code != http.StatusBadRequest {
-		t.Fatalf("ambiguous browser credential status = %d: %s", ambiguous.Code, ambiguous.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, ambiguous.Code, "ambiguous browser credential status = %d: %s", ambiguous.Code, ambiguous.Body.String())
 
 	missingLogoutCSRF := performBrowserJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/logout",
 		nil, loginCookies, "", "",
 	)
-	if missingLogoutCSRF.Code != http.StatusForbidden {
-		t.Fatalf(
-			"missing logout CSRF status = %d: %s",
-			missingLogoutCSRF.Code,
-			missingLogoutCSRF.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusForbidden, missingLogoutCSRF.Code, "missing logout CSRF status = %d: %s", missingLogoutCSRF.Code, missingLogoutCSRF.Body.String())
 	assertProblemCode(t, missingLogoutCSRF, "authentication.csrf.invalid")
 	missingRefreshCSRF := performBrowserJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh",
 		nil, loginCookies, "", "",
 	)
-	if missingRefreshCSRF.Code != http.StatusForbidden {
-		t.Fatalf(
-			"missing refresh CSRF status = %d: %s",
-			missingRefreshCSRF.Code,
-			missingRefreshCSRF.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusForbidden, missingRefreshCSRF.Code, "missing refresh CSRF status = %d: %s", missingRefreshCSRF.Code, missingRefreshCSRF.Body.String())
 	assertProblemCode(t, missingRefreshCSRF, "authentication.csrf.invalid")
 
 	refresh := performBrowserJSONRequest(
@@ -836,63 +659,44 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		nil, loginCookies, "",
 		loginCookies[httpapi.BrowserCSRFCookieName].Value,
 	)
-	if refresh.Code != http.StatusOK {
-		t.Fatalf("browser refresh status = %d: %s", refresh.Code, refresh.Body.String())
-	}
+	require.Equal(t, http.StatusOK, refresh.Code, "browser refresh status = %d: %s", refresh.Code, refresh.Body.String())
 	var refreshBody authenticationResponse
-	if err := json.Unmarshal(refresh.Body.Bytes(), &refreshBody); err != nil {
-		t.Fatal(err)
-	}
-	if refreshBody.Session == nil || refreshBody.Tokens != nil {
-		t.Fatalf("browser refresh response = %#v", refreshBody)
-	}
+	require.NoError(t, json.Unmarshal(refresh.Body.Bytes(), &refreshBody))
+	require.NotNil(t, refreshBody.Session)
+	require.Nil(t, refreshBody.Tokens)
 	refreshedCookies := cookieMap(refresh.Result().Cookies())
 	assertBrowserCookieContract(t, refreshedCookies)
 	for name, previous := range loginCookies {
-		if refreshedCookies[name].Value == previous.Value {
-			t.Fatalf("%s was not rotated", name)
-		}
+		require.NotEqual(t, previous.Value, refreshedCookies[name].Value, "%s was not rotated", name)
 	}
 
 	oldAccess := performBrowserJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, loginCookies, "", "",
 	)
-	if oldAccess.Code != http.StatusUnauthorized {
-		t.Fatalf("old browser access status = %d", oldAccess.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, oldAccess.Code, "old browser access status")
 	currentAccess := performBrowserJSONRequest(
 		helper.Handler(), http.MethodGet, "/api/v1/users/me",
 		nil, refreshedCookies, "", "",
 	)
-	if currentAccess.Code != http.StatusOK {
-		t.Fatalf("refreshed browser access status = %d: %s", currentAccess.Code, currentAccess.Body.String())
-	}
+	require.Equal(t, http.StatusOK, currentAccess.Code, "refreshed browser access status = %d: %s", currentAccess.Code, currentAccess.Body.String())
 
 	logout := performBrowserJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/logout",
 		nil, refreshedCookies, "",
 		refreshedCookies[httpapi.BrowserCSRFCookieName].Value,
 	)
-	if logout.Code != http.StatusNoContent {
-		t.Fatalf("browser logout status = %d: %s", logout.Code, logout.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, logout.Code, "browser logout status = %d: %s", logout.Code, logout.Body.String())
 	cleared := cookieMap(logout.Result().Cookies())
-	if len(cleared) != 4 {
-		t.Fatalf("cleared cookies = %#v", cleared)
-	}
+	require.Len(t, cleared, 4)
 	for _, cookie := range cleared {
-		if cookie.MaxAge >= 0 {
-			t.Fatalf("logout did not expire cookie = %#v", cookie)
-		}
+		require.Negative(t, cookie.MaxAge)
 	}
 }
 
 func TestSessionManagementIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	seedAuthenticationAuditInstitution(t, persistence)
@@ -903,9 +707,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		Email:       "session-user@example.edu",
 		DisplayName: "Session User",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 
 	firstLogin := loginIntegrationUser(
 		t,
@@ -931,24 +733,17 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
-	if list.Code != http.StatusOK {
-		t.Fatalf("list sessions status = %d: %s", list.Code, list.Body.String())
-	}
+	require.Equal(t, http.StatusOK, list.Code, "list sessions status = %d: %s", list.Code, list.Body.String())
 	var sessions []*model.Session
 	sessions = decodeSessionList(t, list)
-	if len(sessions) != 2 {
-		t.Fatalf("sessions = %#v", sessions)
-	}
+	require.Len(t, sessions, 2)
 	for _, session := range sessions {
-		if session.UserID != user.ID || session.RevokedAt.Valid {
-			t.Fatalf("unsafe session listing = %#v", session)
-		}
+		require.Equal(t, user.ID, session.UserID)
+		require.False(t, session.RevokedAt.Valid)
 	}
-	if strings.Contains(list.Body.String(), "token_hash") ||
-		strings.Contains(list.Body.String(), firstLogin.Tokens.AccessToken) ||
-		strings.Contains(list.Body.String(), firstLogin.Tokens.RefreshToken) {
-		t.Fatalf("session listing exposed credential material: %s", list.Body.String())
-	}
+	require.NotContains(t, list.Body.String(), "token_hash")
+	require.NotContains(t, list.Body.String(), firstLogin.Tokens.AccessToken)
+	require.NotContains(t, list.Body.String(), firstLogin.Tokens.RefreshToken)
 
 	unknownField := performJSONRequest(
 		helper.Handler(),
@@ -957,9 +752,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		map[string]any{"session_id": firstLogin.Session.ID, "unknown": true},
 		secondLogin.Tokens.AccessToken,
 	)
-	if unknownField.Code != http.StatusBadRequest {
-		t.Fatalf("unknown revoke field status = %d", unknownField.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, unknownField.Code, "unknown revoke field status")
 
 	revokeFirst := performJSONRequest(
 		helper.Handler(),
@@ -968,9 +761,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		map[string]any{"session_id": firstLogin.Session.ID},
 		secondLogin.Tokens.AccessToken,
 	)
-	if revokeFirst.Code != http.StatusNoContent {
-		t.Fatalf("revoke session status = %d: %s", revokeFirst.Code, revokeFirst.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, revokeFirst.Code, "revoke session status = %d: %s", revokeFirst.Code, revokeFirst.Body.String())
 	firstAfterRevoke := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -978,9 +769,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		firstLogin.Tokens.AccessToken,
 	)
-	if firstAfterRevoke.Code != http.StatusUnauthorized {
-		t.Fatalf("revoked access status = %d", firstAfterRevoke.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, firstAfterRevoke.Code, "revoked access status")
 	secondStillActive := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -988,9 +777,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
-	if secondStillActive.Code != http.StatusOK {
-		t.Fatalf("unrelated session status = %d", secondStillActive.Code)
-	}
+	require.Equal(t, http.StatusOK, secondStillActive.Code, "unrelated session status")
 
 	invalidID := performJSONRequest(
 		helper.Handler(),
@@ -999,9 +786,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		map[string]any{"session_id": "not-an-id"},
 		secondLogin.Tokens.AccessToken,
 	)
-	if invalidID.Code != http.StatusBadRequest {
-		t.Fatalf("invalid session id status = %d", invalidID.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, invalidID.Code, "invalid session id status")
 	assertProblemCode(t, invalidID, "session.id.invalid")
 
 	otherUser, appErr := helper.App.CreateLocalUser(context.Background(), app.CreateLocalUserCommand{User: &model.User{
@@ -1009,9 +794,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		Email:       "other-session-user@example.edu",
 		DisplayName: "Other Session User",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	otherLogin := loginIntegrationUser(
 		t,
 		helper.Handler(),
@@ -1027,13 +810,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		map[string]any{"session_id": otherLogin.Session.ID},
 		secondLogin.Tokens.AccessToken,
 	)
-	if crossUserRevoke.Code != http.StatusNotFound {
-		t.Fatalf(
-			"cross-user revoke status = %d: %s",
-			crossUserRevoke.Code,
-			crossUserRevoke.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusNotFound, crossUserRevoke.Code, "cross-user revoke status = %d: %s", crossUserRevoke.Code, crossUserRevoke.Body.String())
 	assertProblemCode(t, crossUserRevoke, "session.not_found")
 	otherStillActive := performJSONRequest(
 		helper.Handler(),
@@ -1042,9 +819,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		otherLogin.Tokens.AccessToken,
 	)
-	if otherStillActive.Code != http.StatusOK {
-		t.Fatalf("cross-user session status = %d", otherStillActive.Code)
-	}
+	require.Equal(t, http.StatusOK, otherStillActive.Code, "cross-user session status")
 
 	revokeAll := performJSONRequest(
 		helper.Handler(),
@@ -1053,9 +828,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
-	if revokeAll.Code != http.StatusNoContent {
-		t.Fatalf("revoke-all status = %d: %s", revokeAll.Code, revokeAll.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, revokeAll.Code, "revoke-all status = %d: %s", revokeAll.Code, revokeAll.Body.String())
 	secondAfterRevokeAll := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -1063,9 +836,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
-	if secondAfterRevokeAll.Code != http.StatusUnauthorized {
-		t.Fatalf("revoke-all access status = %d", secondAfterRevokeAll.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, secondAfterRevokeAll.Code, "revoke-all access status")
 
 	thirdLogin := loginIntegrationUser(
 		t,
@@ -1083,15 +854,9 @@ func TestSessionManagementIntegration(t *testing.T) {
 		thirdLogin.Tokens.AccessToken,
 	)
 	sessions = decodeSessionList(t, activeAfterRevokeAll)
-	if activeAfterRevokeAll.Code != http.StatusOK ||
-		len(sessions) != 1 ||
-		sessions[0].ID != thirdLogin.Session.ID {
-		t.Fatalf(
-			"active sessions after revoke-all status=%d sessions=%#v",
-			activeAfterRevokeAll.Code,
-			sessions,
-		)
-	}
+	require.Equal(t, http.StatusOK, activeAfterRevokeAll.Code, "active sessions after revoke-all status")
+	require.Len(t, sessions, 1, "active sessions after revoke-all status")
+	require.Equal(t, thirdLogin.Session.ID, sessions[0].ID, "active sessions after revoke-all status")
 
 	logs := helper.Logs.String()
 	for _, token := range []string{
@@ -1104,9 +869,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 		thirdLogin.Tokens.AccessToken,
 		thirdLogin.Tokens.RefreshToken,
 	} {
-		if strings.Contains(logs, token) {
-			t.Fatal("raw session-management credential appeared in logs")
-		}
+		require.NotContains(t, logs, token, "raw session-management credential appeared in logs")
 	}
 }
 
@@ -1129,9 +892,7 @@ func loginIntegrationUser(
 		},
 		"",
 	)
-	if response.Code != http.StatusOK {
-		t.Fatalf("login status = %d: %s", response.Code, response.Body.String())
-	}
+	require.Equal(t, http.StatusOK, response.Code, "login status = %d: %s", response.Code, response.Body.String())
 	return decodeAuthenticationResponse(t, response)
 }
 
@@ -1244,22 +1005,17 @@ func decodeAuthenticationResponse(
 		Session *wireSessionResponse              `json:"session"`
 		Tokens  *wireAuthenticationTokensResponse `json:"tokens"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
 	decoded := authenticationResponse{User: wire.User.model(), Session: wire.Session.model(), Tokens: wire.Tokens.model()}
-	if decoded.Session == nil || decoded.Tokens == nil {
-		t.Fatalf("authentication response = %#v", decoded)
-	}
+	require.NotNil(t, decoded.Session)
+	require.NotNil(t, decoded.Tokens)
 	return decoded
 }
 
 func decodeSessionList(t *testing.T, response *httptest.ResponseRecorder) []*model.Session {
 	t.Helper()
 	var wire []*wireSessionResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &wire))
 	sessions := make([]*model.Session, 0, len(wire))
 	for _, item := range wire {
 		sessions = append(sessions, item.model())
@@ -1334,35 +1090,40 @@ func assertBrowserCookieContract(
 	cookies map[string]*http.Cookie,
 ) {
 	t.Helper()
-	if httpapi.BrowserAccessCookieName != "PROCTOR_ACCESS" ||
-		httpapi.BrowserRefreshCookieName != "PROCTOR_REFRESH" ||
-		httpapi.BrowserCSRFBindingCookieName != "PROCTOR_CSRF_BINDING" ||
-		httpapi.BrowserCSRFCookieName != "PROCTOR_CSRF" ||
-		httpapi.BrowserCSRFHeader != "X-Proctor-CSRF-Token" {
-		t.Fatal("browser cookie or CSRF public name changed")
-	}
-	if len(cookies) != 4 {
-		t.Fatalf("browser cookies = %#v", cookies)
-	}
+	require.Equal(t, "PROCTOR_ACCESS", httpapi.BrowserAccessCookieName, "browser cookie or CSRF public name changed")
+	require.Equal(t, "PROCTOR_REFRESH", httpapi.BrowserRefreshCookieName, "browser cookie or CSRF public name changed")
+	require.Equal(t, "PROCTOR_CSRF_BINDING", httpapi.BrowserCSRFBindingCookieName, "browser cookie or CSRF public name changed")
+	require.Equal(t, "PROCTOR_CSRF", httpapi.BrowserCSRFCookieName, "browser cookie or CSRF public name changed")
+	require.Equal(t, "X-Proctor-CSRF-Token", httpapi.BrowserCSRFHeader, "browser cookie or CSRF public name changed")
+	require.Len(t, cookies, 4)
 	access := cookies["PROCTOR_ACCESS"]
 	refresh := cookies["PROCTOR_REFRESH"]
 	binding := cookies["PROCTOR_CSRF_BINDING"]
 	csrf := cookies["PROCTOR_CSRF"]
-	if access == nil || refresh == nil || binding == nil || csrf == nil ||
-		!access.HttpOnly || !refresh.HttpOnly || !binding.HttpOnly ||
-		csrf.HttpOnly || !access.Secure || !refresh.Secure ||
-		!binding.Secure || !csrf.Secure ||
-		access.SameSite != http.SameSiteLaxMode ||
-		refresh.SameSite != http.SameSiteLaxMode ||
-		binding.SameSite != http.SameSiteLaxMode ||
-		csrf.SameSite != http.SameSiteLaxMode ||
-		access.Domain != "" || refresh.Domain != "" ||
-		binding.Domain != "" || csrf.Domain != "" ||
-		access.Path != "/" ||
-		refresh.Path != "/api/v1/auth/refresh" ||
-		binding.Path != "/" || csrf.Path != "/" {
-		t.Fatalf("browser cookie contract = %#v", cookies)
-	}
+	require.NotNil(t, access)
+	require.NotNil(t, refresh)
+	require.NotNil(t, binding)
+	require.NotNil(t, csrf)
+	require.True(t, access.HttpOnly)
+	require.True(t, refresh.HttpOnly)
+	require.True(t, binding.HttpOnly)
+	require.False(t, csrf.HttpOnly)
+	require.True(t, access.Secure)
+	require.True(t, refresh.Secure)
+	require.True(t, binding.Secure)
+	require.True(t, csrf.Secure)
+	require.Equal(t, http.SameSiteLaxMode, access.SameSite)
+	require.Equal(t, http.SameSiteLaxMode, refresh.SameSite)
+	require.Equal(t, http.SameSiteLaxMode, binding.SameSite)
+	require.Equal(t, http.SameSiteLaxMode, csrf.SameSite)
+	require.Empty(t, access.Domain)
+	require.Empty(t, refresh.Domain)
+	require.Empty(t, binding.Domain)
+	require.Empty(t, csrf.Domain)
+	require.Equal(t, "/", access.Path)
+	require.Equal(t, "/api/v1/auth/refresh", refresh.Path)
+	require.Equal(t, "/", binding.Path)
+	require.Equal(t, "/", csrf.Path)
 }
 
 func assertProblemCode(
@@ -1371,16 +1132,10 @@ func assertProblemCode(
 	want string,
 ) {
 	t.Helper()
-	if response.Header().Get("Content-Type") != "application/problem+json" {
-		t.Fatalf("problem Content-Type = %q", response.Header().Get("Content-Type"))
-	}
+	require.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
 	var problem httpapi.Problem
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem.Code != want {
-		t.Fatalf("problem code = %q, want %q", problem.Code, want)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	require.Equal(t, want, problem.Code, "problem code")
 }
 
 func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore {
@@ -1389,20 +1144,14 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 	database.DataSource = dataSource
 	settings := sqlstore.SettingsFromConfig(database)
 	migrator, err := sqlstore.NewMigrator(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if err := migrator.Up(); err != nil {
 		_ = migrator.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
-	if err := migrator.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, migrator.Close())
 	persistence, err := sqlstore.New(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if _, err := persistence.GetMaster().Exec(context.Background(), `
 		TRUNCATE TABLE
 			mail_key_state, mail_fanout_bundles, mail_payload_keys, external_login_states, installation_states, access_policy_transitions, access_policies, audit_events, mfa_recovery_codes, mfa_credentials,
@@ -1412,11 +1161,11 @@ func openAuthenticationStore(t *testing.T, dataSource string) *sqlstore.SQLStore
 			classes, academic_periods, programme_levels, programmes,
 			academic_units, institutions CASCADE`); err != nil {
 		_ = persistence.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	if _, err := persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(singleton, required_primary_key_id, active_rekey_job_id, updated_at) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
 		_ = persistence.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
 	return persistence
 }
@@ -1440,10 +1189,8 @@ func seedAuthenticationAccessPolicy(
 	}
 	policy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.NowUTC())
 	providers, err := json.Marshal(providerAdmissions)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.GetMaster().Exec(context.Background(), `
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(context.Background(), `
 		INSERT INTO access_policies (
 			singleton, id, revision, created_at, updated_at,
 			local_login_enabled, public_registration_enabled,
@@ -1454,18 +1201,16 @@ func seedAuthenticationAccessPolicy(
 		policy.LocalLoginEnabled, policy.PublicRegistrationEnabled,
 		policy.InvitationAdmissionEnabled, policy.InvitationLocalCredentialEnabled,
 		policy.DesktopAuthorizationEnabled, providers,
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
+	require.NoError(t, err)
 }
 
 // Legacy authentication fixtures create Users directly; self-session mutations
 // still need the installation singleton that owns their durable audit scope.
 func seedAuthenticationAuditInstitution(t *testing.T, persistence *sqlstore.SQLStore) {
 	t.Helper()
-	if _, err := persistence.Institution().Save(context.Background(), &model.Institution{
+	_, err := persistence.Institution().Save(context.Background(), &model.Institution{
 		Name: "authentication-university", DisplayName: "Authentication University",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 }

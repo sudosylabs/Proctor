@@ -13,10 +13,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
@@ -66,9 +69,7 @@ func (c *userSettingsRecordingCluster) settingsEvents() []*cluster.Message {
 
 func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	primaryStore := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, primaryStore)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
@@ -77,33 +78,24 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 	primary := testlib.Setup(t, testlib.WithStore(primaryStore), testlib.WithCluster(primaryCluster))
 	secondary := testlib.Setup(t, testlib.WithStore(secondaryStore), testlib.WithCluster(secondaryCluster))
 	ctx := context.Background()
-	if _, err := primaryStore.Institution().Save(ctx, &model.Institution{
+	_, err := primaryStore.Institution().Save(ctx, &model.Institution{
 		Name: "settings-two-node", DisplayName: "Settings Two Node",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	const password = "correct horse battery staple"
 	user, err := primary.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-two-node-user", Email: "settings-two-node-user@example.edu",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login, err := primary.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal, err := primary.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-two-node"})
 	before, err := primary.App.ReadOwnUserSettings(ctx, invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	type outcome struct {
 		result app.UserSettingsReplacementResult
@@ -141,39 +133,28 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		case apperror.Is(completed.err, "user_settings.revision_conflict"):
 			conflicts++
 		default:
-			t.Fatalf("concurrent replacement error = %v", completed.err)
+			require.FailNow(t, fmt.Sprintf("concurrent replacement error = %v", completed.err))
 		}
 	}
-	if successes != 1 || conflicts != 1 || !winner.Changed {
-		t.Fatalf("concurrent outcomes success/conflict/winner = %d/%d/%#v", successes, conflicts, winner)
-	}
+	require.Equal(t, 1, successes, "concurrent outcomes success/conflict/winner = %d/%d/%#v", successes, conflicts, winner)
+	require.Equal(t, 1, conflicts, "concurrent outcomes success/conflict/winner = %d/%d/%#v", successes, conflicts, winner)
+	require.True(t, winner.Changed, "concurrent outcomes success/conflict/winner = %d/%d/%#v", successes, conflicts, winner)
 	primaryView, err := primary.App.ReadOwnUserSettings(ctx, invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	secondaryView, err := secondary.App.ReadOwnUserSettings(ctx, invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if primaryView.Revision != winner.Revision || secondaryView.Revision != winner.Revision ||
-		primaryView.Source != secondaryView.Source {
-		t.Fatalf("authoritative views diverged: primary=%#v secondary=%#v winner=%#v", primaryView, secondaryView, winner)
-	}
+	require.NoError(t, err)
+	require.Equal(t, winner.Revision, primaryView.Revision, "authoritative views diverged: primary=%#v secondary=%#v winner=%#v", primaryView, secondaryView, winner)
+	require.Equal(t, winner.Revision, secondaryView.Revision, "authoritative views diverged: primary=%#v secondary=%#v winner=%#v", primaryView, secondaryView, winner)
+	require.Equal(t, secondaryView.Source, primaryView.Source, "authoritative views diverged: primary=%#v secondary=%#v winner=%#v", primaryView, secondaryView, winner)
 	events := append(primaryCluster.settingsEvents(), secondaryCluster.settingsEvents()...)
-	if len(events) != 1 {
-		t.Fatalf("settings cluster events = %d, want one winning refetch hint", len(events))
-	}
+	require.Len(t, events, 1, "settings cluster events")
 	payload := events[0].Data
-	if !bytes.Contains(payload, []byte(winner.Revision.String())) ||
-		!bytes.Contains(payload, []byte(user.ID.String())) {
-		t.Fatalf("settings event lacks winning metadata: %s", payload)
-	}
+	require.True(t, bytes.Contains(payload, []byte(winner.Revision.String())))
+	require.True(t, bytes.Contains(payload, []byte(user.ID.String())))
 	for _, forbidden := range []string{
 		"private-a", "private-b", "colorTheme", `"source":`, `"idempotency_key":`, `"session_id":`,
 	} {
-		if bytes.Contains(payload, []byte(forbidden)) {
-			t.Fatalf("settings event exposed %q: %s", forbidden, payload)
-		}
+		require.False(t, bytes.Contains(payload, []byte(forbidden)), "settings event exposed %q: %s", forbidden, payload)
 	}
 }
 
@@ -209,67 +190,50 @@ func (s userSettingsUnknownOutcomeAdapter) Replace(
 
 func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
 	uncertain := &userSettingsUnknownOutcomeStore{Store: persistence}
 	helper := testlib.Setup(t, testlib.WithStore(uncertain))
 	ctx := context.Background()
-	if _, err := persistence.Institution().Save(ctx, &model.Institution{
+	_, err := persistence.Institution().Save(ctx, &model.Institution{
 		Name: "settings-unknown-outcome", DisplayName: "Settings Unknown Outcome",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	const password = "correct horse battery staple"
 	user, err := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "settings-unknown-user", Email: "settings-unknown-user@example.edu",
 	}, Password: password})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login, err := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal, err := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "settings-unknown-outcome"})
 	before, err := helper.App.ReadOwnUserSettings(ctx, invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	const source = "{\n  // private-comment-marker\n  \"private.visual.key\": \"private-value-marker\",\n}\n"
 	command := app.ReplaceOwnUserSettingsCommand{
 		Source: source, FormatVersion: 1, ExpectedRevision: before.Revision,
 		IdempotencyKey: "private-idempotency-marker",
 	}
 	uncertain.failNext.Store(true)
-	if _, err := helper.App.ReplaceOwnUserSettings(ctx, invocation, command); !apperror.Is(err, "user_settings.unavailable") {
-		t.Fatalf("unknown replacement outcome error = %v", err)
-	}
+	_, err = helper.App.ReplaceOwnUserSettings(ctx, invocation, command)
+	require.True(t, apperror.Is(err, "user_settings.unavailable"), "unknown replacement outcome error = %v", err)
 	authoritative, err := helper.App.ReadOwnUserSettings(ctx, invocation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if authoritative.Source != source || authoritative.Revision == before.Revision {
-		t.Fatalf("authoritative reconciliation = %#v", authoritative)
-	}
+	require.NoError(t, err)
+	require.Equal(t, source, authoritative.Source)
+	require.NotEqual(t, before.Revision, authoritative.Revision)
 	replayed, err := helper.App.ReplaceOwnUserSettings(ctx, invocation, command)
-	if err != nil || !replayed.Replayed || replayed.Revision != authoritative.Revision {
-		t.Fatalf("retained replay = %#v, %v", replayed, err)
-	}
+	require.NoError(t, err, "retained replay = %#v", replayed)
+	require.True(t, replayed.Replayed, "retained replay = %#v", replayed)
+	require.Equal(t, authoritative.Revision, replayed.Revision, "retained replay = %#v", replayed)
 	var encodedOutcome string
-	if err := persistence.GetMaster().Get(ctx, &encodedOutcome, `
+	require.NoError(t, persistence.GetMaster().Get(ctx, &encodedOutcome, `
 		SELECT outcome::text FROM command_outcomes
-		WHERE user_id = $1 AND operation = 'user_settings.replace'`, user.ID.String()); err != nil {
-		t.Fatal(err)
-	}
+		WHERE user_id = $1 AND operation = 'user_settings.replace'`, user.ID.String()))
 	for _, surface := range []struct {
 		name  string
 		value string
@@ -277,11 +241,11 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		{name: "command outcome", value: encodedOutcome},
 		{name: "ordinary logs", value: helper.Logs.String()},
 	} {
-		for _, forbidden := range []string{"private-comment-marker", "private.visual.key", "private-value-marker", "private-idempotency-marker"} {
-			if bytes.Contains([]byte(surface.value), []byte(forbidden)) {
-				t.Fatalf("%s exposed %q: %s", surface.name, forbidden, surface.value)
+		t.Run(surface.name, func(t *testing.T) {
+			for _, forbidden := range []string{"private-comment-marker", "private.visual.key", "private-value-marker", "private-idempotency-marker"} {
+				require.False(t, bytes.Contains([]byte(surface.value), []byte(forbidden)), "%s exposed %q: %s", surface.name, forbidden, surface.value)
 			}
-		}
+		})
 	}
 }
 
@@ -290,8 +254,6 @@ func openAdditionalUserSettingsStore(t *testing.T, dataSource string) *sqlstore.
 	database := config.Default().Database
 	database.DataSource = dataSource
 	persistence, err := sqlstore.New(context.Background(), sqlstore.SettingsFromConfig(database))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return persistence
 }

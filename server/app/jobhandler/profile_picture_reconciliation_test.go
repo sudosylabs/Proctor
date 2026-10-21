@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -54,13 +56,9 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	defaults := &reconciliationDefaultJobsFake{}
 	handler := defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}
 	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, command, "reconcile:2026-08-10", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var checkpoints []jobengine.CheckpointValue
 	execution := testJobExecution(job, allowJobWorkReservation(), func(_ context.Context, value jobengine.CheckpointValue) error {
 		checkpoints = append(checkpoints, value)
@@ -68,19 +66,22 @@ func TestDefaultProfilePictureReconciliationUsesBoundedPagesAndSafeCheckpoints(t
 	})
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || len(defaults.users) != 2 || len(checkpoints) != 1 {
-		t.Fatalf("outcome=%#v proposed=%v checkpoints=%#v", outcome, defaults.users, checkpoints)
-	}
-	if len(lister.calls) != 1 || lister.calls[0].Limit != 2 || !lister.calls[0].MissingDefaultProfilePicture || !lister.calls[0].IncludeDisabled {
-		t.Fatalf("list calls = %#v", lister.calls)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
+	require.NoError(t, outcome.Err, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
+	require.Len(t, defaults.users, 2, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
+	require.Len(t, checkpoints, 1, "outcome=%#v proposed=%v checkpoints", outcome, defaults.users)
+	require.Len(t, lister.calls, 1)
+	require.Equal(t, 2, lister.calls[0].Limit)
+	require.True(t, lister.calls[0].MissingDefaultProfilePicture)
+	require.True(t, lister.calls[0].IncludeDisabled)
 	var final DefaultProfilePictureReconciliationCheckpointV1
-	if err = json.Unmarshal(checkpoints[0].Document, &final); err != nil {
-		t.Fatal(err)
-	}
-	if final.Processed != 2 || final.AfterUserID != users[1].ID || checkpoints[0].Progress.Current != 2 || checkpoints[0].Progress.Total != 2 || checkpoints[0].Progress.Stage != "completed" {
-		t.Fatalf("final checkpoint = %#v progress=%#v", final, checkpoints[0].Progress)
-	}
+	err = json.Unmarshal(checkpoints[0].Document, &final)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), final.Processed, "final checkpoint")
+	require.Equal(t, users[1].ID, final.AfterUserID, "final checkpoint")
+	require.Equal(t, int64(2), checkpoints[0].Progress.Current, "final checkpoint")
+	require.Equal(t, int64(2), checkpoints[0].Progress.Total, "final checkpoint")
+	require.Equal(t, "completed", checkpoints[0].Progress.Stage, "final checkpoint")
 }
 
 func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t *testing.T) {
@@ -92,28 +93,21 @@ func TestDefaultProfilePictureReconciliationDoesNotExceedCommittedBatchOnRetry(t
 	defaults := &reconciliationDefaultJobsFake{}
 	handler := defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}
 	command, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	checkpoint, err := EncodeDefaultProfilePictureReconciliationCheckpoint(DefaultProfilePictureReconciliationCheckpointV1{AfterUsername: users[1].Username, AfterUserID: users[1].ID, Processed: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, command, "reconcile:2026-08-10", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job.CheckpointVersion = 1
 	job.Checkpoint = checkpoint
-	if err = job.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	err = job.Validate()
+	require.NoError(t, err)
 	execution := testJobExecution(job, allowJobWorkReservation(), func(context.Context, jobengine.CheckpointValue) error { return nil })
 
 	outcome := handler.Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(defaults.users) != 0 || len(lister.calls) != 0 {
-		t.Fatalf("outcome=%#v proposed=%v calls=%#v", outcome, defaults.users, lister.calls)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v proposed=%v calls", outcome, defaults.users)
+	require.Empty(t, defaults.users, "outcome=%#v proposed=%v calls", outcome, defaults.users)
+	require.Empty(t, lister.calls, "outcome=%#v proposed=%v calls", outcome, defaults.users)
 }
 
 func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(t *testing.T) {
@@ -122,36 +116,29 @@ func TestDefaultProfilePictureReconciliationDoesNotRepeatReservedWorkAfterCrash(
 	lister := &reconciliationUserListerFake{users: []*model.User{reconciliationUser(t, "alpha", at)}}
 	defaults := &reconciliationDefaultJobsFake{}
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureReconcile, 1, json.RawMessage(`{"batch_size":1}`), "daily", at, at, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job.WorkReserved = 1
 	outcome := (defaultProfilePictureReconciliationHandler{users: lister, defaults: defaults, now: func() time.Time { return at }}).Run(context.Background(), testJobExecution(job, allowJobWorkReservation(), nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(lister.calls) != 0 || len(defaults.users) != 0 {
-		t.Fatalf("outcome=%#v calls=%#v proposed=%#v", outcome, lister.calls, defaults.users)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
+	require.Empty(t, lister.calls, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
+	require.Empty(t, defaults.users, "outcome=%#v calls=%#v proposed", outcome, lister.calls)
 }
 
 func TestDefaultProfilePictureReconciliationCommandsAreBoundedAndStrict(t *testing.T) {
 	t.Parallel()
 
-	if _, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 0}); err == nil {
-		t.Fatal("accepted zero batch size")
-	}
-	if _, err := DecodeDefaultProfilePictureReconciliationCommand(1, json.RawMessage(`{"batch_size":10,"unknown":true}`)); err == nil {
-		t.Fatal("accepted unknown command field")
-	}
-	if _, err := DecodeDefaultProfilePictureReconciliationCheckpoint(1, json.RawMessage(`{"processed":-1}`)); err == nil {
-		t.Fatal("accepted invalid checkpoint")
-	}
+	_, err := EncodeDefaultProfilePictureReconciliationCommand(DefaultProfilePictureReconciliationCommandV1{BatchSize: 0})
+	require.Error(t, err, "accepted zero batch size")
+	_, err = DecodeDefaultProfilePictureReconciliationCommand(1, json.RawMessage(`{"batch_size":10,"unknown":true}`))
+	require.Error(t, err, "accepted unknown command field")
+	_, err = DecodeDefaultProfilePictureReconciliationCheckpoint(1, json.RawMessage(`{"processed":-1}`))
+	require.Error(t, err, "accepted invalid checkpoint")
 }
 
 func reconciliationUser(t *testing.T, username string, at time.Time) *model.User {
 	t.Helper()
 	user := &model.User{Username: username, Email: username + "@example.test"}
 	user.PrepareCreate(model.NewUserID(), at)
-	if err := user.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, user.Validate())
 	return user
 }

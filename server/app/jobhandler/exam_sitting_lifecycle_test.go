@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -27,9 +29,7 @@ func TestExamSittingLifecycleJobFactoryFencesEachBoundaryByRevision(t *testing.T
 	factory := NewExamSittingLifecycleJobFactory(func() time.Time { return at }, model.NewJobID)
 
 	openJob, deadlineJob, err := factory.BoundaryJobs(sittingID, 4, startAt, endAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertExamSittingLifecycleJob(t, openJob, model.JobTypeExamSittingLifecycle, sittingID,
 		model.ExamSittingLifecycleJobOpen, 4, at, startAt)
 	assertExamSittingLifecycleJob(t, deadlineJob, model.JobTypeExamSittingLifecycle, sittingID,
@@ -37,16 +37,12 @@ func TestExamSittingLifecycleJobFactoryFencesEachBoundaryByRevision(t *testing.T
 
 	nextDeadline := endAt.Add(time.Hour)
 	extended, err := factory.DeadlineJob(sittingID, 5, nextDeadline)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertExamSittingLifecycleJob(t, extended, model.JobTypeExamSittingLifecycle, sittingID,
 		model.ExamSittingLifecycleJobDeadline, 5, at, nextDeadline)
 
 	finalize, err := factory.FinalizeJob(sittingID, 6, nextDeadline)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertExamSittingLifecycleJob(t, finalize, model.JobTypeExamSittingSealing, sittingID,
 		model.ExamSittingLifecycleJobFinalize, 6, at, nextDeadline)
 }
@@ -61,16 +57,17 @@ func TestExamSittingLifecycleHandlerReconcilesAndTreatsStaleWorkAsSuccess(t *tes
 	handler := examSittingLifecycleHandler{reconciler: reconciler}
 
 	outcome := handler.Run(context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: attemptID}, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.ResultVersion != 1 || outcome.Err != nil {
-		t.Fatalf("outcome = %#v", outcome)
-	}
-	if reconciler.sittingID != sittingID || reconciler.jobID != job.ID || reconciler.attemptID != attemptID {
-		t.Fatalf("reconcile identity = %s / %s / %s", reconciler.sittingID, reconciler.jobID, reconciler.attemptID)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	require.Equal(t, 1, outcome.ResultVersion)
+	require.NoError(t, outcome.Err)
+	require.Equal(t, sittingID, reconciler.sittingID, "reconcile identity")
+	require.Equal(t, job.ID, reconciler.jobID, "reconcile identity")
+	require.Equal(t, attemptID, reconciler.attemptID, "reconcile identity")
 	var result ExamSittingLifecycleJobResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || result.Changed || result.State != model.ExamSittingScheduled || result.Revision != 1 {
-		t.Fatalf("result = %#v, %v", result, err)
-	}
+	require.NoError(t, json.Unmarshal(outcome.Result, &result), "result = %#v", result)
+	require.False(t, result.Changed, "result = %#v", result)
+	require.Equal(t, model.ExamSittingScheduled, result.State, "result = %#v", result)
+	require.Equal(t, int64(1), result.Revision, "result = %#v", result)
 }
 
 func TestExamSittingLifecycleHandlerClassifiesFailures(t *testing.T) {
@@ -100,9 +97,8 @@ func TestExamSittingLifecycleHandlerClassifiesFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reconciler := &examSittingLifecycleReconcilerFake{err: tt.err}
 			outcome := (examSittingLifecycleHandler{reconciler: reconciler}).Run(context.Background(), jobengine.NewExecution(tt.job, attempt, nil, nil))
-			if outcome.Kind != tt.kind || outcome.PublicErrorCode != tt.code {
-				t.Fatalf("outcome = %#v", outcome)
-			}
+			require.Equal(t, tt.kind, outcome.Kind)
+			require.Equal(t, tt.code, outcome.PublicErrorCode)
 		})
 	}
 }
@@ -110,10 +106,13 @@ func TestExamSittingLifecycleHandlerClassifiesFailures(t *testing.T) {
 func TestExamSittingLifecycleDescriptorIsBoundedAndNonCancelable(t *testing.T) {
 	t.Parallel()
 	descriptor := examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: &examSittingLifecycleReconcilerFake{}})
-	if descriptor.Type != model.JobTypeExamSittingLifecycle || descriptor.Cancelable || descriptor.Visibility != jobengine.VisibilityOperator ||
-		descriptor.MaximumAttempts != 8 || descriptor.Concurrency < 1 || len(descriptor.CommandVersions) != 1 || len(descriptor.ResultVersions) != 1 {
-		t.Fatalf("descriptor = %#v", descriptor)
-	}
+	require.Equal(t, model.JobTypeExamSittingLifecycle, descriptor.Type)
+	require.False(t, descriptor.Cancelable)
+	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
+	require.Equal(t, 8, descriptor.MaximumAttempts)
+	require.GreaterOrEqual(t, descriptor.Concurrency, 1)
+	require.Len(t, descriptor.CommandVersions, 1)
+	require.Len(t, descriptor.ResultVersions, 1)
 }
 
 type examSittingLifecycleReconcilerFake struct {
@@ -132,13 +131,9 @@ func (f *examSittingLifecycleReconcilerFake) ReconcileExamSittingLifecycleFromJo
 func mustExamSittingLifecycleJob(t *testing.T, sittingID model.ExamSittingID, at time.Time) *model.Job {
 	t.Helper()
 	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingLifecycle, 1, command, "exam-sitting-test", at, at, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return job
 }
 
@@ -146,14 +141,11 @@ func lifecycleJobResult(t *testing.T, sittingID model.ExamSittingID, changed boo
 	t.Helper()
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
 	sitting, err := model.NewExamSitting(sittingID, model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(), at.Add(time.Hour), at.Add(2*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	result := &store.ExamSittingLifecycleResult{Value: &store.ExamSittingSnapshot{Sitting: sitting}, Changed: changed}
 	if changed {
-		if err = sitting.Open(at.Add(time.Hour)); err != nil {
-			t.Fatal(err)
-		}
+		err = sitting.Open(at.Add(time.Hour))
+		require.NoError(t, err)
 		result.Transition = store.ExamSittingTransitionOpened
 	}
 	return result
@@ -164,19 +156,18 @@ func assertExamSittingLifecycleJob(t *testing.T, job *model.Job, wantType model.
 	createdAt, availableAt time.Time,
 ) {
 	t.Helper()
-	if job == nil || job.Type != wantType || job.DedupePolicy != model.JobDedupeActive ||
-		job.Status != model.JobStatusQueued || job.CommandVersion != 1 || job.MaximumAttempts != 8 || job.CreatedAt != createdAt || job.AvailableAt != availableAt {
-		t.Fatalf("lifecycle Job = %#v", job)
-	}
+	require.NotNil(t, job)
+	require.Equal(t, wantType, job.Type)
+	require.Equal(t, model.JobDedupeActive, job.DedupePolicy)
+	require.Equal(t, model.JobStatusQueued, job.Status)
+	require.Equal(t, 1, job.CommandVersion)
+	require.Equal(t, 8, job.MaximumAttempts)
+	require.Equal(t, createdAt, job.CreatedAt)
+	require.Equal(t, availableAt, job.AvailableAt)
 	wantKey, err := model.ExamSittingLifecycleDedupeKey(sittingID, phase, revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.DedupeKey != wantKey {
-		t.Fatalf("dedupe key = %q, want %q", job.DedupeKey, wantKey)
-	}
+	require.NoError(t, err)
+	require.Equal(t, wantKey, job.DedupeKey, "dedupe key")
 	command, err := model.DecodeExamSittingLifecycleCommand(job.CommandVersion, job.Command)
-	if err != nil || command.ExamSittingID != sittingID {
-		t.Fatalf("command = %#v, %v", command, err)
-	}
+	require.NoError(t, err, "command = %#v", command)
+	require.Equal(t, sittingID, command.ExamSittingID, "command = %#v", command)
 }

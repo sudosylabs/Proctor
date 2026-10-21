@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
@@ -25,13 +27,10 @@ func TestProductionGraphConstructsWithIndependentMailSecretKeyRing(t *testing.T)
 		cfg.Mail.SecretSealing.EncryptionKey = primary
 		cfg.Mail.SecretSealing.DecryptionKeys = []string{fallback}
 	}))
-	if helper.Server == nil || helper.App == nil {
-		t.Fatal("configured mail secret key ring did not construct the production graph")
-	}
+	require.NotNil(t, helper.Server, "configured mail secret key ring did not construct the production graph")
+	require.NotNil(t, helper.App, "configured mail secret key ring did not construct the production graph")
 	effective := helper.ConfigStore.Get()
-	if effective.Mail.SecretSealing.EncryptionKey != primary ||
-		len(effective.Mail.SecretSealing.DecryptionKeys) != 1 ||
-		effective.Mail.SecretSealing.DecryptionKeys[0] != fallback {
-		t.Fatal("production graph did not retain the configured mail key ring")
-	}
+	require.Equal(t, primary, effective.Mail.SecretSealing.EncryptionKey, "production graph did not retain the configured mail key ring")
+	require.Len(t, effective.Mail.SecretSealing.DecryptionKeys, 1, "production graph did not retain the configured mail key ring")
+	require.Equal(t, fallback, effective.Mail.SecretSealing.DecryptionKeys[0], "production graph did not retain the configured mail key ring")
 }

@@ -10,12 +10,14 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
@@ -60,11 +62,14 @@ func TestTestlibConstructsOneSharedApplicationGraph(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if helper.Server == nil || helper.App == nil || helper.Handler() == nil ||
-		helper.Persistence == nil || helper.Cache == nil || helper.Cluster == nil ||
-		helper.Mailer == nil || helper.VFS == nil {
-		t.Fatal("test helper did not expose the behavioral runtime projection")
-	}
+	require.NotNil(t, helper.Server, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.App, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.Handler(), "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.Persistence, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.Cache, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.Cluster, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.Mailer, "test helper did not expose the behavioral runtime projection")
+	require.NotNil(t, helper.VFS, "test helper did not expose the behavioral runtime projection")
 }
 
 func TestServerStopsWhenContextIsCanceled(t *testing.T) {
@@ -83,11 +88,9 @@ func TestServerStopsWhenContextIsCanceled(t *testing.T) {
 	}()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run() error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(3 * time.Second):
-		t.Fatal("server did not stop after context cancellation")
+		require.FailNow(t, "server did not stop after context cancellation")
 	}
 }
 
@@ -97,15 +100,10 @@ func TestClusterStartFailurePreventsReadinessAndClosesPlatform(t *testing.T) {
 	cluster := &failingStartCluster{}
 	helper := testlib.Setup(t, testlib.WithCluster(cluster))
 	err := helper.Server.Run(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "start cluster transport") {
-		t.Fatalf("Run() error = %v", err)
-	}
-	if helper.Server.Ready() {
-		t.Fatal("server became ready after cluster transport start failed")
-	}
-	if !cluster.stopped.Load() {
-		t.Fatal("cluster transport was not stopped after startup failure")
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "start cluster transport")
+	require.False(t, helper.Server.Ready(), "server became ready after cluster transport start failed")
+	require.True(t, cluster.stopped.Load(), "cluster transport was not stopped after startup failure")
 }
 
 func TestServerCannotRunTwice(t *testing.T) {
@@ -117,12 +115,8 @@ func TestServerCannotRunTwice(t *testing.T) {
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := helper.Server.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := helper.Server.Run(context.Background()); err == nil {
-		t.Fatal("second Run() was accepted")
-	}
+	require.NoError(t, helper.Server.Run(ctx))
+	require.Error(t, helper.Server.Run(context.Background()), "second Run() was accepted")
 }
 
 func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
@@ -141,22 +135,18 @@ func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
 	for !helper.Server.Ready() {
 		select {
 		case err := <-done:
-			t.Fatalf("server stopped before readiness: %v", err)
+			require.FailNow(t, fmt.Sprintf("server stopped before readiness: %v", err))
 		case <-deadline:
-			t.Fatal("server did not become ready")
+			require.FailNow(t, "server did not become ready")
 		case <-time.After(time.Millisecond):
 		}
 	}
-	if err := helper.Server.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
+	require.NoError(t, helper.Server.Close())
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run() error = %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close returned without stopping Run")
+		require.FailNow(t, "Close returned without stopping Run")
 	}
 }
 
@@ -197,9 +187,7 @@ func TestReadinessProbesMandatoryDependenciesWhileServing(t *testing.T) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
 		for readyStatus() != want {
-			if time.Now().After(deadline) {
-				t.Fatalf("/health/ready status = %d, want %d", readyStatus(), want)
-			}
+			require.False(t, time.Now().After(deadline), "/health/ready status")
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
@@ -207,9 +195,7 @@ func TestReadinessProbesMandatoryDependenciesWhileServing(t *testing.T) {
 	waitFor(http.StatusOK)
 	dependency.unavailable.Store(true)
 	waitFor(http.StatusServiceUnavailable)
-	if helper.Server.Ready() {
-		t.Fatal("server reported ready during a mandatory dependency outage")
-	}
+	require.False(t, helper.Server.Ready(), "server reported ready during a mandatory dependency outage")
 	dependency.unavailable.Store(false)
 	waitFor(http.StatusOK)
 }
@@ -218,15 +204,9 @@ func TestClosedServerCannotBeRun(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
-	if err := helper.Server.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if !helper.PersistenceClose.Closed() {
-		t.Fatal("server close did not close the platform store")
-	}
-	if err := helper.Server.Run(context.Background()); err == nil {
-		t.Fatal("closed server was started")
-	}
+	require.NoError(t, helper.Server.Close())
+	require.True(t, helper.PersistenceClose.Closed(), "server close did not close the platform store")
+	require.Error(t, helper.Server.Run(context.Background()), "closed server was started")
 }
 
 var _ platform.Cluster = (*failingStartCluster)(nil)

@@ -10,6 +10,8 @@ package app
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -82,11 +84,9 @@ func TestRoleBindingAppliesByDeclaredInheritance(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := roleBindingApplies(
+			require.Equal(t, test.want, roleBindingApplies(
 				test.binding, test.definition, test.resource, resolved,
-			); got != test.want {
-				t.Fatalf("roleBindingApplies() = %v, want %v", got, test.want)
-			}
+			), "roleBindingApplies()")
 		})
 	}
 }
@@ -107,37 +107,29 @@ func TestPersonalAccessTokenIsOnlyAnAuthorizationCeiling(t *testing.T) {
 		CredentialScopes: []string{string(model.ActionClassView)},
 		AcademicUnitID:   model.AcademicUnitID(parentID),
 	}
-	if !personalAccessTokenAllows(
+	require.True(t, personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
-	) {
-		t.Fatal("matching scope and descendant resource were rejected")
-	}
-	if personalAccessTokenAllows(
+	), "matching scope and descendant resource were rejected")
+	require.False(t, personalAccessTokenAllows(
 		principal,
 		model.ActionClassMembersView,
 		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
-	) {
-		t.Fatal("an action absent from token scopes was allowed")
-	}
-	if personalAccessTokenAllows(
+	), "an action absent from token scopes was allowed")
+	require.False(t, personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
 		model.Resource{Type: model.ResourceInstitution, ID: resolved.institutionID.String()},
 		resolved,
-	) {
-		t.Fatal("academic-unit-constrained token was allowed at institution scope")
-	}
+	), "academic-unit-constrained token was allowed at institution scope")
 	principal.AcademicUnitID = model.NewAcademicUnitID()
-	if personalAccessTokenAllows(
+	require.False(t, personalAccessTokenAllows(
 		principal,
 		model.ActionClassView,
 		model.Resource{Type: model.ResourceClass, ID: classID},
 		resolved,
-	) {
-		t.Fatal("token constrained to an unrelated academic unit was allowed")
-	}
+	), "token constrained to an unrelated academic unit was allowed")
 }

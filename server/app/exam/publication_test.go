@@ -9,10 +9,11 @@ package exam
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -38,26 +39,21 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 		NewID:             model.NewExamRevisionID,
 		InstitutionOrigin: "https://institution.example",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	command := PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"}
 	got, err := service.PublishExamRevision(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.authorizer.action != model.ActionExamPublish || revisions.input == nil || revisions.input.ManagerOverride || got.ID != revisions.summary.ID || effects.calls != 1 {
-		t.Fatalf("publication action=%q input=%#v result=%#v effects=%d", f.authorizer.action, revisions.input, got, effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamPublish, f.authorizer.action, "publication action=%q input=%#v result=%#v effects", f.authorizer.action, revisions.input, got)
+	require.NotNil(t, revisions.input, "publication action=%q input=%#v result=%#v effects", f.authorizer.action, revisions.input, got)
+	require.False(t, revisions.input.ManagerOverride, "publication action=%q input=%#v result=%#v effects", f.authorizer.action, revisions.input, got)
+	require.Equal(t, revisions.summary.ID, got.ID, "publication action=%q input=%#v result=%#v effects", f.authorizer.action, revisions.input, got)
+	require.Equal(t, 1, effects.calls, "publication action=%q input=%#v result=%#v effects", f.authorizer.action, revisions.input, got)
 	assertStoreIdempotency(t, revisions.idempotency, f.userID, idempotencyOperationPublishRevision, "test-key",
 		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":3}`, f.examID))
 	revisions.replayed = true
-	if _, err = service.PublishExamRevision(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if effects.calls != 1 {
-		t.Fatalf("replay republished effect: %d", effects.calls)
-	}
+	_, err = service.PublishExamRevision(context.Background(), f.invocation, command)
+	require.NoError(t, err)
+	require.Equal(t, 1, effects.calls, "replay republished effect")
 }
 
 func TestPublicationUsesOverrideForNonManager(t *testing.T) {
@@ -76,16 +72,11 @@ func TestPublicationUsesOverrideForNonManager(t *testing.T) {
 		NewID:             model.NewExamRevisionID,
 		InstitutionOrigin: "https://institution.example",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = service.PublishExamRevision(context.Background(), f.invocation, PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.authorizer.action != model.ActionExamPublishOverride || !revisions.input.ManagerOverride {
-		t.Fatalf("override action=%q input=%#v", f.authorizer.action, revisions.input)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamPublishOverride, f.authorizer.action, "override action=%q input=%#v", f.authorizer.action, revisions.input)
+	require.True(t, revisions.input.ManagerOverride, "override action=%q input=%#v", f.authorizer.action, revisions.input)
 }
 
 func TestPublicationMapsCapacityConflict(t *testing.T) {
@@ -106,15 +97,12 @@ func TestPublicationMapsCapacityConflict(t *testing.T) {
 		NewID:             model.NewExamRevisionID,
 		InstitutionOrigin: "https://institution.example",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = service.PublishExamRevision(context.Background(), f.invocation,
 		PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.revision.capacity_exceeded" {
-		t.Fatalf("Publish() error = %v", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.revision.capacity_exceeded", fault.Code())
 }
 
 func fixedPublicationTime() time.Time { return time.Date(2026, 8, 15, 8, 0, 0, 0, time.UTC) }

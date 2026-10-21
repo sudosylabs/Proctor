@@ -17,6 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthenticationAttemptAccountingHasOneProductionOwner(t *testing.T) {
@@ -30,9 +33,8 @@ func TestAuthenticationAttemptAccountingHasOneProductionOwner(t *testing.T) {
 		"installation bootstrap":  reflect.TypeOf(bootstrapService{}),
 	} {
 		field, ok := service.FieldByName("attempts")
-		if !ok || field.Type != accountingType {
-			t.Fatalf("%s does not retain the shared private attempt accounting", name)
-		}
+		require.True(t, ok, "%s does not retain the shared private attempt accounting", name)
+		require.Equal(t, accountingType, field.Type, "%s does not retain the shared private attempt accounting", name)
 	}
 
 	files := parseProductionAppFiles(t)
@@ -46,16 +48,12 @@ func TestAuthenticationAttemptAccountingHasOneProductionOwner(t *testing.T) {
 			identifier, ok := call.Fun.(*ast.Ident)
 			if ok && identifier.Name == "newAuthenticationAttemptAccounting" {
 				constructorCalls++
-				if name != "construction.go" {
-					t.Errorf("%s constructs authentication attempt accounting; only the private construction recipe may construct it", name)
-				}
+				assert.Equal(t, "construction.go", name)
 			}
 			return true
 		})
 	}
-	if constructorCalls != 1 {
-		t.Fatalf("production constructor calls = %d, want one shared accounting instance", constructorCalls)
-	}
+	require.Equal(t, 1, constructorCalls, "production constructor calls")
 }
 
 func TestMigratedAuthenticationFlowsDoNotReclaimAttemptMechanics(t *testing.T) {
@@ -70,9 +68,7 @@ func TestMigratedAuthenticationFlowsDoNotReclaimAttemptMechanics(t *testing.T) {
 		"bootstrap.go",
 	} {
 		file := files[name]
-		if file == nil {
-			t.Fatalf("production source %s was not parsed", name)
-		}
+		require.NotNil(t, file, "production source %s was not parsed", name)
 		forbiddenNamespaces := []string{
 			"authentication/attempts/",
 			"authentication/login/",
@@ -83,9 +79,10 @@ func TestMigratedAuthenticationFlowsDoNotReclaimAttemptMechanics(t *testing.T) {
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch candidate := node.(type) {
 			case *ast.CallExpr:
-				if selector, ok := candidate.Fun.(*ast.SelectorExpr); ok &&
-					selector.Sel.Name == "Add" && len(candidate.Args) == 4 {
-					t.Errorf("%s performs four-argument counter Add outside authentication_attempt.go", name)
+				selector, ok := candidate.Fun.(*ast.SelectorExpr)
+				if ok &&
+					selector.Sel.Name == "Add" {
+					assert.NotEqual(t, 4, len(candidate.Args), "%s performs four-argument counter Add outside authentication_attempt.go", name)
 				}
 			case *ast.BasicLit:
 				if candidate.Kind != token.STRING {
@@ -96,9 +93,7 @@ func TestMigratedAuthenticationFlowsDoNotReclaimAttemptMechanics(t *testing.T) {
 					return true
 				}
 				for _, prefix := range forbiddenNamespaces {
-					if strings.HasPrefix(value, prefix) {
-						t.Errorf("%s constructs attempt-accounting key namespace %q", name, prefix)
-					}
+					assert.False(t, strings.HasPrefix(value, prefix), "%s constructs attempt-accounting key namespace %q", name, prefix)
 				}
 			}
 			return true
@@ -110,9 +105,7 @@ func parseProductionAppFiles(t *testing.T) map[string]*ast.File {
 	t.Helper()
 
 	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	files := make(map[string]*ast.File)
 	fileSet := token.NewFileSet()
 	for _, entry := range entries {
@@ -121,9 +114,7 @@ func parseProductionAppFiles(t *testing.T) map[string]*ast.File {
 			continue
 		}
 		file, parseErr := parser.ParseFile(fileSet, name, nil, 0)
-		if parseErr != nil {
-			t.Fatalf("parse production source %s: %v", name, parseErr)
-		}
+		require.NoError(t, parseErr, "parse production source %s", name)
 		files[name] = file
 	}
 	return files

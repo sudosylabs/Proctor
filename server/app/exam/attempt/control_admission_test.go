@@ -8,10 +8,12 @@ package attempt
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
@@ -23,39 +25,33 @@ func TestControlAllowanceSeparatesRenewalAndRecoveryAndSharesSessions(t *testing
 	ctx := context.Background()
 	for range 40 {
 		release, err := f.service.enterControl(ctx, f.invocation, false)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		release()
 	}
 	otherPrincipal := f.invocation.Principal()
 	otherPrincipal.SessionID = model.NewSessionID()
 	other := invocation.New(otherPrincipal, f.invocation.RequestMetadata())
-	if _, err := f.service.enterControl(ctx, other, false); err == nil {
-		t.Fatal("Session replacement refilled control allowance")
-	}
+	_, err := f.service.enterControl(ctx, other, false)
+	require.Error(t, err, "Session replacement refilled control allowance")
 	release, err := f.service.enterControl(ctx, other, true)
-	if err != nil {
-		t.Fatal("status load consumed renewal allowance", err)
-	}
+	require.NoError(t, err, "status load consumed renewal allowance")
 	release()
 	// A public status operation rejects before its Store can observe selectors.
 	p := &recoveryStoreFake{ExamAttemptStore: f.persistence}
 	f.service.deps.Persistence = p
 	_, err = f.service.BrowserDeliveryReceipts(ctx, other, BrowserSourceQuery{Access: CandidateAccess{AttemptID: f.attemptID}, ParticipationID: model.NewAttemptParticipationID(), SourceSessionID: "00000000-0000-4000-8000-000000000001"}, 1, 32)
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" || p.selector.SourceSessionID != "" || p.reads != 0 {
-		t.Fatal("control overload reached persistence or lost its code", err)
-	}
+	require.ErrorAs(t, err, &fault, "control overload reached persistence or lost its code")
+	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "control overload reached persistence or lost its code")
+	require.Empty(t, p.selector.SourceSessionID, "control overload reached persistence or lost its code")
+	require.Equal(t, 0, p.reads, "control overload reached persistence or lost its code")
 	// Preflight work shares recovery capacity and cannot consume renewal capacity.
 	_, err = f.service.PrepareExamSecurityPreflight(ctx, other, PrepareSecurityPreflightCommand{})
-	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
-		t.Fatal("preflight preparation bypassed admission", err)
-	}
+	require.ErrorAs(t, err, &fault, "preflight preparation bypassed admission")
+	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "preflight preparation bypassed admission")
 	_, err = f.service.ReportExamSecurityPreflight(ctx, other, ReportSecurityPreflightCommand{})
-	if !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
-		t.Fatal("preflight report bypassed admission", err)
-	}
+	require.ErrorAs(t, err, &fault, "preflight report bypassed admission")
+	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "preflight report bypassed admission")
 }
 
 func TestControlAllowanceRefillsWithoutClockRollbackOrCancellationCredit(t *testing.T) {
@@ -64,27 +60,20 @@ func TestControlAllowanceRefillsWithoutClockRollbackOrCancellationCredit(t *test
 	user := model.NewUserID()
 	for range 40 {
 		release, err := allowance.enter(context.Background(), user, at)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		release()
 	}
-	if _, err := allowance.enter(context.Background(), user, at.Add(-time.Hour)); err == nil {
-		t.Fatal("clock rollback refilled allowance")
-	}
+	_, err := allowance.enter(context.Background(), user, at.Add(-time.Hour))
+	require.Error(t, err, "clock rollback refilled allowance")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := allowance.enter(ctx, user, at.Add(50*time.Millisecond)); !errors.Is(err, context.Canceled) {
-		t.Fatal("canceled work entered")
-	}
+	_, err = allowance.enter(ctx, user, at.Add(50*time.Millisecond))
+	require.ErrorIs(t, err, context.Canceled, "canceled work entered")
 	release, err := allowance.enter(context.Background(), user, at.Add(50*time.Millisecond))
-	if err != nil {
-		t.Fatal("canceled work consumed refill", err)
-	}
+	require.NoError(t, err, "canceled work consumed refill")
 	release()
-	if _, err := allowance.enter(context.Background(), user, at.Add(50*time.Millisecond)); err == nil {
-		t.Fatal("refill exceeded 20 requests per second")
-	}
+	_, err = allowance.enter(context.Background(), user, at.Add(50*time.Millisecond))
+	require.Error(t, err, "refill exceeded 20 requests per second")
 }
 
 func TestControlWorkerAndIdentityStorageBounds(t *testing.T) {
@@ -95,8 +84,7 @@ func TestControlWorkerAndIdentityStorageBounds(t *testing.T) {
 	for range controlWorkers {
 		wg.Go(func() {
 			release, err := allowance.enter(context.Background(), model.NewUserID(), at)
-			if err != nil {
-				t.Error(err)
+			if !assert.NoError(t, err) {
 				return
 			}
 			entered <- release
@@ -104,30 +92,23 @@ func TestControlWorkerAndIdentityStorageBounds(t *testing.T) {
 	}
 	wg.Wait()
 	close(entered)
-	if _, err := allowance.enter(context.Background(), model.NewUserID(), at); err == nil {
-		t.Fatal("unbounded control workers")
-	}
+	_, err := allowance.enter(context.Background(), model.NewUserID(), at)
+	require.Error(t, err, "unbounded control workers")
 	for release := range entered {
 		release()
 	}
 	for len(allowance.users) < controlUsers {
 		release, err := allowance.enter(context.Background(), model.NewUserID(), at)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		release()
 	}
-	if _, err := allowance.enter(context.Background(), model.NewUserID(), at); err == nil || len(allowance.users) != controlUsers {
-		t.Fatal("unbounded control identities")
-	}
+	_, err = allowance.enter(context.Background(), model.NewUserID(), at)
+	require.Error(t, err, "unbounded control identities")
+	require.Len(t, allowance.users, controlUsers, "unbounded control identities")
 	release, err := allowance.enter(context.Background(), model.NewUserID(), at.Add(time.Minute))
-	if err != nil {
-		t.Fatal("idle slot not reclaimed", err)
-	}
+	require.NoError(t, err, "idle slot not reclaimed")
 	release()
-	if len(allowance.users) != controlUsers {
-		t.Fatal("idle reclamation changed hard bound")
-	}
+	require.Len(t, allowance.users, controlUsers, "idle reclamation changed hard bound")
 }
 
 func TestLiveRenewalsBeyondWorkerCapQueueInsteadOfRefusing(t *testing.T) {
@@ -166,21 +147,15 @@ func TestLiveRenewalsBeyondWorkerCapQueueInsteadOfRefusing(t *testing.T) {
 	}
 	close(start)
 	wg.Wait()
-	if len(refused) != 0 {
-		t.Fatalf("%d of %d concurrent renewals refused: %v", len(refused), renewals, refused[0])
-	}
-	if peak > controlWorkers {
-		t.Fatalf("peak concurrent renewal work = %d, want at most %d", peak, controlWorkers)
-	}
+	require.Empty(t, refused)
+	require.LessOrEqual(t, peak, controlWorkers, "peak concurrent renewal work")
 }
 
 func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
 	allowance := controlAdmission{lane: controlLane{workers: 1, waiters: 1, wait: 20 * time.Millisecond, admitUntracked: true}}
 	at := time.Now()
 	holder, err := allowance.enter(context.Background(), model.NewUserID(), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	user := model.NewUserID()
 	waited := make(chan error, 1)
 	go func() {
@@ -197,29 +172,22 @@ func TestQueuedControlAdmissionIsBoundedAndRefundsAllowance(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	var fault *apperror.Error
-	if _, err = allowance.enter(context.Background(), model.NewUserID(), at); !errors.As(err, &fault) ||
-		fault.Code() != "exam.delivery.control_rate_limited" {
-		t.Fatal("queue length is unbounded", err)
-	}
-	if err = <-waited; !errors.As(err, &fault) || fault.Code() != "exam.delivery.control_rate_limited" {
-		t.Fatal("queued work waited past its deadline", err)
-	}
+	_, err = allowance.enter(context.Background(), model.NewUserID(), at)
+	require.ErrorAs(t, err, &fault, "queue length is unbounded")
+	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "queue length is unbounded")
+	err = <-waited
+	require.ErrorAs(t, err, &fault, "queued work waited past its deadline")
+	require.Equal(t, "exam.delivery.control_rate_limited", fault.Code(), "queued work waited past its deadline")
 	allowance.mu.Lock()
 	tokens := allowance.users[user].tokens
 	allowance.mu.Unlock()
-	if tokens != controlBurst {
-		t.Fatalf("timed-out wait consumed allowance: %d", tokens)
-	}
+	require.Equal(t, int64(controlBurst), tokens, "timed-out wait consumed allowance")
 	holder()
 	release, err := allowance.enter(context.Background(), user, at)
-	if err != nil {
-		t.Fatal("released worker was not reusable", err)
-	}
+	require.NoError(t, err, "released worker was not reusable")
 	release()
 	release()
-	if len(allowance.slots) != 0 {
-		t.Fatal("repeated release freed an extra worker")
-	}
+	require.Empty(t, allowance.slots, "repeated release freed an extra worker")
 }
 
 func TestLiveControlAdmitsNewUsersWhenIdentityTableIsFull(t *testing.T) {
@@ -229,21 +197,14 @@ func TestLiveControlAdmitsNewUsersWhenIdentityTableIsFull(t *testing.T) {
 	for _, allowance := range []*controlAdmission{&live, &delivery} {
 		for range controlUsers {
 			release, err := allowance.enter(context.Background(), model.NewUserID(), at)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			release()
 		}
 	}
 	release, err := live.enter(context.Background(), model.NewUserID(), at)
-	if err != nil {
-		t.Fatal("renewal refused only because other Users renewed recently", err)
-	}
+	require.NoError(t, err, "renewal refused only because other Users renewed recently")
 	release()
-	if len(live.users) != controlUsers {
-		t.Fatal("untracked admission grew the identity table")
-	}
-	if _, err = delivery.enter(context.Background(), model.NewUserID(), at); err == nil {
-		t.Fatal("recovery lane stopped bounding identities")
-	}
+	require.Len(t, live.users, controlUsers, "untracked admission grew the identity table")
+	_, err = delivery.enter(context.Background(), model.NewUserID(), at)
+	require.Error(t, err, "recovery lane stopped bounding identities")
 }

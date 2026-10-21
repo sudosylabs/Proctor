@@ -10,9 +10,10 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -49,23 +50,17 @@ func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testin
 		administratorRecoveryPolicy{},
 	)
 
-	if err := service.ReconcileSystemAdministratorRole(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.input == nil {
-		t.Fatal("reconciliation input was not persisted")
-	}
-	if !reflect.DeepEqual(persistence.input.RequiredPermissions, model.AllActions()) {
-		t.Fatalf("required permissions = %#v, want %#v", persistence.input.RequiredPermissions, model.AllActions())
-	}
-	if persistence.input.ReconciledAt != at.UnixMilli() {
-		t.Fatalf("reconciled at = %d, want %d", persistence.input.ReconciledAt, at.UnixMilli())
-	}
+	require.NoError(t, service.ReconcileSystemAdministratorRole(context.Background()))
+	require.NotNil(t, persistence.input, "reconciliation input was not persisted")
+	require.Equal(t, model.AllActions(), persistence.input.RequiredPermissions, "required permissions")
+	require.Equal(t, at.UnixMilli(), persistence.input.ReconciledAt, "reconciled at")
 	event := persistence.input.AuditEvent
-	if event == nil || event.Action != "role.system_admin.reconcile" || event.NodeID != "node-reconcile" ||
-		event.Status != model.AuditStatusSuccess || !event.ActorID.IsZero() || !event.SessionID.IsZero() {
-		t.Fatalf("audit event = %#v", event)
-	}
+	require.NotNil(t, event)
+	require.Equal(t, "role.system_admin.reconcile", event.Action)
+	require.Equal(t, "node-reconcile", event.NodeID)
+	require.Equal(t, model.AuditStatusSuccess, event.Status)
+	require.True(t, event.ActorID.IsZero())
+	require.True(t, event.SessionID.IsZero())
 }
 
 func TestBootstrapServiceFailsStartupWhenSystemAdministratorRoleCannotReconcile(t *testing.T) {
@@ -83,7 +78,5 @@ func TestBootstrapServiceFailsStartupWhenSystemAdministratorRoleCannotReconcile(
 	)
 
 	err := service.ReconcileSystemAdministratorRole(context.Background())
-	if !errors.Is(err, persistenceErr) {
-		t.Fatalf("error = %v, want wrapped %v", err, persistenceErr)
-	}
+	require.ErrorIs(t, err, persistenceErr)
 }

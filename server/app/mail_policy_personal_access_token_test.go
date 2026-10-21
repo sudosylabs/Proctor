@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -40,12 +42,8 @@ func TestPersonalAccessTokenSecurityNoticesRemainRelevantUntilTheirDeadline(t *t
 				EncryptedPayload: json.RawMessage(`{"ciphertext":"secret"}`), Revision: 1,
 			}
 			got, err := evaluateMailDeliveryRelevance(context.Background(), delivery)
-			if err != nil {
-				t.Fatalf("evaluateMailDeliveryRelevance(%s): %v", key, err)
-			}
-			if got != mailDeliveryRelevant {
-				t.Fatalf("evaluateMailDeliveryRelevance(%s) = %v, want relevant", key, got)
-			}
+			require.NoError(t, err, "evaluateMailDeliveryRelevance(%s)", key)
+			require.Equal(t, mailDeliveryRelevant, got, "evaluateMailDeliveryRelevance(%s)", key)
 		})
 	}
 }

@@ -9,8 +9,9 @@ package attempt
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -38,21 +39,23 @@ func TestDeliveryExpiryScanAuditsBeforeCommitAndRejectsUnboundedWork(t *testing.
 	persistence := &expiryDeliveryStoreFake{ExamAttemptStore: f.persistence, due: []store.DeliveryExpiryDue{{Family: "native", SourceID: model.NewID(), AttemptID: due.AttemptID, ParticipationID: due.ParticipationID, SittingID: due.SittingID, ClassID: due.ClassID}}}
 	f.service.deps.Persistence = persistence
 	result, err := f.service.ScanExpiredDeliveries(context.Background(), 1)
-	if err != nil || result.Completed != 1 || persistence.calls != 1 || !model.AuditEventID(persistence.auditID).IsValid() || strings.Join(f.order, ",") != "system.audit" {
-		t.Fatalf("scan=%#v calls=%d order=%v: %v", result, persistence.calls, f.order, err)
-	}
+	require.NoError(t, err, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
+	require.Equal(t, 1, result.Completed, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
+	require.Equal(t, 1, persistence.calls, "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
+	require.True(t, model.AuditEventID(persistence.auditID).IsValid(), "scan=%#v calls=%d order=%v", result, persistence.calls, f.order)
+	// The commit carries the begun audit event, so the audit preceded it.
+	require.NotNil(t, f.systemAudit.values, "the expiry was not audited")
+	require.Empty(t, f.systemAudit.failedCode)
 	for _, limit := range []int{0, 201} {
-		if _, err := f.service.ScanExpiredDeliveries(context.Background(), limit); err == nil {
-			t.Fatal("unbounded scan accepted")
-		}
+		_, err = f.service.ScanExpiredDeliveries(context.Background(), limit)
+		require.Error(t, err, "unbounded scan accepted")
 	}
 	persistence.due = append(persistence.due, persistence.due[0])
-	if _, err := f.service.ScanExpiredDeliveries(context.Background(), 1); err == nil || persistence.calls != 1 {
-		t.Fatal("oversized persisted page mutated state")
-	}
+	_, err = f.service.ScanExpiredDeliveries(context.Background(), 1)
+	require.Error(t, err, "oversized persisted page mutated state")
+	require.Equal(t, 1, persistence.calls, "oversized persisted page mutated state")
 	persistence.due = persistence.due[:1]
 	persistence.err = errors.New("database failure")
-	if _, err := f.service.ScanExpiredDeliveries(context.Background(), 1); err == nil {
-		t.Fatal("lost expiry commit reported success")
-	}
+	_, err = f.service.ScanExpiredDeliveries(context.Background(), 1)
+	require.Error(t, err, "lost expiry commit reported success")
 }

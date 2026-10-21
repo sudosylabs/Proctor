@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -29,9 +31,7 @@ import (
 
 func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	server := testlib.Setup(t, testlib.WithConfig(func(cfg *config.Config) {
 		cfg.Cluster.NodeID = "invitation-batch-node"
@@ -47,9 +47,7 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 		"administrator":    map[string]any{"username": "batch-admin", "email": "batch-admin@example.edu"},
 		"password":         password,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	login := loginIntegrationUser(t, server.Handler(), "batch-admin", password, model.SessionClientCLI, "batch-admin-cli")
 	token := login.Tokens.AccessToken
 	unit := createIntegrationResource[model.AcademicUnit](t, server.Handler(), http.MethodPost, "/api/v1/academic-units",
@@ -75,22 +73,22 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 			{"key": "row-4", "email": "batch-second@example.edu", "suggested_username": "batch-second"},
 		}}
 	first := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", body, token, "batch-request")
-	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"succeeded":2`) ||
-		!strings.Contains(first.Body.String(), `"failed":2`) || !strings.Contains(first.Body.String(), `"error_code":"request.invalid"`) ||
-		!strings.Contains(first.Body.String(), `"error_code":"onboarding_batch.duplicate"`) || strings.Contains(first.Body.String(), "@example.edu") {
-		t.Fatalf("first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
-	}
+	require.Equal(t, http.StatusOK, first.Code, "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	require.Contains(t, first.Body.String(), `"succeeded":2`, "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	require.Contains(t, first.Body.String(), `"failed":2`, "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	require.Contains(t, first.Body.String(), `"error_code":"request.invalid"`, "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	require.Contains(t, first.Body.String(), `"error_code":"onboarding_batch.duplicate"`, "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	require.NotContains(t, first.Body.String(), "@example.edu", "first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
 	page, err := persistence.Invitation().List(context.Background(), store.InvitationListOptions{
 		Visibility: store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}, Limit: 10})
-	if err != nil || len(page.Items) != 2 {
-		t.Fatalf("persisted batch Invitations = %#v, %v", page, err)
-	}
+	require.NoError(t, err, "persisted batch Invitations = %#v", page)
+	require.Len(t, page.Items, 2, "persisted batch Invitations = %#v", page)
 	var unsafeOutcomes int
-	if err = persistence.GetMaster().Get(context.Background(), &unsafeOutcomes, `SELECT COUNT(*) FROM command_outcomes
+	err = persistence.GetMaster().Get(context.Background(), &unsafeOutcomes, `SELECT COUNT(*) FROM command_outcomes
 		WHERE operation LIKE 'invitation.%' AND (outcome::text LIKE '%claim_hash%' OR outcome::text LIKE ? OR outcome::text LIKE '%batch-first@example.edu%')`,
-		"%"+page.Items[0].Invitation.ClaimHash+"%"); err != nil || unsafeOutcomes != 0 {
-		t.Fatalf("unsafe Invitation command outcomes = %d, %v", unsafeOutcomes, err)
-	}
+		"%"+page.Items[0].Invitation.ClaimHash+"%")
+	require.NoError(t, err, "unsafe Invitation command outcomes")
+	require.Equal(t, 0, unsafeOutcomes, "unsafe Invitation command outcomes")
 
 	reordered := map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": class.ID.String(),
 		"items": []map[string]any{
@@ -100,14 +98,13 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 			{"key": "row-1", "email": "batch-first@example.edu", "suggested_username": "batch-first"},
 		}}
 	replay := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", reordered, token, "batch-request")
-	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"no_op":2`) || !strings.Contains(replay.Body.String(), `"failed":2`) {
-		t.Fatalf("replayed Invitation batch = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusOK, replay.Code, "replayed Invitation batch")
+	require.Contains(t, replay.Body.String(), `"no_op":2`, "replayed Invitation batch")
+	require.Contains(t, replay.Body.String(), `"failed":2`, "replayed Invitation batch")
 	page, err = persistence.Invitation().List(context.Background(), store.InvitationListOptions{
 		Visibility: store.InvitationVisibilityScope{ClassIDs: []model.ClassID{class.ID}}, Limit: 10})
-	if err != nil || len(page.Items) != 2 {
-		t.Fatalf("replayed batch Invitations = %#v, %v", page, err)
-	}
+	require.NoError(t, err, "replayed batch Invitations = %#v", page)
+	require.Len(t, page.Items, 2, "replayed batch Invitations = %#v", page)
 
 	changed := map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": class.ID.String(),
 		"items": []map[string]any{
@@ -117,10 +114,9 @@ func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) 
 			{"key": "row-4", "email": "batch-second@example.edu", "suggested_username": "batch-second"},
 		}}
 	conflict := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", changed, token, "batch-request")
-	if conflict.Code != http.StatusOK || !strings.Contains(conflict.Body.String(), `"error_code":"idempotency.conflict"`) ||
-		!strings.Contains(conflict.Body.String(), `"no_op":1`) {
-		t.Fatalf("changed Invitation batch reuse = %d: %s", conflict.Code, conflict.Body.String())
-	}
+	require.Equal(t, http.StatusOK, conflict.Code, "changed Invitation batch reuse")
+	require.Contains(t, conflict.Body.String(), `"error_code":"idempotency.conflict"`, "changed Invitation batch reuse")
+	require.Contains(t, conflict.Body.String(), `"no_op":1`, "changed Invitation batch reuse")
 }
 
 func performIdempotentJSONRequest(handler http.Handler, path string, body any, bearer, key string) *httptest.ResponseRecorder {
@@ -136,9 +132,7 @@ func performIdempotentJSONRequest(handler http.Handler, path string, body any, b
 
 func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	primaryStore := openAuthenticationStore(t, dataSource)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
 	configure := func(nodeID string) func(*config.Config) {
@@ -162,9 +156,7 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 		"administrator":    map[string]any{"username": "invitation-admin", "email": "invitation-admin@example.edu"},
 		"password":         adminPassword,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	login := loginIntegrationUser(t, primary.Handler(), "invitation-admin", adminPassword, model.SessionClientCLI, "invitation-admin-cli")
 	token := login.Tokens.AccessToken
 
@@ -188,54 +180,44 @@ func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 		"/api/v1/classes/"+class.ID.String()+"/invitations/student",
 		map[string]any{"email": " invited.student@example.edu ", "suggested_username": "invited-student",
 			"suggested_display_name": "Invited Student", "suggested_locale": "en"}, token)
-	if issue.Code != http.StatusCreated {
-		t.Fatalf("issue invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
-	}
-	if strings.Contains(issue.Body.String(), "invited.student@example.edu") || strings.Contains(issue.Body.String(), "token") {
-		t.Fatalf("issue response disclosed mailbox or claim: %s", issue.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, issue.Code, "issue invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	require.NotContains(t, issue.Body.String(), "invited.student@example.edu")
+	require.NotContains(t, issue.Body.String(), "token")
 
 	deliveries := waitForInvitationDeliveries(t, primary, secondary, 1)
 	claim := credentialFromDelivery(t, deliveries[0])
-	if strings.Contains(primary.Logs.String(), claim) || strings.Contains(secondary.Logs.String(), claim) {
-		t.Fatal("invitation claim appeared in logs")
-	}
+	require.NotContains(t, primary.Logs.String(), claim, "invitation claim appeared in logs")
+	require.NotContains(t, secondary.Logs.String(), claim, "invitation claim appeared in logs")
 	accept := performJSONRequest(secondary.Handler(), http.MethodPost, "/api/v1/invitations/student-class/accept",
 		map[string]any{"claim": claim, "password": "student correct horse battery staple", "username": "invited-student",
 			"display_name": "Invited Student", "locale": "en", "timezone": "UTC"}, "")
-	if accept.Code != http.StatusOK {
-		t.Fatalf("accept invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
-	}
+	require.Equal(t, http.StatusOK, accept.Code, "accept invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
 
 	accepted, err := secondaryStore.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || accepted.State != model.InvitationAccepted || !accepted.AcceptedUserID.IsValid() {
-		t.Fatalf("accepted invitation = %#v, %v", accepted, err)
-	}
+	require.NoError(t, err, "accepted invitation = %#v", accepted)
+	require.Equal(t, model.InvitationAccepted, accepted.State, "accepted invitation = %#v", accepted)
+	require.True(t, accepted.AcceptedUserID.IsValid(), "accepted invitation = %#v", accepted)
 	user, err := primaryStore.User().Get(context.Background(), accepted.AcceptedUserID)
-	if err != nil || user.Email != "invited.student@example.edu" || !user.EmailVerified {
-		t.Fatalf("accepted user = %#v, %v", user, err)
-	}
+	require.NoError(t, err, "accepted user = %#v", user)
+	require.Equal(t, "invited.student@example.edu", user.Email, "accepted user = %#v", user)
+	require.True(t, user.EmailVerified, "accepted user = %#v", user)
 	members, err := primaryStore.ClassMember().ListByClass(context.Background(), class.ID, model.GetMillis())
-	if err != nil || len(members) != 1 || members[0].UserID != user.ID {
-		t.Fatalf("class members = %#v, %v", members, err)
-	}
-	if notice := waitForInvitationDeliveryContaining(t, primary, secondary, "Invitation accepted"); notice == nil {
-		t.Fatal("acceptance notice lacks semantic copy")
-	}
+	require.NoError(t, err, "class members")
+	require.Len(t, members, 1, "class members")
+	require.Equal(t, user.ID, members[0].UserID, "class members")
+	notice := waitForInvitationDeliveryContaining(t, primary, secondary, "Invitation accepted")
+	require.NotNil(t, notice, "acceptance notice lacks semantic copy")
 
 	replay := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/invitations/student-class/accept",
 		map[string]any{"claim": claim, "password": "student correct horse battery staple", "username": "invited-student",
 			"display_name": "Invited Student", "locale": "en", "timezone": "UTC"}, "")
-	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
-		t.Fatalf("acceptance replay = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusOK, replay.Code, "acceptance replay")
+	require.Contains(t, replay.Body.String(), `"replayed":true`, "acceptance replay")
 }
 
 func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	primaryStore := openAuthenticationStore(t, dataSource)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
 	configure := func(nodeID string) func(*config.Config) {
@@ -259,9 +241,7 @@ func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing
 		"administrator":    map[string]any{"username": "teacher-invitation-admin", "email": "teacher-invitation-admin@example.edu"},
 		"password":         adminPassword,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	login := loginIntegrationUser(t, primary.Handler(), "teacher-invitation-admin", adminPassword, model.SessionClientCLI, "teacher-invitation-admin-cli")
 	token := login.Tokens.AccessToken
 	unit := createIntegrationResource[model.AcademicUnit](t, primary.Handler(), http.MethodPost, "/api/v1/academic-units",
@@ -270,57 +250,47 @@ func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing
 		"name": "invited-teacher", "display_name": "Invited Teacher",
 		"permissions": []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeView)},
 	}, token)
-	if roleResponse.Code != http.StatusCreated {
-		t.Fatalf("create teacher Role = %d: %s", roleResponse.Code, roleResponse.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, roleResponse.Code, "create teacher Role = %d: %s", roleResponse.Code, roleResponse.Body.String())
 	var role struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(roleResponse.Body.Bytes(), &role); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(roleResponse.Body.Bytes(), &role))
 	issue := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/academic-units/"+unit.ID.String()+"/invitations/teacher",
 		map[string]any{"email": " invited.teacher@example.edu ", "role_id": role.ID, "suggested_username": "invited-teacher",
 			"suggested_display_name": "Invited Teacher", "suggested_locale": "en"}, token)
-	if issue.Code != http.StatusCreated || strings.Contains(issue.Body.String(), "invited.teacher@example.edu") || strings.Contains(issue.Body.String(), "token") {
-		t.Fatalf("issue teacher invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
-	}
+	require.Equal(t, http.StatusCreated, issue.Code, "issue teacher invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	require.NotContains(t, issue.Body.String(), "invited.teacher@example.edu", "issue teacher invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	require.NotContains(t, issue.Body.String(), "token", "issue teacher invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
 	deliveries := waitForInvitationDeliveries(t, primary, secondary, 1)
 	claim := credentialFromDelivery(t, deliveries[0])
 	accept := performJSONRequest(secondary.Handler(), http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept",
 		map[string]any{"claim": claim, "password": "teacher correct horse battery staple", "username": "invited-teacher",
 			"display_name": "Invited Teacher", "locale": "en", "timezone": "UTC"}, "")
-	if accept.Code != http.StatusOK {
-		t.Fatalf("accept teacher invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
-	}
+	require.Equal(t, http.StatusOK, accept.Code, "accept teacher invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
 	accepted, err := secondaryStore.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || accepted.State != model.InvitationAccepted || !accepted.AcceptedAcademicUnitMemberID.IsValid() || !accepted.AcceptedRoleBindingID.IsValid() {
-		t.Fatalf("accepted teacher invitation = %#v, %v", accepted, err)
-	}
+	require.NoError(t, err, "accepted teacher invitation = %#v", accepted)
+	require.Equal(t, model.InvitationAccepted, accepted.State, "accepted teacher invitation = %#v", accepted)
+	require.True(t, accepted.AcceptedAcademicUnitMemberID.IsValid(), "accepted teacher invitation = %#v", accepted)
+	require.True(t, accepted.AcceptedRoleBindingID.IsValid(), "accepted teacher invitation = %#v", accepted)
 	binding, err := primaryStore.RoleBinding().Get(context.Background(), accepted.AcceptedRoleBindingID)
-	if err != nil || binding.UserID != accepted.AcceptedUserID || binding.RoleID.String() != role.ID || binding.OriginInvitationID != accepted.ID {
-		t.Fatalf("teacher package Role Binding = %#v, %v", binding, err)
-	}
-	if notice := waitForInvitationDeliveryContaining(t, primary, secondary, "Invitation accepted"); notice == nil {
-		t.Fatal("teacher acceptance notice lacks semantic copy")
-	}
+	require.NoError(t, err, "teacher package Role Binding = %#v", binding)
+	require.Equal(t, accepted.AcceptedUserID, binding.UserID, "teacher package Role Binding = %#v", binding)
+	require.Equal(t, role.ID, binding.RoleID.String(), "teacher package Role Binding = %#v", binding)
+	require.Equal(t, accepted.ID, binding.OriginInvitationID, "teacher package Role Binding = %#v", binding)
+	notice := waitForInvitationDeliveryContaining(t, primary, secondary, "Invitation accepted")
+	require.NotNil(t, notice, "teacher acceptance notice lacks semantic copy")
 	replay := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept",
 		map[string]any{"claim": claim, "password": "teacher correct horse battery staple", "username": "invited-teacher"}, "")
-	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
-		t.Fatalf("teacher acceptance replay = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusOK, replay.Code, "teacher acceptance replay")
+	require.Contains(t, replay.Body.String(), `"replayed":true`, "teacher acceptance replay")
 	waitForInvitationDeliveries(t, primary, secondary, 2)
 	time.Sleep(100 * time.Millisecond)
-	if count := len(primary.Mailer.Deliveries()) + len(secondary.Mailer.Deliveries()); count != 2 {
-		t.Fatalf("teacher invitation produced %d messages, want issue plus one semantic acceptance only", count)
-	}
+	require.Equal(t, 2, (len(primary.Mailer.Deliveries()) + len(secondary.Mailer.Deliveries())), "teacher invitation produced")
 }
 
 func TestScopedRoleInvitationAcceptsAsExistingUserAcrossNodesWithoutProfileOrWelcomeMutation(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	primaryStore := openAuthenticationStore(t, dataSource)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
 	configure := func(nodeID string) func(*config.Config) {
@@ -344,9 +314,7 @@ func TestScopedRoleInvitationAcceptsAsExistingUserAcrossNodesWithoutProfileOrWel
 		"administrator":    map[string]any{"username": "scoped-role-admin", "email": "canonical-admin@example.edu"},
 		"password":         adminPassword,
 	}, "")
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	login := loginIntegrationUser(t, primary.Handler(), "scoped-role-admin", adminPassword, model.SessionClientCLI, "scoped-role-admin-cli")
 	token := login.Tokens.AccessToken
 	unit := createIntegrationResource[model.AcademicUnit](t, primary.Handler(), http.MethodPost, "/api/v1/academic-units",
@@ -355,47 +323,42 @@ func TestScopedRoleInvitationAcceptsAsExistingUserAcrossNodesWithoutProfileOrWel
 		"name": "academic-auditor", "display_name": "Academic Auditor",
 		"permissions": []string{string(model.ActionAcademicAuditView)},
 	}, token)
-	if roleResponse.Code != http.StatusCreated {
-		t.Fatalf("create scoped Role = %d: %s", roleResponse.Code, roleResponse.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, roleResponse.Code, "create scoped Role = %d: %s", roleResponse.Code, roleResponse.Body.String())
 	var role struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(roleResponse.Body.Bytes(), &role); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(roleResponse.Body.Bytes(), &role))
 	issue := performJSONRequest(primary.Handler(), http.MethodPost,
 		"/api/v1/academic-units/"+unit.ID.String()+"/invitations/role",
 		map[string]any{"email": "proof-mailbox@example.edu", "role_id": role.ID}, token)
-	if issue.Code != http.StatusCreated || strings.Contains(issue.Body.String(), "proof-mailbox@example.edu") || strings.Contains(issue.Body.String(), "claim") {
-		t.Fatalf("issue scoped Role Invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
-	}
+	require.Equal(t, http.StatusCreated, issue.Code, "issue scoped Role Invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	require.NotContains(t, issue.Body.String(), "proof-mailbox@example.edu", "issue scoped Role Invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
+	require.NotContains(t, issue.Body.String(), "claim", "issue scoped Role Invitation = %d: %s; logs=%s", issue.Code, issue.Body.String(), primary.Logs.String())
 	deliveries := waitForInvitationDeliveries(t, primary, secondary, 1)
 	claim := credentialFromDelivery(t, deliveries[0])
 	accept := performJSONRequest(secondary.Handler(), http.MethodPost, "/api/v1/invitations/academic-unit-role/accept",
 		map[string]any{"claim": claim}, token)
-	if accept.Code != http.StatusOK || !strings.Contains(accept.Body.String(), `"user_id":"`+login.User.ID.String()+`"`) ||
-		strings.Contains(accept.Body.String(), "proof-mailbox@example.edu") || strings.Contains(accept.Body.String(), claim) {
-		t.Fatalf("accept scoped Role Invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
-	}
+	require.Equal(t, http.StatusOK, accept.Code, "accept scoped Role Invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
+	require.Contains(t, accept.Body.String(), `"user_id":"`+login.User.ID.String()+`"`, "accept scoped Role Invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
+	require.NotContains(t, accept.Body.String(), "proof-mailbox@example.edu", "accept scoped Role Invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
+	require.NotContains(t, accept.Body.String(), claim, "accept scoped Role Invitation = %d: %s; logs=%s", accept.Code, accept.Body.String(), secondary.Logs.String())
 	accepted, err := secondaryStore.Invitation().GetByClaimHash(context.Background(), model.HashInvitationClaim(claim))
-	if err != nil || accepted.State != model.InvitationAccepted || accepted.AcceptedUserID != login.User.ID || !accepted.AcceptedRoleBindingID.IsValid() ||
-		accepted.AcceptedAffiliationID.IsValid() || accepted.AcceptedAcademicUnitMemberID.IsValid() {
-		t.Fatalf("accepted scoped Role Invitation = %#v, %v", accepted, err)
-	}
+	require.NoError(t, err, "accepted scoped Role Invitation = %#v", accepted)
+	require.Equal(t, model.InvitationAccepted, accepted.State, "accepted scoped Role Invitation = %#v", accepted)
+	require.Equal(t, login.User.ID, accepted.AcceptedUserID, "accepted scoped Role Invitation = %#v", accepted)
+	require.True(t, accepted.AcceptedRoleBindingID.IsValid(), "accepted scoped Role Invitation = %#v", accepted)
+	require.False(t, accepted.AcceptedAffiliationID.IsValid(), "accepted scoped Role Invitation = %#v", accepted)
+	require.False(t, accepted.AcceptedAcademicUnitMemberID.IsValid(), "accepted scoped Role Invitation = %#v", accepted)
 	current, err := primaryStore.User().Get(context.Background(), login.User.ID)
-	if err != nil || current.Email != "canonical-admin@example.edu" || current.Username != "scoped-role-admin" {
-		t.Fatalf("canonical User changed during scoped Role acceptance = %#v, %v", current, err)
-	}
+	require.NoError(t, err, "canonical User changed during scoped Role acceptance = %#v", current)
+	require.Equal(t, "canonical-admin@example.edu", current.Email, "canonical User changed during scoped Role acceptance = %#v", current)
+	require.Equal(t, "scoped-role-admin", current.Username, "canonical User changed during scoped Role acceptance = %#v", current)
 	time.Sleep(300 * time.Millisecond)
-	if after := len(primary.Mailer.Deliveries()) + len(secondary.Mailer.Deliveries()); after != len(deliveries) {
-		t.Fatalf("existing-User scoped Role acceptance emitted redundant mail: deliveries=%d, want %d", after, len(deliveries))
-	}
+	require.Len(t, deliveries, (len(primary.Mailer.Deliveries()) + len(secondary.Mailer.Deliveries())), "existing-User scoped Role acceptance emitted redundant mail: deliveries")
 	replay := performJSONRequest(primary.Handler(), http.MethodPost, "/api/v1/invitations/academic-unit-role/accept",
 		map[string]any{"claim": claim}, token)
-	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
-		t.Fatalf("scoped Role acceptance replay = %d: %s", replay.Code, replay.Body.String())
-	}
+	require.Equal(t, http.StatusOK, replay.Code, "scoped Role acceptance replay")
+	require.Contains(t, replay.Body.String(), `"replayed":true`, "scoped Role acceptance replay")
 }
 
 func waitForInvitationDeliveryContaining(t *testing.T, primary, secondary *testlib.Helper, text string) *mail.Delivery {
@@ -422,10 +385,7 @@ func waitForInvitationDeliveries(t *testing.T, primary, secondary *testlib.Helpe
 		if len(deliveries) >= count {
 			return deliveries
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("invitation mail deliveries = %d, want at least %d; primary logs=%s; secondary logs=%s",
-				len(deliveries), count, primary.Logs.String(), secondary.Logs.String())
-		}
+		require.False(t, time.Now().After(deadline), "invitation mail deliveries = %d, want at least %d; primary logs=%s; secondary logs=%s", len(deliveries), count, primary.Logs.String(), secondary.Logs.String())
 		time.Sleep(20 * time.Millisecond)
 	}
 }

@@ -9,13 +9,15 @@ package app
 
 import (
 	"context"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type classStoreFake struct {
@@ -65,12 +67,8 @@ func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {
 	events := []string{}
 	service := newClassService(&classStoreFake{events: &events}, &programmeAuthorizerFake{events: &events, err: apperror.New("authorization.denied")}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 	_, err := service.GetClass(context.Background(), Invocation{}, GetClassQuery{ID: model.NewClassID()})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Get() error = %v", err)
+	require.Equal(t, []string{"authorize"}, events)
 }
 
 func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
@@ -90,19 +88,14 @@ func TestClassUpdateMoveAuthorizesCurrentAndDestinationOwners(t *testing.T) {
 	persistence := &classStoreFake{events: &events, current: current, unitID: oldUnitID}
 	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, func() time.Time { return time.UnixMilli(500) }, model.NewID)
 	updated, err := service.UpdateClass(context.Background(), Invocation{}, UpdateClassCommand{ID: current.ID, ProgrammeLevelID: &newLevelID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updated.ProgrammeLevelID.String() != newLevelID || persistence.updateInput.Class.AcademicPeriodID != current.AcademicPeriodID {
-		t.Fatalf("updated = %#v", updated)
-	}
-	if persistence.updateInput.ExpectedAcademicUnitID != model.AcademicUnitID(oldUnitID) || persistence.updateInput.ExpectedRevision != current.Revision {
-		t.Fatalf("update precondition = %#v", persistence.updateInput)
-	}
-	want := []string{"authorize", "get-unit", "get-class", "authorize", "audit-begin", "store-update"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, newLevelID, updated.ProgrammeLevelID.String())
+	require.Equal(t, current.AcademicPeriodID, persistence.updateInput.Class.AcademicPeriodID)
+	require.Equal(t, model.AcademicUnitID(oldUnitID), persistence.updateInput.ExpectedAcademicUnitID)
+	require.Equal(t, current.Revision, persistence.updateInput.ExpectedRevision)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "authorize", "audit-begin", "store-update")
 }
 
 func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
@@ -125,9 +118,9 @@ func TestClassMutationMissingClassUsesClassResource(t *testing.T) {
 			service := newClassService(&classStoreFake{events: &events, getUnitErr: store.NewErrNotFound("class", model.NewID())}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now, model.NewID)
 			err := test.run(service)
 			appErr, ok := apperror.As(err)
-			if !ok || appErr.Code() != "resource.not_found" || appErr.Fields()["resource"] != "class" {
-				t.Fatalf("error = %#v", err)
-			}
+			require.True(t, ok)
+			require.Equal(t, "resource.not_found", appErr.Code())
+			require.Equal(t, "class", appErr.Fields()["resource"])
 		})
 	}
 }
@@ -139,9 +132,8 @@ func TestClassCreateConflictCompletesFailedAttempt(t *testing.T) {
 	auditor := &institutionAuditorFake{events: &events, beginID: model.NewID()}
 	service := newClassService(&classStoreFake{events: &events, createErr: store.NewErrConflict("class", "classes_programme_level_id_academic_period_id_name_key", nil)}, &programmeAuthorizerFake{events: &events}, auditor, time.Now, model.NewID)
 	_, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: model.NewID(), Name: "class-a", DisplayName: "Class A"})
-	if !apperror.Is(err, "class.conflict") || auditor.failCode != "class.conflict" {
-		t.Fatalf("Create() error = %v, audit = %q", err, auditor.failCode)
-	}
+	require.True(t, apperror.Is(err, "class.conflict"), "Create() error = %v, audit", err)
+	require.Equal(t, "class.conflict", auditor.failCode, "Create() error = %v, audit", err)
 }
 
 func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
@@ -152,16 +144,13 @@ func TestClassCreatePreservesBothParentsAndAtomicAudit(t *testing.T) {
 	persistence := &classStoreFake{events: &events, created: created}
 	service := newClassService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: auditID}, func() time.Time { return time.UnixMilli(500) }, func() string { return classID })
 	got, err := service.CreateClass(context.Background(), Invocation{}, CreateClassCommand{ProgrammeLevelID: model.ProgrammeLevelID(levelID), AcademicPeriodID: periodID, Name: "class-a", DisplayName: "Class A"})
-	if err != nil || got != created {
-		t.Fatalf("Create() = %#v, %v", got, err)
-	}
-	if persistence.createInput == nil ||
-		persistence.createInput.Class.ProgrammeLevelID.String() != levelID ||
-		persistence.createInput.Class.AcademicPeriodID.String() != periodID ||
-		persistence.createInput.AuditEventID != model.AuditEventID(auditID) {
-		t.Fatalf("create input = %#v", persistence.createInput)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create"}) {
-		t.Fatalf("events = %v", events)
-	}
+	require.NoError(t, err, "Create()")
+	require.Same(t, created, got, "Create()")
+	require.NotNil(t, persistence.createInput)
+	require.Equal(t, levelID, persistence.createInput.Class.ProgrammeLevelID.String())
+	require.Equal(t, periodID, persistence.createInput.Class.AcademicPeriodID.String())
+	require.Equal(t, model.AuditEventID(auditID), persistence.createInput.AuditEventID)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit-begin", "store-create")
 }

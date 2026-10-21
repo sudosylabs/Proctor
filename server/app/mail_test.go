@@ -12,10 +12,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -94,13 +95,12 @@ func TestCredentialMailDescriptorUsesDedicatedPoolAndReserve(t *testing.T) {
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
 	descriptor := jobhandler.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant,
 		func() time.Time { return at.Add(time.Second) }, true)
-	if descriptor.Type != model.JobTypeMailDeliverCredential || descriptor.Concurrency != 4 {
-		t.Fatalf("credential descriptor = type %q concurrency %d", descriptor.Type, descriptor.Concurrency)
-	}
+	require.Equal(t, model.JobTypeMailDeliverCredential, descriptor.Type, "credential descriptor = type")
+	require.Equal(t, 4, descriptor.Concurrency, "credential descriptor = type")
 	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(persistence.classes) != 1 || persistence.classes[0] != store.MailSendCredential {
-		t.Fatalf("outcome=%#v permit classes=%#v", outcome, persistence.classes)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v permit classes", outcome)
+	require.Len(t, persistence.classes, 1, "outcome=%#v permit classes", outcome)
+	require.Equal(t, store.MailSendCredential, persistence.classes[0], "outcome=%#v permit classes", outcome)
 }
 func (s *mailStoreFake) StartDelivery(_ context.Context, id model.MailDeliveryID, revision int64, at time.Time) (*model.MailDelivery, error) {
 	if s.delivery == nil || s.delivery.ID != id || s.delivery.Revision != revision {
@@ -241,9 +241,7 @@ func mailTestSealer(t *testing.T) *secretseal.Sealer {
 	t.Helper()
 	key := base64.StdEncoding.EncodeToString(bytesRepeat(7, 32))
 	value, err := secretseal.New(secretseal.Settings{EncryptionKey: key, MaximumPlaintext: secretseal.MaximumPlaintextBytes})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return value
 }
 func bytesRepeat(value byte, count int) []byte {
@@ -269,25 +267,20 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	actionURL := "https://proctor.example.test/account/verify-email#token=credential-secret"
 	content := FrozenMailContent{Subject: "Verify", Text: "Use " + actionURL, HTML: "<a href=\"" + actionURL + "\">Verify</a>"}
 	preparer, err := newDirectMailPreparer(mailRendererFake{content: content}, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PrepareEmailVerification(AccountTokenMailPreparation{Recipient: user,
 		OccurrenceID: model.NewMailOccurrenceID(), ActionURL: actionURL, At: at, Deadline: at.Add(time.Hour)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Job.Type != model.JobTypeMailDeliverCredential || prepared.Delivery.State != model.MailDeliveryQueued ||
-		prepared.Delivery.TemplateKey != model.MailTemplateIdentityVerifyEmail || len(prepared.Delivery.EncryptedPayload) == 0 {
-		t.Fatalf("prepared direct mail = %#v", prepared)
-	}
-	if strings.Contains(string(prepared.Delivery.EncryptedPayload), "credential-secret") || strings.Contains(string(prepared.Delivery.EncryptedPayload), user.Email) {
-		t.Fatalf("persisted payload exposes credential or recipient: %s", prepared.Delivery.EncryptedPayload)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.JobTypeMailDeliverCredential, prepared.Job.Type)
+	require.Equal(t, model.MailDeliveryQueued, prepared.Delivery.State)
+	require.Equal(t, model.MailTemplateIdentityVerifyEmail, prepared.Delivery.TemplateKey)
+	require.NotEmpty(t, prepared.Delivery.EncryptedPayload)
+	require.NotContains(t, string(prepared.Delivery.EncryptedPayload), "credential-secret")
+	require.NotContains(t, string(prepared.Delivery.EncryptedPayload), user.Email)
 	opened, err := appmail.OpenDelivery(mailTestSealer(t), prepared.Delivery)
-	if err != nil || opened.Text != content.Text || opened.To.Address != user.Email {
-		t.Fatalf("opened payload = %#v, %v", opened, err)
-	}
+	require.NoError(t, err, "opened payload = %#v", opened)
+	require.Equal(t, content.Text, opened.Text, "opened payload = %#v", opened)
+	require.Equal(t, user.Email, opened.To.Address, "opened payload = %#v", opened)
 }
 
 func TestRelationshipMailComposerSupportsCompleteCatalog(t *testing.T) {
@@ -298,9 +291,7 @@ func TestRelationshipMailComposerSupportsCompleteCatalog(t *testing.T) {
 		&mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}},
 		mailTestSealer(t),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	keys := []model.MailTemplateKey{
 		model.MailTemplateAcademicUnitAssigned,
 		model.MailTemplateAcademicUnitAssignmentEnded,
@@ -315,14 +306,12 @@ func TestRelationshipMailComposerSupportsCompleteCatalog(t *testing.T) {
 			prepared, prepareErr := preparer.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
 				Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: at,
 			})
-			if prepareErr != nil {
-				t.Fatal(prepareErr)
-			}
-			if prepared.Occurrence.TemplateKey != key || prepared.Occurrence.Kind != model.MailOccurrenceAcademicAdministration ||
-				prepared.Delivery.TemplateKey != key || prepared.Delivery.State != model.MailDeliveryQueued ||
-				prepared.Job.Type != model.JobTypeMailDeliver {
-				t.Fatalf("prepared relationship mail = %#v", prepared)
-			}
+			require.NoError(t, prepareErr)
+			require.Equal(t, key, prepared.Occurrence.TemplateKey)
+			require.Equal(t, model.MailOccurrenceAcademicAdministration, prepared.Occurrence.Kind)
+			require.Equal(t, key, prepared.Delivery.TemplateKey)
+			require.Equal(t, model.MailDeliveryQueued, prepared.Delivery.State)
+			require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type)
 		})
 	}
 }
@@ -336,22 +325,14 @@ func TestDirectMailPreparerSelectsTeacherInvitationTemplate(t *testing.T) {
 		InviterUserID: model.NewUserID(), ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
 		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	preparer, err := newDirectMailPreparer(mailRendererFake{content: FrozenMailContent{Subject: "Invite", Text: "Invite", HTML: "<p>Invite</p>"}},
 		&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PrepareInvitation(invitation, "https://proctor.example.test/join#token=secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Delivery.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation ||
-		prepared.Occurrence.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation {
-		t.Fatalf("teacher Invitation mail = %#v", prepared)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailTemplateAccessTeacherAcademicUnitInvitation, prepared.Delivery.TemplateKey)
+	require.Equal(t, model.MailTemplateAccessTeacherAcademicUnitInvitation, prepared.Occurrence.TemplateKey)
 }
 
 func TestDirectMailPreparerSelectsScopedRoleInvitationTemplates(t *testing.T) {
@@ -378,21 +359,14 @@ func TestDirectMailPreparerSelectsScopedRoleInvitationTemplates(t *testing.T) {
 				TargetEmail: "existing@example.test", AcademicUnitID: test.unitID, RoleID: model.NewRoleID(), RoleActions: []string{string(test.permission)},
 				IntendedStartsAt: at, InviterUserID: model.NewUserID(), ScopeType: test.scopeType, ScopeID: test.scopeID,
 				ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			preparer, err := newDirectMailPreparer(mailRendererFake{content: FrozenMailContent{Subject: "Invite", Text: "Invite", HTML: "<p>Invite</p>"}},
 				&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, mailTestSealer(t))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			prepared, err := preparer.PrepareInvitation(invitation, "https://proctor.example.test/join#token=secret")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if prepared.Delivery.TemplateKey != test.template || prepared.Occurrence.TemplateKey != test.template {
-				t.Fatalf("scoped Role Invitation mail = %#v", prepared)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.template, prepared.Delivery.TemplateKey)
+			require.Equal(t, test.template, prepared.Occurrence.TemplateKey)
 		})
 	}
 }
@@ -401,18 +375,13 @@ func TestDirectMailPreparerCreatesTerminalSuppressedIntentWhenDisabled(t *testin
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	principal := mailTestPrincipal(at)
 	preparer, err := newDirectMailPreparer(mailRendererFake{}, &mailSenderFake{enabled: false}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PreparePasswordChanged(NoticeMailPreparation{Recipient: mailTestUser(principal, at), At: at})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Delivery.State != model.MailDeliverySuppressed ||
-		prepared.Delivery.PublicFailureCode != model.MailDeliveryDisabledCode ||
-		len(prepared.Delivery.EncryptedPayload) != 0 || prepared.Job.Status != model.JobStatusCanceled {
-		t.Fatalf("disabled direct mail = %#v", prepared)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailDeliverySuppressed, prepared.Delivery.State)
+	require.Equal(t, model.MailDeliveryDisabledCode, prepared.Delivery.PublicFailureCode)
+	require.Empty(t, prepared.Delivery.EncryptedPayload)
+	require.Equal(t, model.JobStatusCanceled, prepared.Job.Status)
 }
 
 func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testing.T) {
@@ -423,25 +392,23 @@ func TestMailServicePreparesOnlyControlledSelfRecipientAndAtomicIntent(t *testin
 	authorizer, auditor := &mailAuthorizerFake{}, &mailAuditFake{}
 	content := FrozenMailContent{Subject: "Fixed test", Text: "fixed text", HTML: "<p>fixed html</p>"}
 	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, auditor, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{content}, sender, NopMailDeliveryRecorder{}, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	woke := 0
 	service.wake = func() { woke++ }
 	view, err := service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.enqueue == nil || persistence.enqueue.Delivery.TargetUserID != principal.UserID || persistence.enqueue.Occurrence.ActorUserID != principal.UserID || persistence.enqueue.Job.Type != model.JobTypeMailDeliver || auditor.calls != 1 || woke != 1 {
-		t.Fatalf("atomic intent = %#v audit=%d wake=%d", persistence.enqueue, auditor.calls, woke)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.enqueue, "atomic intent")
+	require.Equal(t, principal.UserID, persistence.enqueue.Delivery.TargetUserID, "atomic intent")
+	require.Equal(t, principal.UserID, persistence.enqueue.Occurrence.ActorUserID, "atomic intent")
+	require.Equal(t, model.JobTypeMailDeliver, persistence.enqueue.Job.Type, "atomic intent")
+	require.Equal(t, 1, auditor.calls, "atomic intent")
+	require.Equal(t, 1, woke, "atomic intent")
 	serialized, _ := json.Marshal(persistence.enqueue)
-	if strings.Contains(string(serialized), "operator@example.test") || strings.Contains(string(serialized), "fixed text") {
-		t.Fatalf("durable intent leaked plaintext: %s", serialized)
-	}
-	if view.MaskedRecipient != "o***@example.test" || view.State != model.MailDeliveryQueued || view.MessageID != persistence.enqueue.Delivery.MessageID {
-		t.Fatalf("view = %#v", view)
-	}
+	require.NotContains(t, string(serialized), "operator@example.test")
+	require.NotContains(t, string(serialized), "fixed text")
+	require.Equal(t, "o***@example.test", view.MaskedRecipient)
+	require.Equal(t, model.MailDeliveryQueued, view.State)
+	require.Equal(t, persistence.enqueue.Delivery.MessageID, view.MessageID)
 }
 
 func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
@@ -455,15 +422,11 @@ func TestMailMetricsRequiresMailViewAuthorization(t *testing.T) {
 		&authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{},
 		&mailSenderFake{}, metrics, nil, 15*time.Minute, func() time.Time { return at },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = service.GetMailMetrics(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
-		t.Fatal(err)
-	}
-	if len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionMailView {
-		t.Fatalf("metric authorization actions = %#v", authorizer.actions)
-	}
+	require.NoError(t, err)
+	_, err = service.GetMailMetrics(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	require.NoError(t, err)
+	require.Len(t, authorizer.actions, 1)
+	require.Equal(t, model.ActionMailView, authorizer.actions[0])
 }
 
 func TestMaskMailAddressNeverReturnsACompleteAddress(t *testing.T) {
@@ -471,9 +434,9 @@ func TestMaskMailAddressNeverReturnsACompleteAddress(t *testing.T) {
 		"a@example.test":        "***@example.test",
 		"operator@example.test": "o***@example.test",
 	} {
-		if got := maskMailAddress(input); got != want || got == input {
-			t.Fatalf("maskMailAddress(%q) = %q, want %q", input, got, want)
-		}
+		got := maskMailAddress(input)
+		require.Equal(t, want, got, "maskMailAddress")
+		require.NotEqual(t, input, got, "maskMailAddress")
 	}
 }
 
@@ -486,9 +449,7 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	content := FrozenMailContent{Subject: "test", Text: "test"}
 	cache := &mailAttemptCacheFake{}
 	service, err := newMailService(persistence, mailUserStoreFake{user}, &mailAuthorizerFake{}, &mailAuditFake{}, &authenticationAttemptAccounting{cache: cache}, mailRendererFake{content}, sender, NopMailDeliveryRecorder{}, mailTestSealer(t), 15*time.Minute, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pat := principal
 	pat.SessionID = ""
 	pat.CredentialType = model.CredentialPersonalAccessToken
@@ -497,27 +458,22 @@ func TestMailServiceRejectsPATUnverifiedAndRateLimitedBeforePersistence(t *testi
 	pat.AuthenticatedAt = time.Time{}
 	pat.ClientType = model.SessionClientCLI
 	pat.CredentialScopes = []string{string(model.ActionMailManage)}
-	if _, err = service.SendTestMail(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("PAT error = %v", err)
-	}
+	_, err = service.SendTestMail(context.Background(), NewInvocation(pat, model.RequestMetadata{}))
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "PAT error = %v", err)
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, err = service.SendTestMail(context.Background(), NewInvocation(stale, model.RequestMetadata{})); !apperror.Is(err, "authentication.reauthentication_required") {
-		t.Fatalf("stale Session error = %v", err)
-	}
+	_, err = service.SendTestMail(context.Background(), NewInvocation(stale, model.RequestMetadata{}))
+	require.True(t, apperror.Is(err, "authentication.reauthentication_required"), "stale Session error = %v", err)
 	user.EmailVerified = false
-	if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.recipient_unverified") {
-		t.Fatalf("unverified error = %v", err)
-	}
+	_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	require.True(t, apperror.Is(err, "mail.recipient_unverified"), "unverified error = %v", err)
 	user.EmailVerified = true
 	for index := 1; index < mailTestRateLimitMaximum; index++ {
-		if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
-			t.Fatal(err)
-		}
+		_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+		require.NoError(t, err)
 	}
-	if _, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !apperror.Is(err, "mail.test.rate_limited") {
-		t.Fatalf("rate limit error = %v", err)
-	}
+	_, err = service.SendTestMail(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	require.True(t, apperror.Is(err, "mail.test.rate_limited"), "rate limit error = %v", err)
 }
 
 func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *testing.T) {
@@ -527,22 +483,19 @@ func TestMailOperatorReadsAuthorizeBeforeInspectionAndReturnOnlySafeViews(t *tes
 	persistence := &mailStoreFake{delivery: delivery}
 	authorizer := &mailAuthorizerFake{}
 	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, authorizer, &mailAuditFake{}, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{}, &mailSenderFake{}, NopMailDeliveryRecorder{}, nil, 15*time.Minute, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	page, appErr := service.ListMailDeliveries(context.Background(), NewInvocation(principal, model.RequestMetadata{}), ListMailDeliveriesQuery{States: []model.MailDeliveryState{model.MailDeliveryQueued}, Limit: 20})
-	if appErr != nil || len(page.Items) != 1 || persistence.lists != 1 || authorizer.actions[0] != model.ActionMailView {
-		t.Fatalf("List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
-	}
+	require.NoError(t, appErr, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
+	require.Len(t, page.Items, 1, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
+	require.Equal(t, 1, persistence.lists, "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
+	require.Equal(t, model.ActionMailView, authorizer.actions[0], "List() page=%#v err=%v lists=%d actions=%v", page, appErr, persistence.lists, authorizer.actions)
 	authorizer.err = apperror.New("authorization.denied")
-	if _, appErr = service.GetMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authorization.denied") || persistence.gets != 0 {
-		t.Fatalf("denied Get() err=%v gets=%d", appErr, persistence.gets)
-	}
+	_, appErr = service.GetMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
+	require.True(t, apperror.Is(appErr, "authorization.denied"), "denied Get() err=%v gets", appErr)
+	require.Equal(t, 0, persistence.gets, "denied Get() err=%v gets", appErr)
 	encoded, _ := json.Marshal(page)
 	for _, forbidden := range []string{"ciphertext", "secret", "encrypted_payload", "operator@example.test"} {
-		if strings.Contains(string(encoded), forbidden) {
-			t.Fatalf("safe page leaked %q: %s", forbidden, encoded)
-		}
+		require.NotContains(t, string(encoded), forbidden, "safe page leaked")
 	}
 }
 
@@ -553,26 +506,25 @@ func TestMailOperatorMutationsRequireRecentSessionAndAuditSameDelivery(t *testin
 	persistence := &mailStoreFake{delivery: delivery}
 	auditor := &mailAuditFake{}
 	service, err := newMailService(persistence, mailUserStoreFake{mailTestUser(principal, at)}, &mailAuthorizerFake{}, auditor, &authenticationAttemptAccounting{cache: &mailAttemptCacheFake{}}, mailRendererFake{}, &mailSenderFake{}, NopMailDeliveryRecorder{}, nil, 15*time.Minute, func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pat := principal
 	pat.SessionID = ""
 	pat.CredentialType = model.CredentialPersonalAccessToken
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	pat.AuthenticationStrength, pat.AuthenticatedAt = "", time.Time{}
-	if _, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.token_invalid") || persistence.gets != 0 {
-		t.Fatalf("Cancel(PAT) err=%v gets=%d", appErr, persistence.gets)
-	}
+	_, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(pat, model.RequestMetadata{}), delivery.ID)
+	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "Cancel(PAT) err=%v gets", appErr)
+	require.Equal(t, 0, persistence.gets, "Cancel(PAT) err=%v gets", appErr)
 	stale := principal
 	stale.AuthenticatedAt = at.Add(-16 * time.Minute)
-	if _, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID); !apperror.Is(appErr, "authentication.reauthentication_required") || persistence.gets != 0 {
-		t.Fatalf("Cancel(stale) err=%v gets=%d", appErr, persistence.gets)
-	}
+	_, appErr = service.CancelMailDelivery(context.Background(), NewInvocation(stale, model.RequestMetadata{}), delivery.ID)
+	require.True(t, apperror.Is(appErr, "authentication.reauthentication_required"), "Cancel(stale) err=%v gets", appErr)
+	require.Equal(t, 0, persistence.gets, "Cancel(stale) err=%v gets", appErr)
 	view, appErr := service.CancelMailDelivery(context.Background(), NewInvocation(principal, model.RequestMetadata{}), delivery.ID)
-	if appErr != nil || view.State != model.MailDeliveryCanceled || persistence.mutates != 1 || auditor.beginCalls != 1 {
-		t.Fatalf("Cancel() view=%#v err=%v mutates=%d audit=%d", view, appErr, persistence.mutates, auditor.beginCalls)
-	}
+	require.NoError(t, appErr, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
+	require.Equal(t, model.MailDeliveryCanceled, view.State, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
+	require.Equal(t, 1, persistence.mutates, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
+	require.Equal(t, 1, auditor.beginCalls, "Cancel() view=%#v err=%v mutates=%d audit", view, appErr, persistence.mutates)
 }
 
 func queuedMailDeliveryFixtureForApp(at time.Time) *model.MailDelivery {
@@ -589,9 +541,8 @@ func TestMailServiceRejectsEnabledDeliveryWithoutSecretSealer(t *testing.T) {
 		&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, NopMailDeliveryRecorder{}, nil,
 		15*time.Minute, func() time.Time { return at },
 	)
-	if err == nil || !strings.Contains(err.Error(), "enabled mail requires secret sealing") {
-		t.Fatalf("newMailService(enabled without sealer) error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "enabled mail requires secret sealing")
 }
 
 func TestMailDeliveryHandlerUsesStableMessageIDAndRecordsAcceptance(t *testing.T) {
@@ -601,16 +552,18 @@ func TestMailDeliveryHandlerUsesStableMessageIDAndRecordsAcceptance(t *testing.T
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "new-sender@example.test"}}
 	now := at.Add(time.Second)
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { now = now.Add(time.Second); return now }, job)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 || sender.messages[0].MessageID != delivery.MessageID ||
-		!sender.messages[0].Date.Equal(at) || sender.messages[0].From.Address != "no-reply@example.test" ||
-		sender.messages[0].Headers["Auto-Submitted"][0] != "auto-generated" || sender.messages[0].Headers["X-Auto-Response-Suppress"][0] != "All" ||
-		persistence.delivery.State != model.MailDeliveryAccepted || len(persistence.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Len(t, sender.messages, 1, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, delivery.MessageID, sender.messages[0].MessageID, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.True(t, sender.messages[0].Date.Equal(at), "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, "no-reply@example.test", sender.messages[0].From.Address, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, "auto-generated", sender.messages[0].Headers["Auto-Submitted"][0], "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, "All", sender.messages[0].Headers["X-Auto-Response-Suppress"][0], "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliveryAccepted, persistence.delivery.State, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, persistence.delivery.EncryptedPayload, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 	second := runMailDeliveryJob(persistence, sender, sealer, time.Now, job)
-	if second.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 {
-		t.Fatalf("terminal replay resent: %#v", second)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, second.Kind)
+	require.Len(t, sender.messages, 1)
 }
 
 func TestMailDeliveryHandlerRecordsAttemptBeforeCompletionFailure(t *testing.T) {
@@ -627,16 +580,14 @@ func TestMailDeliveryHandlerRecordsAttemptBeforeCompletionFailure(t *testing.T) 
 		func() time.Time { return at.Add(time.Second) }, false,
 	)
 	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeRetryableFailure || !errors.Is(outcome.Err, completionErr) {
-		t.Fatalf("outcome = %#v", outcome)
-	}
-	if persistence.delivery.State != model.MailDeliverySending || persistence.delivery.AttemptCount != 1 {
-		t.Fatalf("persisted delivery = %#v", persistence.delivery)
-	}
-	if len(recorder.values) != 0 || len(recorder.attempts) != 1 ||
-		recorder.attempts[0].State != model.MailDeliverySending || recorder.attempts[0].TemplateKey != delivery.TemplateKey {
-		t.Fatalf("mail metrics = deliveries %#v attempts %#v", recorder.values, recorder.attempts)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind)
+	require.ErrorIs(t, outcome.Err, completionErr)
+	require.Equal(t, model.MailDeliverySending, persistence.delivery.State)
+	require.Equal(t, 1, persistence.delivery.AttemptCount)
+	require.Empty(t, recorder.values, "mail metrics = deliveries")
+	require.Len(t, recorder.attempts, 1, "mail metrics = deliveries")
+	require.Equal(t, model.MailDeliverySending, recorder.attempts[0].State, "mail metrics = deliveries")
+	require.Equal(t, delivery.TemplateKey, recorder.attempts[0].TemplateKey, "mail metrics = deliveries")
 }
 
 func TestMailDeliveryHandlerExpiresQueuedDeliveryWithoutSending(t *testing.T) {
@@ -645,10 +596,11 @@ func TestMailDeliveryHandlerExpiresQueuedDeliveryWithoutSending(t *testing.T) {
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return delivery.Deadline }, job)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
-		persistence.delivery.PublicFailureCode != model.MailDeliveryExpiredCode || len(persistence.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, sender.messages, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.delivery.State, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliveryExpiredCode, persistence.delivery.PublicFailureCode, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, persistence.delivery.EncryptedPayload, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 }
 
 func TestMailDeliveryHandlerSuppressesDisabledWorkWithoutSealerOrSend(t *testing.T) {
@@ -657,10 +609,11 @@ func TestMailDeliveryHandlerSuppressesDisabledWorkWithoutSealerOrSend(t *testing
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: false}
 	outcome := runMailDeliveryJob(persistence, sender, nil, func() time.Time { return at.Add(time.Second) }, job)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
-		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, sender.messages, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.delivery.State, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliveryDisabledCode, persistence.delivery.PublicFailureCode, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, persistence.delivery.EncryptedPayload, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 }
 
 func TestMailDeliveryHandlerRechecksDisabledStateAfterWaitingForPermit(t *testing.T) {
@@ -673,10 +626,11 @@ func TestMailDeliveryHandlerRechecksDisabledStateAfterWaitingForPermit(t *testin
 		return &store.MailSendPermit{Allowed: true}
 	}
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
-		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, sender.messages, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.delivery.State, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliveryDisabledCode, persistence.delivery.PublicFailureCode, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, persistence.delivery.EncryptedPayload, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 }
 
 func TestMailDeliveryHandlerExpiresRetryWhenSMTPReturnsAfterDeadline(t *testing.T) {
@@ -690,10 +644,11 @@ func TestMailDeliveryHandlerExpiresRetryWhenSMTPReturnsAfterDeadline(t *testing.
 		afterSend: func() { now = delivery.Deadline },
 	}
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return now }, job)
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 || persistence.delivery.State != model.MailDeliverySuppressed ||
-		persistence.delivery.PublicFailureCode != model.MailDeliveryExpiredCode || len(persistence.delivery.EncryptedPayload) != 0 {
-		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Len(t, sender.messages, 1, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliverySuppressed, persistence.delivery.State, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Equal(t, model.MailDeliveryExpiredCode, persistence.delivery.PublicFailureCode, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
+	require.Empty(t, persistence.delivery.EncryptedPayload, "outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 }
 
 func mailDeliveryHandlerFixture(t *testing.T, at time.Time, deadlineAfter time.Duration) (*secretseal.Sealer, *model.Job, *model.MailDelivery) {
@@ -701,13 +656,9 @@ func mailDeliveryHandlerFixture(t *testing.T, at time.Time, deadlineAfter time.D
 	sealer := mailTestSealer(t)
 	composer, err := appmail.NewComposer(mailRendererFake{FrozenMailContent{Subject: "test", Text: "text", HTML: "<p>html</p>"}},
 		&mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := composer.PrepareOperatorTest(appmail.NoticePreparation{Recipient: mailTestUser(mailTestPrincipal(at), at), At: at})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared.Delivery.Deadline = at.Add(deadlineAfter)
 	return sealer, prepared.Job, prepared.Delivery
 }
@@ -741,27 +692,29 @@ func TestMailDeliveryHandlerClassifiesRetryableAndPermanentFailures(t *testing.T
 			sendErr := errors.New("private provider detail")
 			sender := &mailSenderFake{enabled: true, outcome: test.outcome, err: sendErr}
 			outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
-			if outcome.Kind != test.kind || outcome.PublicErrorCode != test.code || !errors.Is(outcome.Err, sendErr) ||
-				persistence.delivery.State != test.state || persistence.delivery.PublicFailureCode != test.code ||
-				persistence.delivery.AttemptCount != 1 || len(persistence.delivery.EncryptedPayload) == 0 || len(sender.messages) != 1 {
-				t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
-			}
+			require.Equal(t, test.kind, outcome.Kind, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.Equal(t, test.code, outcome.PublicErrorCode, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.ErrorIs(t, outcome.Err, sendErr, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.Equal(t, test.state, persistence.delivery.State, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.Equal(t, test.code, persistence.delivery.PublicFailureCode, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.Equal(t, 1, persistence.delivery.AttemptCount, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.NotEmpty(t, persistence.delivery.EncryptedPayload, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+			require.Len(t, sender.messages, 1, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
 			// Both automatic retries and a repeated terminal Job preserve the
 			// first send's identity; only retryable work may reach Sender again.
 			sender.err = nil
 			sender.from = MailAddress{Address: "changed@example.test"}
 			second := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(2 * time.Second) }, job)
 			if test.state == model.MailDeliveryFailed {
-				if second.Kind != jobengine.OutcomePermanentFailure || len(sender.messages) != 1 {
-					t.Fatalf("permanent failure was resent: %#v, sends=%d", second, len(sender.messages))
-				}
+				require.Equal(t, jobengine.OutcomePermanentFailure, second.Kind, "permanent failure was resent: %#v, sends", second)
+				require.Len(t, sender.messages, 1, "permanent failure was resent: %#v, sends", second)
 				return
 			}
-			if second.Kind != jobengine.OutcomeSucceeded || persistence.delivery.State != model.MailDeliveryAccepted ||
-				len(persistence.delivery.EncryptedPayload) != 0 || len(sender.messages) != 2 ||
-				!reflect.DeepEqual(sender.messages[0], sender.messages[1]) {
-				t.Fatalf("retry=%#v delivery=%#v messages=%#v", second, persistence.delivery, sender.messages)
-			}
+			require.Equal(t, jobengine.OutcomeSucceeded, second.Kind, "retry=%#v delivery=%#v messages", second, persistence.delivery)
+			require.Equal(t, model.MailDeliveryAccepted, persistence.delivery.State, "retry=%#v delivery=%#v messages", second, persistence.delivery)
+			require.Empty(t, persistence.delivery.EncryptedPayload, "retry=%#v delivery=%#v messages", second, persistence.delivery)
+			require.Len(t, sender.messages, 2, "retry=%#v delivery=%#v messages", second, persistence.delivery)
+			require.Equal(t, sender.messages[1], sender.messages[0], "retry=%#v delivery=%#v messages", second, persistence.delivery)
 		})
 	}
 }
@@ -776,10 +729,11 @@ func TestMailDeliveryHandlerFailsUnavailablePayloadWithoutSending(t *testing.T) 
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true}
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
-	if outcome.Kind != jobengine.OutcomePermanentFailure || outcome.PublicErrorCode != "mail.payload.unavailable" ||
-		persistence.delivery.State != model.MailDeliveryFailed || persistence.delivery.AttemptCount != 1 || len(sender.messages) != 0 {
-		t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
-	}
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, "mail.payload.unavailable", outcome.PublicErrorCode, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, model.MailDeliveryFailed, persistence.delivery.State, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, 1, persistence.delivery.AttemptCount, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Empty(t, sender.messages, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
 }
 
 func TestMailDeliveryHandlerFailsInvalidMessageWithoutSending(t *testing.T) {
@@ -789,21 +743,21 @@ func TestMailDeliveryHandlerFailsInvalidMessageWithoutSending(t *testing.T) {
 	persistence := &mailInvalidMessageMetadataStoreFake{mailStoreFake: &mailStoreFake{delivery: delivery}}
 	sender := &mailSenderFake{enabled: true}
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
-	if outcome.Kind != jobengine.OutcomePermanentFailure || outcome.PublicErrorCode != "mail.message.invalid" ||
-		!errors.Is(outcome.Err, appmail.ErrInvalidMessage) || persistence.delivery.State != model.MailDeliveryFailed ||
-		persistence.delivery.PublicFailureCode != "mail.message.invalid" || persistence.delivery.AttemptCount != 1 ||
-		len(sender.messages) != 0 {
-		t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
-	}
-	if strings.Contains(outcome.Err.Error(), "hidden@example.test") {
-		t.Fatal("worker error disclosed invalid message metadata")
-	}
+	require.Equal(t, jobengine.OutcomePermanentFailure, outcome.Kind, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, "mail.message.invalid", outcome.PublicErrorCode, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.ErrorIs(t, outcome.Err, appmail.ErrInvalidMessage, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, model.MailDeliveryFailed, persistence.delivery.State, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, "mail.message.invalid", persistence.delivery.PublicFailureCode, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Equal(t, 1, persistence.delivery.AttemptCount, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.Empty(t, sender.messages, "outcome=%#v delivery=%#v sends", outcome, persistence.delivery)
+	require.NotContains(t, outcome.Err.Error(), "hidden@example.test", "worker error disclosed invalid message metadata")
 	failedRevision := persistence.delivery.Revision
 	second := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(2 * time.Second) }, job)
-	if second.Kind != jobengine.OutcomePermanentFailure || second.PublicErrorCode != "mail.message.invalid" ||
-		persistence.delivery.Revision != failedRevision || persistence.delivery.AttemptCount != 1 || len(sender.messages) != 0 {
-		t.Fatalf("terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends=%d", second, persistence.delivery, len(sender.messages))
-	}
+	require.Equal(t, jobengine.OutcomePermanentFailure, second.Kind, "terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends", second, persistence.delivery)
+	require.Equal(t, "mail.message.invalid", second.PublicErrorCode, "terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends", second, persistence.delivery)
+	require.Equal(t, failedRevision, persistence.delivery.Revision, "terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends", second, persistence.delivery)
+	require.Equal(t, 1, persistence.delivery.AttemptCount, "terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends", second, persistence.delivery)
+	require.Empty(t, sender.messages, "terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends", second, persistence.delivery)
 }
 
 type mailInvalidMessageMetadataStoreFake struct {

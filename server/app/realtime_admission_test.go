@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -24,12 +26,9 @@ func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T
 	examID := model.NewExamID()
 	err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "subscribe"}),
 		model.ActionExamView, model.Resource{Type: model.ResourceExam, ID: examID.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exams.examID != examID || exams.invocation.Principal().UserID != principal.UserID {
-		t.Fatalf("authorization = %s %#v", exams.examID, exams.invocation)
-	}
+	require.NoError(t, err)
+	require.Equal(t, examID, exams.examID, "authorization = %s %#v", exams.examID, exams.invocation)
+	require.Equal(t, principal.UserID, exams.invocation.Principal().UserID, "authorization = %s %#v", exams.examID, exams.invocation)
 }
 
 func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *testing.T) {
@@ -39,9 +38,7 @@ func TestAuthorizeWebSocketExamSubscriptionConcealsMissingAndDeniedExams(t *test
 	for _, failure := range []error{apperror.New("exam.not_found"), apperror.New("authorization.denied")} {
 		admission := &realtimeAdmissionService{exams: &realtimeExamViewFake{err: failure}}
 		err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}), model.ActionExamView, resource)
-		if !apperror.Is(err, "resource.not_found") {
-			t.Fatalf("error = %v, want concealed resource.not_found", err)
-		}
+		require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want concealed resource.not_found", err)
 	}
 }
 
@@ -54,12 +51,9 @@ func TestAuthorizeWebSocketSittingSubscriptionUsesRelationshipGate(t *testing.T)
 	err := admission.AuthorizeWebSocketSubscription(context.Background(),
 		NewInvocation(principal, model.RequestMetadata{RequestID: "sitting-subscribe"}), model.ActionExamSittingView,
 		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sittings.sittingID != sittingID || sittings.invocation.Principal().UserID != principal.UserID {
-		t.Fatalf("authorization = %s %#v", sittings.sittingID, sittings.invocation)
-	}
+	require.NoError(t, err)
+	require.Equal(t, sittingID, sittings.sittingID, "authorization = %s %#v", sittings.sittingID, sittings.invocation)
+	require.Equal(t, principal.UserID, sittings.invocation.Principal().UserID, "authorization = %s %#v", sittings.sittingID, sittings.invocation)
 }
 
 func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t *testing.T) {
@@ -70,9 +64,7 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 		admission := &realtimeAdmissionService{sittings: &realtimeSittingViewFake{err: failure}}
 		err := admission.AuthorizeWebSocketSubscription(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
 			model.ActionExamSittingView, resource)
-		if !apperror.Is(err, "resource.not_found") {
-			t.Fatalf("error = %v, want concealed resource.not_found", err)
-		}
+		require.True(t, apperror.Is(err, "resource.not_found"), "error = %v, want concealed resource.not_found", err)
 	}
 }
 

@@ -9,10 +9,11 @@ package exam
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -49,22 +50,21 @@ func TestExamExportDownloadRechecksAuthorityAfterStorageOpen(t *testing.T) {
 			}
 			download, err := service.OpenExamExport(context.Background(), f.invocation, ExportQuery{Scope: base.value.Scope, ExportID: base.value.ID})
 			if scenario == "unchanged archive" || scenario == "node clock ahead" {
-				if err != nil || download == nil || download.Body != body || body.closed {
-					t.Fatalf("current archive was not available: %#v, %v, closed=%v", download, err, body.closed)
-				}
-				if err = download.Body.Close(); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err, "current archive was not available")
+				require.NotNil(t, download, "current archive was not available")
+				require.Equal(t, download.Body, body, "current archive was not available")
+				require.False(t, body.closed, "current archive was not available")
+				err = download.Body.Close()
+				require.NoError(t, err)
 				return
 			}
-			if err == nil || download != nil || !body.closed {
-				t.Fatalf("pending download escaped %s: %#v, %v, closed=%v", scenario, download, err, body.closed)
-			}
+			require.Error(t, err, "pending download escaped %s", scenario)
+			require.Nil(t, download, "pending download escaped %s", scenario)
+			require.True(t, body.closed, "pending download escaped %s", scenario)
 			if scenario == "database expiry" {
 				var fault *apperror.Error
-				if !errors.As(err, &fault) || fault.Code() != "exam.export.expired" {
-					t.Fatalf("expiry returned the wrong failure: %v", err)
-				}
+				require.ErrorAs(t, err, &fault)
+				require.Equal(t, "exam.export.expired", fault.Code())
 			}
 		})
 	}

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type periodicTestRunner struct {
@@ -44,13 +46,10 @@ func TestClonePeriodicTasksValidatesAndClones(t *testing.T) {
 	runner := &periodicTestRunner{}
 	values := []PeriodicTask{{Name: "exam-attempt-participation-expiry", Interval: 2 * time.Second, Runner: runner}}
 	cloned, err := clonePeriodicTasks(values)
-	if err != nil {
-		t.Fatalf("clonePeriodicTasks() error = %v", err)
-	}
+	require.NoError(t, err)
 	values[0] = PeriodicTask{Name: "replacement", Interval: time.Hour, Runner: runner}
-	if cloned[0].Name != "exam-attempt-participation-expiry" || cloned[0].Interval != 2*time.Second {
-		t.Fatalf("clonePeriodicTasks() retained caller slice: %#v", cloned)
-	}
+	require.Equal(t, "exam-attempt-participation-expiry", cloned[0].Name)
+	require.Equal(t, 2*time.Second, cloned[0].Interval)
 
 	tests := []struct {
 		name  string
@@ -66,9 +65,8 @@ func TestClonePeriodicTasksValidatesAndClones(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := clonePeriodicTasks(test.value); err == nil {
-				t.Fatal("clonePeriodicTasks() accepted invalid definition")
-			}
+			_, err := clonePeriodicTasks(test.value)
+			require.Error(t, err, "clonePeriodicTasks() accepted invalid definition")
 		})
 	}
 }
@@ -95,11 +93,9 @@ func TestRunPeriodicTaskRunsImmediatelyAndOnEachInterval(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("periodic task did not stop after cancellation")
+		require.FailNow(t, "periodic task did not stop after cancellation")
 	}
-	if got := runner.count(); got != 3 {
-		t.Fatalf("Run() calls = %d, want 3", got)
-	}
+	require.Equal(t, 3, runner.count(), "Run() calls")
 }
 
 func TestRunPeriodicTaskReportsErrorAndContinues(t *testing.T) {
@@ -117,7 +113,7 @@ func TestRunPeriodicTaskReportsErrorAndContinues(t *testing.T) {
 	select {
 	case <-diagnostics.seen:
 	case <-time.After(time.Second):
-		t.Fatal("periodic task error was not reported")
+		require.FailNow(t, "periodic task error was not reported")
 	}
 	timer := waitPeriodicTimer(t, clock.timers)
 	clock.advance(timer, clock.Now().Add(2*time.Second))
@@ -137,30 +133,24 @@ func TestEngineOwnsPeriodicTaskLifecycleAndCopiesDefinitions(t *testing.T) {
 		Store: &jobRunnerStoreFake{}, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
 		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Hour}, Clock: clock, PeriodicTasks: tasks,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	tasks[0] = PeriodicTask{Name: "replacement", Interval: time.Hour, Runner: replacement}
-	if err = engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	err = engine.Start(context.Background())
+	require.NoError(t, err)
 	waitPeriodicCall(t, original.seen)
 	select {
 	case <-replacement.seen:
-		t.Fatal("Engine retained the caller-owned periodic task slice")
+		require.FailNow(t, "Engine retained the caller-owned periodic task slice")
 	default:
 	}
 	timer := waitPeriodicTimer(t, clock.timers)
-	if timer.delay != 2*time.Second {
-		t.Fatalf("periodic timer delay = %s, want 2s", timer.delay)
-	}
-	if err = engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, 2*time.Second, timer.delay, "periodic timer delay")
+	err = engine.Close()
+	require.NoError(t, err)
 	clock.advance(timer, clock.Now().Add(2*time.Second))
 	select {
 	case <-original.seen:
-		t.Fatal("periodic task ran after Engine shutdown")
+		require.FailNow(t, "periodic task ran after Engine shutdown")
 	default:
 	}
 }
@@ -170,7 +160,7 @@ func waitPeriodicCall(t *testing.T, seen <-chan struct{}) {
 	select {
 	case <-seen:
 	case <-time.After(time.Second):
-		t.Fatal("periodic task did not run")
+		require.FailNow(t, "periodic task did not run")
 	}
 }
 
@@ -180,7 +170,7 @@ func waitPeriodicTimer(t *testing.T, timers <-chan *manualTimer) *manualTimer {
 	case timer := <-timers:
 		return timer
 	case <-time.After(time.Second):
-		t.Fatal("periodic task did not create its timer")
+		require.FailNow(t, "periodic task did not create its timer")
 		return nil
 	}
 }

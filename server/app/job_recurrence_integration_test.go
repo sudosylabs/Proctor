@@ -13,9 +13,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
@@ -80,37 +83,21 @@ func TestRecurringMaintenanceUsesOnePermanentOccurrenceAcrossNodesAndRestart(t *
 	}
 	first := newRecurrenceIntegrationEngine(t, persistence, "node-a", proposer, occurrence)
 	second := newRecurrenceIntegrationEngine(t, persistence, "node-b", proposer, occurrence)
-	if err := first.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, first.Start(context.Background()))
+	require.NoError(t, second.Start(context.Background()))
 	results := []recurrenceProposalResult{<-proposer.calls, <-proposer.calls}
 	for _, result := range results {
-		if result.err != nil {
-			t.Fatal(result.err)
-		}
+		require.NoError(t, result.err)
 	}
 	waitForCleanupOccurrenceSucceeded(t, persistence, results[0].occurrence)
-	if err := first.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, first.Close())
+	require.NoError(t, second.Close())
 
 	restarted := newRecurrenceIntegrationEngine(t, persistence, "node-a-restarted", proposer, occurrence)
-	if err := restarted.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, restarted.Start(context.Background()))
 	restartResult := <-proposer.calls
-	if restartResult.err != nil {
-		t.Fatal(restartResult.err)
-	}
-	if err := restarted.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, restartResult.err)
+	require.NoError(t, restarted.Close())
 	assertOneCleanupOccurrence(t, persistence, results[0].occurrence)
 }
 
@@ -125,29 +112,20 @@ func TestRecurringMaintenanceRecoversTransientProposalFailureWithoutRepeatingCom
 		calls:         make(chan recurrenceProposalResult, 3),
 	}
 	engine := newRecurrenceIntegrationEngine(t, persistence, "node-a", proposer, occurrence)
-	if err := engine.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, engine.Start(context.Background()))
 	failed, succeeded := <-proposer.calls, <-proposer.calls
-	if failed.err == nil || succeeded.err != nil || !failed.occurrence.Equal(succeeded.occurrence) {
-		t.Fatalf("proposal results = %#v, %#v", failed, succeeded)
-	}
+	require.Error(t, failed.err, "proposal results = %#v, %#v", failed, succeeded)
+	require.NoError(t, succeeded.err, "proposal results = %#v, %#v", failed, succeeded)
+	require.True(t, failed.occurrence.Equal(succeeded.occurrence), "proposal results = %#v, %#v", failed, succeeded)
 	waitForCleanupOccurrenceSucceeded(t, persistence, succeeded.occurrence)
-	if err := engine.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, engine.Close())
 
 	restarted := newRecurrenceIntegrationEngine(t, persistence, "node-b", proposer, occurrence)
-	if err := restarted.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, restarted.Start(context.Background()))
 	restartResult := <-proposer.calls
-	if restartResult.err != nil || !restartResult.occurrence.Equal(succeeded.occurrence) {
-		t.Fatalf("restart proposal = %#v", restartResult)
-	}
-	if err := restarted.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, restartResult.err)
+	require.True(t, restartResult.occurrence.Equal(succeeded.occurrence))
+	require.NoError(t, restarted.Close())
 	assertOneCleanupOccurrence(t, persistence, succeeded.occurrence)
 }
 
@@ -163,9 +141,7 @@ func newRecurrenceIntegrationEngine(t *testing.T, persistence *sqlstore.SQLStore
 		Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond, ProposalRetryDelay: 5 * time.Millisecond},
 		Clock:  fixedRealtimeClock{at: occurrence}, Recurrences: []jobengine.Recurrence{{Name: "job-history-cleanup", Proposer: proposer}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return engine
 }
 
@@ -176,7 +152,7 @@ func integrationJobDescriptor(t *testing.T, catalog jobhandler.Catalog, jobType 
 			return descriptor
 		}
 	}
-	t.Fatalf("production Job catalog does not contain %q", jobType)
+	require.FailNow(t, fmt.Sprintf("production Job catalog does not contain %q", jobType))
 	return jobengine.Descriptor{}
 }
 
@@ -187,7 +163,7 @@ func integrationRecurrenceProposer(t *testing.T, catalog jobhandler.Catalog, nam
 			return recurrence.Proposer
 		}
 	}
-	t.Fatalf("production Job catalog does not contain recurrence %q", name)
+	require.FailNow(t, fmt.Sprintf("production Job catalog does not contain recurrence %q", name))
 	return nil
 }
 
@@ -197,15 +173,11 @@ func waitForCleanupOccurrenceSucceeded(t *testing.T, persistence *sqlstore.SQLSt
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		jobs, err := persistence.Job().List(context.Background(), store.JobListOptions{Types: []model.JobType{model.JobTypeCleanup}, Limit: 10})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if len(jobs) == 1 && jobs[0].DedupeKey == key && jobs[0].Status == model.JobStatusSucceeded {
 			return
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("cleanup occurrence did not succeed: %#v", jobs)
-		}
+		require.False(t, time.Now().After(deadline), "cleanup occurrence did not succeed: %#v", jobs)
 		time.Sleep(5 * time.Millisecond)
 	}
 }
@@ -214,16 +186,10 @@ func assertOneCleanupOccurrence(t *testing.T, persistence *sqlstore.SQLStore, oc
 	t.Helper()
 	key := "job-history-cleanup:" + occurrence.UTC().Format("2006-01-02")
 	var occurrences, jobs, attempts int
-	if err := persistence.GetMaster().Get(context.Background(), &occurrences, `SELECT count(*) FROM job_permanent_occurrences WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {
-		t.Fatal(err)
-	}
-	if err := persistence.GetMaster().Get(context.Background(), &jobs, `SELECT count(*) FROM jobs WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {
-		t.Fatal(err)
-	}
-	if err := persistence.GetMaster().Get(context.Background(), &attempts, `SELECT count(*) FROM job_attempts a JOIN jobs j ON j.id = a.job_id WHERE j.type = $1 AND j.dedupe_key = $2`, model.JobTypeCleanup, key); err != nil {
-		t.Fatal(err)
-	}
-	if occurrences != 1 || jobs != 1 || attempts != 1 {
-		t.Fatalf("occurrences=%d jobs=%d attempts=%d, want 1 each", occurrences, jobs, attempts)
-	}
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &occurrences, `SELECT count(*) FROM job_permanent_occurrences WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key))
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &jobs, `SELECT count(*) FROM jobs WHERE type = $1 AND dedupe_key = $2`, model.JobTypeCleanup, key))
+	require.NoError(t, persistence.GetMaster().Get(context.Background(), &attempts, `SELECT count(*) FROM job_attempts a JOIN jobs j ON j.id = a.job_id WHERE j.type = $1 AND j.dedupe_key = $2`, model.JobTypeCleanup, key))
+	require.Equal(t, 1, occurrences, "occurrences")
+	require.Equal(t, 1, jobs, "occurrences")
+	require.Equal(t, 1, attempts, "occurrences")
 }

@@ -10,11 +10,14 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/config"
@@ -37,63 +40,40 @@ func testPasswordPolicy() PasswordPolicy {
 func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
 	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encoded, err := hasher.Hash(context.Background(), "correct horse battery staple")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(encoded, "$argon2id$v=19$") {
-		t.Fatalf("Hash() = %q", encoded)
-	}
-	if verifyErr := hasher.Verify(t.Context(), encoded, "correct horse battery staple"); verifyErr != nil {
-		t.Fatalf("Verify(correct) error = %v", verifyErr)
-	}
-	if verifyErr := hasher.Verify(t.Context(), encoded, "wrong password"); !errors.Is(verifyErr, ErrPasswordMismatch) {
-		t.Fatalf("Verify(wrong) error = %v", verifyErr)
-	}
-	if hasher.NeedsRehash(encoded) {
-		t.Fatal("fresh hash needs rehash")
-	}
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(encoded, "$argon2id$v=19$"), "Hash() = %q", encoded)
+	require.NoError(t, hasher.Verify(t.Context(), encoded, "correct horse battery staple"))
+	require.ErrorIs(t, hasher.Verify(t.Context(), encoded, "wrong password"), ErrPasswordMismatch)
+	require.False(t, hasher.NeedsRehash(encoded), "fresh hash needs rehash")
 
 	stronger := settings
 	stronger.ArgonIterations = 2
 	strongerHasher, err := newPasswordHasher(stronger, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strongerHasher.NeedsRehash(encoded) {
-		t.Fatal("changed parameters did not require rehash")
-	}
+	require.NoError(t, err)
+	require.True(t, strongerHasher.NeedsRehash(encoded), "changed parameters did not require rehash")
 }
 
 func TestPasswordHasherRejectsUnsafeInputsAndParameters(t *testing.T) {
 	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := hasher.Hash(context.Background(), "short"); err == nil {
-		t.Fatal("Hash(short) succeeded")
-	}
+	require.NoError(t, err)
+	_, err = hasher.Hash(context.Background(), "short")
+	require.Error(t, err, "Hash(short) succeeded")
 	oversized := strings.Repeat("a", settings.MaximumLength+1)
-	if _, err := hasher.Hash(context.Background(), oversized); err == nil {
-		t.Fatal("Hash(oversized) succeeded")
-	}
+	_, err = hasher.Hash(context.Background(), oversized)
+	require.Error(t, err, "Hash(oversized) succeeded")
 	hostile := "$argon2id$v=19$m=4294967295,t=20,p=64$c2FsdHNhbHRzYWx0c2FsdA$a2V5a2V5a2V5a2V5a2V5a2V5a2V5"
-	if err := hasher.Verify(context.Background(), hostile, "password"); !errors.Is(err, ErrPasswordMismatch) {
-		t.Fatalf("Verify(hostile) error = %v", err)
-	}
+	require.ErrorIs(t, hasher.Verify(context.Background(), hostile, "password"), ErrPasswordMismatch)
 }
 
 func TestPasswordHasherRequiresPositiveWorkCapacity(t *testing.T) {
 	for _, maximum := range []int{0, -1} {
 		policy := testPasswordPolicy()
 		policy.MaximumConcurrentOperations = maximum
-		if _, err := newPasswordHasher(policy, nil); err == nil {
-			t.Fatalf("capacity %d was accepted", maximum)
-		}
+		_, err := newPasswordHasher(policy, nil)
+		require.Error(t, err, "capacity %d was accepted", maximum)
 	}
 }
 
@@ -101,17 +81,11 @@ func TestPasswordHasherReleasesCapacityAfterMismatch(t *testing.T) {
 	policy := testPasswordPolicy()
 	policy.MaximumConcurrentOperations = 1
 	hasher, err := newPasswordHasher(policy, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for range 2 {
-		if err := hasher.Verify(context.Background(), hasher.dummyHash, "incorrect password"); !errors.Is(err, ErrPasswordMismatch) {
-			t.Fatalf("mismatch did not release capacity: %v", err)
-		}
+		require.ErrorIs(t, hasher.Verify(context.Background(), hasher.dummyHash, "incorrect password"), ErrPasswordMismatch)
 	}
-	if err := hasher.VerifyDummy(context.Background(), "incorrect password"); err != nil {
-		t.Fatalf("dummy verification did not suppress mismatch: %v", err)
-	}
+	require.NoError(t, hasher.VerifyDummy(context.Background(), "incorrect password"))
 }
 
 func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testing.T) {
@@ -125,12 +99,8 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			policy := testPasswordPolicy()
 			policy.MaximumConcurrentOperations = 1
 			hasher, err := newPasswordHasher(policy, recorder)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if recorder.started.Load() != 0 {
-				t.Fatal("startup timing hash was counted as runtime work")
-			}
+			require.NoError(t, err)
+			require.Equal(t, int64(0), recorder.started.Load(), "startup timing hash was counted as runtime work")
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
 			done := make(chan error, 1)
@@ -150,7 +120,7 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			select {
 			case <-entered:
 			case <-time.After(5 * time.Second):
-				t.Fatal("password work did not start")
+				require.FailNow(t, "password work did not start")
 			}
 			checkBusy := func() {
 				t.Helper()
@@ -158,16 +128,14 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 				verifyErr := hasher.Verify(context.Background(), hasher.dummyHash, "incorrect password")
 				dummyErr := hasher.VerifyDummy(context.Background(), "incorrect password")
 				for _, err := range []error{hashErr, verifyErr, dummyErr} {
-					if !apperror.Is(err, "service.busy") {
-						t.Fatalf("saturated password operation = %v, want service.busy", err)
-					}
+					require.True(t, apperror.Is(err, "service.busy"), "saturated password operation = %v, want service.busy", err)
 				}
 			}
 			checkBusy()
 			cancel()
 			select {
 			case err := <-done:
-				t.Fatalf("cancelled password work returned before synchronous work finished: %v", err)
+				require.FailNow(t, fmt.Sprintf("cancelled password work returned before synchronous work finished: %v", err))
 			default:
 			}
 			checkBusy()
@@ -175,31 +143,23 @@ func TestPasswordHasherSharesCapacityAndRetainsCancelledWorkUntilReturn(t *testi
 			verifyErr := hasher.Verify(ctx, "malformed", "incorrect password")
 			dummyErr := hasher.VerifyDummy(ctx, "incorrect password")
 			for _, err := range []error{hashErr, verifyErr, dummyErr} {
-				if !errors.Is(err, context.Canceled) {
-					t.Fatalf("cancelled request = %v, want context cancellation", err)
-				}
+				require.ErrorIs(t, err, context.Canceled, "cancelled request")
 			}
-			if _, err := hasher.Hash(context.Background(), "short"); !apperror.Is(err, "authentication.password.invalid") {
-				t.Fatalf("invalid password consumed capacity: %v", err)
-			}
-			if err := hasher.Verify(context.Background(), "malformed", "incorrect password"); !errors.Is(err, ErrPasswordMismatch) {
-				t.Fatalf("malformed stored hash consumed capacity: %v", err)
-			}
+			_, err = hasher.Hash(context.Background(), "short")
+			require.True(t, apperror.Is(err, "authentication.password.invalid"), "invalid password consumed capacity: %v", err)
+			require.ErrorIs(t, hasher.Verify(context.Background(), "malformed", "incorrect password"), ErrPasswordMismatch)
 			release()
 			select {
 			case err := <-done:
-				if !errors.Is(err, context.Canceled) {
-					t.Fatalf("completed cancelled operation = %v", err)
-				}
+				require.ErrorIs(t, err, context.Canceled)
 			case <-time.After(5 * time.Second):
-				t.Fatal("cancelled password work did not finish")
+				require.FailNow(t, "cancelled password work did not finish")
 			}
-			if err := hasher.VerifyDummy(context.Background(), "incorrect password"); err != nil {
-				t.Fatalf("capacity was not released: %v", err)
-			}
-			if recorder.started.Load() != 2 || recorder.finished.Load() != 2 || recorder.rejected.Load() != 6 || recorder.duration.Load() <= 0 {
-				t.Fatalf("work metrics = started %d, finished %d, rejected %d, duration %d", recorder.started.Load(), recorder.finished.Load(), recorder.rejected.Load(), recorder.duration.Load())
-			}
+			require.NoError(t, hasher.VerifyDummy(context.Background(), "incorrect password"))
+			require.Equal(t, int64(2), recorder.started.Load(), "work metrics = started")
+			require.Equal(t, int64(2), recorder.finished.Load(), "work metrics = started")
+			require.Equal(t, int64(6), recorder.rejected.Load(), "work metrics = started")
+			require.Positive(t, recorder.duration.Load(), "work metrics = started")
 		})
 	}
 }
@@ -229,9 +189,7 @@ func saturatePasswordWork(t *testing.T, hasher *passwordHasher) func() {
 	var releases []func()
 	for range cap(hasher.work) {
 		release, err := hasher.admit(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		releases = append(releases, release)
 	}
 	release := sync.OnceFunc(func() {
@@ -267,15 +225,13 @@ func testPasswordHashFailures(t *testing.T, unavailableCode string, invoke func(
 			calls := 0
 			hasher := passwordHashFunc(func(got context.Context, _ string) (string, error) {
 				calls++
-				if got != ctx {
-					t.Fatal("password work did not receive the request context")
-				}
+				require.Equal(t, ctx, got, "password work did not receive the request context")
 				return "", test.err
 			})
 			err := invoke(t, ctx, hasher)
-			if !apperror.Is(err, test.code) || calls != 1 || !errors.Is(err, test.err) {
-				t.Fatalf("password failure = %v, calls %d; want %s wrapping %v after one call", err, calls, test.code, test.err)
-			}
+			require.True(t, apperror.Is(err, test.code), "password failure = %v, calls %d; want %s wrapping %v after one call", err, calls, test.code, test.err)
+			require.Equal(t, 1, calls, "password failure = %v, calls %d; want %s wrapping %v after one call", err, calls, test.code, test.err)
+			require.ErrorIs(t, err, test.err, "password failure = %v, calls %d; want %s wrapping %v after one call", err, calls, test.code, test.err)
 		})
 	}
 }

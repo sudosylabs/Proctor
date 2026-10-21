@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
@@ -45,9 +47,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		AdministratorDisplayName: "Recovery Admin", AdministratorLocale: "en", AdministratorTimezone: "UTC",
 		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	institution := bootstrap.Institution
 	const oldPassword = "correct horse battery staple"
 	const newPassword = "new correct horse battery staple"
@@ -55,9 +55,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		Username: "recovery-user", Email: "recovery-user@example.edu",
 		DisplayName: "Recovery User",
 	}, Password: oldPassword})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	startIntegrationServer(t, helper)
 	login := loginIntegrationUser(
 		t,
@@ -75,21 +73,11 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		nil,
 		login.Tokens.AccessToken,
 	)
-	if verificationRequest.Code != http.StatusAccepted {
-		t.Fatalf(
-			"verification request status = %d: %s",
-			verificationRequest.Code,
-			verificationRequest.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusAccepted, verificationRequest.Code, "verification request status = %d: %s", verificationRequest.Code, verificationRequest.Body.String())
 	deliveries := waitForRecoveryDeliveries(t, helper, 1)
-	if len(deliveries) != 1 {
-		t.Fatalf("verification deliveries = %d", len(deliveries))
-	}
+	require.Len(t, deliveries, 1, "verification deliveries")
 	verificationToken := credentialFromDelivery(t, deliveries[0])
-	if strings.Contains(helper.Logs.String(), verificationToken) {
-		t.Fatal("verification token appeared in logs")
-	}
+	require.NotContains(t, helper.Logs.String(), verificationToken, "verification token appeared in logs")
 	verificationComplete := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -97,17 +85,10 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		map[string]any{"token": verificationToken},
 		"",
 	)
-	if verificationComplete.Code != http.StatusNoContent {
-		t.Fatalf(
-			"verification completion status = %d: %s",
-			verificationComplete.Code,
-			verificationComplete.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusNoContent, verificationComplete.Code, "verification completion status = %d: %s", verificationComplete.Code, verificationComplete.Body.String())
 	verified, err := persistence.User().Get(context.Background(), user.ID)
-	if err != nil || !verified.EmailVerified {
-		t.Fatalf("verified user = %#v, %v", verified, err)
-	}
+	require.NoError(t, err, "verified user = %#v", verified)
+	require.True(t, verified.EmailVerified, "verified user = %#v", verified)
 	verificationReplay := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -115,9 +96,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		map[string]any{"token": verificationToken},
 		"",
 	)
-	if verificationReplay.Code != http.StatusBadRequest {
-		t.Fatalf("verification replay status = %d", verificationReplay.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, verificationReplay.Code, "verification replay status")
 
 	unknownReset := performJSONRequest(
 		helper.Handler(),
@@ -133,22 +112,12 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		map[string]any{"email": user.Email},
 		"",
 	)
-	if unknownReset.Code != http.StatusAccepted ||
-		knownReset.Code != http.StatusAccepted {
-		t.Fatalf(
-			"reset request statuses unknown=%d known=%d",
-			unknownReset.Code,
-			knownReset.Code,
-		)
-	}
+	require.Equal(t, http.StatusAccepted, unknownReset.Code, "reset request statuses unknown")
+	require.Equal(t, http.StatusAccepted, knownReset.Code, "reset request statuses unknown")
 	deliveries = waitForRecoveryDeliveries(t, helper, 2)
-	if len(deliveries) != 2 {
-		t.Fatalf("password reset deliveries = %d, want 2 total", len(deliveries))
-	}
+	require.Len(t, deliveries, 2, "password reset deliveries")
 	resetToken := credentialFromDelivery(t, deliveries[1])
-	if strings.Contains(helper.Logs.String(), resetToken) {
-		t.Fatal("password reset token appeared in logs")
-	}
+	require.NotContains(t, helper.Logs.String(), resetToken, "password reset token appeared in logs")
 	resetComplete := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -156,18 +125,11 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		map[string]any{"token": resetToken, "password": newPassword},
 		"",
 	)
-	if resetComplete.Code != http.StatusNoContent {
-		t.Fatalf(
-			"password reset completion status = %d: %s",
-			resetComplete.Code,
-			resetComplete.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusNoContent, resetComplete.Code, "password reset completion status = %d: %s", resetComplete.Code, resetComplete.Body.String())
 	deliveries = waitForRecoveryDeliveries(t, helper, 3)
 	changedMessage := strings.ReplaceAll(string(deliveries[2].Data), "=\r\n", "")
-	if credentialPattern.MatchString(changedMessage) || !strings.Contains(changedMessage, "Password changed") {
-		t.Fatalf("password-changed notice contains a credential or lacks expected copy")
-	}
+	require.False(t, credentialPattern.MatchString(changedMessage), "password-changed notice contains a credential or lacks expected copy")
+	require.Contains(t, changedMessage, "Password changed", "password-changed notice contains a credential or lacks expected copy")
 	oldSession := performJSONRequest(
 		helper.Handler(),
 		http.MethodGet,
@@ -175,9 +137,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		nil,
 		login.Tokens.AccessToken,
 	)
-	if oldSession.Code != http.StatusUnauthorized {
-		t.Fatalf("pre-reset session status = %d", oldSession.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, oldSession.Code, "pre-reset session status")
 	oldLogin := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -188,9 +148,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if oldLogin.Code != http.StatusUnauthorized {
-		t.Fatalf("old password login status = %d", oldLogin.Code)
-	}
+	require.Equal(t, http.StatusUnauthorized, oldLogin.Code, "old password login status")
 	newLogin := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -201,9 +159,7 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		},
 		"",
 	)
-	if newLogin.Code != http.StatusOK {
-		t.Fatalf("new password login status = %d: %s", newLogin.Code, newLogin.Body.String())
-	}
+	require.Equal(t, http.StatusOK, newLogin.Code, "new password login status = %d: %s", newLogin.Code, newLogin.Body.String())
 	resetReplay := performJSONRequest(
 		helper.Handler(),
 		http.MethodPost,
@@ -211,28 +167,20 @@ func TestAccountRecoveryIntegration(t *testing.T) {
 		map[string]any{"token": resetToken, "password": newPassword},
 		"",
 	)
-	if resetReplay.Code != http.StatusBadRequest {
-		t.Fatalf("password reset replay status = %d", resetReplay.Code)
-	}
+	require.Equal(t, http.StatusBadRequest, resetReplay.Code, "password reset replay status")
 	audits, err := persistence.Audit().List(context.Background(), store.AuditListOptions{
 		Action:     "authentication.password_reset.complete",
 		Limit:      10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil ||
-		len(audits) != 1 ||
-		audits[0].Resource.ID != user.ID.String() ||
-		audits[0].ScopeID != institution.ID.String() {
-		t.Fatalf("password reset audits = %#v, %v", audits, err)
-	}
+	require.NoError(t, err, "password reset audits")
+	require.Len(t, audits, 1, "password reset audits")
+	require.Equal(t, user.ID.String(), audits[0].Resource.ID, "password reset audits")
+	require.Equal(t, institution.ID.String(), audits[0].ScopeID, "password reset audits")
 	encodedAudits, err := json.Marshal(audits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, password := range []string{oldPassword, newPassword} {
-		if strings.Contains(string(encodedAudits), password) {
-			t.Fatal("password appeared in password-reset audit")
-		}
+		require.NotContains(t, string(encodedAudits), password, "password appeared in password-reset audit")
 	}
 }
 
@@ -262,14 +210,7 @@ func TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence(
 		if attempt == 2 {
 			want = http.StatusTooManyRequests
 		}
-		if response.Code != want {
-			t.Fatalf(
-				"unknown reset attempt %d status = %d, want %d",
-				attempt,
-				response.Code,
-				want,
-			)
-		}
+		require.Equal(t, want, response.Code, "unknown reset attempt %d status", attempt)
 	}
 }
 
@@ -287,56 +228,42 @@ func TestCurrentAccessPolicyGatesLocalLoginAndPasswordRecoveryRealGraph(t *testi
 		AdministratorLocale: "en", AdministratorTimezone: "UTC",
 		Password: "bootstrap correct horse battery staple", BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
 	})
-	if appErr != nil || bootstrap == nil {
-		t.Fatalf("bootstrap = %#v, %v", bootstrap, appErr)
-	}
+	require.NoError(t, appErr, "bootstrap")
+	require.NotNil(t, bootstrap, "bootstrap")
 	const password = "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), app.CreateLocalUserCommand{User: &model.User{
 		Username: "policy-recovery-user", Email: "policy-recovery-user@example.edu",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	startIntegrationServer(t, helper)
 	issued := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/request",
 		map[string]any{"email": user.Email}, "")
-	if issued.Code != http.StatusAccepted {
-		t.Fatalf("initial reset status=%d deliveries=%d", issued.Code, len(helper.Mailer.Deliveries()))
-	}
+	require.Equal(t, http.StatusAccepted, issued.Code, "initial reset status")
 	resetToken := credentialFromDelivery(t, waitForRecoveryDeliveries(t, helper, 1)[0])
-	if _, err := persistence.GetMaster().Exec(context.Background(),
+	_, err := persistence.GetMaster().Exec(context.Background(),
 		`UPDATE access_policies SET local_login_enabled=FALSE,
-		 invitation_local_credential_enabled=FALSE WHERE singleton=1`); err != nil {
-		t.Fatal(err)
-	}
+		 invitation_local_credential_enabled=FALSE WHERE singleton=1`)
+	require.NoError(t, err)
 	login := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"login_id": user.Email, "password": password, "client_type": model.SessionClientWeb,
 	}, "")
-	if login.Code != http.StatusUnauthorized {
-		t.Fatalf("disabled local login status=%d: %s", login.Code, login.Body.String())
-	}
+	require.Equal(t, http.StatusUnauthorized, login.Code, "disabled local login status=%d: %s", login.Code, login.Body.String())
 	hidden := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/request",
 		map[string]any{"email": user.Email}, "")
-	if hidden.Code != http.StatusAccepted || len(helper.Mailer.Deliveries()) != 1 {
-		t.Fatalf("disabled reset status=%d deliveries=%d", hidden.Code, len(helper.Mailer.Deliveries()))
-	}
+	require.Equal(t, http.StatusAccepted, hidden.Code, "disabled reset status")
+	require.Len(t, helper.Mailer.Deliveries(), 1, "disabled reset status")
 	completed := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/password-reset/complete",
 		map[string]any{"token": resetToken, "password": "new correct horse battery staple"}, "")
-	if completed.Code != http.StatusBadRequest {
-		t.Fatalf("disabled reset completion status=%d: %s", completed.Code, completed.Body.String())
-	}
+	require.Equal(t, http.StatusBadRequest, completed.Code, "disabled reset completion status=%d: %s", completed.Code, completed.Body.String())
 	retained, err := persistence.UserToken().GetByHash(context.Background(), model.HashToken(resetToken), model.UserTokenPasswordReset)
-	if err != nil || retained.ConsumedAt.Valid {
-		t.Fatalf("disabled reset retained token=%#v err=%v", retained, err)
-	}
+	require.NoError(t, err, "disabled reset retained token=%#v err", retained)
+	require.False(t, retained.ConsumedAt.Valid, "disabled reset retained token=%#v err", retained)
 }
 
 func requireAuthenticationDatabase(t *testing.T) string {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	return dataSource
 }
 
@@ -348,9 +275,7 @@ func credentialFromDelivery(t *testing.T, delivery mail.Delivery) string {
 	t.Helper()
 	message := strings.ReplaceAll(string(delivery.Data), "=\r\n", "")
 	match := credentialPattern.FindStringSubmatch(message)
-	if len(match) != 2 {
-		t.Fatalf("credential link missing from delivery")
-	}
+	require.Len(t, match, 2, "credential link missing from delivery")
 	return match[1]
 }
 
@@ -362,9 +287,7 @@ func waitForRecoveryDeliveries(t *testing.T, helper *testlib.Helper, count int) 
 		if len(deliveries) >= count {
 			return deliveries
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("mail deliveries = %d, want at least %d", len(deliveries), count)
-		}
+		require.False(t, time.Now().After(deadline), "mail deliveries = %d, want at least %d", len(deliveries), count)
 		time.Sleep(20 * time.Millisecond)
 	}
 }

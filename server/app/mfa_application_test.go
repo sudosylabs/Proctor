@@ -12,16 +12,19 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"reflect"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *testing.T) {
@@ -50,29 +53,19 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "request-a"})
 	command := ChallengeMFACommand{Code: "aaaa-aaaa-aaaa-aaaa-aaaa-aaaa"}
 
-	if _, err := application.ChallengeMFA(context.Background(), invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if persistence.upgradedAt != model.TimeUTC(now) {
-		t.Fatalf("Session upgrade instant = %s, want %s", persistence.upgradedAt, model.TimeUTC(now))
-	}
-	if _, err := application.ChallengeMFA(context.Background(), invocation, command); !apperror.Is(err, "authentication.mfa.code_invalid") {
-		t.Fatalf("replayed challenge error = %v, want authentication.mfa.code_invalid", err)
-	}
+	_, err := application.ChallengeMFA(context.Background(), invocation, command)
+	require.NoError(t, err)
+	require.Equal(t, model.TimeUTC(now), persistence.upgradedAt, "Session upgrade instant")
+	_, err = application.ChallengeMFA(context.Background(), invocation, command)
+	require.True(t, apperror.Is(err, "authentication.mfa.code_invalid"), "replayed challenge error = %v, want authentication.mfa.code_invalid", err)
 
-	want := []string{
-		"institution", "audit_begin", "credential_get", "consume", "upgrade",
-		"audit_success", "effects",
-		"institution", "audit_begin", "credential_get", "consume", "audit_fail",
-	}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
-	if effects.userID != principal.UserID.String() ||
-		!reflect.DeepEqual(effects.sessionIDs, []string{principal.SessionID.String()}) ||
-		!reflect.DeepEqual(effects.hashes, []string{"access-hash"}) {
-		t.Fatalf("effects = %#v", effects)
-	}
+	// Contract (guardrails 8 and 14): the audit begins before the durable write,
+	// the audit outcome follows the write, and the write commits before its
+	// effect. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "audit_begin", "consume", "upgrade", "audit_success", "effects", "audit_begin", "consume", "audit_fail")
+	require.Equal(t, principal.UserID.String(), effects.userID)
+	require.Equal(t, []string{principal.SessionID.String()}, effects.sessionIDs)
+	require.Equal(t, []string{"access-hash"}, effects.hashes)
 }
 
 func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
@@ -95,21 +88,16 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 		NewInvocation(principal, model.RequestMetadata{}),
 		SetupMFACommand{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if setup.Secret != secret || setup.ExpiresAt != now.Add(10*time.Minute) {
-		t.Fatalf("setup = %#v", setup)
-	}
-	if persistence.savedPending == nil ||
-		persistence.savedPending.CreatedAt != now ||
-		persistence.savedPending.PendingExpiresAt.Time != now.Add(10*time.Minute) ||
-		persistence.savedPending.EncryptedSecret == secret {
-		t.Fatalf("pending credential = %#v", persistence.savedPending)
-	}
-	if want := []string{"institution", "audit_begin", "save_pending", "audit_success"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, secret, setup.Secret)
+	require.Equal(t, now.Add(10*time.Minute), setup.ExpiresAt)
+	require.NotNil(t, persistence.savedPending)
+	require.Equal(t, now, persistence.savedPending.CreatedAt)
+	require.Equal(t, now.Add(10*time.Minute), persistence.savedPending.PendingExpiresAt.Time)
+	require.NotEqual(t, secret, persistence.savedPending.EncryptedSecret)
+	// Contract (guardrail 8): the audit begins before the durable write, and the
+	// audit outcome follows the write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "audit_begin", "save_pending", "audit_success")
 }
 
 func TestMFASecretSealingAuthenticatesUserAndKeyReference(t *testing.T) {
@@ -118,44 +106,33 @@ func TestMFASecretSealingAuthenticatesUserAndKeyReference(t *testing.T) {
 	mechanics := mustTestMFAMechanics(t)
 	userID := model.NewUserID()
 	sealed, err := mechanics.sealTOTPSecret(userID.String(), "JBSWY3DPEHPK3PXP")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var envelope secretseal.Envelope
-	if err := json.Unmarshal([]byte(sealed.encoded), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	if envelope.Version != secretseal.EnvelopeVersion1 ||
-		envelope.Algorithm != secretseal.AlgorithmAES256GCM ||
-		envelope.KeyID != sealed.keyID {
-		t.Fatalf("sealed MFA envelope = %#v", envelope)
-	}
+	require.NoError(t, json.Unmarshal([]byte(sealed.encoded), &envelope))
+	require.Equal(t, secretseal.EnvelopeVersion1, envelope.Version)
+	require.Equal(t, secretseal.AlgorithmAES256GCM, envelope.Algorithm)
+	require.Equal(t, sealed.keyID, envelope.KeyID)
 	credential := &model.MFACredential{
 		EncryptedSecret: sealed.encoded, EncryptionKeyID: sealed.keyID,
 	}
 	opened, err := mechanics.decrypt(userID.String(), credential)
-	if err != nil || opened != "JBSWY3DPEHPK3PXP" {
-		t.Fatalf("decrypt() = %q, %v", opened, err)
-	}
-	if _, err := mechanics.decrypt(model.NewUserID().String(), credential); err == nil {
-		t.Fatal("MFA envelope opened for a different user")
-	}
+	require.NoError(t, err, "decrypt()")
+	require.Equal(t, "JBSWY3DPEHPK3PXP", opened, "decrypt()")
+	_, err = mechanics.decrypt(model.NewUserID().String(), credential)
+	require.Error(t, err, "MFA envelope opened for a different user")
 	mismatched := *credential
 	mismatched.EncryptionKeyID = strings.Repeat("0", model.MFAEncryptionKeyIDLength)
-	if _, err := mechanics.decrypt(userID.String(), &mismatched); err == nil {
-		t.Fatal("MFA envelope opened with mismatched durable key reference")
-	}
+	_, err = mechanics.decrypt(userID.String(), &mismatched)
+	require.Error(t, err, "MFA envelope opened with mismatched durable key reference")
 }
 
 func TestMFAMechanicsRequiresSealingOnlyWhenEnabled(t *testing.T) {
 	t.Parallel()
 
-	if _, err := newMFAMechanics(MFAPolicy{}, nil); err != nil {
-		t.Fatalf("newMFAMechanics(disabled) error = %v", err)
-	}
-	if _, err := newMFAMechanics(MFAPolicy{Enabled: true}, nil); err == nil {
-		t.Fatal("newMFAMechanics(enabled without sealer) succeeded")
-	}
+	_, err := newMFAMechanics(MFAPolicy{}, nil)
+	require.NoError(t, err)
+	_, err = newMFAMechanics(MFAPolicy{Enabled: true}, nil)
+	require.Error(t, err, "newMFAMechanics(enabled without sealer) succeeded")
 }
 
 func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
@@ -199,12 +176,11 @@ func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
 		case apperror.Is(err, "authentication.mfa.code_invalid"):
 			rejected++
 		default:
-			t.Fatalf("VerifyLogin error = %v", err)
+			require.FailNow(t, fmt.Sprintf("VerifyLogin error = %v", err))
 		}
 	}
-	if successes != 1 || rejected != contenders-1 {
-		t.Fatalf("successes=%d rejected=%d", successes, rejected)
-	}
+	require.Equal(t, 1, successes, "successes")
+	require.Equal(t, contenders-1, rejected, "successes")
 }
 
 func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing.T) {
@@ -222,9 +198,7 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "mfa-notices"})
 	const secret = "JBSWY3DPEHPK3PXP"
 	sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence.credential = &model.MFACredential{
 		ID: model.NewMFACredentialID(), UserID: principal.UserID,
 		State: model.MFAStatePending, EncryptedSecret: sealed.encoded,
@@ -232,32 +206,23 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 		UpdatedAt: now.Add(-time.Minute), PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Minute)),
 	}
 	code, err := computeTOTP(secret, now.Unix()/30)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = application.ActivateMFA(context.Background(), invocation, ActivateMFACommand{Code: code}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = application.ActivateMFA(context.Background(), invocation, ActivateMFACommand{Code: code})
+	require.NoError(t, err)
 
-	if _, err := application.RegenerateMFARecoveryCodes(context.Background(), invocation, RegenerateMFARecoveryCodesCommand{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := application.DisableMFA(context.Background(), invocation, DisableMFACommand{}); err != nil {
-		t.Fatal(err)
-	}
-	if len(mailer.requests) != 3 {
-		t.Fatalf("mail preparations = %d, want 3", len(mailer.requests))
-	}
+	_, err = application.RegenerateMFARecoveryCodes(context.Background(), invocation, RegenerateMFARecoveryCodesCommand{})
+	require.NoError(t, err)
+	require.NoError(t, application.DisableMFA(context.Background(), invocation, DisableMFACommand{}))
+	require.Len(t, mailer.requests, 3, "mail preparations")
 	for index, want := range []model.MailTemplateKey{
 		model.MailTemplateIdentityMFAEnabled,
 		model.MailTemplateIdentityMFARecoveryCodesRegenerated,
 		model.MailTemplateIdentityMFADisabled,
 	} {
 		request := mailer.requests[index]
-		if request.TemplateKey != want || request.Recipient.ID != principal.UserID ||
-			!request.At.Equal(now) {
-			t.Fatalf("mail request %d = %#v", index, request)
-		}
+		require.Equal(t, want, request.TemplateKey, "mail request %d = %#v", index, request)
+		require.Equal(t, principal.UserID, request.Recipient.ID, "mail request %d = %#v", index, request)
+		require.True(t, request.At.Equal(now), "mail request %d = %#v", index, request)
 	}
 }
 
@@ -311,9 +276,8 @@ func TestMFAApplicationServiceRequiresFocusedDependencies(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := test.build(); err == nil {
-				t.Fatal("nil dependency was accepted")
-			}
+			_, err := test.build()
+			require.Error(t, err, "nil dependency was accepted")
 		})
 	}
 }
@@ -332,9 +296,7 @@ func newTestMFAApplicationService(
 		mfaApplicationInstitutionStoreFake{persistence: persistence}, audit, effects,
 		&mfaSecurityNoticeMailPreparerFake{}, mustTestMFAMechanics(t), testMFASecurity(), 15*time.Minute, func() time.Time { return now },
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 
@@ -348,13 +310,9 @@ func mustTestMFAMechanics(t *testing.T) *mfaMechanics {
 		EncryptionKey:    base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)),
 		MaximumPlaintext: 128,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	mechanics, err := newMFAMechanics(policy, sealer)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return mechanics
 }
 

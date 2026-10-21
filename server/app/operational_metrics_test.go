@@ -11,6 +11,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
@@ -31,9 +33,9 @@ func TestOperationalEventProjectsOnlyBoundedOutcome(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			event := operationalEvent("authentication", "login", test.err)
-			if event.Subsystem() != "authentication" || event.Event() != "login" || event.Outcome() != test.want {
-				t.Fatalf("event = (%q, %q, %q)", event.Subsystem(), event.Event(), event.Outcome())
-			}
+			require.Equal(t, "authentication", event.Subsystem(), "event")
+			require.Equal(t, "login", event.Event(), "event")
+			require.Equal(t, test.want, event.Outcome(), "event")
 		})
 	}
 }

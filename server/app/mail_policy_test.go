@@ -11,9 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
@@ -98,16 +99,14 @@ func TestDisabledMailMaintenanceSuppressesOutstandingWithoutAffectingReadiness(t
 	}}}}
 	health := newMailHealth(false)
 	monitor := mailMaintenanceMonitor{mail: mail, sender: &mailSenderFake{}, health: health, recorder: metrics, now: time.Now}
-	if err := monitor.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if mail.suppressed != 1 || health.Code() != MailHealthDisabled || health.Degraded() {
-		t.Fatalf("suppressed=%d health=%s degraded=%t", mail.suppressed, health.Code(), health.Degraded())
-	}
-	if len(metrics.deliveries) != 1 || metrics.deliveries[0].OutcomeCode != model.MailDeliveryDisabledCode ||
-		len(metrics.health) != 1 || metrics.health[0].Code != MailHealthDisabled {
-		t.Fatalf("disabled metrics = deliveries %#v health %#v", metrics.deliveries, metrics.health)
-	}
+	require.NoError(t, monitor.Run(context.Background()))
+	require.Equal(t, 1, mail.suppressed, "suppressed")
+	require.Equal(t, MailHealthDisabled, health.Code(), "suppressed")
+	require.False(t, health.Degraded(), "suppressed")
+	require.Len(t, metrics.deliveries, 1, "disabled metrics = deliveries")
+	require.Equal(t, model.MailDeliveryDisabledCode, metrics.deliveries[0].OutcomeCode, "disabled metrics = deliveries")
+	require.Len(t, metrics.health, 1, "disabled metrics = deliveries")
+	require.Equal(t, MailHealthDisabled, metrics.health[0].Code, "disabled metrics = deliveries")
 }
 
 func TestMailMaintenanceReportsSMTPOutageAndQueueDelayAsSubsystemDegradation(t *testing.T) {
@@ -115,19 +114,13 @@ func TestMailMaintenanceReportsSMTPOutageAndQueueDelayAsSubsystemDegradation(t *
 	mail := &mailMaintenanceFake{snapshot: &store.MailQueueSnapshot{OldestQueuedAt: now.Add(-10 * time.Minute)}}
 	health := newMailHealth(true)
 	sender := &probingMailSender{mailSenderFake: mailSenderFake{enabled: true}, probeErr: errors.New("smtp unavailable")}
-	if err := (mailMaintenanceMonitor{mail: mail, sender: sender, health: health, now: func() time.Time { return now }}).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if health.Code() != MailHealthSMTPOutage || !health.Degraded() {
-		t.Fatalf("SMTP health = %s", health.Code())
-	}
+	require.NoError(t, (mailMaintenanceMonitor{mail: mail, sender: sender, health: health, now: func() time.Time { return now }}).Run(context.Background()))
+	require.Equal(t, MailHealthSMTPOutage, health.Code())
+	require.True(t, health.Degraded())
 	sender.probeErr = nil
-	if err := (mailMaintenanceMonitor{mail: mail, sender: sender, health: health, now: func() time.Time { return now }}).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if health.Code() != MailHealthQueueDelayed || !health.Degraded() {
-		t.Fatalf("queue health = %s", health.Code())
-	}
+	require.NoError(t, (mailMaintenanceMonitor{mail: mail, sender: sender, health: health, now: func() time.Time { return now }}).Run(context.Background()))
+	require.Equal(t, MailHealthQueueDelayed, health.Code())
+	require.True(t, health.Degraded())
 }
 
 func TestMailMaintenanceEmitsBoundedMetricsAndLogsHealthOnlyOnTransitions(t *testing.T) {
@@ -143,30 +136,23 @@ func TestMailMaintenanceEmitsBoundedMetricsAndLogsHealthOnlyOnTransitions(t *tes
 	sender := &probingMailSender{mailSenderFake: mailSenderFake{enabled: true}}
 	health := newMailHealth(true)
 	monitor := mailMaintenanceMonitor{mail: mail, sender: sender, health: health, recorder: metrics, now: func() time.Time { return now }}
-	if err := monitor.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(metrics.health) != 1 || metrics.health[0].Code != MailHealthHealthy || len(metrics.queues) != 2 || !metrics.queues[0].Truncated ||
-		metrics.queues[0].Count != 500 || metrics.queues[0].OldestAge != time.Minute || metrics.queues[1].OldestAge != 30*time.Second {
-		t.Fatalf("initial metrics = health %#v queue %#v", metrics.health, metrics.queues)
-	}
+	require.NoError(t, monitor.Run(context.Background()))
+	require.Len(t, metrics.health, 1, "initial metrics = health")
+	require.Equal(t, MailHealthHealthy, metrics.health[0].Code, "initial metrics = health")
+	require.Len(t, metrics.queues, 2, "initial metrics = health")
+	require.True(t, metrics.queues[0].Truncated, "initial metrics = health")
+	require.Equal(t, int64(500), metrics.queues[0].Count, "initial metrics = health")
+	require.Equal(t, time.Minute, metrics.queues[0].OldestAge, "initial metrics = health")
+	require.Equal(t, 30*time.Second, metrics.queues[1].OldestAge, "initial metrics = health")
 	mail.snapshot = &store.MailQueueSnapshot{}
-	if err := monitor.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(metrics.queues) != 0 {
-		t.Fatalf("queue metrics after drain = %#v", metrics.queues)
-	}
+	require.NoError(t, monitor.Run(context.Background()))
+	require.Empty(t, metrics.queues)
 	sender.probeErr = errors.New("smtp unavailable")
-	if err := monitor.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := monitor.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(metrics.health) != 4 || metrics.health[2].Code != MailHealthSMTPOutage || metrics.health[3].Code != MailHealthSMTPOutage {
-		t.Fatalf("health transitions = %#v", metrics.health)
-	}
+	require.NoError(t, monitor.Run(context.Background()))
+	require.NoError(t, monitor.Run(context.Background()))
+	require.Len(t, metrics.health, 4)
+	require.Equal(t, MailHealthSMTPOutage, metrics.health[2].Code)
+	require.Equal(t, MailHealthSMTPOutage, metrics.health[3].Code)
 }
 
 func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
@@ -180,22 +166,14 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 	}}
 	command, _ := json.Marshal(jobhandler.MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, 1, command, "cleanup", time.Now(), time.Now(), 5)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	metrics := &recordingMailMetrics{}
 	descriptor := jobhandler.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})
 	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || string(outcome.Result) != `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}` {
-		t.Fatalf("cleanup outcome = %#v", outcome)
-	}
-	if sittings.calls != 2 {
-		t.Fatalf("Sitting fan-out maintenance calls = %d", sittings.calls)
-	}
-	if got := strings.Join(mail.calls, ","); got != "cleanup_terminal,suppress_expired,suppress_expired" {
-		t.Fatalf("cleanup order = %q", got)
-	}
-	if len(metrics.deliveries) != 1 || metrics.deliveries[0].OutcomeCode != model.MailDeliveryExpiredCode {
-		t.Fatalf("cleanup delivery metrics = %#v", metrics.deliveries)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind)
+	require.Equal(t, `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}`, string(outcome.Result))
+	require.Equal(t, 2, sittings.calls, "Sitting fan-out maintenance calls")
+	require.ElementsMatch(t, []string{"cleanup_terminal", "suppress_expired", "suppress_expired"}, mail.calls, "one terminal cleanup and two bounded expiry pages")
+	require.Len(t, metrics.deliveries, 1)
+	require.Equal(t, model.MailDeliveryExpiredCode, metrics.deliveries[0].OutcomeCode)
 }

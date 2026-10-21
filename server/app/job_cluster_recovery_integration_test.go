@@ -18,6 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/app/jobhandler"
 	"github.com/sudosylabs/proctor/server/config"
@@ -39,16 +42,11 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				Username: "recovery-" + phase,
 				Email:    "recovery-" + phase + "@example.test",
 			}, at)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			settings, settingsErr := prepareInitialUserSettingsDocument(user)
-			if settingsErr != nil {
-				t.Fatal(settingsErr)
-			}
-			if _, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job}); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, settingsErr)
+			_, err = persistence.User().Create(context.Background(), &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: job})
+			require.NoError(t, err)
 
 			publishEntered := make(chan struct{})
 			continuePublish := make(chan struct{})
@@ -77,23 +75,20 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-a",
 				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = nodeA.Start(context.Background()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			err = nodeA.Start(context.Background())
+			require.NoError(t, err)
 			if phase == "during_commit" {
 				select {
 				case <-publishEntered:
 				case <-time.After(time.Second):
-					t.Fatal("first worker did not enter the publication transaction")
+					require.FailNow(t, "first worker did not enter the publication transaction")
 				}
 			} else {
 				select {
 				case <-entered:
 				case <-time.After(time.Second):
-					t.Fatal("first worker did not reach the requested loss point")
+					require.FailNow(t, "first worker did not reach the requested loss point")
 				}
 			}
 			closedA := make(chan error, 1)
@@ -101,87 +96,62 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 			select {
 			case <-canceled:
 			case <-time.After(time.Second):
-				t.Fatal("first worker did not observe node shutdown")
+				require.FailNow(t, "first worker did not observe node shutdown")
 			}
 			if phase == "during_commit" {
 				close(continuePublish)
 			}
-			if err = <-closedA; err != nil {
-				t.Fatalf("node-a Close() = %v", err)
-			}
+			err = <-closedA
+			require.NoError(t, err)
 			afterShutdown, err := persistence.Job().Get(context.Background(), job.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if afterShutdown.Status != model.JobStatusRunning {
-				t.Fatalf("job after shutdown = %#v", afterShutdown)
-			}
+			require.NoError(t, err)
+			require.Equal(t, model.JobStatusRunning, afterShutdown.Status)
 
 			time.Sleep(3 * descriptor.LeaseDuration)
 			nodeB, err := jobengine.New(jobengine.Config{
 				Store: persistence.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: "node-b",
 				Diagnostics: &integrationJobDiagnostics{}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond},
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = nodeB.Start(context.Background()); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
+			err = nodeB.Start(context.Background())
+			require.NoError(t, err)
 			deadline := time.Now().Add(2 * time.Second)
 			for {
 				current, getErr := persistence.Job().Get(context.Background(), job.ID)
-				if getErr != nil {
-					t.Fatal(getErr)
-				}
+				require.NoError(t, getErr)
 				if current.Status == model.JobStatusSucceeded {
 					break
 				}
-				if time.Now().After(deadline) {
-					t.Fatalf("recovered job did not succeed: %#v", current)
-				}
+				require.False(t, time.Now().After(deadline), "recovered job did not succeed: %#v", current)
 				time.Sleep(5 * time.Millisecond)
 			}
-			if err = nodeB.Close(); err != nil {
-				t.Fatalf("node-b Close() = %v", err)
-			}
+			err = nodeB.Close()
+			require.NoError(t, err)
 			persistedUser, err := persistence.User().Get(context.Background(), user.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if persistedUser.DefaultProfilePictureFileID.IsZero() {
-				t.Fatal("recovered handler did not durably attach the default picture")
-			}
+			require.NoError(t, err)
+			require.False(t, persistedUser.DefaultProfilePictureFileID.IsZero(), "recovered handler did not durably attach the default picture")
 			var availableDefaults int
-			if err = persistence.GetMaster().Get(context.Background(), &availableDefaults, `
+			err = persistence.GetMaster().Get(context.Background(), &availableDefaults, `
 				SELECT count(*)
 				FROM file_entries fe
 				JOIN file_revisions fr ON fr.id = fe.current_revision_id
 				WHERE fe.purpose = 'profile_picture_default'
 				  AND fe.id = $1
 				  AND fr.availability = 'available'
-			`, persistedUser.DefaultProfilePictureFileID.String()); err != nil {
-				t.Fatal(err)
-			}
-			if availableDefaults != 1 {
-				t.Fatalf("available default publications = %d, want 1", availableDefaults)
-			}
-			if handler.calls.Load() != 2 {
-				t.Fatalf("handler calls = %d, want 2", handler.calls.Load())
-			}
+			`, persistedUser.DefaultProfilePictureFileID.String())
+			require.NoError(t, err)
+			require.Equal(t, 1, availableDefaults, "available default publications")
+			require.Equal(t, int64(2), handler.calls.Load(), "handler calls")
 			attempts, err := persistence.Job().ListAttempts(context.Background(), job.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(attempts) != 2 || attempts[0].Status != model.JobAttemptStatusLeaseExpired || attempts[1].Status != model.JobAttemptStatusSucceeded {
-				t.Fatalf("attempt history = %#v", attempts)
-			}
-			if _, err = persistence.Job().Complete(context.Background(), &store.JobCompletion{
+			require.NoError(t, err)
+			require.Len(t, attempts, 2)
+			require.Equal(t, model.JobAttemptStatusLeaseExpired, attempts[0].Status)
+			require.Equal(t, model.JobAttemptStatusSucceeded, attempts[1].Status)
+			_, err = persistence.Job().Complete(context.Background(), &store.JobCompletion{
 				AttemptID: attempts[0].ID, ClaimToken: attempts[0].ClaimToken,
 				Kind: store.JobCompletionSucceeded, ResultVersion: 1, Result: json.RawMessage(`{}`),
-			}); !store.IsConflict(err) {
-				t.Fatalf("stale worker completion error = %v", err)
-			}
+			})
+			require.True(t, store.IsConflict(err), "stale worker completion error")
 		})
 	}
 }
@@ -255,41 +225,30 @@ func clusteredRecoveryJobDescriptor(handler jobengine.Handler) jobengine.Descrip
 func openClusteredJobIntegrationStore(t *testing.T) *sqlstore.SQLStore {
 	t.Helper()
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	database := config.Default().Database
 	database.DataSource = dataSource
 	settings := sqlstore.SettingsFromConfig(database)
 	migrator, err := sqlstore.NewMigrator(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if err = migrator.Up(); err != nil {
 		_ = migrator.Close()
-		t.Fatal(err)
+		require.NoError(t, err)
 	}
-	if err = migrator.Close(); err != nil {
-		t.Fatal(err)
-	}
+	err = migrator.Close()
+	require.NoError(t, err)
 	persistence, err := sqlstore.New(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := persistence.Close(); err != nil {
-			t.Errorf("close clustered Job integration store: %v", err)
-		}
+		assert.NoError(t, persistence.Close())
 	})
-	if _, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE
+	_, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE
 		mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences,
-		audit_events, institutions, users, file_entries, job_permanent_occurrences, jobs CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(
+		audit_events, institutions, users, file_entries, job_permanent_occurrences, jobs CASCADE`)
+	require.NoError(t, err)
+	_, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(
 		singleton, required_primary_key_id, active_rekey_job_id, updated_at
-	) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
-		t.Fatal(err)
-	}
+	) VALUES (TRUE, NULL, NULL, clock_timestamp())`)
+	require.NoError(t, err)
 	return persistence
 }

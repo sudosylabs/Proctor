@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -35,36 +37,16 @@ func TestDailyMaintenanceProposalsUsePermanentDedupeAcrossNodes(t *testing.T) {
 	jobs := &deduplicatingJobEnqueuerFake{jobs: map[string]*model.Job{}}
 	first := filePurgeExpiredContentProposer{jobs: jobs, now: func() time.Time { return at }}
 	second := filePurgeExpiredContentProposer{jobs: jobs, now: func() time.Time { return at.Add(time.Second) }}
-	if err := first.Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := second.Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (defaultProfilePictureReconciliationJobProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (jobHistoryCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (commandOutcomeCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (mailCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (invitationMaintenanceProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if err := (examSittingLifecycleRecoveryProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at); err != nil {
-		t.Fatal(err)
-	}
-	if len(jobs.jobs) != 7 {
-		t.Fatalf("logical jobs = %d, want 7", len(jobs.jobs))
-	}
+	require.NoError(t, first.Propose(context.Background(), at))
+	require.NoError(t, second.Propose(context.Background(), at))
+	require.NoError(t, (defaultProfilePictureReconciliationJobProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.NoError(t, (jobHistoryCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.NoError(t, (commandOutcomeCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.NoError(t, (mailCleanupProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.NoError(t, (invitationMaintenanceProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.NoError(t, (examSittingLifecycleRecoveryProposer{jobs: jobs, now: func() time.Time { return at }}).Propose(context.Background(), at))
+	require.Len(t, jobs.jobs, 7, "logical jobs")
 	for _, job := range jobs.jobs {
-		if job.DedupePolicy != model.JobDedupePermanent {
-			t.Fatalf("daily job dedupe policy = %q", job.DedupePolicy)
-		}
+		require.Equal(t, model.JobDedupePermanent, job.DedupePolicy)
 	}
 }

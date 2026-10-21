@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
@@ -35,20 +37,24 @@ func TestExamSittingSealingJobCheckpointsEachAttemptThenCloses(t *testing.T) {
 			return nil
 		}, allowJobWorkReservation())
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || len(service.sealed) != 2 ||
-		len(checkpoints) != 2 || service.finishCalls != 1 || service.continuationCalls != 0 {
-		t.Fatalf("outcome=%#v sealed=%d checkpoints=%d finish=%d continuations=%d", outcome, len(service.sealed),
-			len(checkpoints), service.finishCalls, service.continuationCalls)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.NoError(t, outcome.Err, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.Len(t, service.sealed, 2, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.Len(t, checkpoints, 2, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.Equal(t, 1, service.finishCalls, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
+	require.Equal(t, 0, service.continuationCalls, "outcome=%#v sealed=%d checkpoints=%d finish=%d continuations", outcome, len(service.sealed), len(checkpoints), service.finishCalls)
 	var result ExamSittingSealingResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || result.Processed != 2 || result.Sealed != 2 ||
-		result.Continued || result.State != model.ExamSittingClosed {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	err := json.Unmarshal(outcome.Result, &result)
+	require.NoError(t, err, "result=%#v err", result)
+	require.Equal(t, int64(2), result.Processed, "result=%#v err", result)
+	require.Equal(t, int64(2), result.Sealed, "result=%#v err", result)
+	require.False(t, result.Continued, "result=%#v err", result)
+	require.Equal(t, model.ExamSittingClosed, result.State, "result=%#v err", result)
 	checkpoint, err := decodeExamSittingSealingCheckpoint(checkpoints[1].Version, checkpoints[1].Document)
-	if err != nil || checkpoint.AfterAttemptID != targets[1].AttemptID || checkpoint.Processed != 2 || checkpoint.Sealed != 2 {
-		t.Fatalf("checkpoint=%#v err=%v", checkpoint, err)
-	}
+	require.NoError(t, err, "checkpoint=%#v err", checkpoint)
+	require.Equal(t, targets[1].AttemptID, checkpoint.AfterAttemptID, "checkpoint=%#v err", checkpoint)
+	require.Equal(t, int64(2), checkpoint.Processed, "checkpoint=%#v err", checkpoint)
+	require.Equal(t, int64(2), checkpoint.Sealed, "checkpoint=%#v err", checkpoint)
 }
 
 func TestExamSittingSealingJobBoundsPassAndDurablyContinues(t *testing.T) {
@@ -61,28 +67,32 @@ func TestExamSittingSealingJobBoundsPassAndDurablyContinues(t *testing.T) {
 	outcome := (examSittingSealingHandler{service: service}).Run(
 		context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
 			func(context.Context, jobengine.CheckpointValue) error { return nil }, allowJobWorkReservation()))
-	if outcome.Kind != jobengine.OutcomeSucceeded || len(service.sealed) != examSittingSealingMaximumWork ||
-		service.finishCalls != 1 || service.continuationCalls != 1 || service.continuationSittingID != sitting.ID ||
-		service.continuationParentID != job.ID {
-		t.Fatalf("outcome=%#v sealed=%d finish=%d continuations=%d", outcome, len(service.sealed),
-			service.finishCalls, service.continuationCalls)
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Len(t, service.sealed, examSittingSealingMaximumWork, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Equal(t, 1, service.finishCalls, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Equal(t, 1, service.continuationCalls, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Equal(t, sitting.ID, service.continuationSittingID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
+	require.Equal(t, job.ID, service.continuationParentID, "outcome=%#v sealed=%d finish=%d continuations", outcome, len(service.sealed), service.finishCalls)
 	var result ExamSittingSealingResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || !result.Continued ||
-		result.State != model.ExamSittingClosing || result.Revision != sitting.Revision ||
-		result.Processed != examSittingSealingMaximumWork || result.Sealed != examSittingSealingMaximumWork {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	err := json.Unmarshal(outcome.Result, &result)
+	require.NoError(t, err, "result=%#v err", result)
+	require.True(t, result.Continued, "result=%#v err", result)
+	require.Equal(t, model.ExamSittingClosing, result.State, "result=%#v err", result)
+	require.Equal(t, sitting.Revision, result.Revision, "result=%#v err", result)
+	require.Equal(t, int64(examSittingSealingMaximumWork), result.Processed, "result=%#v err", result)
+	require.Equal(t, int64(examSittingSealingMaximumWork), result.Sealed, "result=%#v err", result)
 }
 
 func TestExamSittingSealingDescriptorIsBoundedCheckpointedAndNonCancelable(t *testing.T) {
 	t.Parallel()
 	descriptor := examSittingSealingDescriptor(examSittingSealingHandler{})
-	if descriptor.Type != model.JobTypeExamSittingSealing || descriptor.Cancelable || descriptor.Visibility != jobengine.VisibilityOperator ||
-		len(descriptor.CheckpointVersions) != 1 || len(descriptor.ProgressStages) != 1 || descriptor.ProgressStages[0] != "sealing" ||
-		descriptor.MaximumAttempts != 8 {
-		t.Fatalf("descriptor=%#v", descriptor)
-	}
+	require.Equal(t, model.JobTypeExamSittingSealing, descriptor.Type)
+	require.False(t, descriptor.Cancelable)
+	require.Equal(t, jobengine.VisibilityOperator, descriptor.Visibility)
+	require.Len(t, descriptor.CheckpointVersions, 1)
+	require.Len(t, descriptor.ProgressStages, 1)
+	require.Equal(t, "sealing", descriptor.ProgressStages[0])
+	require.Equal(t, 8, descriptor.MaximumAttempts)
 }
 
 func TestExamSittingSealingJobLeavesUnfinishedClosingStateRetryable(t *testing.T) {
@@ -93,10 +103,9 @@ func TestExamSittingSealingJobLeavesUnfinishedClosingStateRetryable(t *testing.T
 	job := mustExamSittingSealingJob(t, sitting.ID, at)
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(),
 		jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, nil, allowJobWorkReservation()))
-	if outcome.Kind != jobengine.OutcomeRetryableFailure || outcome.PublicErrorCode != "dependency.unavailable" ||
-		service.finishCalls != 1 {
-		t.Fatalf("outcome=%#v finish=%d", outcome, service.finishCalls)
-	}
+	require.Equal(t, jobengine.OutcomeRetryableFailure, outcome.Kind, "outcome=%#v finish", outcome)
+	require.Equal(t, "dependency.unavailable", outcome.PublicErrorCode, "outcome=%#v finish", outcome)
+	require.Equal(t, 1, service.finishCalls, "outcome=%#v finish", outcome)
 }
 
 func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T) {
@@ -112,34 +121,32 @@ func TestExamSittingSealingJobRecoversReservationAheadOfCheckpoint(t *testing.T)
 	execution := jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()},
 		func(_ context.Context, value jobengine.CheckpointValue) error {
 			checkpoint, err := decodeExamSittingSealingCheckpoint(value.Version, value.Document)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			checkpoints = append(checkpoints, checkpoint)
 			return nil
 		}, func(_ context.Context, units, limit int) (bool, error) {
-			if units != 1 || limit != examSittingSealingMaximumWork {
-				t.Fatalf("reservation units=%d limit=%d", units, limit)
-			}
+			require.Equal(t, 1, units, "reservation units")
+			require.Equal(t, examSittingSealingMaximumWork, limit, "reservation units")
 			reserved += units
 			return true, nil
 		})
 	outcome := (examSittingSealingHandler{service: service}).Run(context.Background(), execution)
-	if outcome.Kind != jobengine.OutcomeSucceeded || reserved != 1 || len(service.sealed) != 1 || len(checkpoints) != 2 {
-		t.Fatalf("outcome=%#v reserved=%d sealed=%d checkpoints=%#v", outcome, reserved, len(service.sealed), checkpoints)
-	}
-	if checkpoints[0].Processed != 1 || checkpoints[0].Sealed != 0 || !checkpoints[0].AfterAttemptID.IsZero() {
-		t.Fatalf("reconciled checkpoint=%#v", checkpoints[0])
-	}
-	if checkpoints[1].Processed != 2 || checkpoints[1].Sealed != 1 ||
-		checkpoints[1].AfterAttemptID != targets[0].AttemptID {
-		t.Fatalf("completed checkpoint=%#v", checkpoints[1])
-	}
+	require.Equal(t, jobengine.OutcomeSucceeded, outcome.Kind, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
+	require.Equal(t, 1, reserved, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
+	require.Len(t, service.sealed, 1, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
+	require.Len(t, checkpoints, 2, "outcome=%#v reserved=%d sealed=%d checkpoints", outcome, reserved, len(service.sealed))
+	require.Equal(t, int64(1), checkpoints[0].Processed)
+	require.Equal(t, int64(0), checkpoints[0].Sealed)
+	require.True(t, checkpoints[0].AfterAttemptID.IsZero())
+	require.Equal(t, int64(2), checkpoints[1].Processed)
+	require.Equal(t, int64(1), checkpoints[1].Sealed)
+	require.Equal(t, targets[0].AttemptID, checkpoints[1].AfterAttemptID)
 	var result ExamSittingSealingResultV1
-	if err := json.Unmarshal(outcome.Result, &result); err != nil || result.Processed != 2 || result.Sealed != 1 ||
-		result.State != model.ExamSittingClosed {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	err := json.Unmarshal(outcome.Result, &result)
+	require.NoError(t, err, "result=%#v err", result)
+	require.Equal(t, int64(2), result.Processed, "result=%#v err", result)
+	require.Equal(t, int64(1), result.Sealed, "result=%#v err", result)
+	require.Equal(t, model.ExamSittingClosed, result.State, "result=%#v err", result)
 }
 
 type examSittingSealingFake struct {
@@ -193,13 +200,9 @@ func (f *examSittingSealingFake) EnqueueExamSittingSealingContinuationFromJob(_ 
 func mustExamSittingSealingJob(t *testing.T, sittingID model.ExamSittingID, at time.Time) *model.Job {
 	t.Helper()
 	command, err := model.EncodeExamSittingLifecycleCommand(model.ExamSittingLifecycleCommandV1{ExamSittingID: sittingID})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeExamSittingSealing, 1, command, "sealing-test", at, at, 8)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return job
 }
 
@@ -207,15 +210,11 @@ func closingSittingForSealingTest(t *testing.T, at time.Time) *model.ExamSitting
 	t.Helper()
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(),
 		model.NewClassID(), at.Add(-2*time.Hour), at.Add(-time.Hour), at.Add(-3*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sitting.Open(at.Add(-2 * time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err = sitting.EnterClosing(model.ExamSittingReasonScheduledEndReached, at.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = sitting.Open(at.Add(-2 * time.Hour))
+	require.NoError(t, err)
+	err = sitting.EnterClosing(model.ExamSittingReasonScheduledEndReached, at.Add(-time.Hour))
+	require.NoError(t, err)
 	return sitting
 }
 

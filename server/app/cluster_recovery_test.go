@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
@@ -42,12 +44,10 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 	cacheLegacyAuthentication(t, cacheB, storeFake.accessByHash[hash], storeFake.sessionByCredential[hash], user)
 
 	// Both nodes have previously accepted the credential.
-	if _, err := serviceA.authenticateAccess(ctx, rawAccess); err != nil {
-		t.Fatalf("node A warm auth: %v", err)
-	}
-	if _, err := serviceB.authenticateAccess(ctx, rawAccess); err != nil {
-		t.Fatalf("node B warm auth: %v", err)
-	}
+	_, err := serviceA.authenticateAccess(ctx, rawAccess)
+	require.NoError(t, err)
+	_, err = serviceB.authenticateAccess(ctx, rawAccess)
+	require.NoError(t, err)
 
 	// Commit revocation on node A only; intentionally skip peer fan-out.
 	sessionID := ""
@@ -57,25 +57,17 @@ func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testin
 			break
 		}
 	}
-	if sessionID == "" {
-		t.Fatal("session not found")
-	}
+	require.NotEmpty(t, sessionID, "session not found")
 	hashes, err := storeFake.Session().Withdraw(ctx, model.SessionID(sessionID), user.ID, time.Now().UnixMilli(), model.SessionRevocationInactiveUser)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invalidator, err := newAuthenticationCacheInvalidator(cacheA, &securityEffectsDiagnosticsFake{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invalidator.InvalidateAccessCredentials(ctx, hashes)
 
-	if _, err := cacheB.Get(ctx, authenticationCachePrefix+hash); err != nil {
-		t.Fatalf("peer positive cache must still be present: %v", err)
-	}
-	if _, err := serviceB.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("node B auth after committed revocation with stale cache error = %v", err)
-	}
+	_, err = cacheB.Get(ctx, authenticationCachePrefix+hash)
+	require.NoError(t, err)
+	_, err = serviceB.authenticateAccess(ctx, rawAccess)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "node B auth after committed revocation with stale cache error = %v", err)
 }
 
 func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
@@ -85,35 +77,24 @@ func TestDuplicateSessionRevocationPropagationIsIdempotent(t *testing.T) {
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	realtime := newTestRealtimeService(t, cache)
-	if err := realtime.AttachRealtimeClusterFanout(cluster); err != nil {
-		t.Fatal(err)
-	}
-	if err := realtime.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, realtime.AttachRealtimeClusterFanout(cluster))
+	require.NoError(t, realtime.AttachRealtimeSink(sink))
 
 	userID := model.NewID()
 	sessionID := model.NewID()
 	hash := model.HashToken(model.NewCredentialToken())
 	ctx := context.Background()
 	// Seed a cache entry that both propagations must delete.
-	if err := cache.SetAlways(ctx, authenticationCachePrefix+hash, []byte(`{}`), time.Hour); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cache.SetAlways(ctx, authenticationCachePrefix+hash, []byte(`{}`), time.Hour))
 
 	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
 	realtime.SessionsRevoked(ctx, userID, []string{sessionID}, []string{hash})
 
-	if len(sink.sessionCloses) < 2 {
-		t.Fatalf("session closes = %#v, want duplicate local closes", sink.sessionCloses)
-	}
-	if len(cluster.broadcasts) < 2 {
-		t.Fatalf("cluster broadcasts = %d, want duplicates attempted", len(cluster.broadcasts))
-	}
+	require.GreaterOrEqual(t, len(sink.sessionCloses), 2, "session closes")
+	require.GreaterOrEqual(t, len(cluster.broadcasts), 2, "cluster broadcasts")
 	// Second delete is a no-op success; cache must remain absent.
-	if _, err := cache.Get(ctx, authenticationCachePrefix+hash); !errors.Is(err, ErrAuthenticationCacheMiss) {
-		t.Fatalf("cache after duplicate revocation = %v, want miss", err)
-	}
+	_, err := cache.Get(ctx, authenticationCachePrefix+hash)
+	require.ErrorIs(t, err, ErrAuthenticationCacheMiss, "cache after duplicate revocation")
 }
 
 func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T) {
@@ -154,19 +135,13 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
 		&accessAcademicPeriodStoreFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	audit, err := newAuditService(root.Audit(), root.Institution(), "node-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authz, err := newAccessControlService(
 		root.Role(), root.RoleBinding(), resolver, audit,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authz.now = func() time.Time { return now }
 
 	principal := model.Principal{
@@ -183,24 +158,16 @@ func TestMissedAuthorizationInvalidationStillUsesCurrentStoreState(t *testing.T)
 	ctx := context.Background()
 
 	allowed, err := authz.Can(ctx, principal, model.ActionInstitutionManage, resource)
-	if err != nil {
-		t.Fatalf("initial Can() error = %v", err)
-	}
-	if !allowed {
-		t.Fatal("initial Can() = false, want true with active binding")
-	}
+	require.NoError(t, err)
+	require.True(t, allowed, "initial Can() = false, want true with active binding")
 
 	// Simulate a peer that never receives InvalidateAuthorization: only the
 	// durable binding is ended in the shared store.
 	delete(root.bindings, bindingID)
 
 	allowed, err = authz.Can(ctx, principal, model.ActionInstitutionManage, resource)
-	if err != nil {
-		t.Fatalf("Can() after missed invalidation error = %v", err)
-	}
-	if allowed {
-		t.Fatal("Can() after binding end without cluster message = true, want false")
-	}
+	require.NoError(t, err)
+	require.False(t, allowed, "Can() after binding end without cluster message = true, want false")
 }
 
 type recoveryAccessAcademicUnitStore struct{ store.AcademicUnitStore }
@@ -225,9 +192,8 @@ func TestSessionExpiryRejectsDespitePositiveCache(t *testing.T) {
 
 	_, rawAccess := seedAuthenticatedSession(t, service)
 	ctx := context.Background()
-	if _, err := service.authenticateAccess(ctx, rawAccess); err != nil {
-		t.Fatal(err)
-	}
+	_, err := service.authenticateAccess(ctx, rawAccess)
+	require.NoError(t, err)
 
 	// Keep a valid snapshot while the durable Session expires.
 	for _, session := range storeFake.sessions {
@@ -241,9 +207,8 @@ func TestSessionExpiryRejectsDespitePositiveCache(t *testing.T) {
 			session.IdleExpiresAt = fixedNow.Add(-time.Minute)
 		}
 	}
-	if _, err := service.authenticateAccess(ctx, rawAccess); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("auth with expired authoritative Session error = %v", err)
-	}
+	_, err = service.authenticateAccess(ctx, rawAccess)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "auth with expired authoritative Session error = %v", err)
 }
 
 func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
@@ -254,12 +219,8 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 	sink := &recordingRealtimeSink{}
 	cluster := &recordingRealtimeCluster{}
 	service := newTestRealtimeService(t, noopAuthenticationCache{})
-	if err := service.AttachRealtimeClusterFanout(cluster); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.AttachRealtimeSink(sink); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.AttachRealtimeClusterFanout(cluster))
+	require.NoError(t, service.AttachRealtimeSink(sink))
 
 	unitID := model.NewID()
 	event := apprealtime.RealtimeEvent{
@@ -270,32 +231,18 @@ func TestDuplicateRealtimePeerPublicationDoesNotRebroadcast(t *testing.T) {
 			ID:   unitID,
 		},
 	}
-	if err := service.PublishRealtimeEvent(context.Background(), event); err != nil {
-		t.Fatal(err)
-	}
-	if len(cluster.broadcasts) != 1 {
-		t.Fatalf("broadcasts = %d", len(cluster.broadcasts))
-	}
+	require.NoError(t, service.PublishRealtimeEvent(context.Background(), event))
+	require.Len(t, cluster.broadcasts, 1, "broadcasts")
 	payload := cluster.broadcasts[0].data
 
 	// Duplicate peer deliveries (Memberlist non-guarantee).
 	peerHandler := cluster.handlers["websocket.publish"]
-	if peerHandler == nil {
-		t.Fatal("ordinary publication peer handler was not registered")
-	}
-	if err := peerHandler(context.Background(), payload); err != nil {
-		t.Fatal(err)
-	}
-	if err := peerHandler(context.Background(), payload); err != nil {
-		t.Fatal(err)
-	}
-	if len(cluster.broadcasts) != 1 {
-		t.Fatalf("peer path rebroadcast: broadcasts = %d", len(cluster.broadcasts))
-	}
+	require.NotNil(t, peerHandler, "ordinary publication peer handler was not registered")
+	require.NoError(t, peerHandler(context.Background(), payload))
+	require.NoError(t, peerHandler(context.Background(), payload))
+	require.Len(t, cluster.broadcasts, 1, "peer path rebroadcast: broadcasts")
 	// Local sink may observe duplicates; durable correctness is HTTP resync.
-	if len(sink.events) < 3 {
-		t.Fatalf("local events = %d, want original + 2 peer applies", len(sink.events))
-	}
+	require.GreaterOrEqual(t, len(sink.events), 3, "local events")
 }
 
 func seedAuthenticatedSession(
@@ -312,21 +259,16 @@ func seedAuthenticatedSession(
 		},
 		Password: password,
 	})
-	if err != nil {
-		t.Fatalf("createLocalUser() error = %v", err)
-	}
+	require.NoError(t, err)
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   password,
 		ClientType: model.SessionClientCLI,
 		Source:     "127.0.0.1",
 	})
-	if err != nil {
-		t.Fatalf("login() error = %v", err)
-	}
-	if result.Tokens == nil || result.Tokens.AccessToken == "" {
-		t.Fatalf("login result missing access token: %#v", result)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result.Tokens)
+	require.NotEmpty(t, result.Tokens.AccessToken)
 	return user, result.Tokens.AccessToken
 }
 

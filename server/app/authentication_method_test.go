@@ -9,9 +9,10 @@ package app
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -61,34 +62,28 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	passwords := &authenticationMethodPasswordStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
 	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := newAuthenticationMethodService(passwords,
 		&authenticationMethodIdentityStoreFake{}, externalProviderSourceSet{}, &accessPolicyCapabilitiesFake{},
 		hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
-	if err = service.EnrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple"); err != nil {
-		t.Fatal(err)
-	}
-	if passwords.enroll == nil || passwords.enroll.Credential.UserID != principal.UserID || passwords.enroll.Credential.PasswordHash == "" || passwords.enroll.Credential.PasswordHash == "correct horse battery staple" || passwords.enroll.AuditEventID != model.AuditEventID(audit.beginID) {
-		t.Fatalf("enrollment = %#v", passwords.enroll)
-	}
+	err = service.EnrollPassword(context.Background(), NewInvocation(principal, model.RequestMetadata{}), "correct horse battery staple")
+	require.NoError(t, err)
+	require.NotNil(t, passwords.enroll)
+	require.Equal(t, principal.UserID, passwords.enroll.Credential.UserID)
+	require.NotEmpty(t, passwords.enroll.Credential.PasswordHash)
+	require.NotEqual(t, "correct horse battery staple", passwords.enroll.Credential.PasswordHash)
+	require.Equal(t, model.AuditEventID(audit.beginID), passwords.enroll.AuditEventID)
 	weak := principal
 	weak.AuthenticationStrength = model.AuthenticationSingleFactor
 	weak.MFACompletedAt = model.OptionalTime{}
 	passwords.enroll = nil
-	if err = service.EnrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple"); !apperror.Is(err, "authentication.strong_required") {
-		t.Fatalf("weak enrollment error = %v", err)
-	}
-	if passwords.enroll != nil {
-		t.Fatal("weak enrollment reached Store")
-	}
+	err = service.EnrollPassword(context.Background(), NewInvocation(weak, model.RequestMetadata{}), "correct horse battery staple")
+	require.True(t, apperror.Is(err, "authentication.strong_required"), "weak enrollment error = %v", err)
+	require.Nil(t, passwords.enroll, "weak enrollment reached Store")
 }
 
 func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
@@ -96,31 +91,25 @@ func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
 	passwords := &authenticationMethodPasswordStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
 	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := newAuthenticationMethodService(passwords,
 		&authenticationMethodIdentityStoreFake{}, externalProviderSourceSet{}, &accessPolicyCapabilitiesFake{},
 		hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	invocation := NewInvocation(principal, model.RequestMetadata{})
 	saturatePasswordWork(t, hasher)
-	if err := service.EnrollPassword(context.Background(), invocation, "correct horse battery staple"); !apperror.Is(err, "service.busy") {
-		t.Fatalf("saturated enrollment = %v", err)
-	}
+	err = service.EnrollPassword(context.Background(), invocation, "correct horse battery staple")
+	require.True(t, apperror.Is(err, "service.busy"), "saturated enrollment = %v", err)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := service.EnrollPassword(ctx, invocation, "correct horse battery staple"); !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled enrollment = %v", err)
-	}
-	if passwords.enroll != nil || audit.attempt.Operation != "" {
-		t.Fatal("rejected password work reached audit or credential mutation")
-	}
+	err = service.EnrollPassword(ctx, invocation, "correct horse battery staple")
+	require.True(t, apperror.Is(err, "authentication.internal"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, passwords.enroll, "rejected password work reached audit or credential mutation")
+	require.Empty(t, audit.attempt.Operation, "rejected password work reached audit or credential mutation")
 }
 
 func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testing.T) {
@@ -131,20 +120,16 @@ func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testin
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{ID: "campus"}}}}}
 	service, err := newAuthenticationMethodService(&authenticationMethodPasswordStoreFake{}, identities,
 		externalProviderSourceSet{}, capabilities, hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := userSettingsSessionPrincipal(now)
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 	id := model.NewExternalIdentityID()
-	if err = service.UnlinkExternalIdentity(context.Background(), NewInvocation(principal, model.RequestMetadata{}), id); err != nil {
-		t.Fatal(err)
-	}
-	if identities.unlink == nil || identities.unlink.ID != id || identities.unlink.UserID != principal.UserID {
-		t.Fatalf("unlink = %#v", identities.unlink)
-	}
-	if _, ok := identities.unlink.Capabilities.Providers["campus"]; !ok {
-		t.Fatalf("capabilities = %#v", identities.unlink.Capabilities)
-	}
+	err = service.UnlinkExternalIdentity(context.Background(), NewInvocation(principal, model.RequestMetadata{}), id)
+	require.NoError(t, err)
+	require.NotNil(t, identities.unlink)
+	require.Equal(t, id, identities.unlink.ID)
+	require.Equal(t, principal.UserID, identities.unlink.UserID)
+	_, ok := identities.unlink.Capabilities.Providers["campus"]
+	require.True(t, ok, "capabilities = %#v", identities.unlink.Capabilities)
 }

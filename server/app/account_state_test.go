@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type accountStateStoreFake struct {
@@ -96,23 +98,22 @@ func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, capabilities, auditor, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.DisabledAt.Millis() != 500 || persistence.input.ExpectedRevision != 3 || !persistence.input.Disabled || persistence.input.AuditEventID == "" {
-		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
-	}
-	if _, available := persistence.input.Capabilities.Providers["campus"]; !available {
-		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.input.Capabilities)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentityAccountDisabled ||
-		persistence.input.Occurrence == nil || persistence.input.Delivery == nil || persistence.input.DeliveryJob == nil {
-		t.Fatalf("mail request/input = %#v / %#v", mailer.requests, persistence.input)
-	}
-	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "publish-revocation"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(500), result.DisabledAt.Millis(), "result/input = %#v / %#v", result, persistence.input)
+	require.Equal(t, int64(3), persistence.input.ExpectedRevision, "result/input = %#v / %#v", result, persistence.input)
+	require.True(t, persistence.input.Disabled, "result/input = %#v / %#v", result, persistence.input)
+	require.NotEmpty(t, persistence.input.AuditEventID, "result/input = %#v / %#v", result, persistence.input)
+	_, available := persistence.input.Capabilities.Providers["campus"]
+	require.True(t, available, "Store capability snapshot = %#v, want configured campus provider", persistence.input.Capabilities)
+	require.Len(t, mailer.requests, 1, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	require.Equal(t, model.MailTemplateIdentityAccountDisabled, mailer.requests[0].TemplateKey, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	require.NotNil(t, persistence.input.Occurrence, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	require.NotNil(t, persistence.input.Delivery, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	require.NotNil(t, persistence.input.DeliveryJob, "mail request/input = %#v / %#v", mailer.requests, persistence.input)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled", "publish-revocation")
 }
 
 func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
@@ -122,13 +123,12 @@ func TestAccountDisableFailurePublishesNoRevocation(t *testing.T) {
 	persistence := &accountStateStoreFake{events: &events, user: user, err: store.NewErrConflict("user", "users_revision", errors.New("stale"))}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	_, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
-	if !apperror.Is(err, "user.conflict") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled", "audit-fail"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "user.conflict"), "error = %v", err)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled", "audit-fail")
+	require.NotContains(t, events, "publish-revocation", "a failed disable was published")
 }
 
 func TestAccountEnablePublishesNoRevocation(t *testing.T) {
@@ -142,19 +142,15 @@ func TestAccountEnablePublishesNoRevocation(t *testing.T) {
 	mailer := &securityNoticeMailerFake{events: &events}
 	service := newAccountStateService(persistence, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.DisabledAt.Valid || persistence.input.Disabled {
-		t.Fatalf("result/input = %#v / %#v", result, persistence.input)
-	}
-	if len(mailer.requests) != 1 || mailer.requests[0].TemplateKey != model.MailTemplateIdentityAccountEnabled {
-		t.Fatalf("mail requests = %#v", mailer.requests)
-	}
-	want := []string{"authorize-manage", "get-user", "prepare-mail", "audit-begin", "store-set-disabled"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.False(t, result.DisabledAt.Valid, "result/input = %#v / %#v", result, persistence.input)
+	require.False(t, persistence.input.Disabled, "result/input = %#v / %#v", result, persistence.input)
+	require.Len(t, mailer.requests, 1)
+	require.Equal(t, model.MailTemplateIdentityAccountEnabled, mailer.requests[0].TemplateKey)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-set-disabled")
+	require.NotContains(t, events, "publish-revocation", "enabling an account published a revocation")
 }
 
 func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
@@ -164,12 +160,8 @@ func TestAccountSelfDisableIsRejectedAfterAuthorization(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events}, &userProfileAuthorizerFake{events: &events}, &accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events}, &accountStateEffectsFake{events: &events}, time.Now)
 	invocation := NewInvocation(model.Principal{UserID: model.UserID(userID)}, model.RequestMetadata{})
 	_, err := service.SetUserEnabled(context.Background(), invocation, SetUserEnabledCommand{ID: model.UserID(userID), Enabled: false})
-	if !apperror.Is(err, "request.invalid") {
-		t.Fatalf("error = %v", err)
-	}
-	if want := []string{"authorize-manage"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "request.invalid"), "error = %v", err)
+	require.Equal(t, []string{"authorize-manage"}, events, "events")
 }
 
 func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
@@ -181,12 +173,10 @@ func TestAccountStateReplayDoesNotCreateAnotherNoticeOrAudit(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
-	if err != nil || result != user || len(mailer.requests) != 0 {
-		t.Fatalf("replay result/error/mail = %#v / %v / %#v", result, err, mailer.requests)
-	}
-	if want := []string{"authorize-manage", "get-user"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err, "replay result/error/mail")
+	require.Same(t, user, result, "replay result/error/mail")
+	require.Empty(t, mailer.requests, "replay result/error/mail")
+	require.NotContains(t, events, "audit-begin", "the replayed command was audited")
 }
 
 func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing.T) {
@@ -201,9 +191,11 @@ func TestAccountStateIdempotentNoOpPreparesNoticeForAuthoritativeRace(t *testing
 		&institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetUserEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		SetUserEnabledCommand{ID: user.ID, Enabled: false, IdempotencyKey: "row"})
-	if err != nil || result != user || len(mailer.requests) != 1 || persistence.input == nil || persistence.input.Occurrence == nil {
-		t.Fatalf("idempotent no-op result=%#v error=%v mail=%#v input=%#v", result, err, mailer.requests, persistence.input)
-	}
+	require.NoError(t, err, "idempotent no-op result")
+	require.Same(t, user, result, "idempotent no-op result")
+	require.Len(t, mailer.requests, 1, "idempotent no-op result")
+	require.NotNil(t, persistence.input, "idempotent no-op result")
+	require.NotNil(t, persistence.input.Occurrence, "idempotent no-op result")
 }
 
 func TestAccountStateRetainedOutcomeBypassesMailAfterLaterStateChange(t *testing.T) {
@@ -220,9 +212,9 @@ func TestAccountStateRetainedOutcomeBypassesMailAfterLaterStateChange(t *testing
 		&institutionAuditorFake{events: &events, beginID: model.NewID()}, mailer, &accountStateEffectsFake{events: &events}, time.Now)
 	result, err := service.SetUserEnabled(context.Background(), NewInvocation(model.Principal{UserID: actor}, model.RequestMetadata{}),
 		SetUserEnabledCommand{ID: current.ID, Enabled: false, IdempotencyKey: "row", batchRetainedOutcome: true})
-	if err != nil || result != &original && result.ID != original.ID || len(mailer.requests) != 0 {
-		t.Fatalf("retained result=%#v error=%v mail=%#v", result, err, mailer.requests)
-	}
+	require.NoError(t, err, "retained result=%#v error=%v mail", result, err)
+	require.False(t, result != &original && result.ID != original.ID, "retained result=%#v error=%v mail", result, err)
+	require.Empty(t, mailer.requests, "retained result=%#v error=%v mail", result, err)
 }
 
 func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
@@ -233,10 +225,7 @@ func TestAccountStateMailPreparationFailureStartsNoMutation(t *testing.T) {
 	service := newAccountStateService(&accountStateStoreFake{events: &events, user: user}, &userProfileAuthorizerFake{events: &events},
 		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events}, &securityNoticeMailerFake{events: &events, err: errors.New("render failed")},
 		&accountStateEffectsFake{events: &events}, time.Now)
-	if _, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false}); !apperror.Is(err, "administration.unavailable") {
-		t.Fatalf("error = %v", err)
-	}
-	if want := []string{"authorize-manage", "get-user", "prepare-mail"}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	_, err := service.SetUserEnabled(context.Background(), Invocation{}, SetUserEnabledCommand{ID: user.ID, Enabled: false})
+	require.True(t, apperror.Is(err, "administration.unavailable"), "error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the failed command was audited")
 }

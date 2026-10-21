@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -108,16 +110,15 @@ func TestBrowserInvitationPreservesPasswordWorkFailures(t *testing.T) {
 				service, err := newBrowserInvitationService(transactions,
 					browserInvitationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 					invitations, "https://proctor.example.edu", model.NewCredentialToken)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 				result, err := service.AcceptBrowserInvitation(ctx, Invocation{}, BrowserInvitationAcceptanceCommand{
 					Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Username: "invited",
 					Password: "correct horse battery staple", Source: "192.0.2.38",
 				})
-				if result != nil || persistence.accepted != nil || persistence.teacherAccepted != nil || mail.directJobType != "" {
-					t.Fatal("failed password work advanced hosted Invitation acceptance")
-				}
+				require.Nil(t, result, "failed password work advanced hosted Invitation acceptance")
+				require.Nil(t, persistence.accepted, "failed password work advanced hosted Invitation acceptance")
+				require.Nil(t, persistence.teacherAccepted, "failed password work advanced hosted Invitation acceptance")
+				require.Empty(t, mail.directJobType, "failed password work advanced hosted Invitation acceptance")
 				return err
 			})
 		})
@@ -152,26 +153,24 @@ func TestBrowserInvitationStartReplacesRawClaimWithTwoHashedProofs(t *testing.T)
 			return value
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	started, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if started.Handle != handle || started.BrowserProof != proof || started.Requirement != BrowserInvitationRequirementAccount ||
-		started.ExpiresAt != invitation.ExpiresAt.UnixMilli() || attempts.checks != 1 {
-		t.Fatalf("start = %#v checks=%d", started, attempts.checks)
-	}
+	require.NoError(t, err)
+	require.Equal(t, handle, started.Handle, "start = %#v checks", started)
+	require.Equal(t, proof, started.BrowserProof, "start = %#v checks", started)
+	require.Equal(t, BrowserInvitationRequirementAccount, started.Requirement, "start = %#v checks", started)
+	require.Equal(t, invitation.ExpiresAt.UnixMilli(), started.ExpiresAt, "start = %#v checks", started)
+	require.Equal(t, 1, attempts.checks, "start = %#v checks", started)
 	created := transactions.created
-	if created == nil || created.InvitationID != invitation.ID || created.InvitationPurpose != invitation.Purpose ||
-		created.InvitationClaimHash != model.HashInvitationClaim(claim) ||
-		created.HandleHash != model.HashToken(handle) || created.BrowserProofHash != model.HashToken(proof) {
-		t.Fatalf("created transaction = %#v", created)
-	}
-	if created.HandleHash == handle || created.BrowserProofHash == proof || created.InvitationClaimHash == claim {
-		t.Fatal("raw browser Invitation credential was persisted")
-	}
+	require.NotNil(t, created)
+	require.Equal(t, invitation.ID, created.InvitationID)
+	require.Equal(t, invitation.Purpose, created.InvitationPurpose)
+	require.Equal(t, model.HashInvitationClaim(claim), created.InvitationClaimHash)
+	require.Equal(t, model.HashToken(handle), created.HandleHash)
+	require.Equal(t, model.HashToken(proof), created.BrowserProofHash)
+	require.NotEqual(t, handle, created.HandleHash, "raw browser Invitation credential was persisted")
+	require.NotEqual(t, proof, created.BrowserProofHash, "raw browser Invitation credential was persisted")
+	require.NotEqual(t, claim, created.InvitationClaimHash, "raw browser Invitation credential was persisted")
 }
 
 func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
@@ -199,22 +198,16 @@ func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
 			return value
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// An explicit nil result from an otherwise successful dependency must not
 	// become a successful application response or a later nil dereference.
 	_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-	if !apperror.Is(err, "invitation.unavailable") {
-		t.Fatalf("Start error = %v, want invitation.unavailable", err)
-	}
+	require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v, want invitation.unavailable", err)
 
 	transactions.createNil = false
 	transactions.resolveNil = true
 	_, _, err = service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
-	if !apperror.Is(err, "invitation.unavailable") {
-		t.Fatalf("resolve error = %v, want invitation.unavailable", err)
-	}
+	require.True(t, apperror.Is(err, "invitation.unavailable"), "resolve error = %v, want invitation.unavailable", err)
 }
 
 func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
@@ -237,13 +230,9 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 				&browserInvitationTransactionStoreFake{}, browserInvitationInstitutionStoreFake{institution: institution},
 				invitationService, "https://proctor.example.edu", model.NewCredentialToken,
 			)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-			if !apperror.Is(err, "invitation.unavailable") {
-				t.Fatalf("Start error = %v", err)
-			}
+			require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v", err)
 		})
 	}
 	newService := func(transactions *browserInvitationTransactionStoreFake) *browserInvitationService {
@@ -252,9 +241,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 			browserInvitationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
 			invitationService, "https://proctor.example.edu", model.NewCredentialToken,
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		return service
 	}
 
@@ -275,9 +262,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 				}
 			}
 			_, err := service.StartBrowserInvitation(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
-			if !apperror.Is(err, "invitation.unavailable") {
-				t.Fatalf("Start error = %v", err)
-			}
+			require.True(t, apperror.Is(err, "invitation.unavailable"), "Start error = %v", err)
 		})
 	}
 
@@ -292,9 +277,7 @@ func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
 		t.Run("resolve "+name, func(t *testing.T) {
 			service := newService(&browserInvitationTransactionStoreFake{resolveResult: result})
 			_, _, err := service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
-			if !apperror.Is(err, "invitation.unavailable") {
-				t.Fatalf("resolve error = %v", err)
-			}
+			require.True(t, apperror.Is(err, "invitation.unavailable"), "resolve error = %v", err)
 		})
 	}
 }
@@ -312,9 +295,7 @@ func TestBrowserInvitationSessionAcceptanceRequiresWebSession(t *testing.T) {
 		"https://proctor.example.edu",
 		model.NewCredentialToken,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	principal := model.Principal{
 		UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess,
@@ -328,7 +309,6 @@ func TestBrowserInvitationSessionAcceptanceRequiresWebSession(t *testing.T) {
 			Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Source: "source",
 		},
 	)
-	if !apperror.Is(err, "invitation.invalid") || transactions.resolveCalls != 0 {
-		t.Fatalf("AcceptSession error=%v resolve_calls=%d, want invitation.invalid before persistence", err, transactions.resolveCalls)
-	}
+	require.True(t, apperror.Is(err, "invitation.invalid"), "AcceptSession error=%v resolve_calls", err)
+	require.Equal(t, 0, transactions.resolveCalls, "AcceptSession error=%v resolve_calls", err)
 }

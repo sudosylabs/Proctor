@@ -9,15 +9,17 @@ package attempt
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func (f *effectsFake) AttemptSuspendedByManager(context.Context, ManualSuspensionResult) error {
@@ -31,9 +33,7 @@ func manualSuspensionResultFixture(t *testing.T, f *fixture, managerID model.Use
 ) *store.ExamAttemptManualSuspensionResult {
 	t.Helper()
 	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID, f.at.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	attempt.State, attempt.UpdatedAt, attempt.Revision = model.ExamAttemptSuspended, f.at, revision+1
 	participationID := model.NewAttemptParticipationID()
 	return &store.ExamAttemptManualSuspensionResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
@@ -61,26 +61,30 @@ func TestSuspendByManagerAuthorizesFirstAndKeepsPrivateReasonOutOfAuditAndEffect
 	command := ManualSuspensionCommand{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID,
 		ExpectedAttemptRevision: 3, PrivateReason: reason, IdempotencyKey: "kick-key"}
 	result, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	input := f.persistence.manualSuspension
-	if input == nil || input.ActorUserID != managerID || input.ExpectedAttemptRevision != 3 || input.PrivateReason != reason ||
-		input.ManagerOverride || !input.SuspensionID.IsValid() || input.AuditEventID == "" ||
-		result.Attempt.State != model.ExamAttemptSuspended || result.Suspension.Source != model.AttemptSuspensionSourceManual ||
-		!result.ConnectionClosed || f.effects.kicked != 1 ||
-		strings.Join(f.order, ",") != "manager.manage,sitting,audit,manager.get,suspend,effect.kick" {
-		t.Fatalf("result=%#v input=%#v order=%v", result, input, f.order)
-	}
-	if f.audit.action != model.ActionExamSittingManage || f.audit.operation != store.ExamAttemptSuspendOperation ||
-		strings.Contains(fmt.Sprintf("%#v", f.audit.values), reason) || strings.Contains(fmt.Sprintf("%#v", result), reason) {
-		t.Fatalf("audit=%#v result=%#v", f.audit, result)
-	}
+	require.NotNil(t, input, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, managerID, input.ActorUserID, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, int64(3), input.ExpectedAttemptRevision, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, reason, input.PrivateReason, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.False(t, input.ManagerOverride, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.True(t, input.SuspensionID.IsValid(), "result=%#v input=%#v order=%v", result, input, f.order)
+	require.NotEmpty(t, input.AuditEventID, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, model.ExamAttemptSuspended, result.Attempt.State, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, model.AttemptSuspensionSourceManual, result.Suspension.Source, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.True(t, result.ConnectionClosed, "result=%#v input=%#v order=%v", result, input, f.order)
+	require.Equal(t, 1, f.effects.kicked, "result=%#v input=%#v order=%v", result, input, f.order)
+	// Contract: the Manager authorization precedes the audit, the audit begins
+	// before the durable suspension (guardrail 8), and the suspension commits
+	// before the kick (guardrail 14).
+	ordertest.RequireInOrder(t, f.order, "manager.manage", "audit", "suspend", "effect.kick")
+	require.Equal(t, model.ActionExamSittingManage, f.audit.action, "audit=%#v result=%#v", f.audit, result)
+	require.Equal(t, store.ExamAttemptSuspendOperation, f.audit.operation, "audit=%#v result=%#v", f.audit, result)
+	require.NotContains(t, fmt.Sprintf("%#v", f.audit.values), reason, "audit=%#v result=%#v", f.audit, result)
+	require.NotContains(t, fmt.Sprintf("%#v", result), reason, "audit=%#v result=%#v", f.audit, result)
 	want, err := prepareManualSuspensionIdempotency(f.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
+	require.NoError(t, err)
+	require.Equal(t, want, f.persistence.idempotency)
 }
 
 func TestSuspendByManagerReplaySuppressesEffectAndPropagatesOverride(t *testing.T) {
@@ -93,10 +97,11 @@ func TestSuspendByManagerReplaySuppressesEffectAndPropagatesOverride(t *testing.
 	result, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "override kick",
 		IdempotencyKey: "kick-key"})
-	if err != nil || !result.Replayed || f.effects.kicked != 0 || !f.persistence.manualSuspension.ManagerOverride ||
-		f.audit.action != model.ActionExamSittingManageOverride {
-		t.Fatalf("result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
-	}
+	require.NoError(t, err, "result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
+	require.True(t, result.Replayed, "result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
+	require.Equal(t, 0, f.effects.kicked, "result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
+	require.True(t, f.persistence.manualSuspension.ManagerOverride, "result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
+	require.Equal(t, model.ActionExamSittingManageOverride, f.audit.action, "result=%#v err=%v effects=%d input=%#v", result, err, f.effects.kicked, f.persistence.manualSuspension)
 }
 
 func TestSuspendByManagerConcealsSelfAndValidatesBeforeAuthorization(t *testing.T) {
@@ -105,18 +110,18 @@ func TestSuspendByManagerConcealsSelfAndValidatesBeforeAuthorization(t *testing.
 	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 3, "")
 	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "self", IdempotencyKey: "kick-key"})
-	if !apperror.Is(err, "resource.not_found") || !chainHasCode(err, "exam.attempt.not_found") || f.audit.failedCode != "exam.attempt.not_found" ||
-		f.persistence.manualSuspension != nil || f.effects.kicked != 0 {
-		t.Fatalf("self kick error=%v audit=%#v", err, f.audit)
-	}
+	require.True(t, apperror.Is(err, "resource.not_found"), "self kick error=%v audit=%#v", err, f.audit)
+	require.True(t, chainHasCode(err, "exam.attempt.not_found"), "self kick error=%v audit=%#v", err, f.audit)
+	require.Equal(t, "exam.attempt.not_found", f.audit.failedCode, "self kick error=%v audit=%#v", err, f.audit)
+	require.Nil(t, f.persistence.manualSuspension, "self kick error=%v audit=%#v", err, f.audit)
+	require.Equal(t, 0, f.effects.kicked, "self kick error=%v audit=%#v", err, f.audit)
 	for _, reason := range []string{"", " padded ", "\xff", strings.Repeat("é", model.AttemptSuspensionPrivateReasonMaximumRunes+1)} {
 		f := newFixture(t)
 		useManagerCall(f)
 		_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 			SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: reason, IdempotencyKey: "kick-key"})
-		if err == nil || len(f.order) != 0 {
-			t.Fatalf("reason=%q error=%v order=%v", reason, err, f.order)
-		}
+		require.Error(t, err, "reason=%q error=%v order", reason, err)
+		require.Empty(t, f.order, "reason=%q error=%v order", reason, err)
 	}
 }
 
@@ -131,9 +136,9 @@ func TestSuspendByManagerRejectsInconsistentStoreOutcome(t *testing.T) {
 	_, err := f.service.SuspendExamAttempt(context.Background(), f.invocation, ManualSuspensionCommand{ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, ExpectedAttemptRevision: 3, PrivateReason: "kick", IdempotencyKey: "kick-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.attempt.unavailable" || f.effects.kicked != 0 {
-		t.Fatalf("flag-linked manual outcome error = %v", err)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.attempt.unavailable", fault.Code())
+	require.Equal(t, 0, f.effects.kicked)
 }
 
 func TestReallowAcceptsClosedManualSuspension(t *testing.T) {
@@ -153,8 +158,8 @@ func TestReallowAcceptsClosedManualSuspension(t *testing.T) {
 	result, err := f.service.ReallowExamAttempt(context.Background(), f.invocation, ReallowCommand{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		AttemptID: f.attemptID, SuspensionID: suspensionID, ExpectedAttemptRevision: 2, PrivateReason: "candidate returned",
 		IdempotencyKey: "reallow-key"})
-	if err != nil || result.Suspension.Source != model.AttemptSuspensionSourceManual || f.effects.reallowed != 1 ||
-		result.Suspension.ReallowedByUserID != managerID {
-		t.Fatalf("Reallow(manual) = %#v, %v", result, err)
-	}
+	require.NoError(t, err, "Reallow(manual) = %#v", result)
+	require.Equal(t, model.AttemptSuspensionSourceManual, result.Suspension.Source, "Reallow(manual) = %#v", result)
+	require.Equal(t, 1, f.effects.reallowed, "Reallow(manual) = %#v", result)
+	require.Equal(t, managerID, result.Suspension.ReallowedByUserID, "Reallow(manual) = %#v", result)
 }

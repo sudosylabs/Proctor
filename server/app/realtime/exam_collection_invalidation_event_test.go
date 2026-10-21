@@ -9,8 +9,9 @@ package realtime
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -19,71 +20,53 @@ func TestCandidateExamActivityChangedEventHasOnlySchemaVersion(t *testing.T) {
 	t.Parallel()
 	candidateID := model.NewUserID()
 	event, err := NewCandidateExamActivityChangedEvent(candidateID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.Name != "candidate.exam_activity.changed" || event.UserID != candidateID.String() ||
-		event.Action != "" || event.Resource != (model.Resource{}) {
-		t.Fatalf("event = %#v", event)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "candidate.exam_activity.changed", event.Name)
+	require.Equal(t, candidateID.String(), event.UserID)
+	require.Empty(t, event.Action)
+	require.Equal(t, model.Resource{}, event.Resource)
 	var payload map[string]any
-	if err = json.Unmarshal(event.Data, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(payload, map[string]any{"schema_version": float64(1)}) {
-		t.Fatalf("payload = %#v", payload)
-	}
-	if err = event.ValidateForPublish(); err != nil {
-		t.Fatal(err)
-	}
+	err = json.Unmarshal(event.Data, &payload)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"schema_version": float64(1)}, payload)
+	err = event.ValidateForPublish()
+	require.NoError(t, err)
 }
 
 func TestCurrentUserContextChangedEventHasOnlySchemaVersion(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
 	event, err := NewCurrentUserContextChangedEvent(userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.Name != "current_user.context.changed" || event.UserID != userID.String() ||
-		event.Action != "" || event.Resource != (model.Resource{}) {
-		t.Fatalf("event = %#v", event)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "current_user.context.changed", event.Name)
+	require.Equal(t, userID.String(), event.UserID)
+	require.Empty(t, event.Action)
+	require.Equal(t, model.Resource{}, event.Resource)
 	var payload map[string]any
-	if err = json.Unmarshal(event.Data, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(payload, map[string]any{"schema_version": float64(1)}) {
-		t.Fatalf("payload = %#v", payload)
-	}
-	if err = event.ValidateForPublish(); err != nil {
-		t.Fatal(err)
-	}
+	err = json.Unmarshal(event.Data, &payload)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"schema_version": float64(1)}, payload)
+	err = event.ValidateForPublish()
+	require.NoError(t, err)
 }
 
 func TestManagerSittingBoardChangedEventHasOnlyBoardSelectors(t *testing.T) {
 	t.Parallel()
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	event, err := NewManagerSittingBoardChangedEvent(examID, sittingID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.Name != "manager.sitting_board.changed" || event.UserID != "" ||
-		event.Action != model.ActionExamSittingView || event.Resource != (model.Resource{
+	require.NoError(t, err)
+	require.Equal(t, "manager.sitting_board.changed", event.Name)
+	require.Empty(t, event.UserID)
+	require.Equal(t, model.ActionExamSittingView, event.Action)
+	require.Equal(t, model.Resource{
 		Type: model.ResourceExamSitting, ID: sittingID.String(),
-	}) {
-		t.Fatalf("event = %#v", event)
-	}
+	}, event.Resource)
 	var payload map[string]any
-	if err = json.Unmarshal(event.Data, &payload); err != nil {
-		t.Fatal(err)
-	}
+	err = json.Unmarshal(event.Data, &payload)
+	require.NoError(t, err)
 	want := map[string]any{"schema_version": float64(1), "exam_id": examID.String(),
 		"exam_sitting_id": sittingID.String()}
-	if !reflect.DeepEqual(payload, want) {
-		t.Fatalf("payload = %#v, want %#v", payload, want)
-	}
-	if err = event.ValidateForPublish(); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, want, payload, "payload")
+	err = event.ValidateForPublish()
+	require.NoError(t, err)
 }

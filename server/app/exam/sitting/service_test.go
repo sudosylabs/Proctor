@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
@@ -34,37 +36,37 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 	}
 
 	got, err := fixture.service.ScheduleExamSitting(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.ID != fixture.sittingID || got.Sitting.State != model.ExamSittingScheduled {
-		t.Fatalf("Schedule() = %#v", got)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingCreate || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}) {
-		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
-	if fixture.persistence.schedule == nil || fixture.persistence.schedule.ManagerOverride || fixture.persistence.schedule.ActorUserID != fixture.userID ||
-		fixture.persistence.schedule.Sitting.ID != fixture.sittingID || fixture.persistence.schedule.Sitting.ScheduledStartAt != start || fixture.persistence.command == nil ||
-		fixture.persistence.schedule.OpenJob != fixture.jobs.open || fixture.persistence.schedule.DeadlineJob != fixture.jobs.deadline ||
-		fixture.jobs.boundaryRevision != 1 || !fixture.jobs.boundaryStart.Equal(start) || !fixture.jobs.boundaryEnd.Equal(end) ||
-		fixture.persistence.schedule.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailScheduled {
-		t.Fatalf("store schedule = %#v, command=%#v", fixture.persistence.schedule, fixture.persistence.command)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting)
+	require.Equal(t, fixture.sittingID, got.Sitting.ID)
+	require.Equal(t, model.ExamSittingScheduled, got.Sitting.State)
+	require.Equal(t, model.ActionExamSittingCreate, fixture.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}, fixture.authorizer.resource, "authorization")
+	require.NotNil(t, fixture.persistence.schedule, "store schedule")
+	require.False(t, fixture.persistence.schedule.ManagerOverride, "store schedule")
+	require.Equal(t, fixture.userID, fixture.persistence.schedule.ActorUserID, "store schedule")
+	require.Equal(t, fixture.sittingID, fixture.persistence.schedule.Sitting.ID, "store schedule")
+	require.Equal(t, start, fixture.persistence.schedule.Sitting.ScheduledStartAt, "store schedule")
+	require.NotNil(t, fixture.persistence.command, "store schedule")
+	require.Same(t, fixture.jobs.open, fixture.persistence.schedule.OpenJob, "store schedule")
+	require.Same(t, fixture.jobs.deadline, fixture.persistence.schedule.DeadlineJob, "store schedule")
+	require.Equal(t, int64(1), fixture.jobs.boundaryRevision, "store schedule")
+	require.True(t, fixture.jobs.boundaryStart.Equal(start), "store schedule")
+	require.True(t, fixture.jobs.boundaryEnd.Equal(end), "store schedule")
+	require.Same(t, fixture.mail.result, fixture.persistence.schedule.Mail, "store schedule")
+	require.Equal(t, store.ExamSittingMailScheduled, fixture.mail.request.ChangeKind, "store schedule")
 	wantIdempotency, err := prepareScheduleIdempotency(fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
+	require.NoError(t, err)
+	require.Equal(t, wantIdempotency, fixture.persistence.command)
 	wantAudit := map[string]any{
 		"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"exam_revision_id": fixture.revisionID.String(), "class_id": fixture.classID.String(),
 	}
-	if fixture.auditor.action != model.ActionExamSittingCreate || fixture.auditor.operation != "schedule" || !reflect.DeepEqual(fixture.auditor.value, wantAudit) {
-		t.Fatalf("audit = %q %q %#v", fixture.auditor.action, fixture.auditor.operation, fixture.auditor.value)
-	}
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0] != (effectEvent{kind: "scheduled", examID: fixture.examID, sittingID: fixture.sittingID, state: model.ExamSittingScheduled, revision: 1, at: testNow}) {
-		t.Fatalf("effects = %#v", fixture.effects.events)
-	}
+	require.Equal(t, model.ActionExamSittingCreate, fixture.auditor.action, "audit")
+	require.Equal(t, "schedule", fixture.auditor.operation, "audit")
+	require.Equal(t, wantAudit, fixture.auditor.value, "audit")
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, effectEvent{kind: "scheduled", examID: fixture.examID, sittingID: fixture.sittingID, state: model.ExamSittingScheduled, revision: 1, at: testNow}, fixture.effects.events[0])
 }
 
 func TestGetAuthorizesExactSittingResource(t *testing.T) {
@@ -73,18 +75,13 @@ func TestGetAuthorizesExactSittingResource(t *testing.T) {
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
 	got, err := fixture.service.GetExamSitting(context.Background(), fixture.invocation, GetQuery{ExamID: fixture.examID, SittingID: fixture.sittingID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.ID != fixture.sittingID {
-		t.Fatalf("Get() = %#v", got)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingView || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}) {
-		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
-	if fixture.persistence.getExamID != fixture.examID || fixture.persistence.getSittingID != fixture.sittingID {
-		t.Fatalf("store Get() ids = %q %q", fixture.persistence.getExamID, fixture.persistence.getSittingID)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting)
+	require.Equal(t, fixture.sittingID, got.Sitting.ID)
+	require.Equal(t, model.ActionExamSittingView, fixture.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}, fixture.authorizer.resource, "authorization")
+	require.Equal(t, fixture.examID, fixture.persistence.getExamID, "store Get() ids")
+	require.Equal(t, fixture.sittingID, fixture.persistence.getSittingID, "store Get() ids")
 }
 
 func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
@@ -92,22 +89,14 @@ func TestAuthorizeViewRechecksCurrentSittingRelationship(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 
-	if err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.persistence.resolveID != fixture.sittingID || fixture.authorizer.action != model.ActionExamSittingView ||
-		fixture.authorizer.resource != (model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}) {
-		t.Fatalf("subscription authorization = resolve %s action %q resource %#v", fixture.persistence.resolveID,
-			fixture.authorizer.action, fixture.authorizer.resource)
-	}
+	require.NoError(t, fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID))
+	require.Equal(t, fixture.sittingID, fixture.persistence.resolveID, "subscription authorization = resolve")
+	require.Equal(t, model.ActionExamSittingView, fixture.authorizer.action, "subscription authorization = resolve")
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: fixture.sittingID.String()}, fixture.authorizer.resource, "subscription authorization = resolve")
 
 	fixture.memberships.items = nil
-	if err := fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingViewOverride {
-		t.Fatalf("subscription override action = %q", fixture.authorizer.action)
-	}
+	require.NoError(t, fixture.service.AuthorizeView(context.Background(), fixture.invocation, fixture.sittingID))
+	require.Equal(t, model.ActionExamSittingViewOverride, fixture.authorizer.action)
 }
 
 func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *testing.T) {
@@ -134,22 +123,16 @@ func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *tes
 			}
 			unit, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID)
 			wantAllowed := !test.removeManager && !test.denyPermission
-			if (err == nil) != wantAllowed {
-				t.Fatalf("AuthorizeBrowserActivityView() = %s, %v", unit, err)
+			require.Equal(t, wantAllowed, err == nil, "AuthorizeBrowserActivityView() = %s, %v", unit, err)
+			if wantAllowed {
+				require.Equal(t, f.unitID, unit, "wrong authorized unit")
 			}
-			if wantAllowed && unit != f.unitID {
-				t.Fatal("wrong authorized unit")
+			if !wantAllowed {
+				require.Empty(t, unit, "denial returned a scope")
 			}
-			if !wantAllowed && unit != "" {
-				t.Fatal("denial returned a scope")
-			}
-			if f.authorizer.action != model.ActionExamAttemptBrowserActivityView ||
-				f.authorizer.resource.ID != f.sittingID.String() {
-				t.Fatal("used an unrelated action or resource")
-			}
-			if f.authorizer.denied != test.removeManager {
-				t.Fatal("relationship denial was not audited")
-			}
+			require.Equal(t, model.ActionExamAttemptBrowserActivityView, f.authorizer.action, "used an unrelated action or resource")
+			require.Equal(t, f.sittingID.String(), f.authorizer.resource.ID, "used an unrelated action or resource")
+			require.Equal(t, test.removeManager, f.authorizer.denied, "relationship denial was not audited")
 		})
 	}
 }
@@ -157,18 +140,16 @@ func TestBrowserActivityRequiresCurrentExactManagerAndDedicatedPermission(t *tes
 func TestBrowserActivityRechecksMembershipBetweenPagesAndFailsClosedOnAudit(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: f.sitting(t)}
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); err != nil {
-		t.Fatal(err)
-	}
+	_, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID)
+	require.NoError(t, err)
 	f.access.snapshot.ActorIsManager = false
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); err == nil || !f.authorizer.denied {
-		t.Fatal("later page retained removed Manager authority")
-	}
+	_, err = f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID)
+	require.Error(t, err, "later page retained removed Manager authority")
+	require.True(t, f.authorizer.denied, "later page retained removed Manager authority")
 	auditErr := errors.New("audit unavailable")
 	f.authorizer.denyErr = auditErr
-	if _, err := f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID); !errors.Is(err, auditErr) {
-		t.Fatalf("audit failure = %v", err)
-	}
+	_, err = f.service.AuthorizeBrowserActivityView(context.Background(), f.invocation, f.sittingID)
+	require.ErrorIs(t, err, auditErr)
 }
 
 func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
@@ -176,14 +157,14 @@ func TestAuthorizeManageReportsOrdinaryAndOverrideDecision(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 	override, err := fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
-	if err != nil || override || fixture.authorizer.action != model.ActionExamSittingManage {
-		t.Fatalf("ordinary manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "ordinary manage override")
+	require.False(t, override, "ordinary manage override")
+	require.Equal(t, model.ActionExamSittingManage, fixture.authorizer.action, "ordinary manage override")
 	fixture.memberships.items = nil
 	override, err = fixture.service.AuthorizeManage(context.Background(), fixture.invocation, fixture.sittingID)
-	if err != nil || !override || fixture.authorizer.action != model.ActionExamSittingManageOverride {
-		t.Fatalf("override manage override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "override manage override")
+	require.True(t, override, "override manage override")
+	require.Equal(t, model.ActionExamSittingManageOverride, fixture.authorizer.action, "override manage override")
 }
 
 func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManagerRelationship(t *testing.T) {
@@ -191,21 +172,13 @@ func TestAuthorizeSubmissionViewUsesCanonicalSubmissionResourceAndCurrentManager
 	fixture := newFixture(t)
 	submissionID := model.NewSubmissionID()
 
-	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionSubmissionView ||
-		fixture.authorizer.resource != (model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}) {
-		t.Fatalf("ordinary Submission authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
+	require.NoError(t, fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID))
+	require.Equal(t, model.ActionSubmissionView, fixture.authorizer.action, "ordinary Submission authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, fixture.authorizer.resource, "ordinary Submission authorization")
 
 	fixture.memberships.items = nil
-	if err := fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionSubmissionViewOverride {
-		t.Fatalf("Submission override action = %q", fixture.authorizer.action)
-	}
+	require.NoError(t, fixture.service.AuthorizeSubmissionView(context.Background(), fixture.invocation, fixture.examID, submissionID))
+	require.Equal(t, model.ActionSubmissionViewOverride, fixture.authorizer.action)
 }
 
 func TestAuthorizeSubmissionReviewAndReleaseUseDistinctCurrentPermissions(t *testing.T) {
@@ -214,23 +187,23 @@ func TestAuthorizeSubmissionReviewAndReleaseUseDistinctCurrentPermissions(t *tes
 	submissionID := model.NewSubmissionID()
 
 	override, err := fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
-	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionReview {
-		t.Fatalf("ordinary Review authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "ordinary Review authorization override")
+	require.False(t, override, "ordinary Review authorization override")
+	require.Equal(t, model.ActionSubmissionReview, fixture.authorizer.action, "ordinary Review authorization override")
 	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
-	if err != nil || override || fixture.authorizer.action != model.ActionSubmissionRelease {
-		t.Fatalf("ordinary release authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "ordinary release authorization override")
+	require.False(t, override, "ordinary release authorization override")
+	require.Equal(t, model.ActionSubmissionRelease, fixture.authorizer.action, "ordinary release authorization override")
 
 	fixture.memberships.items = nil
 	override, err = fixture.service.AuthorizeSubmissionReview(context.Background(), fixture.invocation, fixture.examID, submissionID)
-	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReviewOverride {
-		t.Fatalf("Review override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "Review override authorization override")
+	require.True(t, override, "Review override authorization override")
+	require.Equal(t, model.ActionSubmissionReviewOverride, fixture.authorizer.action, "Review override authorization override")
 	override, err = fixture.service.AuthorizeSubmissionRelease(context.Background(), fixture.invocation, fixture.examID, submissionID)
-	if err != nil || !override || fixture.authorizer.action != model.ActionSubmissionReleaseOverride {
-		t.Fatalf("release override authorization override=%t action=%q error=%v", override, fixture.authorizer.action, err)
-	}
+	require.NoError(t, err, "release override authorization override")
+	require.True(t, override, "release override authorization override")
+	require.Equal(t, model.ActionSubmissionReleaseOverride, fixture.authorizer.action, "release override authorization override")
 }
 
 func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
@@ -248,21 +221,16 @@ func TestListAppliesBoundedFiltersAndLookAhead(t *testing.T) {
 		ExamID: fixture.examID, ClassID: fixture.classID, States: []model.ExamSittingState{model.ExamSittingScheduled},
 		OverlapStartAt: overlapStart, OverlapEndAt: overlapEnd, Limit: 1,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || !page.HasMore || page.Items[0].Sitting.ID != first.ID {
-		t.Fatalf("List() = %#v", page)
-	}
-	if fixture.authorizer.action != model.ActionExamView || fixture.authorizer.resource != (model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}) {
-		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.True(t, page.HasMore)
+	require.Equal(t, first.ID, page.Items[0].Sitting.ID)
+	require.Equal(t, model.ActionExamView, fixture.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: fixture.examID.String()}, fixture.authorizer.resource, "authorization")
 	want := store.ExamSittingListOptions{ExamID: fixture.examID, ClassID: fixture.classID,
 		States: []model.ExamSittingState{model.ExamSittingScheduled}, OverlapStartAt: overlapStart,
 		OverlapEndAt: overlapEnd, Limit: 2}
-	if !reflect.DeepEqual(fixture.persistence.listOptions, want) {
-		t.Fatalf("store List options = %#v", fixture.persistence.listOptions)
-	}
+	require.Equal(t, want, fixture.persistence.listOptions)
 }
 
 func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
@@ -273,9 +241,8 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 	changedAt := testNow
 	changedStart, changedEnd := testNow.Add(2*time.Hour), testNow.Add(5*time.Hour)
 	changed, err := updated.ApplySchedule(fixture.revisionID, fixture.classID, changedStart, changedEnd, changedAt)
-	if err != nil || !changed {
-		t.Fatalf("ApplySchedule() = %v, %v", changed, err)
-	}
+	require.NoError(t, err, "ApplySchedule()")
+	require.True(t, changed, "ApplySchedule()")
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current}
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: updated}}
 
@@ -284,44 +251,39 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 		ScheduledStartAt: &changedStart, ScheduledEndAt: &changedEnd, IdempotencyKey: "test-key",
 	}
 	got, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.Revision != 2 {
-		t.Fatalf("UpdateSchedule() = %#v", got)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingManage || fixture.authorizer.resource.Type != model.ResourceExamSitting {
-		t.Fatalf("authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting)
+	require.Equal(t, int64(2), got.Sitting.Revision)
+	require.Equal(t, model.ActionExamSittingManage, fixture.authorizer.action, "authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
+	require.Equal(t, model.ResourceExamSitting, fixture.authorizer.resource.Type, "authorization = %q %#v", fixture.authorizer.action, fixture.authorizer.resource)
 	input := fixture.persistence.update
-	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || fixture.persistence.command == nil {
-		t.Fatalf("store update = %#v, command=%#v", input, fixture.persistence.command)
-	}
+	require.NotNil(t, input, "store update")
+	require.Equal(t, int64(1), input.ExpectedRevision, "store update")
+	require.False(t, input.ManagerOverride, "store update")
+	require.NotNil(t, fixture.persistence.command, "store update")
 	wantIdempotency, err := prepareScheduleUpdateIdempotency(fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
-	if input.OpenJob != fixture.jobs.open || input.DeadlineJob != fixture.jobs.deadline || fixture.jobs.boundaryRevision != 2 ||
-		!fixture.jobs.boundaryStart.Equal(changedStart) || !fixture.jobs.boundaryEnd.Equal(changedEnd) {
-		t.Fatalf("boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob,
-			fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
-	}
-	if input.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailRescheduled ||
-		fixture.mail.request.PriorClassID != fixture.classID || fixture.mail.request.SittingRevision != 2 {
-		t.Fatalf("mail preparation = %#v, store=%#v", fixture.mail.request, input.Mail)
-	}
-	if input.ExamRevisionID != fixture.revisionID || input.ClassID != fixture.classID || !input.ScheduledStartAt.Equal(changedStart) || !input.ScheduledEndAt.Equal(changedEnd) {
-		t.Fatalf("merged store update = %#v", input)
-	}
+	require.NoError(t, err)
+	require.Equal(t, wantIdempotency, fixture.persistence.command)
+	require.Same(t, fixture.jobs.open, input.OpenJob, "boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob, fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
+	require.Same(t, fixture.jobs.deadline, input.DeadlineJob, "boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob, fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
+	require.Equal(t, int64(2), fixture.jobs.boundaryRevision, "boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob, fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
+	require.True(t, fixture.jobs.boundaryStart.Equal(changedStart), "boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob, fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
+	require.True(t, fixture.jobs.boundaryEnd.Equal(changedEnd), "boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob, fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
+	require.Same(t, fixture.mail.result, input.Mail, "mail preparation = %#v, store", fixture.mail.request)
+	require.Equal(t, store.ExamSittingMailRescheduled, fixture.mail.request.ChangeKind, "mail preparation = %#v, store", fixture.mail.request)
+	require.Equal(t, fixture.classID, fixture.mail.request.PriorClassID, "mail preparation = %#v, store", fixture.mail.request)
+	require.Equal(t, int64(2), fixture.mail.request.SittingRevision, "mail preparation = %#v, store", fixture.mail.request)
+	require.Equal(t, fixture.revisionID, input.ExamRevisionID)
+	require.Equal(t, fixture.classID, input.ClassID)
+	require.True(t, input.ScheduledStartAt.Equal(changedStart))
+	require.True(t, input.ScheduledEndAt.Equal(changedEnd))
 	wantAudit := map[string]any{"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"exam_revision_id": fixture.revisionID.String(), "class_id": fixture.classID.String(), "expected_sitting_revision": int64(1)}
-	if fixture.auditor.operation != "update_schedule" || !reflect.DeepEqual(fixture.auditor.value, wantAudit) {
-		t.Fatalf("audit = %q %#v", fixture.auditor.operation, fixture.auditor.value)
-	}
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != "schedule_updated" || fixture.effects.events[0].revision != 2 {
-		t.Fatalf("effects = %#v", fixture.effects.events)
-	}
+	require.Equal(t, "update_schedule", fixture.auditor.operation, "audit")
+	require.Equal(t, wantAudit, fixture.auditor.value, "audit")
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, "schedule_updated", fixture.effects.events[0].kind)
+	require.Equal(t, int64(2), fixture.effects.events[0].revision)
 }
 
 func TestUpdateScheduleReturnsCurrentNoChangesOnlyForCurrentActiveScheduledState(t *testing.T) {
@@ -336,9 +298,8 @@ func TestUpdateScheduleReturnsCurrentNoChangesOnlyForCurrentActiveScheduledState
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.no_changes")
-	if fixture.persistence.update != nil || fixture.auditor.operation != "" {
-		t.Fatalf("no-op reached mutation boundary: update=%#v audit=%q", fixture.persistence.update, fixture.auditor.operation)
-	}
+	require.Nil(t, fixture.persistence.update, "no-op reached mutation boundary: update")
+	require.Empty(t, fixture.auditor.operation, "no-op reached mutation boundary: update")
 }
 
 func TestUpdateScheduleSendsStaleNoOpToStore(t *testing.T) {
@@ -355,9 +316,8 @@ func TestUpdateScheduleSendsStaleNoOpToStore(t *testing.T) {
 		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.revision_conflict")
-	if fixture.persistence.update == nil || fixture.auditor.operation != "update_schedule" {
-		t.Fatalf("stale no-op did not reach mutation boundary: update=%#v audit=%q", fixture.persistence.update, fixture.auditor.operation)
-	}
+	require.NotNil(t, fixture.persistence.update, "stale no-op did not reach mutation boundary: update")
+	require.Equal(t, "update_schedule", fixture.auditor.operation, "stale no-op did not reach mutation boundary: update")
 }
 
 func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
@@ -366,9 +326,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 		t.Parallel()
 		fixture := newFixture(t)
 		fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
-		if err := fixture.access.snapshot.Exam.Archive(testNow); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, fixture.access.snapshot.Exam.Archive(testNow))
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_archived", nil)
 		revisionID := fixture.revisionID
 
@@ -377,18 +335,14 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
 		assertFaultCode(t, err, "exam.archived")
-		if fixture.persistence.update == nil {
-			t.Fatal("archived no-op did not reach Store")
-		}
+		require.NotNil(t, fixture.persistence.update, "archived no-op did not reach Store")
 	})
 
 	t.Run("non-scheduled sitting", func(t *testing.T) {
 		t.Parallel()
 		fixture := newFixture(t)
 		current := fixture.sitting(t)
-		if err := current.Cancel(model.ExamSittingReasonManagerCanceled, testNow); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, current.Cancel(model.ExamSittingReasonManagerCanceled, testNow))
 		fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current}
 		fixture.persistence.err = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 		revisionID := fixture.revisionID
@@ -398,9 +352,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
 		assertFaultCode(t, err, "exam.sitting.state_conflict")
-		if fixture.persistence.update == nil {
-			t.Fatal("state-conflicting no-op did not reach Store")
-		}
+		require.NotNil(t, fixture.persistence.update, "state-conflicting no-op did not reach Store")
 	})
 }
 
@@ -414,12 +366,10 @@ func TestScheduleUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testin
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fixture.authorizer.action != model.ActionExamSittingCreateOverride || fixture.persistence.schedule == nil || !fixture.persistence.schedule.ManagerOverride {
-		t.Fatalf("override authorization/store = %q %#v", fixture.authorizer.action, fixture.persistence.schedule)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamSittingCreateOverride, fixture.authorizer.action, "override authorization/store")
+	require.NotNil(t, fixture.persistence.schedule, "override authorization/store")
+	require.True(t, fixture.persistence.schedule.ManagerOverride, "override authorization/store")
 }
 
 func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
@@ -432,9 +382,9 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
-	if err == nil || fixture.persistence.schedule != nil || fixture.auditor.operation != "" {
-		t.Fatalf("unauthorized mutation continued: err=%v store=%#v audit=%q", err, fixture.persistence.schedule, fixture.auditor.operation)
-	}
+	require.Error(t, err, "unauthorized mutation continued: err")
+	require.Nil(t, fixture.persistence.schedule, "unauthorized mutation continued: err")
+	require.Empty(t, fixture.auditor.operation, "unauthorized mutation continued: err")
 }
 
 func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
@@ -447,12 +397,12 @@ func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.unavailable" || !errors.Is(err, failure) {
-		t.Fatalf("error = %v, want unavailable membership failure", err)
-	}
-	if testFixture.authorizer.action != "" || testFixture.persistence.schedule != nil || testFixture.auditor.operation != "" {
-		t.Fatalf("membership failure continued: action=%q schedule=%#v audit=%q", testFixture.authorizer.action, testFixture.persistence.schedule, testFixture.auditor.operation)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.sitting.unavailable", fault.Code())
+	require.ErrorIs(t, err, failure)
+	require.Empty(t, testFixture.authorizer.action, "membership failure continued: action")
+	require.Nil(t, testFixture.persistence.schedule, "membership failure continued: action")
+	require.Empty(t, testFixture.auditor.operation, "membership failure continued: action")
 }
 
 func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
@@ -469,15 +419,10 @@ func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
 		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.ID != original.ID {
-		t.Fatalf("replayed Sitting = %#v, want original %s", got, original.ID)
-	}
-	if len(fixture.effects.events) != 0 {
-		t.Fatalf("replayed effects = %#v", fixture.effects.events)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting, "replayed Sitting = %#v, want original", got)
+	require.Equal(t, original.ID, got.Sitting.ID, "replayed Sitting = %#v, want original", got)
+	require.Empty(t, fixture.effects.events)
 }
 
 func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
@@ -488,21 +433,16 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 		updated := fixture.sitting(t)
 		start, end := testNow.Add(2*time.Hour), testNow.Add(5*time.Hour)
-		if _, err := updated.ApplySchedule(fixture.revisionID, fixture.classID, start, end, testNow); err != nil {
-			t.Fatal(err)
-		}
+		_, err := updated.ApplySchedule(fixture.revisionID, fixture.classID, start, end, testNow)
+		require.NoError(t, err)
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: updated}, Replayed: true}
 
-		_, err := fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
+		_, err = fixture.service.UpdateExamSittingSchedule(context.Background(), fixture.invocation, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			ScheduledStartAt: &start, ScheduledEndAt: &end, IdempotencyKey: "test-key",
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(fixture.effects.events) != 0 {
-			t.Fatalf("replayed update effects = %#v", fixture.effects.events)
-		}
+		require.NoError(t, err)
+		require.Empty(t, fixture.effects.events)
 	})
 
 	t.Run("cancel", func(t *testing.T) {
@@ -510,21 +450,15 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 		fixture := newFixture(t)
 		fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 		canceled := fixture.sitting(t)
-		if err := canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow))
 		fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: canceled}, Replayed: true}
 
 		_, err := fixture.service.CancelExamSitting(context.Background(), fixture.invocation, CancelCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
 			PrivateReason: "Manager canceled", IdempotencyKey: "test-key",
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(fixture.effects.events) != 0 {
-			t.Fatalf("replayed cancel effects = %#v", fixture.effects.events)
-		}
+		require.NoError(t, err)
+		require.Empty(t, fixture.effects.events)
 	})
 }
 
@@ -558,9 +492,7 @@ func TestPrivateCancellationReasonBounds(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := validPrivateReason(test.reason); got != test.valid {
-				t.Fatalf("validPrivateReason() = %v, want %v", got, test.valid)
-			}
+			require.Equal(t, test.valid, validPrivateReason(test.reason), "validPrivateReason()")
 		})
 	}
 }
@@ -612,9 +544,8 @@ func TestListRejectsUnboundedAndPartialFilters(t *testing.T) {
 		name, query := name, query
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := listOptions(query); err == nil {
-				t.Fatal("listOptions() accepted invalid query")
-			}
+			_, err := listOptions(query)
+			require.Error(t, err, "listOptions() accepted invalid query")
 		})
 	}
 }
@@ -633,9 +564,7 @@ func TestUpdateRejectsMismatchedStoreOutcome(t *testing.T) {
 		ScheduledStartAt: &start, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.unavailable")
-	if len(fixture.effects.events) != 0 {
-		t.Fatalf("mismatched outcome effects = %#v", fixture.effects.events)
-	}
+	require.Empty(t, fixture.effects.events)
 }
 
 func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
@@ -643,9 +572,7 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	fixture := newFixture(t)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 	canceled := fixture.sitting(t)
-	if err := canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow))
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: canceled}}
 
 	command := CancelCommand{
@@ -653,34 +580,26 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 		PrivateReason: "Room became unavailable", IdempotencyKey: "test-key",
 	}
 	got, err := fixture.service.CancelExamSitting(context.Background(), fixture.invocation, command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Sitting == nil || got.Sitting.State != model.ExamSittingCanceled || got.Sitting.ReasonCode != model.ExamSittingReasonManagerCanceled {
-		t.Fatalf("Cancel() = %#v", got)
-	}
-	if fixture.persistence.cancel == nil || fixture.persistence.cancel.PrivateReason != "Room became unavailable" || fixture.persistence.cancel.ExpectedRevision != 1 {
-		t.Fatalf("store cancel = %#v", fixture.persistence.cancel)
-	}
-	if fixture.persistence.cancel.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailCancelled {
-		t.Fatalf("cancellation mail = %#v, store=%#v", fixture.mail.request, fixture.persistence.cancel.Mail)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, got.Sitting)
+	require.Equal(t, model.ExamSittingCanceled, got.Sitting.State)
+	require.Equal(t, model.ExamSittingReasonManagerCanceled, got.Sitting.ReasonCode)
+	require.NotNil(t, fixture.persistence.cancel)
+	require.Equal(t, "Room became unavailable", fixture.persistence.cancel.PrivateReason)
+	require.Equal(t, int64(1), fixture.persistence.cancel.ExpectedRevision)
+	require.Same(t, fixture.mail.result, fixture.persistence.cancel.Mail, "cancellation mail = %#v, store", fixture.mail.request)
+	require.Equal(t, store.ExamSittingMailCancelled, fixture.mail.request.ChangeKind, "cancellation mail = %#v, store", fixture.mail.request)
 	wantIdempotency, err := prepareTransitionIdempotency(fixture.invocation, idempotencyOperationCancel, PauseCommand(command))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
+	require.NoError(t, err)
+	require.Equal(t, wantIdempotency, fixture.persistence.command)
 	wantAudit := map[string]any{"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"expected_sitting_revision": int64(1), "reason_code": string(model.ExamSittingReasonManagerCanceled)}
-	if fixture.auditor.operation != "cancel" || !reflect.DeepEqual(fixture.auditor.value, wantAudit) {
-		t.Fatalf("audit = %q %#v", fixture.auditor.operation, fixture.auditor.value)
-	}
-	if reflect.ValueOf(fixture.auditor.value).String() == "Room became unavailable" {
-		t.Fatal("private cancellation reason leaked into audit")
-	}
-	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != "canceled" || fixture.effects.events[0].state != model.ExamSittingCanceled {
-		t.Fatalf("effects = %#v", fixture.effects.events)
-	}
+	require.Equal(t, "cancel", fixture.auditor.operation, "audit")
+	require.Equal(t, wantAudit, fixture.auditor.value, "audit")
+	require.NotEqual(t, "Room became unavailable", reflect.ValueOf(fixture.auditor.value).String(), "private cancellation reason leaked into audit")
+	require.Len(t, fixture.effects.events, 1)
+	require.Equal(t, "canceled", fixture.effects.events[0].kind)
+	require.Equal(t, model.ExamSittingCanceled, fixture.effects.events[0].state)
 }
 
 type fixture struct {
@@ -707,9 +626,7 @@ func (f fixture) sitting(t *testing.T) *model.ExamSitting {
 	t.Helper()
 	sitting, err := model.NewExamSitting(f.sittingID, f.examID, f.revisionID, f.classID,
 		testNow.Add(time.Hour), testNow.Add(3*time.Hour), testNow)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sitting
 }
 
@@ -718,24 +635,21 @@ func TestListNoShowsAuthorizesClosingSittingAndReturnsBoundedPage(t *testing.T) 
 	fixture := newFixture(t)
 	sitting, err := model.NewExamSitting(fixture.sittingID, fixture.examID, fixture.revisionID, fixture.classID,
 		testNow.Add(-2*time.Hour), testNow.Add(-time.Hour), testNow.Add(-3*time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = sitting.Open(testNow.Add(-2 * time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if err = sitting.EnterClosing(model.ExamSittingReasonScheduledEndReached, testNow.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	err = sitting.Open(testNow.Add(-2 * time.Hour))
+	require.NoError(t, err)
+	err = sitting.EnterClosing(model.ExamSittingReasonScheduledEndReached, testNow.Add(-time.Hour))
+	require.NoError(t, err)
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: sitting, AcademicUnitID: fixture.unitID}
 	ids := []model.UserID{model.NewUserID(), model.NewUserID(), model.NewUserID()}
 	slices.SortFunc(ids, func(left, right model.UserID) int { return strings.Compare(left.String(), right.String()) })
 	fixture.persistence.noShows = []store.ExamSittingNoShow{{CandidateUserID: ids[0]}, {CandidateUserID: ids[1]}, {CandidateUserID: ids[2]}}
 	page, err := fixture.service.ListExamSittingNoShows(context.Background(), fixture.invocation, ListNoShowsQuery{ExamID: fixture.examID, SittingID: fixture.sittingID, AfterCandidateUserID: model.UserID(""), Limit: 2})
-	if err != nil || len(page.Items) != 2 || !page.HasMore || page.Items[1].CandidateUserID != ids[1] ||
-		fixture.persistence.noShowOptions.Limit != 3 {
-		t.Fatalf("page=%#v options=%#v err=%v", page, fixture.persistence.noShowOptions, err)
-	}
+	require.NoError(t, err, "page=%#v options=%#v err", page, fixture.persistence.noShowOptions)
+	require.Len(t, page.Items, 2, "page=%#v options=%#v err", page, fixture.persistence.noShowOptions)
+	require.True(t, page.HasMore, "page=%#v options=%#v err", page, fixture.persistence.noShowOptions)
+	require.Equal(t, ids[1], page.Items[1].CandidateUserID, "page=%#v options=%#v err", page, fixture.persistence.noShowOptions)
+	require.Equal(t, 3, fixture.persistence.noShowOptions.Limit, "page=%#v options=%#v err", page, fixture.persistence.noShowOptions)
 }
 
 func newFixture(t *testing.T) fixture {
@@ -744,9 +658,7 @@ func newFixture(t *testing.T) fixture {
 	examID, revisionID := model.NewExamID(), model.NewExamRevisionID()
 	classID, sittingID := model.NewClassID(), model.NewExamSittingID()
 	exam, err := model.NewExam(examID, unitID, userID, testNow.Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence := &sittingStoreFake{}
 	access := &accessFake{snapshot: &store.ExamAccessSnapshot{Exam: exam, ActorIsManager: true}}
 	memberships := &membershipsFake{items: []*model.AcademicUnitMember{{AcademicUnitID: unitID}}}
@@ -767,9 +679,7 @@ func newFixture(t *testing.T) fixture {
 		Now:            func() time.Time { return testNow },
 		NewID:          func() model.ExamSittingID { return sittingID },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return fixture{service: service, invocation: invocation.New(testPrincipal(userID), model.RequestMetadata{}), userID: userID,
 		unitID: unitID, examID: examID, revisionID: revisionID, classID: classID, sittingID: sittingID,
 		persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor,
@@ -779,9 +689,8 @@ func newFixture(t *testing.T) fixture {
 func assertFaultCode(t *testing.T, err error, want string) {
 	t.Helper()
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != want {
-		t.Fatalf("fault = %v, want %q", err, want)
-	}
+	require.ErrorAs(t, err, &fault, "fault")
+	require.Equal(t, want, fault.Code(), "fault")
 }
 
 func testPrincipal(userID model.UserID) model.Principal {

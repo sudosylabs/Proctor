@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -49,16 +51,13 @@ func TestSelectActionRequiresCurrentManagerAndExactUnitMembership(t *testing.T) 
 			access := &store.ExamAccessSnapshot{Exam: &model.Exam{AcademicUnitID: unitID}, ActorIsManager: test.manager}
 			action, err := manageraccess.SelectAction(context.Background(), memberships, userID, access, at,
 				model.ActionSubmissionView, model.ActionSubmissionViewOverride)
-			if action != test.wantAction || !errors.Is(err, test.wantErr) {
-				t.Fatalf("action/error = %q/%v, want %q/%v", action, err, test.wantAction, test.wantErr)
-			}
+			require.Equal(t, test.wantAction, action, "action/error")
+			require.ErrorIs(t, err, test.wantErr, "action/error")
 			wantCalls := 0
 			if test.manager {
 				wantCalls = 1
 			}
-			if calls != wantCalls {
-				t.Fatalf("membership calls = %d, want %d", calls, wantCalls)
-			}
+			require.Equal(t, wantCalls, calls, "membership calls")
 		})
 	}
 }
@@ -74,15 +73,13 @@ func TestSelectActionRechecksMembershipForEachCall(t *testing.T) {
 	at := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	first, err := manageraccess.SelectAction(context.Background(), memberships, userID, access, at,
 		model.ActionExamPublish, model.ActionExamPublishOverride)
-	if err != nil || first != model.ActionExamPublish {
-		t.Fatalf("initial selection = %q/%v", first, err)
-	}
+	require.NoError(t, err, "initial selection")
+	require.Equal(t, model.ActionExamPublish, first, "initial selection")
 	members = nil
 	second, err := manageraccess.SelectAction(context.Background(), memberships, userID, access, at,
 		model.ActionExamPublish, model.ActionExamPublishOverride)
-	if err != nil || second != model.ActionExamPublishOverride {
-		t.Fatalf("selection after membership revocation = %q/%v", second, err)
-	}
+	require.NoError(t, err, "selection after membership revocation")
+	require.Equal(t, model.ActionExamPublishOverride, second, "selection after membership revocation")
 }
 
 func TestHasCurrentMembershipForwardsUserTimeAndContext(t *testing.T) {
@@ -92,15 +89,14 @@ func TestHasCurrentMembershipForwardsUserTimeAndContext(t *testing.T) {
 	userID, unitID := model.NewUserID(), model.NewAcademicUnitID()
 	at := time.Date(2026, 9, 5, 12, 0, 0, 123456789, time.FixedZone("test", 3600))
 	memberships := membershipLookup(func(gotContext context.Context, gotUser string, gotAt time.Time) ([]*model.AcademicUnitMember, error) {
-		if gotContext != ctx || gotUser != userID.String() || gotAt != model.TimeUTC(at) {
-			t.Fatalf("lookup inputs = %v/%s/%v, want original context/%s/%v", gotContext, gotUser, gotAt, userID, model.TimeUTC(at))
-		}
+		require.Equal(t, ctx, gotContext, "lookup inputs = %v/%s/%v, want original context/%s", gotContext, gotUser, gotAt, userID)
+		require.Equal(t, userID.String(), gotUser, "lookup inputs = %v/%s/%v, want original context/%s", gotContext, gotUser, gotAt, userID)
+		require.Equal(t, model.TimeUTC(at), gotAt, "lookup inputs = %v/%s/%v, want original context/%s", gotContext, gotUser, gotAt, userID)
 		return []*model.AcademicUnitMember{nil, {AcademicUnitID: model.NewAcademicUnitID()}, {AcademicUnitID: unitID}}, nil
 	})
 	member, err := manageraccess.HasCurrentMembership(ctx, memberships, userID, unitID, at)
-	if err != nil || !member {
-		t.Fatalf("membership = %t/%v, want true", member, err)
-	}
+	require.NoError(t, err, "membership")
+	require.True(t, member, "membership")
 }
 
 type membershipLookup func(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)

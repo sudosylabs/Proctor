@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -22,24 +24,21 @@ func TestExamManagerMailPreparerCreatesOneOrdinaryBoundedNotice(t *testing.T) {
 	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
 	renderer := &examManagerRendererFake{}
 	preparer, err := newDirectMailPreparer(renderer, &mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.PrepareManagerMail(examengine.ManagerMailPreparation{
 		Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: model.MailTemplateExamManagerAdded,
 		ExamTitle: `Algorithms & <Systems>`, Relationship: examengine.ManagerMailRelationshipManager, ActionAt: at,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceExamManagement || prepared.Occurrence.ActorUserID != user.ID ||
-		prepared.Delivery.TargetUserID != user.ID || prepared.Delivery.TemplateKey != model.MailTemplateExamManagerAdded ||
-		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour || prepared.Job.Type != model.JobTypeMailDeliver {
-		t.Fatalf("prepared Exam Manager mail = %#v", prepared)
-	}
-	if renderer.details.Title != `Algorithms & <Systems>` || renderer.details.Relationship != string(examengine.ManagerMailRelationshipManager) || !renderer.details.ActionAt.Equal(at) {
-		t.Fatalf("render details = %#v", renderer.details)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceExamManagement, prepared.Occurrence.Kind)
+	require.Equal(t, user.ID, prepared.Occurrence.ActorUserID)
+	require.Equal(t, user.ID, prepared.Delivery.TargetUserID)
+	require.Equal(t, model.MailTemplateExamManagerAdded, prepared.Delivery.TemplateKey)
+	require.Equal(t, 72*time.Hour, prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt))
+	require.Equal(t, model.JobTypeMailDeliver, prepared.Job.Type)
+	require.Equal(t, `Algorithms & <Systems>`, renderer.details.Title)
+	require.Equal(t, string(examengine.ManagerMailRelationshipManager), renderer.details.Relationship)
+	require.True(t, renderer.details.ActionAt.Equal(at))
 }
 
 type examManagerRendererFake struct{ details ExamManagerMailDetails }

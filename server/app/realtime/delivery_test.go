@@ -19,7 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestRealtimeEventValidateForPublish(t *testing.T) {
@@ -33,12 +36,8 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 			ID:   model.NewID(),
 		},
 	}
-	if err := valid.ValidateForPublish(); err != nil {
-		t.Fatalf("valid event: %v", err)
-	}
-	if err := (RealtimeEvent{Name: "user.notification", UserID: model.NewID()}).ValidateForPublish(); err != nil {
-		t.Fatalf("user-targeted event: %v", err)
-	}
+	require.NoError(t, valid.ValidateForPublish())
+	require.NoError(t, (RealtimeEvent{Name: "user.notification", UserID: model.NewID()}).ValidateForPublish())
 
 	tests := []struct {
 		name  string
@@ -53,9 +52,7 @@ func TestRealtimeEventValidateForPublish(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if err := test.event.ValidateForPublish(); err == nil {
-				t.Fatal("expected validation error")
-			}
+			require.Error(t, test.event.ValidateForPublish(), "expected validation error")
 		})
 	}
 }
@@ -64,147 +61,96 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	t.Parallel()
 	examID := model.NewExamID()
 	created, err := NewExamCreatedEvent(examID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.Name != "exam_created" || created.Action != model.ActionExamView || created.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) || len(created.Data) != 0 {
-		t.Fatalf("created event = %#v", created)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_created", created.Name)
+	require.Equal(t, model.ActionExamView, created.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, created.Resource)
+	require.Empty(t, created.Data)
 	updated, err := NewExamDraftUpdatedEvent(examID, 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(updated.Data); got != `{"exam_id":"`+examID.String()+`","draft_revision":7}` {
-		t.Fatalf("updated data = %s", got)
-	}
-	if _, err := NewExamDraftUpdatedEvent(examID, 0); err == nil {
-		t.Fatal("accepted non-positive Draft revision")
-	}
+	require.NoError(t, err)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","draft_revision":7}`, string(updated.Data))
+	_, err = NewExamDraftUpdatedEvent(examID, 0)
+	require.Error(t, err, "accepted non-positive Draft revision")
 	sittingID := model.NewExamSittingID()
 	sittingChangedAt := time.Date(2026, 8, 14, 9, 5, 0, 123456789, time.UTC)
 	sittingScheduled, err := NewExamSittingScheduledEvent(examID, sittingID, model.ExamSittingScheduled, 1, sittingChangedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sittingScheduled.Name != "exam_sitting_scheduled" || sittingScheduled.Action != model.ActionExamSittingView ||
-		sittingScheduled.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-		t.Fatalf("scheduled Sitting event = %#v", sittingScheduled)
-	}
-	if got := string(sittingScheduled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"scheduled","revision":1,"changed_at":"2026-08-14T09:05:00.123456Z"}` {
-		t.Fatalf("scheduled Sitting data = %s", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_sitting_scheduled", sittingScheduled.Name)
+	require.Equal(t, model.ActionExamSittingView, sittingScheduled.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, sittingScheduled.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"scheduled","revision":1,"changed_at":"2026-08-14T09:05:00.123456Z"}`, string(sittingScheduled.Data))
 	sittingCanceled, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingCanceled, 2, sittingChangedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(sittingCanceled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"canceled","revision":2,"changed_at":"2026-08-14T09:05:00.123456Z"}` {
-		t.Fatalf("canceled Sitting data = %s", got)
-	}
-	if _, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingScheduled, 2, sittingChangedAt); err == nil {
-		t.Fatal("accepted a cancellation event with non-canceled state")
-	}
+	require.NoError(t, err)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"canceled","revision":2,"changed_at":"2026-08-14T09:05:00.123456Z"}`, string(sittingCanceled.Data))
+	_, err = NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingScheduled, 2, sittingChangedAt)
+	require.Error(t, err, "accepted a cancellation event with non-canceled state")
 	lifecycle, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
 		"manager_paused", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if lifecycle.Name != "exam_sitting_lifecycle_changed" || lifecycle.Action != model.ActionExamSittingView ||
-		lifecycle.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-		t.Fatalf("lifecycle Sitting event = %#v", lifecycle)
-	}
-	if got := string(lifecycle.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-14T11:05:00.123456Z","changed_at":"2026-08-14T09:05:00.123456Z"}` {
-		t.Fatalf("lifecycle Sitting data = %s", got)
-	}
-	if _, err = NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
-		"private teacher reason", sittingChangedAt.Add(2*time.Hour), sittingChangedAt); err == nil {
-		t.Fatal("accepted private lifecycle event reason")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_sitting_lifecycle_changed", lifecycle.Name)
+	require.Equal(t, model.ActionExamSittingView, lifecycle.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, lifecycle.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-14T11:05:00.123456Z","changed_at":"2026-08-14T09:05:00.123456Z"}`, string(lifecycle.Data))
+	_, err = NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
+		"private teacher reason", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
+	require.Error(t, err, "accepted private lifecycle event reason")
 	opened, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingOpen, 2,
 		"scheduled_start_reached", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
-	if err != nil {
-		t.Fatalf("opening lifecycle event: %v", err)
-	}
-	if got := string(opened.Data); !strings.Contains(got, `"reason_code":"scheduled_start_reached"`) {
-		t.Fatalf("opening lifecycle data = %s", got)
-	}
+	require.NoError(t, err)
+	require.Contains(t, string(opened.Data), `"reason_code":"scheduled_start_reached"`)
 	sealed, err := NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingClosed, 6,
 		"sealing_completed", sittingChangedAt.Add(2*time.Hour), sittingChangedAt)
-	if err != nil {
-		t.Fatalf("sealing-completed lifecycle event: %v", err)
-	}
-	if got := string(sealed.Data); !strings.Contains(got, `"state":"closed"`) ||
-		!strings.Contains(got, `"reason_code":"sealing_completed"`) {
-		t.Fatalf("sealing-completed lifecycle data = %s", got)
-	}
+	require.NoError(t, err)
+	got := string(sealed.Data)
+	require.Contains(t, got, `"state":"closed"`)
+	require.Contains(t, got, `"reason_code":"sealing_completed"`)
 	previousRevisionID, correctedRevisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
 	correctedAt := time.Date(2026, 8, 14, 9, 5, 0, 123456789, time.UTC)
 	corrected, err := NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, correctedRevisionID, 7, correctedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if corrected.Name != "exam_sitting_content_corrected" || corrected.Action != model.ActionExamSittingView ||
-		corrected.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-		t.Fatalf("corrected Sitting event = %#v", corrected)
-	}
-	if got := string(corrected.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","previous_revision_id":"`+previousRevisionID.String()+`","revision_id":"`+correctedRevisionID.String()+`","sitting_revision":7,"effective_at":"2026-08-14T09:05:00.123456Z"}` {
-		t.Fatalf("corrected Sitting data = %s", got)
-	}
-	if _, err = NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, previousRevisionID, 7, correctedAt); err == nil {
-		t.Fatal("accepted a correction whose Revision did not change")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_sitting_content_corrected", corrected.Name)
+	require.Equal(t, model.ActionExamSittingView, corrected.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, corrected.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","previous_revision_id":"`+previousRevisionID.String()+`","revision_id":"`+correctedRevisionID.String()+`","sitting_revision":7,"effective_at":"2026-08-14T09:05:00.123456Z"}`, string(corrected.Data))
+	_, err = NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, previousRevisionID, 7, correctedAt)
+	require.Error(t, err, "accepted a correction whose Revision did not change")
 	revisionID := model.NewExamRevisionID()
 	policyDigest := strings.Repeat("a", 64)
 	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123456789, time.UTC)
 	published, err := NewExamRevisionPublishedEvent(revisionID, examID, 3, policyDigest, model.ExamRevisionPublicationStandard, publishedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if published.Name != "exam_revision_published" || published.Action != model.ActionExamView ||
-		published.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
-		t.Fatalf("published Revision event = %#v", published)
-	}
-	if got := string(published.Data); got != `{"exam_id":"`+examID.String()+`","revision_id":"`+revisionID.String()+`","number":3,"policy_digest":"`+policyDigest+`","kind":"standard","published_at":"2026-08-14T09:10:00.123456Z"}` {
-		t.Fatalf("published Revision data = %s", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_revision_published", published.Name)
+	require.Equal(t, model.ActionExamView, published.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, published.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","revision_id":"`+revisionID.String()+`","number":3,"policy_digest":"`+policyDigest+`","kind":"standard","published_at":"2026-08-14T09:10:00.123456Z"}`, string(published.Data))
 	workspaceEntryID := model.NewStarterWorkspaceEntryID()
 	workspaceChangedAt := time.Date(2026, 8, 14, 9, 15, 0, 123456789, time.UTC)
 	workspaceChanged, err := NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "file_replaced", workspaceChangedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if workspaceChanged.Name != "exam_starter_workspace_changed" || workspaceChanged.Action != model.ActionExamView ||
-		workspaceChanged.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
-		t.Fatalf("Starter Workspace event = %#v", workspaceChanged)
-	}
-	if got := string(workspaceChanged.Data); got != `{"exam_id":"`+examID.String()+`","entry_id":"`+workspaceEntryID.String()+`","operation":"file_replaced","draft_revision":8,"changed_at":"2026-08-14T09:15:00.123456Z"}` {
-		t.Fatalf("Starter Workspace data = %s", got)
-	}
-	if _, err = NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "path_and_checksum_changed", workspaceChangedAt); err == nil {
-		t.Fatal("accepted unbounded Starter Workspace operation")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_starter_workspace_changed", workspaceChanged.Name)
+	require.Equal(t, model.ActionExamView, workspaceChanged.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, workspaceChanged.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","entry_id":"`+workspaceEntryID.String()+`","operation":"file_replaced","draft_revision":8,"changed_at":"2026-08-14T09:15:00.123456Z"}`, string(workspaceChanged.Data))
+	_, err = NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "path_and_checksum_changed", workspaceChangedAt)
+	require.Error(t, err, "accepted unbounded Starter Workspace operation")
 	archivedAt := time.Date(2026, 8, 14, 9, 30, 0, 0, time.UTC)
 	archived, err := NewExamArchivedEvent(examID, 8, archivedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if archived.Name != "exam_archived" || archived.Action != model.ActionExamView || archived.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
-		t.Fatalf("archived event = %#v", archived)
-	}
-	if got := string(archived.Data); got != `{"exam_id":"`+examID.String()+`","exam_revision":8,"archived_at":"2026-08-14T09:30:00Z"}` {
-		t.Fatalf("archived data = %s", got)
-	}
-	if _, err := NewExamArchivedEvent(examID, 0, archivedAt); err == nil {
-		t.Fatal("accepted non-positive Exam revision")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_archived", archived.Name)
+	require.Equal(t, model.ActionExamView, archived.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExam, ID: examID.String()}, archived.Resource)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","exam_revision":8,"archived_at":"2026-08-14T09:30:00Z"}`, string(archived.Data))
+	_, err = NewExamArchivedEvent(examID, 0, archivedAt)
+	require.Error(t, err, "accepted non-positive Exam revision")
 	managerID := model.NewUserID()
 	managerChanged, err := NewExamManagerChangedEvent(examID, managerID, true, 9, archivedAt)
-	if err != nil || managerChanged.Name != "exam_manager_changed" || string(managerChanged.Data) != `{"exam_id":"`+examID.String()+`","user_id":"`+managerID.String()+`","present":true,"exam_revision":9,"changed_at":"2026-08-14T09:30:00Z"}` {
-		t.Fatalf("Manager event = %#v, %v", managerChanged, err)
-	}
+	require.NoError(t, err, "Manager event = %#v", managerChanged)
+	require.Equal(t, "exam_manager_changed", managerChanged.Name, "Manager event = %#v", managerChanged)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","user_id":"`+managerID.String()+`","present":true,"exam_revision":9,"changed_at":"2026-08-14T09:30:00Z"}`, string(managerChanged.Data), "Manager event = %#v", managerChanged)
 	ownerChanged, err := NewExamOwnerTransferredEvent(examID, managerID, 10, archivedAt)
-	if err != nil || ownerChanged.Name != "exam_owner_transferred" || string(ownerChanged.Data) != `{"exam_id":"`+examID.String()+`","owner_user_id":"`+managerID.String()+`","exam_revision":10,"changed_at":"2026-08-14T09:30:00Z"}` {
-		t.Fatalf("owner event = %#v, %v", ownerChanged, err)
-	}
+	require.NoError(t, err, "owner event = %#v", ownerChanged)
+	require.Equal(t, "exam_owner_transferred", ownerChanged.Name, "owner event = %#v", ownerChanged)
+	require.Equal(t, `{"exam_id":"`+examID.String()+`","owner_user_id":"`+managerID.String()+`","exam_revision":10,"changed_at":"2026-08-14T09:30:00Z"}`, string(ownerChanged.Data), "owner event = %#v", ownerChanged)
 }
 
 func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
@@ -222,36 +168,22 @@ func TestPublishClonesGeneratesIDAndDeliversLocalFirst(t *testing.T) {
 		return nil
 	}}
 	service := newOrdinaryTestService(t)
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	data := json.RawMessage(`{"ok":true}`)
 	event := RealtimeEvent{Name: "user.notification", UserID: model.NewID(), Data: data}
-	if err := service.Publish(context.Background(), event); err != nil {
-		t.Fatal(err)
-	}
-	if event.ID != "" {
-		t.Fatalf("caller event ID was mutated: %q", event.ID)
-	}
-	if string(data) != `{"ok":true}` {
-		t.Fatalf("caller data was mutated: %s", data)
-	}
-	if got := order.snapshot(); !reflect.DeepEqual(got, []string{"local", "peer"}) {
-		t.Fatalf("delivery order = %#v", got)
-	}
-	if len(sink.events) != 1 || sink.events[0].ID == "" {
-		t.Fatalf("local events = %#v", sink.events)
-	}
-	if len(fanout.broadcasts) != 1 || fanout.broadcasts[0].event != clusterEventPublication {
-		t.Fatalf("peer broadcasts = %#v", fanout.broadcasts)
-	}
-	if strings.Contains(string(fanout.broadcasts[0].data), `"data":[`) {
-		t.Fatalf("sink mutation reached peer payload: %s", fanout.broadcasts[0].data)
-	}
+	require.NoError(t, service.Publish(context.Background(), event))
+	require.Empty(t, event.ID)
+	require.Equal(t, `{"ok":true}`, string(data), "caller data was mutated")
+	// Contract: ordinary publication delivers locally before the best-effort
+	// peer fan-out.
+	ordertest.RequireInOrder(t, order.snapshot(), "local", "peer")
+	require.Len(t, sink.events, 1)
+	require.NotEmpty(t, sink.events[0].ID)
+	require.Len(t, fanout.broadcasts, 1)
+	require.Equal(t, clusterEventPublication, fanout.broadcasts[0].event)
+	require.NotContains(t, string(fanout.broadcasts[0].data), `"data":[`, "sink mutation reached peer payload")
 }
 
 func TestPublishPreservesOrdinaryPeerWireFixtureAndDoesNotRebroadcast(t *testing.T) {
@@ -262,12 +194,8 @@ func TestPublishPreservesOrdinaryPeerWireFixtureAndDoesNotRebroadcast(t *testing
 	service := newOrdinaryTestService(t)
 	sink := &recordingSink{}
 	fanout := &recordingFanout{}
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	event := RealtimeEvent{
 		ID:     eventID,
@@ -275,27 +203,16 @@ func TestPublishPreservesOrdinaryPeerWireFixtureAndDoesNotRebroadcast(t *testing
 		UserID: userID,
 		Data:   json.RawMessage(`{"ok":true}`),
 	}
-	if err := service.Publish(context.Background(), event); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.Publish(context.Background(), event))
 	want := `{"event":{"id":"yyyyyyyyyyyyyyyyyyyyyyyyyy","event":"user.notification","user_id":"bbbbbbbbbbbbbbbbbbbbbbbbbb","resource":{"type":"","id":""},"data":{"ok":true}}}`
-	if got := string(fanout.broadcasts[0].data); got != want {
-		t.Fatalf("ordinary peer wire payload\n got: %s\nwant: %s", got, want)
-	}
+	got := string(fanout.broadcasts[0].data)
+	require.Equal(t, want, got, "ordinary peer wire payload\n got")
 
 	handler := fanout.handler(clusterEventPublication)
-	if handler == nil {
-		t.Fatal("ordinary publication handler was not registered")
-	}
-	if err := handler(context.Background(), fanout.broadcasts[0].data); err != nil {
-		t.Fatal(err)
-	}
-	if len(sink.events) != 2 {
-		t.Fatalf("local events after peer delivery = %d, want 2", len(sink.events))
-	}
-	if len(fanout.broadcasts) != 1 {
-		t.Fatalf("peer delivery rebroadcast %d events", len(fanout.broadcasts))
-	}
+	require.NotNil(t, handler, "ordinary publication handler was not registered")
+	require.NoError(t, handler(context.Background(), fanout.broadcasts[0].data))
+	require.Len(t, sink.events, 2, "local events after peer delivery")
+	require.Len(t, fanout.broadcasts, 1, "peer delivery rebroadcast")
 }
 
 func TestUnbindExamAttemptConnectionAppliesExactLocalEffectBeforePeerFanout(t *testing.T) {
@@ -304,9 +221,7 @@ func TestUnbindExamAttemptConnectionAppliesExactLocalEffectBeforePeerFanout(t *t
 	connectionID := model.NewAttemptConnectionID()
 	order := &orderedCalls{}
 	sink := &recordingSink{unbind: func(got model.AttemptConnectionID) {
-		if got != connectionID {
-			t.Fatalf("unbound Connection = %s, want %s", got, connectionID)
-		}
+		require.Equal(t, connectionID, got, "unbound Connection")
 		order.add("local")
 	}}
 	fanout := &recordingFanout{broadcast: func(_ string, _ []byte) error {
@@ -314,34 +229,22 @@ func TestUnbindExamAttemptConnectionAppliesExactLocalEffectBeforePeerFanout(t *t
 		return nil
 	}}
 	service := newOrdinaryTestService(t)
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
-	if err := service.UnbindExamAttemptConnection(context.Background(), connectionID); err != nil {
-		t.Fatal(err)
-	}
-	if got := order.snapshot(); !reflect.DeepEqual(got, []string{"local", "peer"}) {
-		t.Fatalf("delivery order = %#v", got)
-	}
-	if len(fanout.broadcasts) != 1 || fanout.broadcasts[0].event != clusterEventExamAttemptUnbound ||
-		string(fanout.broadcasts[0].data) != `{"attempt_connection_id":"`+connectionID.String()+`"}` {
-		t.Fatalf("peer broadcasts = %#v", fanout.broadcasts)
-	}
+	require.NoError(t, service.UnbindExamAttemptConnection(context.Background(), connectionID))
+	// Contract: ordinary publication delivers locally before the best-effort
+	// peer fan-out.
+	ordertest.RequireInOrder(t, order.snapshot(), "local", "peer")
+	require.Len(t, fanout.broadcasts, 1)
+	require.Equal(t, clusterEventExamAttemptUnbound, fanout.broadcasts[0].event)
+	require.Equal(t, `{"attempt_connection_id":"`+connectionID.String()+`"}`, string(fanout.broadcasts[0].data))
 
 	handler := fanout.handler(clusterEventExamAttemptUnbound)
-	if handler == nil {
-		t.Fatal("Attempt unbind handler was not registered")
-	}
-	if err := handler(context.Background(), fanout.broadcasts[0].data); err != nil {
-		t.Fatal(err)
-	}
-	if sink.unboundCount() != 2 || len(fanout.broadcasts) != 1 {
-		t.Fatalf("peer effect count=%d broadcasts=%d", sink.unboundCount(), len(fanout.broadcasts))
-	}
+	require.NotNil(t, handler, "Attempt unbind handler was not registered")
+	require.NoError(t, handler(context.Background(), fanout.broadcasts[0].data))
+	require.Equal(t, 2, sink.unboundCount(), "peer effect count")
+	require.Len(t, fanout.broadcasts, 1, "peer effect count")
 }
 
 func TestPeerExamAttemptUnbindRejectsNonCanonicalPayloadWithoutLocalEffect(t *testing.T) {
@@ -350,21 +253,13 @@ func TestPeerExamAttemptUnbindRejectsNonCanonicalPayloadWithoutLocalEffect(t *te
 	service := newOrdinaryTestService(t)
 	sink := &recordingSink{}
 	fanout := &recordingFanout{}
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 	handler := fanout.handler(clusterEventExamAttemptUnbound)
 	connectionID := model.NewAttemptConnectionID()
 	payload := []byte(`{"attempt_connection_id":"` + connectionID.String() + `","credential":"forbidden"}`)
-	if err := handler(context.Background(), payload); err == nil {
-		t.Fatal("peer unbind accepted an unknown payload field")
-	}
-	if sink.unboundCount() != 0 {
-		t.Fatalf("invalid peer unbound %d local bindings", sink.unboundCount())
-	}
+	require.Error(t, handler(context.Background(), payload), "peer unbind accepted an unknown payload field")
+	require.Equal(t, 0, sink.unboundCount(), "invalid peer unbound")
 }
 
 func TestPublishMissingCollaboratorsAndTypedFailures(t *testing.T) {
@@ -373,31 +268,19 @@ func TestPublishMissingCollaboratorsAndTypedFailures(t *testing.T) {
 	t.Run("missing sink is a no-op", func(t *testing.T) {
 		service := newOrdinaryTestService(t)
 		fanout := &recordingFanout{}
-		if err := service.SetClusterFanout(fanout); err != nil {
-			t.Fatal(err)
-		}
-		if err := service.Publish(context.Background(), validUserEvent()); err != nil {
-			t.Fatal(err)
-		}
-		if len(fanout.broadcasts) != 1 {
-			t.Fatalf("broadcasts = %d, want 1", len(fanout.broadcasts))
-		}
+		require.NoError(t, service.SetClusterFanout(fanout))
+		require.NoError(t, service.Publish(context.Background(), validUserEvent()))
+		require.Len(t, fanout.broadcasts, 1, "broadcasts")
 	})
 
 	t.Run("missing fanout fails after local delivery", func(t *testing.T) {
 		service := newOrdinaryTestService(t)
 		sink := &recordingSink{}
-		if err := service.SetSink(sink); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, service.SetSink(sink))
 		err := service.Publish(context.Background(), validUserEvent())
 		var delivery *DeliveryError
-		if !errors.As(err, &delivery) {
-			t.Fatalf("error = %T %v, want DeliveryError", err, err)
-		}
-		if len(sink.events) != 1 {
-			t.Fatalf("local events = %d, want 1", len(sink.events))
-		}
+		require.ErrorAs(t, err, &delivery)
+		require.Len(t, sink.events, 1, "local events")
 	})
 
 	t.Run("fanout failure is typed", func(t *testing.T) {
@@ -405,34 +288,23 @@ func TestPublishMissingCollaboratorsAndTypedFailures(t *testing.T) {
 		fanout := &recordingFanout{broadcast: func(string, []byte) error {
 			return errors.New("peer unavailable")
 		}}
-		if err := service.SetClusterFanout(fanout); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, service.SetClusterFanout(fanout))
 		err := service.Publish(context.Background(), validUserEvent())
 		var delivery *DeliveryError
-		if !errors.As(err, &delivery) {
-			t.Fatalf("error = %T %v, want DeliveryError", err, err)
-		}
+		require.ErrorAs(t, err, &delivery)
 	})
 
 	t.Run("invalid publication has no effects", func(t *testing.T) {
 		service := newOrdinaryTestService(t)
 		sink := &recordingSink{}
 		fanout := &recordingFanout{}
-		if err := service.SetSink(sink); err != nil {
-			t.Fatal(err)
-		}
-		if err := service.SetClusterFanout(fanout); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, service.SetSink(sink))
+		require.NoError(t, service.SetClusterFanout(fanout))
 		err := service.Publish(context.Background(), RealtimeEvent{Name: "missing.target"})
 		var invalid *InvalidPublicationError
-		if !errors.As(err, &invalid) {
-			t.Fatalf("error = %T %v, want InvalidPublicationError", err, err)
-		}
-		if len(sink.events) != 0 || len(fanout.broadcasts) != 0 {
-			t.Fatalf("invalid publication effects: local=%d peer=%d", len(sink.events), len(fanout.broadcasts))
-		}
+		require.ErrorAs(t, err, &invalid)
+		require.Empty(t, sink.events, "invalid publication effects: local")
+		require.Empty(t, fanout.broadcasts, "invalid publication effects: local")
 	})
 }
 
@@ -459,15 +331,10 @@ func TestCollaboratorAttachmentIsThreadSafeAndOnce(t *testing.T) {
 		}()
 	}
 	group.Wait()
-	if sinkSuccesses.Load() != 1 || fanoutSuccesses.Load() != 1 {
-		t.Fatalf("attachment successes: sink=%d fanout=%d", sinkSuccesses.Load(), fanoutSuccesses.Load())
-	}
-	if err := service.SetSink(nil); err == nil {
-		t.Fatal("nil sink was accepted")
-	}
-	if err := service.SetClusterFanout(nil); err == nil {
-		t.Fatal("nil fanout was accepted")
-	}
+	require.Equal(t, int64(1), sinkSuccesses.Load(), "attachment successes: sink")
+	require.Equal(t, int64(1), fanoutSuccesses.Load(), "attachment successes: sink")
+	require.Error(t, service.SetSink(nil), "nil sink was accepted")
+	require.Error(t, service.SetClusterFanout(nil), "nil fanout was accepted")
 }
 
 func TestClusterAttachmentRegistrationFailureIsTerminal(t *testing.T) {
@@ -477,17 +344,13 @@ func TestClusterAttachmentRegistrationFailureIsTerminal(t *testing.T) {
 	fanout := &recordingFanout{register: func(string) error {
 		return errors.New("registration failed")
 	}}
-	if err := service.SetClusterFanout(fanout); err == nil ||
-		!strings.Contains(err.Error(), "register websocket.publish cluster handler") {
-		t.Fatalf("SetClusterFanout() error = %v", err)
-	}
-	if err := service.SetClusterFanout(&recordingFanout{}); err == nil ||
-		!strings.Contains(err.Error(), "already attached") {
-		t.Fatalf("retry error = %v, want terminal already-attached failure", err)
-	}
-	if err := service.Publish(context.Background(), validUserEvent()); err != nil {
-		t.Fatalf("failed attachment no longer retained its fanout: %v", err)
-	}
+	err := service.SetClusterFanout(fanout)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "register websocket.publish cluster handler")
+	err = service.SetClusterFanout(&recordingFanout{})
+	require.Error(t, err, "retry error")
+	require.Contains(t, err.Error(), "already attached", "retry error")
+	require.NoError(t, service.Publish(context.Background(), validUserEvent()))
 }
 
 func TestServiceHasNoBackgroundLifecycle(t *testing.T) {
@@ -495,9 +358,8 @@ func TestServiceHasNoBackgroundLifecycle(t *testing.T) {
 
 	typeOfService := reflect.TypeOf(newOrdinaryTestService(t))
 	for _, method := range []string{"Start", "Stop", "Close", "Run"} {
-		if _, exists := typeOfService.MethodByName(method); exists {
-			t.Fatalf("Service unexpectedly exposes background lifecycle method %s", method)
-		}
+		_, exists := typeOfService.MethodByName(method)
+		require.False(t, exists, "Service unexpectedly exposes background lifecycle method %s", method)
 	}
 }
 
@@ -508,9 +370,7 @@ func validUserEvent() RealtimeEvent {
 func newOrdinaryTestService(t *testing.T) *Service {
 	t.Helper()
 	service, err := New(&recordingInvalidator{}, &recordingDiagnostics{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 

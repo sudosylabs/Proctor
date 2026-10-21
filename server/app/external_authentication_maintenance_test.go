@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -20,16 +22,10 @@ func TestExternalAuthenticationMaintenanceUsesBoundedPages(t *testing.T) {
 		results[index] = &store.ExternalLoginStateMaintenanceResult{More: true}
 	}
 	fake := &externalAuthenticationMaintainerFake{results: results}
-	if err := (externalAuthenticationMaintenancePeriodicRunner{states: fake}).Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(fake.limits) != externalAuthenticationMaintenanceMaximumPages {
-		t.Fatalf("Maintain calls=%d", len(fake.limits))
-	}
+	require.NoError(t, (externalAuthenticationMaintenancePeriodicRunner{states: fake}).Run(context.Background()))
+	require.Len(t, fake.limits, externalAuthenticationMaintenanceMaximumPages, "Maintain calls")
 	for _, limit := range fake.limits {
-		if limit != externalAuthenticationMaintenancePageSize {
-			t.Fatalf("Maintain limit=%d", limit)
-		}
+		require.Equal(t, externalAuthenticationMaintenancePageSize, limit, "Maintain limit")
 	}
 }
 

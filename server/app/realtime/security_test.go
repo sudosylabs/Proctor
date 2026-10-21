@@ -11,10 +11,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
-	"strings"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -31,43 +31,33 @@ func TestSessionRevocationAppliesAllLocalEffectsBeforeStablePeerFanout(t *testin
 	}}
 	diagnostics := &recordingDiagnostics{}
 	service := mustNewService(t, invalidator, diagnostics)
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	const userID = "bbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const sessionID = "cccccccccccccccccccccccccc"
 	const hash = "345bf502d577508c91103476c743217fa304f9a15e92c6bdc5810f891677891f"
 	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, []string{hash})
 
-	wantOrder := []string{"invalidate-access", "invalidate-activity", "close-session", "broadcast"}
-	if got := order.snapshot(); !reflect.DeepEqual(got, wantOrder) {
-		t.Fatalf("effect order = %#v, want %#v", got, wantOrder)
-	}
-	if len(fanout.broadcasts) != 1 || fanout.broadcasts[0].event != clusterEventSessionRevoked {
-		t.Fatalf("broadcasts = %#v", fanout.broadcasts)
-	}
+	// Contract: every local effect applies before the peer fan-out; the local
+	// effects may apply in any order.
+	effects := order.snapshot()
+	require.NotEmpty(t, effects)
+	require.Equal(t, "broadcast", effects[len(effects)-1], "peer fan-out preceded a local effect")
+	require.ElementsMatch(t, []string{"invalidate-access", "invalidate-activity", "close-session"}, effects[:len(effects)-1])
+	require.Len(t, fanout.broadcasts, 1)
+	require.Equal(t, clusterEventSessionRevoked, fanout.broadcasts[0].event)
 	wantPayload := `{"user_id":"bbbbbbbbbbbbbbbbbbbbbbbbbb","session_ids":["cccccccccccccccccccccccccc"],"access_token_hashes":["345bf502d577508c91103476c743217fa304f9a15e92c6bdc5810f891677891f"],"close_connections":true}`
-	if got := string(fanout.broadcasts[0].data); got != wantPayload {
-		t.Fatalf("session revocation wire payload\n got: %s\nwant: %s", got, wantPayload)
-	}
+	got := string(fanout.broadcasts[0].data)
+	require.Equal(t, wantPayload, got, "session revocation wire payload\n got")
 
 	handler := fanout.handler(clusterEventSessionRevoked)
-	if handler == nil {
-		t.Fatal("session revocation handler was not registered")
-	}
-	if err := handler(context.Background(), fanout.broadcasts[0].data); err != nil {
-		t.Fatal(err)
-	}
-	if len(fanout.broadcasts) != 1 {
-		t.Fatalf("peer session revocation rebroadcast %d events", len(fanout.broadcasts))
-	}
-	if invalidator.accessCalls() != 2 || invalidator.activityCalls() != 2 || sink.sessionCloseCount() != 2 {
-		t.Fatalf("peer effects: access=%d activity=%d closes=%d", invalidator.accessCalls(), invalidator.activityCalls(), sink.sessionCloseCount())
-	}
+	require.NotNil(t, handler, "session revocation handler was not registered")
+	require.NoError(t, handler(context.Background(), fanout.broadcasts[0].data))
+	require.Len(t, fanout.broadcasts, 1, "peer session revocation rebroadcast")
+	require.Equal(t, 2, invalidator.accessCalls(), "peer effects: access")
+	require.Equal(t, 2, invalidator.activityCalls(), "peer effects: access")
+	require.Equal(t, 2, sink.sessionCloseCount(), "peer effects: access")
 }
 
 func TestAuthenticationAndAuthorizationInvalidationPreserveWireFixtures(t *testing.T) {
@@ -79,12 +69,8 @@ func TestAuthenticationAndAuthorizationInvalidationPreserveWireFixtures(t *testi
 	service := mustNewService(t, invalidator, &recordingDiagnostics{})
 	sink := &securityRecordingSink{}
 	fanout := &recordingFanout{}
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	service.AuthenticationCacheInvalidated(context.Background(), userID, []string{hash})
 	service.InvalidateAuthorization(context.Background(), userID)
@@ -95,28 +81,19 @@ func TestAuthenticationAndAuthorizationInvalidationPreserveWireFixtures(t *testi
 		{event: clusterEventAuthorizationInvalidated, data: []byte(`{"user_id":"bbbbbbbbbbbbbbbbbbbbbbbbbb"}`)},
 		{event: clusterEventAuthorizationInvalidated, data: []byte(`{}`)},
 	}
-	if got := fanout.broadcasts; !reflect.DeepEqual(got, want) {
-		t.Fatalf("security wire fixtures\n got: %#v\nwant: %#v", got, want)
-	}
-	if invalidator.accessCalls() != 1 || invalidator.activityCalls() != 1 {
-		t.Fatalf("authentication local effects: access=%d activity=%d", invalidator.accessCalls(), invalidator.activityCalls())
-	}
-	if sink.userCloseCount() != 1 || sink.allCloseCount() != 1 {
-		t.Fatalf("authorization local closes: user=%d all=%d", sink.userCloseCount(), sink.allCloseCount())
-	}
+	got := fanout.broadcasts
+	require.Equal(t, want, got, "security wire fixtures\n got")
+	require.Equal(t, 1, invalidator.accessCalls(), "authentication local effects: access")
+	require.Equal(t, 1, invalidator.activityCalls(), "authentication local effects: access")
+	require.Equal(t, 1, sink.userCloseCount(), "authorization local closes: user")
+	require.Equal(t, 1, sink.allCloseCount(), "authorization local closes: user")
 
 	for _, broadcast := range append([]peerBroadcast(nil), fanout.broadcasts...) {
 		handler := fanout.handler(broadcast.event)
-		if handler == nil {
-			t.Fatalf("handler %q was not registered", broadcast.event)
-		}
-		if err := handler(context.Background(), broadcast.data); err != nil {
-			t.Fatalf("peer handler %q: %v", broadcast.event, err)
-		}
+		require.NotNil(t, handler, "handler %q was not registered", broadcast.event)
+		require.NoError(t, handler(context.Background(), broadcast.data), "peer handler %q", broadcast.event)
 	}
-	if len(fanout.broadcasts) != 3 {
-		t.Fatalf("peer security handlers rebroadcast %d events", len(fanout.broadcasts))
-	}
+	require.Len(t, fanout.broadcasts, 3, "peer security handlers rebroadcast")
 }
 
 func TestSecurityPropagationRejectsInvalidPeerAndLocalInputWithoutLeaks(t *testing.T) {
@@ -127,33 +104,24 @@ func TestSecurityPropagationRejectsInvalidPeerAndLocalInputWithoutLeaks(t *testi
 	sink := &securityRecordingSink{}
 	fanout := &recordingFanout{}
 	service := mustNewService(t, invalidator, diagnostics)
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	const sensitive = "raw-session-or-user-value"
 	service.SessionsRevoked(context.Background(), sensitive, []string{sensitive}, []string{sensitive})
 	service.AuthenticationCacheInvalidated(context.Background(), sensitive, []string{sensitive})
 	service.InvalidateAuthorization(context.Background(), sensitive)
-	if len(fanout.broadcasts) != 0 || invalidator.accessCalls() != 0 || sink.totalCloses() != 0 {
-		t.Fatalf("invalid local input produced effects: broadcasts=%d access=%d closes=%d", len(fanout.broadcasts), invalidator.accessCalls(), sink.totalCloses())
-	}
-	if diagnostics.count() != 3 || strings.Contains(diagnostics.joined(), sensitive) {
-		t.Fatalf("diagnostics count/text = %d %q", diagnostics.count(), diagnostics.joined())
-	}
+	require.Empty(t, fanout.broadcasts, "invalid local input produced effects: broadcasts")
+	require.Equal(t, 0, invalidator.accessCalls(), "invalid local input produced effects: broadcasts")
+	require.Equal(t, 0, sink.totalCloses(), "invalid local input produced effects: broadcasts")
+	require.Equal(t, 3, diagnostics.count(), "diagnostics count/text")
+	require.NotContains(t, diagnostics.joined(), sensitive, "diagnostics count/text")
 
-	if err := fanout.handler(clusterEventSessionRevoked)(context.Background(), []byte(`{"user_id":"invalid","session_ids":[],"access_token_hashes":[],"close_connections":true}`)); err == nil {
-		t.Fatal("invalid peer session revocation was accepted")
-	}
-	if err := fanout.handler(clusterEventAuthorizationInvalidated)(context.Background(), []byte(`{"user_id":"invalid"}`)); err == nil {
-		t.Fatal("invalid peer authorization invalidation was accepted")
-	}
-	if len(fanout.broadcasts) != 0 || invalidator.accessCalls() != 0 || sink.totalCloses() != 0 {
-		t.Fatal("invalid peer input produced effects")
-	}
+	require.Error(t, fanout.handler(clusterEventSessionRevoked)(context.Background(), []byte(`{"user_id":"invalid","session_ids":[],"access_token_hashes":[],"close_connections":true}`)), "invalid peer session revocation was accepted")
+	require.Error(t, fanout.handler(clusterEventAuthorizationInvalidated)(context.Background(), []byte(`{"user_id":"invalid"}`)), "invalid peer authorization invalidation was accepted")
+	require.Empty(t, fanout.broadcasts, "invalid peer input produced effects")
+	require.Equal(t, 0, invalidator.accessCalls(), "invalid peer input produced effects")
+	require.Equal(t, 0, sink.totalCloses(), "invalid peer input produced effects")
 }
 
 func TestSecurityPropagationMissingAndFailingFanoutIsDiagnosticOnly(t *testing.T) {
@@ -165,36 +133,28 @@ func TestSecurityPropagationMissingAndFailingFanoutIsDiagnosticOnly(t *testing.T
 	sink := &securityRecordingSink{}
 	diagnostics := &recordingDiagnostics{}
 	service := mustNewService(t, invalidator, diagnostics)
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
 	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
 	service.AuthenticationCacheInvalidated(context.Background(), userID, nil)
-	if invalidator.accessCalls() != 2 || sink.sessionCloseCount() != 1 || diagnostics.count() != 2 {
-		t.Fatalf("missing fanout effects: access=%d closes=%d diagnostics=%d", invalidator.accessCalls(), sink.sessionCloseCount(), diagnostics.count())
-	}
+	require.Equal(t, 2, invalidator.accessCalls(), "missing fanout effects: access")
+	require.Equal(t, 1, sink.sessionCloseCount(), "missing fanout effects: access")
+	require.Equal(t, 2, diagnostics.count(), "missing fanout effects: access")
 	missingDiagnostics := diagnostics.joined()
-	if !strings.Contains(missingDiagnostics, securityOperationSessionRevocation) ||
-		!strings.Contains(missingDiagnostics, securityOperationAuthenticationCache) ||
-		!strings.Contains(missingDiagnostics, "realtime cluster fan-out is not attached") {
-		t.Fatalf("missing fanout diagnostics do not identify operation and category: %q", missingDiagnostics)
-	}
+	require.Contains(t, missingDiagnostics, securityOperationSessionRevocation)
+	require.Contains(t, missingDiagnostics, securityOperationAuthenticationCache)
+	require.Contains(t, missingDiagnostics, "realtime cluster fan-out is not attached")
 
 	failureDiagnostics := &recordingDiagnostics{}
 	serviceWithFailure := mustNewService(t, &recordingInvalidator{}, failureDiagnostics)
 	secretFailure := "transport accidentally included credential-secret"
 	fanout := &recordingFanout{broadcast: func(string, []byte) error { return errors.New(secretFailure) }}
-	if err := serviceWithFailure.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, serviceWithFailure.SetClusterFanout(fanout))
 	serviceWithFailure.InvalidateAuthorization(context.Background(), userID)
 	failureText := failureDiagnostics.joined()
-	if failureDiagnostics.count() != 1 ||
-		!strings.Contains(failureText, securityOperationAuthorization) ||
-		!strings.Contains(failureText, "realtime cluster fan-out failed") ||
-		strings.Contains(failureText, secretFailure) {
-		t.Fatalf("unsafe or incomplete failure diagnostics: %q", failureText)
-	}
+	require.Equal(t, 1, failureDiagnostics.count())
+	require.Contains(t, failureText, securityOperationAuthorization)
+	require.Contains(t, failureText, "realtime cluster fan-out failed")
+	require.NotContains(t, failureText, secretFailure)
 }
 
 func TestSecurityPropagationWithoutSinkStillInvalidatesAndFansOut(t *testing.T) {
@@ -205,18 +165,13 @@ func TestSecurityPropagationWithoutSinkStillInvalidatesAndFansOut(t *testing.T) 
 	invalidator := &recordingInvalidator{}
 	fanout := &recordingFanout{}
 	service := mustNewService(t, invalidator, &recordingDiagnostics{})
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	service.SessionsRevoked(context.Background(), userID, []string{sessionID}, nil)
 	service.InvalidateAuthorization(context.Background(), userID)
-	if invalidator.accessCalls() != 1 || invalidator.activityCalls() != 1 {
-		t.Fatalf("authentication effects: access=%d activity=%d", invalidator.accessCalls(), invalidator.activityCalls())
-	}
-	if len(fanout.broadcasts) != 2 {
-		t.Fatalf("broadcasts = %d, want 2", len(fanout.broadcasts))
-	}
+	require.Equal(t, 1, invalidator.accessCalls(), "authentication effects: access")
+	require.Equal(t, 1, invalidator.activityCalls(), "authentication effects: access")
+	require.Len(t, fanout.broadcasts, 2, "broadcasts")
 }
 
 func TestCompleteHandlerRegistrationFailureIsTerminal(t *testing.T) {
@@ -232,17 +187,14 @@ func TestCompleteHandlerRegistrationFailureIsTerminal(t *testing.T) {
 		return nil
 	}}
 	err := service.SetClusterFanout(fanout)
-	if err == nil || !strings.Contains(err.Error(), "register authorization.invalidated cluster handler") {
-		t.Fatalf("SetClusterFanout() error = %v", err)
-	}
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "register authorization.invalidated cluster handler")
 	wantRegistered := []string{clusterEventPublication, clusterEventExamAttemptUnbound,
 		clusterEventSessionRevoked, clusterEventAuthorizationInvalidated}
-	if !reflect.DeepEqual(registered, wantRegistered) {
-		t.Fatalf("registration order = %#v, want %#v", registered, wantRegistered)
-	}
-	if err := service.SetClusterFanout(&recordingFanout{}); err == nil || !strings.Contains(err.Error(), "already attached") {
-		t.Fatalf("retry error = %v", err)
-	}
+	require.Equal(t, wantRegistered, registered, "registration order")
+	err = service.SetClusterFanout(&recordingFanout{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already attached")
 }
 
 func TestConcurrentSecurityPropagation(t *testing.T) {
@@ -252,12 +204,8 @@ func TestConcurrentSecurityPropagation(t *testing.T) {
 	service := mustNewService(t, invalidator, &recordingDiagnostics{})
 	sink := &securityRecordingSink{}
 	fanout := &recordingFanout{}
-	if err := service.SetSink(sink); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.SetClusterFanout(fanout); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, service.SetSink(sink))
+	require.NoError(t, service.SetClusterFanout(fanout))
 
 	const userID = "bbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const sessionID = "cccccccccccccccccccccccccc"
@@ -270,23 +218,18 @@ func TestConcurrentSecurityPropagation(t *testing.T) {
 		}()
 	}
 	group.Wait()
-	if invalidator.accessCalls() != 64 || sink.sessionCloseCount() != 64 {
-		t.Fatalf("concurrent local effects: access=%d closes=%d", invalidator.accessCalls(), sink.sessionCloseCount())
-	}
-	if len(fanout.broadcasts) != 64 {
-		t.Fatalf("concurrent broadcasts = %d", len(fanout.broadcasts))
-	}
+	require.Equal(t, 64, invalidator.accessCalls(), "concurrent local effects: access")
+	require.Equal(t, 64, sink.sessionCloseCount(), "concurrent local effects: access")
+	require.Len(t, fanout.broadcasts, 64, "concurrent broadcasts")
 }
 
 func TestSecurityCollaboratorsAreRequiredAtConstruction(t *testing.T) {
 	t.Parallel()
 
-	if _, err := New(nil, &recordingDiagnostics{}); err == nil {
-		t.Fatal("nil invalidator was accepted")
-	}
-	if _, err := New(&recordingInvalidator{}, nil); err == nil {
-		t.Fatal("nil diagnostics were accepted")
-	}
+	_, err := New(nil, &recordingDiagnostics{})
+	require.Error(t, err, "nil invalidator was accepted")
+	_, err = New(&recordingInvalidator{}, nil)
+	require.Error(t, err, "nil diagnostics were accepted")
 }
 
 func mustNewService(
@@ -296,9 +239,7 @@ func mustNewService(
 ) *Service {
 	t.Helper()
 	service, err := New(invalidator, diagnostics)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 

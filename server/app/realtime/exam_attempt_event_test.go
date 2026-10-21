@@ -9,9 +9,12 @@ package realtime
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -25,26 +28,18 @@ func TestCandidateSittingEventsUseRelationshipOnlyTargetAndSafePayload(t *testin
 	corrected, err := NewCandidateExamSittingContentCorrectedEvent(
 		examID, sittingID, previousRevisionID, revisionID, 7, at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertCandidateSittingEvent(t, corrected, "exam_sitting_content_corrected", sittingID)
 	for _, forbidden := range []string{"credential", "hash", "instructions", "resources", "private_reason"} {
-		if strings.Contains(string(corrected.Data), forbidden) {
-			t.Fatalf("correction payload contains %q: %s", forbidden, corrected.Data)
-		}
+		require.NotContains(t, string(corrected.Data), forbidden, "correction payload contains")
 	}
 
 	lifecycle, err := NewCandidateExamSittingLifecycleChangedEvent(
 		examID, sittingID, model.ExamSittingPaused, 8, "manager_paused", at.Add(time.Hour), at,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertCandidateSittingEvent(t, lifecycle, "exam_sitting_lifecycle_changed", sittingID)
-	if strings.Contains(string(lifecycle.Data), "private") {
-		t.Fatalf("lifecycle payload exposes a private reason: %s", lifecycle.Data)
-	}
+	require.NotContains(t, string(lifecycle.Data), "private", "lifecycle payload exposes a private reason")
 }
 
 func TestManagerConnectionEventsAreContentAndCredentialFree(t *testing.T) {
@@ -54,27 +49,17 @@ func TestManagerConnectionEventsAreContentAndCredentialFree(t *testing.T) {
 	at := time.Date(2026, time.August, 17, 9, 5, 0, 123, time.UTC)
 
 	opened, err := NewExamAttemptConnectionOpenedEvent(sittingID, attemptID, candidateID, connectionID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	closed, err := NewExamAttemptConnectionClosedEvent(sittingID, attemptID, candidateID, connectionID,
 		model.AttemptConnectionCloseTransport, at.Add(time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, event := range []RealtimeEvent{opened, closed} {
-		if event.Action != model.ActionExamSittingView ||
-			event.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-			t.Fatalf("manager event = %#v", event)
-		}
+		require.Equal(t, model.ActionExamSittingView, event.Action)
+		require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, event.Resource)
 		for _, forbidden := range []string{"credential", "hash", "participation_id", "generation", "session_id", "private"} {
-			if strings.Contains(string(event.Data), forbidden) {
-				t.Fatalf("event payload contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, string(event.Data), forbidden, "event payload contains")
 		}
-		if err := event.ValidateForPublish(); err != nil {
-			t.Fatalf("manager event is not publishable: %v", err)
-		}
+		require.NoError(t, event.ValidateForPublish())
 	}
 }
 
@@ -86,63 +71,40 @@ func TestExamAttemptSuspensionAndReallowEventsSeparateCandidateAndManagerPayload
 	at := time.Date(2026, time.August, 18, 9, 5, 0, 0, time.UTC)
 	candidateSuspended, err := NewCandidateExamAttemptSuspendedEvent(sittingID, attemptID, candidateID,
 		model.AttemptSuspensionCandidateReasonSecureContinuityLost, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	managerSuspended, err := NewExamAttemptSuspendedEvent(sittingID, attemptID, candidateID, connectionID, flagID, suspensionID, 2, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	candidateReallowed, err := NewCandidateExamAttemptReallowedEvent(sittingID, attemptID, candidateID, at.Add(time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	managerReallowed, err := NewExamAttemptReallowedEvent(sittingID, attemptID, candidateID, suspensionID, 3, at.Add(time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, event := range []RealtimeEvent{candidateSuspended, candidateReallowed} {
-		if event.UserID != candidateID.String() || event.Action != model.ActionExamSittingParticipate {
-			t.Fatalf("candidate event = %#v", event)
-		}
+		require.Equal(t, candidateID.String(), event.UserID)
+		require.Equal(t, model.ActionExamSittingParticipate, event.Action)
 		for _, forbidden := range []string{"integrity_flag_id", "suspension_id", "attempt_connection_id", "generation", "private_reason", "credential", "hash"} {
-			if strings.Contains(string(event.Data), forbidden) {
-				t.Fatalf("candidate payload contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, string(event.Data), forbidden, "candidate payload contains")
 		}
-		if strings.Contains(string(event.Data), privateReason) {
-			t.Fatalf("candidate payload contains private manager reason: %s", event.Data)
-		}
+		require.NotContains(t, string(event.Data), privateReason, "candidate payload contains private manager reason")
 	}
 	var suspendedData map[string]any
-	if err = json.Unmarshal(candidateSuspended.Data, &suspendedData); err != nil {
-		t.Fatal(err)
-	}
-	if got := suspendedData["reason_code"]; got != string(model.AttemptSuspensionCandidateReasonSecureContinuityLost) {
-		t.Fatalf("candidate suspension reason = %#v", got)
-	}
+	err = json.Unmarshal(candidateSuspended.Data, &suspendedData)
+	require.NoError(t, err)
+	require.Equal(t, string(model.AttemptSuspensionCandidateReasonSecureContinuityLost), suspendedData["reason_code"])
 	for key := range suspendedData {
 		switch key {
 		case "exam_sitting_id", "exam_attempt_id", "state", "reason_code", "changed_at":
 		default:
-			t.Fatalf("candidate suspension payload contains unsafe field %q: %s", key, candidateSuspended.Data)
+			require.FailNow(t, fmt.Sprintf("candidate suspension payload contains unsafe field %q: %s", key, candidateSuspended.Data))
 		}
 	}
 	for _, event := range []RealtimeEvent{managerSuspended, managerReallowed} {
-		if event.UserID != "" || event.Action != model.ActionExamSittingView {
-			t.Fatalf("manager event = %#v", event)
-		}
+		require.Empty(t, event.UserID)
+		require.Equal(t, model.ActionExamSittingView, event.Action)
 		for _, forbidden := range []string{"private_reason", "credential", "hash", "session_id", "evidence"} {
-			if strings.Contains(string(event.Data), forbidden) {
-				t.Fatalf("manager payload contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, string(event.Data), forbidden, "manager payload contains")
 		}
-		if strings.Contains(string(event.Data), privateReason) {
-			t.Fatalf("manager payload contains private manager reason: %s", event.Data)
-		}
-		if err := event.ValidateForPublish(); err != nil {
-			t.Fatal(err)
-		}
+		require.NotContains(t, string(event.Data), privateReason, "manager payload contains private manager reason")
+		require.NoError(t, event.ValidateForPublish())
 	}
 }
 
@@ -150,16 +112,11 @@ func TestCandidateExamAttemptSuspendedEventAcceptsFocusPolicyReviewReason(t *tes
 	t.Parallel()
 	event, err := NewCandidateExamAttemptSuspendedEvent(model.NewExamSittingID(), model.NewExamAttemptID(),
 		model.NewUserID(), model.AttemptSuspensionCandidateReasonFocusLossPolicy, time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var data map[string]any
-	if err = json.Unmarshal(event.Data, &data); err != nil {
-		t.Fatal(err)
-	}
-	if data["reason_code"] != string(model.AttemptSuspensionCandidateReasonFocusLossPolicy) {
-		t.Fatalf("reason_code=%#v data=%s", data["reason_code"], event.Data)
-	}
+	err = json.Unmarshal(event.Data, &data)
+	require.NoError(t, err)
+	require.Equal(t, string(model.AttemptSuspensionCandidateReasonFocusLossPolicy), data["reason_code"], "reason_code=%#v data=%s", data["reason_code"], event.Data)
 }
 
 func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *testing.T) {
@@ -169,18 +126,14 @@ func TestCandidateExamAttemptWorkspaceChangedEventIsOnlyASafeRefetchHint(t *test
 	at := time.Date(2026, time.August, 19, 10, 0, 0, 0, time.UTC)
 	event, err := NewCandidateExamAttemptWorkspaceChangedEvent(sittingID, attemptID, candidateID, entryID,
 		model.AttemptWorkspaceMutationReplaceFile, 17, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if event.Name != "exam_attempt_workspace_changed" || event.UserID != candidateID.String() ||
-		event.Action != model.ActionExamSittingParticipate || event.Resource.ID != sittingID.String() {
-		t.Fatalf("event=%#v", event)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_attempt_workspace_changed", event.Name)
+	require.Equal(t, candidateID.String(), event.UserID)
+	require.Equal(t, model.ActionExamSittingParticipate, event.Action)
+	require.Equal(t, sittingID.String(), event.Resource.ID)
 	data := string(event.Data)
 	for _, forbidden := range []string{"path", "object", "content_version", "sha256", "credential", "session", "generation"} {
-		if strings.Contains(strings.ToLower(data), forbidden) {
-			t.Fatalf("workspace hint contains %q: %s", forbidden, data)
-		}
+		require.NotContains(t, strings.ToLower(data), forbidden, "workspace hint contains")
 	}
 }
 
@@ -193,43 +146,34 @@ func TestExamAttemptSubmittedEventsSeparateManagerAndCandidateTargetsWithSafeRec
 	submittedAt := time.Date(2026, time.August, 21, 10, 15, 0, 123, time.UTC)
 	manager, err := NewExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest,
 		model.ExamSubmissionManagerEndedAttempt, submittedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	candidate, err := NewCandidateExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest,
 		model.ExamSubmissionManagerEndedAttempt, submittedAt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if manager.Name != "exam_attempt_submitted" || manager.UserID != "" || manager.Action != model.ActionExamSittingView ||
-		manager.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-		t.Fatalf("manager event=%#v", manager)
-	}
-	if candidate.Name != "exam_attempt_submitted" || candidate.UserID != candidateID.String() ||
-		candidate.Action != model.ActionExamSittingParticipate || candidate.Resource.ID != sittingID.String() {
-		t.Fatalf("candidate event=%#v", candidate)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_attempt_submitted", manager.Name)
+	require.Empty(t, manager.UserID)
+	require.Equal(t, model.ActionExamSittingView, manager.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, manager.Resource)
+	require.Equal(t, "exam_attempt_submitted", candidate.Name)
+	require.Equal(t, candidateID.String(), candidate.UserID)
+	require.Equal(t, model.ActionExamSittingParticipate, candidate.Action)
+	require.Equal(t, sittingID.String(), candidate.Resource.ID)
 	var managerData, candidateData map[string]any
-	if err = json.Unmarshal(manager.Data, &managerData); err != nil {
-		t.Fatal(err)
-	}
-	if err = json.Unmarshal(candidate.Data, &candidateData); err != nil {
-		t.Fatal(err)
-	}
-	if len(managerData) != 9 || managerData["candidate_user_id"] != candidateID.String() ||
-		managerData["provenance"] != string(model.ExamSubmissionManagerEndedAttempt) || len(candidateData) != 8 ||
-		candidateData["provenance"] != string(model.ExamSubmissionManagerEndedAttempt) {
-		t.Fatalf("manager=%v candidate=%v", managerData, candidateData)
-	}
+	err = json.Unmarshal(manager.Data, &managerData)
+	require.NoError(t, err)
+	err = json.Unmarshal(candidate.Data, &candidateData)
+	require.NoError(t, err)
+	require.Len(t, managerData, 9, "manager")
+	require.Equal(t, candidateID.String(), managerData["candidate_user_id"], "manager")
+	require.Equal(t, string(model.ExamSubmissionManagerEndedAttempt), managerData["provenance"], "manager")
+	require.Len(t, candidateData, 8, "manager")
+	require.Equal(t, string(model.ExamSubmissionManagerEndedAttempt), candidateData["provenance"], "manager")
 	for _, event := range []RealtimeEvent{manager, candidate} {
 		for _, forbidden := range []string{"path", "content", "source", "evidence", "gap", "sequence", "credential", "session", "private", "remark"} {
-			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
-				t.Fatalf("submitted event contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, strings.ToLower(string(event.Data)), forbidden, "submitted event contains %q: %s", forbidden, event.Data)
 		}
-		if err = event.ValidateForPublish(); err != nil {
-			t.Fatal(err)
-		}
+		err = event.ValidateForPublish()
+		require.NoError(t, err)
 	}
 }
 
@@ -239,52 +183,45 @@ func TestFocusLossEventsSeparateNeutralCandidateWarningFromBoundedManagerFlag(t 
 	flagID := model.NewIntegrityFlagID()
 	at := time.Date(2026, time.August, 20, 9, 5, 0, 0, time.UTC)
 	warning, err := NewCandidateExamAttemptFocusLossWarningEvent(sittingID, attemptID, candidateID, at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	flagged, err := NewExamAttemptIntegrityFlaggedEvent(sittingID, attemptID, candidateID, flagID,
 		model.IntegrityOutcomeFlagAndWarn, 100, 17, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if warning.Name != "exam_attempt_focus_warning" || warning.UserID != candidateID.String() ||
-		warning.Action != model.ActionExamSittingParticipate || warning.Resource.ID != sittingID.String() {
-		t.Fatalf("warning=%#v", warning)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "exam_attempt_focus_warning", warning.Name)
+	require.Equal(t, candidateID.String(), warning.UserID)
+	require.Equal(t, model.ActionExamSittingParticipate, warning.Action)
+	require.Equal(t, sittingID.String(), warning.Resource.ID)
 	var warningData map[string]any
-	if err = json.Unmarshal(warning.Data, &warningData); err != nil ||
-		warningData["warning_code"] != "focus_loss_policy_warning" || len(warningData) != 4 {
-		t.Fatalf("warning data=%v error=%v", warningData, err)
-	}
-	if flagged.Name != "exam_attempt_integrity_flagged" || flagged.UserID != "" ||
-		flagged.Action != model.ActionExamSittingView || flagged.Resource.ID != sittingID.String() {
-		t.Fatalf("flagged=%#v", flagged)
-	}
+	err = json.Unmarshal(warning.Data, &warningData)
+	require.NoError(t, err, "warning data")
+	require.Equal(t, "focus_loss_policy_warning", warningData["warning_code"], "warning data")
+	require.Len(t, warningData, 4, "warning data")
+	require.Equal(t, "exam_attempt_integrity_flagged", flagged.Name)
+	require.Empty(t, flagged.UserID)
+	require.Equal(t, model.ActionExamSittingView, flagged.Action)
+	require.Equal(t, sittingID.String(), flagged.Resource.ID)
 	var managerData map[string]any
-	if err = json.Unmarshal(flagged.Data, &managerData); err != nil || managerData["policy_kind"] != "focus_loss" ||
-		managerData["outcome"] != "flag_and_warn" || managerData["retained_evidence_count"] != float64(100) ||
-		managerData["evidence_overflow_count"] != float64(17) || managerData["evidence_available"] != true || len(managerData) != 10 {
-		t.Fatalf("manager data=%v error=%v", managerData, err)
-	}
+	err = json.Unmarshal(flagged.Data, &managerData)
+	require.NoError(t, err, "manager data")
+	require.Equal(t, "focus_loss", managerData["policy_kind"], "manager data")
+	require.Equal(t, "flag_and_warn", managerData["outcome"], "manager data")
+	require.Equal(t, float64(100), managerData["retained_evidence_count"], "manager data")
+	require.Equal(t, float64(17), managerData["evidence_overflow_count"], "manager data")
+	require.Equal(t, true, managerData["evidence_available"], "manager data")
+	require.Len(t, managerData, 10, "manager data")
 	for _, event := range []RealtimeEvent{warning, flagged} {
 		for _, forbidden := range []string{"duration", "source", "sequence", "threshold", "credential", "hash", "session", "private", "severity", "guilt"} {
-			if strings.Contains(strings.ToLower(string(event.Data)), forbidden) {
-				t.Fatalf("Focus Loss event contains %q: %s", forbidden, event.Data)
-			}
+			require.NotContains(t, strings.ToLower(string(event.Data)), forbidden, "Focus Loss event contains %q: %s", forbidden, event.Data)
 		}
-		if err = event.ValidateForPublish(); err != nil {
-			t.Fatal(err)
-		}
+		err = event.ValidateForPublish()
+		require.NoError(t, err)
 	}
 }
 
 func assertCandidateSittingEvent(t *testing.T, event RealtimeEvent, name string, sittingID model.ExamSittingID) {
 	t.Helper()
-	if event.Name != name || event.Action != model.ActionExamSittingParticipate ||
-		event.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
-		t.Fatalf("candidate event = %#v", event)
-	}
-	if err := event.ValidateForPublish(); err != nil {
-		t.Fatalf("candidate event is not publishable: %v", err)
-	}
+	require.Equal(t, name, event.Name)
+	require.Equal(t, model.ActionExamSittingParticipate, event.Action)
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, event.Resource)
+	require.NoError(t, event.ValidateForPublish())
 }

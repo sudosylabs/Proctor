@@ -10,9 +10,11 @@ package attempt
 import (
 	"crypto/sha256"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
@@ -21,23 +23,19 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func assertStoreBoundaryCommand(t *testing.T, got, want *store.CommandIdempotency) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Store idempotency = %#v; want %#v", got, want)
-	}
-}
-
 func assertPreparedIdempotency(t *testing.T, got *store.CommandIdempotency, userID model.UserID, operation, key, document string) {
 	t.Helper()
 	wantKey := sha256.Sum256([]byte(key))
 	wantFingerprint := sha256.Sum256([]byte(operation + "\x00v1\x00" + document))
-	if got == nil || got.UserID != userID || got.Operation != operation || got.KeyDigest != wantKey ||
-		got.FingerprintVersion != 1 || got.Fingerprint != wantFingerprint || got.OutcomeVersion != 1 ||
-		got.Retention != 24*time.Hour || got.Wait != 2*time.Second {
-		t.Fatalf("prepared idempotency = %#v; want user=%s operation=%q key=%x fingerprint=%x versions=1/1 retention=24h wait=2s",
-			got, userID, operation, wantKey, wantFingerprint)
-	}
+	require.NotNil(t, got, "prepared idempotency")
+	require.Equal(t, userID, got.UserID, "prepared idempotency")
+	require.Equal(t, operation, got.Operation, "prepared idempotency")
+	require.Equal(t, wantKey, got.KeyDigest, "prepared idempotency")
+	require.Equal(t, 1, got.FingerprintVersion, "prepared idempotency")
+	require.Equal(t, wantFingerprint, got.Fingerprint, "prepared idempotency")
+	require.Equal(t, 1, got.OutcomeVersion, "prepared idempotency")
+	require.Equal(t, 24*time.Hour, got.Retention, "prepared idempotency")
+	require.Equal(t, 2*time.Second, got.Wait, "prepared idempotency")
 }
 
 func TestWorkspaceMutationFingerprintCompatibility(t *testing.T) {
@@ -90,9 +88,7 @@ func TestWorkspaceMutationFingerprintCompatibility(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			prepared, err := prepareWorkspaceMutationIdempotency(invocation, "execution-key", attemptID, test.operation, test.semantic)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			outer := fmt.Sprintf(`{"exam_attempt_id":%q,"operation":%q,"command":%s}`,
 				attemptID, test.operation, test.document)
 			assertPreparedIdempotency(t, prepared, userID, store.ExamAttemptWorkspaceMutationOperation,
@@ -112,9 +108,7 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 	security := model.ConnectSecurity{Kind: "preflight", PreflightID: "fixture-preflight", ReportDigest: model.SHA256Fingerprint([]byte("fixture-report"))}
 	connected, err := prepareConnectIdempotency(invocation, ConnectCommand{Security: security, SittingID: sittingID,
 		ContinuityCredential: credential, ConfigurationManifestFingerprint: manifest, IdempotencyKey: "connect-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertPreparedIdempotency(t, connected, userID, store.ExamAttemptConnectOperation, "connect-key",
 		fmt.Sprintf(`{"exam_sitting_id":%q,"session_id":%q,"continuity_credential_hash":%q,"configuration_manifest_fingerprint":%q,"initial_configuration":null,"security":{"kind":"preflight","preflight_id":"fixture-preflight","report_digest":%q}}`,
 			sittingID, sessionID, model.HashToken(credential), manifest, security.ReportDigest))
@@ -123,18 +117,14 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 	reallowed, err := prepareReallowIdempotency(invocation, ReallowCommand{ExamID: examID, SittingID: sittingID,
 		AttemptID: attemptID, SuspensionID: suspensionID, ExpectedAttemptRevision: 3,
 		PrivateReason: "reviewed", IdempotencyKey: "reallow-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertPreparedIdempotency(t, reallowed, userID, store.ExamAttemptReallowOperation, "reallow-key",
 		fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"exam_attempt_id":%q,"suspension_id":%q,"expected_attempt_revision":3,"private_reason":"reviewed"}`,
 			examID, sittingID, attemptID, suspensionID))
 
 	revisionID := model.NewExamRevisionID()
 	submitted, err := prepareSubmissionIdempotency(invocation, "submit-key", attemptID, revisionID, 11, 7)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	assertPreparedIdempotency(t, submitted, userID, store.ExamSubmissionSealOperation, "submit-key",
 		fmt.Sprintf(`{"exam_attempt_id":%q,"expected_current_revision_id":%q,"expected_workspace_cursor":11,"final_focus_loss_sequence":7}`,
 			attemptID, revisionID))
@@ -148,29 +138,22 @@ func TestIdempotencyOperationCompatibility(t *testing.T) {
 		store.ExamAttemptWorkspaceMutationOperation: "exam.attempt.workspace.mutate.v1",
 		store.ExamSubmissionSealOperation:           "exam.attempt.submit.v1",
 	}
-	if len(tests) != 4 {
-		t.Fatalf("operation set collapsed: %#v", tests)
-	}
+	require.Len(t, tests, 4)
 	for operation, want := range tests {
-		if operation != want {
-			t.Errorf("operation = %q; want %q", operation, want)
-		}
+		assert.Equal(t, want, operation, "operation")
 	}
 }
 
 func TestPrepareIdempotencyFaultMapping(t *testing.T) {
 	t.Parallel()
 	valid := invocation.New(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	if _, err := applicationidempotency.Require(valid, "operation", "", struct{}{}); faultCode(err) != "idempotency.key_required" {
-		t.Fatalf("missing key error = %v", err)
-	}
+	_, err := applicationidempotency.Require(valid, "operation", "", struct{}{})
+	require.Equal(t, "idempotency.key_required", faultCode(err), "missing key error")
 	invalid := invocation.New(model.Principal{}, model.RequestMetadata{})
-	if _, err := applicationidempotency.Require(invalid, "operation", "key", struct{}{}); faultCode(err) != "idempotency.key_invalid" {
-		t.Fatalf("invalid principal error = %v", err)
-	}
-	if _, err := applicationidempotency.Require(valid, "operation", "key", make(chan struct{})); faultCode(err) != "request.invalid" {
-		t.Fatalf("encoding error = %v", err)
-	}
+	_, err = applicationidempotency.Require(invalid, "operation", "key", struct{}{})
+	require.Equal(t, "idempotency.key_invalid", faultCode(err), "invalid principal error")
+	_, err = applicationidempotency.Require(valid, "operation", "key", make(chan struct{}))
+	require.Equal(t, "request.invalid", faultCode(err), "encoding error")
 }
 
 func faultCode(err error) string {

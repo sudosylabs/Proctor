@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -43,14 +45,14 @@ func TestSessionAuthenticationUsesMicrosecondExpiryBoundaries(t *testing.T) {
 					}
 					principal, err := service.authenticateAccess(context.Background(), raw)
 					if test.expired {
-						if principal != nil || !apperror.Is(err, "authentication.token_invalid") {
-							t.Fatalf("authentication at %v = %#v, %v", service.now(), principal, err)
+						require.Nil(t, principal, "authentication at")
+						require.True(t, apperror.Is(err, "authentication.token_invalid"), "authentication at")
+						if expiry != "access credential" {
+							require.True(t, persistence.sessions[session.ID.String()].RevokedAt.Time.Equal(model.TimeUTC(service.now())), "Session expiry revocation lost the decision's microsecond precision")
 						}
-						if expiry != "access credential" && !persistence.sessions[session.ID.String()].RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
-							t.Fatal("Session expiry revocation lost the decision's microsecond precision")
-						}
-					} else if err != nil || principal == nil {
-						t.Fatalf("authentication before %v = %#v, %v", deadline, principal, err)
+					} else {
+						require.NoError(t, err, "authentication before %v", deadline)
+						require.NotNil(t, principal, "authentication before %v", deadline)
 					}
 				})
 			}
@@ -81,17 +83,15 @@ func TestSessionPrincipalRevalidationUsesMicrosecondExpiryBoundaries(t *testing.
 					}
 					service.now = func() time.Time { return deadline.Add(-time.Microsecond) }
 					principal, err := service.authenticateAccess(context.Background(), raw)
-					if err != nil {
-						t.Fatalf("establish Principal before expiry: %v", err)
-					}
+					require.NoError(t, err)
 					service.now = func() time.Time { return deadline.Add(test.offset) }
 					err = service.validatePrincipal(context.Background(), *principal)
 					if test.expired {
-						if !apperror.Is(err, "authentication.token_invalid") || !session.RevokedAt.Time.Equal(model.TimeUTC(service.now())) {
-							t.Fatalf("Principal validation at %v = %v; revoked at %v", service.now(), err, session.RevokedAt)
-						}
-					} else if err != nil || session.RevokedAt.Valid {
-						t.Fatalf("Principal validation before expiry = %v; revoked at %v", err, session.RevokedAt)
+						require.True(t, apperror.Is(err, "authentication.token_invalid"), "Principal validation at")
+						require.True(t, session.RevokedAt.Time.Equal(model.TimeUTC(service.now())), "Principal validation at")
+					} else {
+						require.NoError(t, err, "Principal validation before expiry")
+						require.False(t, session.RevokedAt.Valid, "Principal validation before expiry revoked the Session")
 					}
 				})
 			}
@@ -127,13 +127,10 @@ func TestSessionCreationKeepsMicrosecondDeadlinesAndAbsoluteCap(t *testing.T) {
 				PasswordProof: store.PasswordCredentialProof{ID: password.ID, Revision: password.Revision},
 				AuditEventID:  model.NewAuditEventID(),
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			absolute := now.Add(test.absolute)
-			if !session.LastActivityAt.Equal(now) || !session.ExpiresAt.Equal(absolute) {
-				t.Fatalf("Session creation times = %v/%v, want %v/%v", session.LastActivityAt, session.ExpiresAt, now, absolute)
-			}
+			require.True(t, session.LastActivityAt.Equal(now), "Session creation times = %v/%v, want %v", session.LastActivityAt, session.ExpiresAt, now)
+			require.True(t, session.ExpiresAt.Equal(absolute), "Session creation times = %v/%v, want %v", session.LastActivityAt, session.ExpiresAt, now)
 			wantAccess, wantIdle := now.Add(service.sessionPolicy.AccessTTL), now.Add(service.sessionPolicy.IdleTTL)
 			wantRefresh := now.Add(service.sessionPolicy.RefreshTTL)
 			if absolute.Before(wantAccess) {
@@ -145,9 +142,9 @@ func TestSessionCreationKeepsMicrosecondDeadlinesAndAbsoluteCap(t *testing.T) {
 			if absolute.Before(wantRefresh) {
 				wantRefresh = absolute
 			}
-			if !tokens.AccessExpiresAt.Equal(wantAccess) || !tokens.RefreshExpiresAt.Equal(wantRefresh) || !session.IdleExpiresAt.Equal(wantIdle) {
-				t.Fatalf("Session deadlines = %v/%v/%v, want %v/%v/%v", tokens.AccessExpiresAt, tokens.RefreshExpiresAt, session.IdleExpiresAt, wantAccess, wantRefresh, wantIdle)
-			}
+			require.True(t, tokens.AccessExpiresAt.Equal(wantAccess), "Session deadlines = %v/%v/%v, want %v/%v", tokens.AccessExpiresAt, tokens.RefreshExpiresAt, session.IdleExpiresAt, wantAccess, wantRefresh)
+			require.True(t, tokens.RefreshExpiresAt.Equal(wantRefresh), "Session deadlines = %v/%v/%v, want %v/%v", tokens.AccessExpiresAt, tokens.RefreshExpiresAt, session.IdleExpiresAt, wantAccess, wantRefresh)
+			require.True(t, session.IdleExpiresAt.Equal(wantIdle), "Session deadlines = %v/%v/%v, want %v/%v", tokens.AccessExpiresAt, tokens.RefreshExpiresAt, session.IdleExpiresAt, wantAccess, wantRefresh)
 		})
 	}
 }
@@ -168,16 +165,14 @@ func TestSessionRefreshUsesOneNativeDecisionInstant(t *testing.T) {
 	clockReads := 0
 	service.now = func() time.Time { clockReads++; return clock.Add(time.Duration(clockReads-1) * time.Hour) }
 	_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: model.NewCredentialToken()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	now := model.TimeUTC(clock)
-	if clockReads != 1 || !persistence.rotatedAt.Equal(now) || persistence.rotatedAt.Location() != time.UTC ||
-		!persistence.rotatedIdleExpiry.Equal(now.Add(service.sessionPolicy.IdleTTL)) ||
-		!tokens.AccessExpiresAt.Equal(now.Add(service.sessionPolicy.AccessTTL)) ||
-		!tokens.RefreshExpiresAt.Equal(now.Add(service.sessionPolicy.RefreshTTL)) {
-		t.Fatalf("refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
-	}
+	require.Equal(t, 1, clockReads, "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
+	require.True(t, persistence.rotatedAt.Equal(now), "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
+	require.Same(t, time.UTC, persistence.rotatedAt.Location(), "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
+	require.True(t, persistence.rotatedIdleExpiry.Equal(now.Add(service.sessionPolicy.IdleTTL)), "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
+	require.True(t, tokens.AccessExpiresAt.Equal(now.Add(service.sessionPolicy.AccessTTL)), "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
+	require.True(t, tokens.RefreshExpiresAt.Equal(now.Add(service.sessionPolicy.RefreshTTL)), "refresh lost a single native instant: reads=%d, at=%v, idle=%v, tokens=%#v", clockReads, persistence.rotatedAt, persistence.rotatedIdleExpiry, tokens)
 }
 
 func TestSessionActivityUsesNativeDebounceBoundary(t *testing.T) {
@@ -201,19 +196,16 @@ func TestSessionActivityUsesNativeDebounceBoundary(t *testing.T) {
 			session.LastActivityAt = initialActivity
 			initialIdle := session.IdleExpiresAt
 			service.now = func() time.Time { return deadline.Add(test.offset) }
-			if _, err := service.authenticateAccess(context.Background(), raw); err != nil {
-				t.Fatal(err)
-			}
+			_, err := service.authenticateAccess(context.Background(), raw)
+			require.NoError(t, err)
 			if !test.update {
-				if !session.LastActivityAt.Equal(initialActivity) || !session.IdleExpiresAt.Equal(initialIdle) {
-					t.Fatal("Session activity advanced before the complete debounce interval")
-				}
+				require.True(t, session.LastActivityAt.Equal(initialActivity), "Session activity advanced before the complete debounce interval")
+				require.True(t, session.IdleExpiresAt.Equal(initialIdle), "Session activity advanced before the complete debounce interval")
 				return
 			}
 			now := model.TimeUTC(service.now())
-			if !session.LastActivityAt.Equal(now) || !session.IdleExpiresAt.Equal(now.Add(service.sessionPolicy.IdleTTL)) {
-				t.Fatal("Session activity or idle extension lost microsecond precision")
-			}
+			require.True(t, session.LastActivityAt.Equal(now), "Session activity or idle extension lost microsecond precision")
+			require.True(t, session.IdleExpiresAt.Equal(now.Add(service.sessionPolicy.IdleTTL)), "Session activity or idle extension lost microsecond precision")
 		})
 	}
 }

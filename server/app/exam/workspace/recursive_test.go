@@ -11,6 +11,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -18,16 +20,14 @@ func TestRecursiveRemovalBindsFlagToDraftCommand(t *testing.T) {
 	t.Parallel()
 	f := newServiceFixture(t)
 	command := RemoveEntryCommand{ExamID: f.examID, EntryID: model.NewStarterWorkspaceEntryID(), ExpectedDraftRevision: 1, IdempotencyKey: "remove"}
-	if _, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
+	_, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command)
+	require.NoError(t, err)
 	ordinary := *f.persistence.idempotency
 	command.Recursive = true
-	if _, err := f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if !f.persistence.mutation.Recursive || f.persistence.mutation.ExpectedDraftRevision != 1 ||
-		ordinary.KeyDigest != f.persistence.idempotency.KeyDigest || ordinary.Fingerprint == f.persistence.idempotency.Fingerprint {
-		t.Fatal("recursive removal lost its Draft precondition or semantic identity")
-	}
+	_, err = f.service.RemoveExamStarterWorkspaceEntry(context.Background(), f.invocation, command)
+	require.NoError(t, err)
+	require.True(t, f.persistence.mutation.Recursive, "recursive removal lost its Draft precondition or semantic identity")
+	require.Equal(t, int64(1), f.persistence.mutation.ExpectedDraftRevision, "recursive removal lost its Draft precondition or semantic identity")
+	require.Equal(t, f.persistence.idempotency.KeyDigest, ordinary.KeyDigest, "recursive removal lost its Draft precondition or semantic identity")
+	require.NotEqual(t, f.persistence.idempotency.Fingerprint, ordinary.Fingerprint, "recursive removal lost its Draft precondition or semantic identity")
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 )
@@ -58,26 +60,18 @@ func TestDPoPAuthenticationAfterMFARecoverySupportsPrincipalRevalidation(t *test
 	service.registrations = dpopRegistrationLookup{registration: registration}
 	nonce, err := service.dpop.IssueNonce(ctx, dpopBinding{Kind: dpopBindingSession, SessionID: session.ID,
 		DesktopRegistrationID: registration.ID, KeyThumbprint: registration.KeyThumbprint, Origin: service.dpop.policy.Origin})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	proof := signDPoPProof(t, privateKey, jwk, map[string]any{
 		"jti": "recovered-session-proof", "htm": "GET", "htu": service.dpop.policy.Origin + "/api/v1/users/me",
 		"iat": at.Unix(), "nonce": nonce, "ath": dpopAccessTokenHash(raw),
 	})
 	principal, err := service.AuthenticateDPoP(ctx, raw, proof, "GET", "/api/v1/users/me")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = service.validatePrincipal(ctx, *principal); err != nil {
-		t.Fatalf("fresh recovered Desktop Session rejected by realtime revalidation: %v", err)
-	}
+	require.NoError(t, err)
+	err = service.validatePrincipal(ctx, *principal)
+	require.NoError(t, err)
 	recovery.generation++
-	if err = service.validatePrincipal(ctx, *principal); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("a subsequent recovery did not invalidate the old Desktop principal: %v", err)
-	}
+	err = service.validatePrincipal(ctx, *principal)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "a subsequent recovery did not invalidate the old Desktop principal: %v", err)
 	session.MFARecoveryRequired = true
-	if principalFromDesktopAuthentication(&resolvedAuthentication{User: user, Session: session, Credential: credential}).Validate() == nil {
-		t.Fatal("restricted Desktop Session acquired an ordinary principal")
-	}
+	require.Error(t, principalFromDesktopAuthentication(&resolvedAuthentication{User: user, Session: session, Credential: credential}).Validate(), "restricted Desktop Session acquired an ordinary principal")
 }

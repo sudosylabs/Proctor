@@ -15,9 +15,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -32,9 +33,7 @@ func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 		NewNonce: model.NewCredentialToken,
 		Now:      func() time.Time { return at },
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	privateKey, jwk := testDPoPKey(t)
 	thumbprint, _ := jwk.Thumbprint()
 	binding := dpopBinding{
@@ -42,9 +41,7 @@ func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 		KeyThumbprint: thumbprint, Origin: "https://proctor.example",
 	}
 	nonce, err := security.IssueNonce(context.Background(), binding)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	proof := signDPoPProof(t, privateKey, jwk, map[string]any{
 		"jti": "1234567890123456", "htm": "POST",
 		"htu": "https://proctor.example/api/v1/auth/desktop/token",
@@ -54,15 +51,13 @@ func TestDPoPProofNonceBindingAndReplay(t *testing.T) {
 		context.Background(), proof, "POST",
 		"https://proctor.example/api/v1/auth/desktop/token", "", &jwk, binding,
 	)
-	if err != nil || verified.KeyThumbprint != thumbprint {
-		t.Fatalf("Verify() = %#v, %v", verified, err)
-	}
-	if _, err = security.Verify(
+	require.NoError(t, err, "Verify() = %#v", verified)
+	require.Equal(t, thumbprint, verified.KeyThumbprint, "Verify() = %#v", verified)
+	_, err = security.Verify(
 		context.Background(), proof, "POST",
 		"https://proctor.example/api/v1/auth/desktop/token", "", &jwk, binding,
-	); !apperror.Is(err, "authentication.dpop.replayed") {
-		t.Fatalf("replayed Verify() error = %v", err)
-	}
+	)
+	require.True(t, apperror.Is(err, "authentication.dpop.replayed"), "replayed Verify() error = %v", err)
 }
 
 func TestDPoPProofRequiresAccessTokenHashAndFreshNonce(t *testing.T) {
@@ -74,9 +69,7 @@ func TestDPoPProofRequiresAccessTokenHashAndFreshNonce(t *testing.T) {
 		Now:      func() time.Time { return at },
 		NewNonce: model.NewCredentialToken,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	privateKey, jwk := testDPoPKey(t)
 	thumbprint, _ := jwk.Thumbprint()
 	binding := dpopBinding{
@@ -94,17 +87,14 @@ func TestDPoPProofRequiresAccessTokenHashAndFreshNonce(t *testing.T) {
 		"https://proctor.example/api/v1/users/me", "access", nil, binding,
 	)
 	var challenge *dpopChallengeError
-	if !errors.As(err, &challenge) || challenge.Nonce() == "" {
-		t.Fatalf("Verify() error = %v, want nonce challenge", err)
-	}
+	require.ErrorAs(t, err, &challenge, "Verify() error")
+	require.NotEmpty(t, challenge.Nonce(), "Verify() error")
 }
 
 func testDPoPKey(t *testing.T) (*ecdsa.PrivateKey, model.DesktopPublicJWK) {
 	t.Helper()
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return privateKey, model.DesktopPublicJWK{
 		Kty: "EC", Crv: "P-256",
 		X: base64.RawURLEncoding.EncodeToString(privateKey.X.FillBytes(make([]byte, 32))),
@@ -120,20 +110,14 @@ func signDPoPProof(
 ) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]any{"typ": "dpop+jwt", "alg": "ES256", "jwk": jwk})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	payload, err := json.Marshal(claims)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	encodedHeader := base64.RawURLEncoding.EncodeToString(header)
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
 	digest := sha256.Sum256([]byte(encodedHeader + "." + encodedPayload))
 	r, signatureS, err := ecdsa.Sign(rand.Reader, key, digest[:])
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	signature := append(
 		r.FillBytes(make([]byte, 32)),
 		signatureS.FillBytes(make([]byte, 32))...,

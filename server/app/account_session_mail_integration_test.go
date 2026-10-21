@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -36,139 +38,98 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 		AdministratorLocale: "en", AdministratorTimezone: "UTC", Password: password,
 		BootstrapSecret: testlib.BootstrapSecret, Source: "203.0.113.42",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	target, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{
 		Username: "mail11-target", Email: "mail11-target@example.edu", DisplayName: "Mail 11 Target", Locale: "en", Timezone: "UTC",
 	}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminLogin, appErr := helper.App.Login(ctx, app.Invocation{}, app.LoginCommand{
 		LoginID: bootstrap.Administrator.Username, Password: password, ClientType: model.SessionClientCLI,
 		Source: "203.0.113.42", DeviceName: "mail11-admin-device",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminPrincipal, appErr := helper.App.AuthenticateAccess(ctx, adminLogin.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	adminInvocation := app.NewInvocation(*adminPrincipal, model.RequestMetadata{RequestID: "mail11-admin", IPAddress: "203.0.113.42"})
 
 	initialTargetLogin := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-initial")
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: false}); appErr != nil {
-		t.Fatal(appErr)
-	}
-	if _, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: true}); appErr != nil {
-		t.Fatal(appErr)
-	}
+	_, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: false})
+	require.NoError(t, appErr)
+	_, appErr = helper.App.SetUserEnabled(ctx, adminInvocation, app.SetUserEnabledCommand{ID: target.ID, Enabled: true})
+	require.NoError(t, appErr)
 	first := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-first")
 	second := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-second")
-	if err := helper.App.RevokeUserSession(ctx, adminInvocation, app.RevokeUserSessionCommand{UserID: target.ID, SessionID: first.Session.ID}); err != nil {
-		t.Fatal(err)
-	}
-	if err := helper.App.RevokeUserSessions(ctx, adminInvocation, app.RevokeUserSessionsCommand{UserID: target.ID}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, helper.App.RevokeUserSession(ctx, adminInvocation, app.RevokeUserSessionCommand{UserID: target.ID, SessionID: first.Session.ID}))
+	require.NoError(t, helper.App.RevokeUserSessions(ctx, adminInvocation, app.RevokeUserSessionsCommand{UserID: target.ID}))
 	self := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self")
 	selfPrincipal, appErr := helper.App.AuthenticateAccess(ctx, self.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	selfInvocation := app.NewInvocation(*selfPrincipal, model.RequestMetadata{RequestID: "mail11-self", IPAddress: "198.51.100.9"})
-	if err := helper.App.RevokeSession(ctx, selfInvocation, app.RevokeSessionCommand{SessionID: self.Session.ID.String()}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, helper.App.RevokeSession(ctx, selfInvocation, app.RevokeSessionCommand{SessionID: self.Session.ID.String()}))
 	logout := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-logout")
 	logoutPrincipal, appErr := helper.App.AuthenticateAccess(ctx, logout.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if err := helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, appErr)
+	require.NoError(t, helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
+	require.NoError(t, helper.App.Logout(ctx, app.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), app.LogoutCommand{}))
 	all := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self-all")
 	allPrincipal, appErr := helper.App.AuthenticateAccess(ctx, all.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	allInvocation := app.NewInvocation(*allPrincipal, model.RequestMetadata{})
 	for range 2 {
-		if err := helper.App.RevokeAllSessions(ctx, allInvocation, app.RevokeAllSessionsCommand{}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, helper.App.RevokeAllSessions(ctx, allInvocation, app.RevokeAllSessionsCommand{}))
 	}
 	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: target.ID, Action: string(model.ActionSessionManage),
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true}, Limit: 20,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	operations := map[string]int{}
 	for _, event := range audits {
 		var parameters struct {
 			Operation string `json:"operation"`
 		}
-		if err := json.Unmarshal(event.Parameters, &parameters); err != nil {
-			t.Fatal(err)
-		}
-		if event.Status != model.AuditStatusSuccess || event.Resource.ID != target.ID.String() {
-			t.Fatalf("self Session audit = %#v", event)
-		}
+		require.NoError(t, json.Unmarshal(event.Parameters, &parameters))
+		require.Equal(t, model.AuditStatusSuccess, event.Status)
+		require.Equal(t, target.ID.String(), event.Resource.ID)
 		operations[parameters.Operation]++
 		for _, token := range []string{self.Tokens.AccessToken, self.Tokens.RefreshToken, logout.Tokens.AccessToken, logout.Tokens.RefreshToken, all.Tokens.AccessToken, all.Tokens.RefreshToken} {
 			for _, payload := range [][]byte{event.Parameters, event.PriorState, event.Result} {
-				if bytes.Contains(payload, []byte(token)) || bytes.Contains(payload, []byte(model.HashToken(token))) {
-					t.Fatal("self Session audit exposed a credential or its hash")
-				}
+				require.False(t, bytes.Contains(payload, []byte(token)), "self Session audit exposed a credential or its hash")
+				require.False(t, bytes.Contains(payload, []byte(model.HashToken(token))), "self Session audit exposed a credential or its hash")
 			}
 		}
 	}
-	if len(audits) != 5 || operations["revoke_own_session"] != 1 || operations["revoke_own_sessions"] != 2 || operations["logout"] != 2 {
-		t.Fatalf("self Session audit operations = %#v", operations)
-	}
+	require.Len(t, audits, 5)
+	require.Equal(t, 1, operations["revoke_own_session"])
+	require.Equal(t, 2, operations["revoke_own_sessions"])
+	require.Equal(t, 2, operations["logout"])
 
 	durable, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{
 		model.MailTemplateIdentityAccountDisabled, model.MailTemplateIdentityAccountEnabled, model.MailTemplateIdentitySessionsRevokedByAdmin,
 	}, Limit: 20})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	counts := map[model.MailTemplateKey]int{}
 	for _, delivery := range durable {
 		counts[delivery.TemplateKey]++
 	}
-	if len(durable) != 4 || counts[model.MailTemplateIdentityAccountDisabled] != 1 || counts[model.MailTemplateIdentityAccountEnabled] != 1 ||
-		counts[model.MailTemplateIdentitySessionsRevokedByAdmin] != 2 {
-		t.Fatalf("durable security notices = %#v", durable)
-	}
-	if initialTargetLogin.Session == nil || second.Session == nil {
-		t.Fatal("integration session fixture was not established")
-	}
+	require.Len(t, durable, 4)
+	require.Equal(t, 1, counts[model.MailTemplateIdentityAccountDisabled])
+	require.Equal(t, 1, counts[model.MailTemplateIdentityAccountEnabled])
+	require.Equal(t, 2, counts[model.MailTemplateIdentitySessionsRevokedByAdmin])
+	require.NotNil(t, initialTargetLogin.Session, "integration session fixture was not established")
+	require.NotNil(t, second.Session, "integration session fixture was not established")
 
 	startIntegrationServer(t, helper)
 	deliveries := waitForRecoveryDeliveries(t, helper, 4)
-	if len(deliveries) != 4 {
-		t.Fatalf("captured deliveries = %d, want 4", len(deliveries))
-	}
+	require.Len(t, deliveries, 4, "captured deliveries")
 	for _, delivery := range deliveries {
-		if len(delivery.Recipients) != 1 || delivery.Recipients[0] != target.Email {
-			t.Fatalf("security notice recipient = %#v", delivery.Recipients)
-		}
+		require.Len(t, delivery.Recipients, 1)
+		require.Equal(t, target.Email, delivery.Recipients[0])
 		for _, forbidden := range [][]byte{
 			[]byte("mail11-admin"), []byte("account disabled by administrator"), []byte("session revoked by administrator"),
 			[]byte("203.0.113.42"), []byte(adminLogin.Tokens.AccessToken),
 		} {
-			if bytes.Contains(delivery.Data, forbidden) {
-				t.Fatalf("security notice exposed private value %q", forbidden)
-			}
+			require.False(t, bytes.Contains(delivery.Data, forbidden), "security notice exposed private value %q", forbidden)
 		}
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -190,21 +192,16 @@ func TestAcademicUnitCreateRootCommitsAuditBeforePublishing(t *testing.T) {
 	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering", Description: "Faculty",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != saved {
-		t.Fatalf("Create() = %#v, want %#v", got, saved)
-	}
-	if creator.input == nil || creator.input.Unit.InstitutionID.String() != institutionID ||
-		creator.input.Unit.ParentID.String() != "" || creator.input.Unit.ID.String() != createdID ||
-		creator.input.Unit.Name != "engineering" ||
-		creator.input.AuditEventID != model.AuditEventID(auditor.beginID) || creator.input.AuditAt != 500 {
-		t.Fatalf("creation input = %#v", creator.input)
-	}
-	if effects.unitID != saved.ID.String() {
-		t.Fatalf("published unit = %q, want %q", effects.unitID, saved.ID)
-	}
+	require.NoError(t, err)
+	require.Same(t, saved, got, "Create()")
+	require.NotNil(t, creator.input)
+	require.Equal(t, institutionID, creator.input.Unit.InstitutionID.String())
+	require.Empty(t, creator.input.Unit.ParentID.String())
+	require.Equal(t, createdID, creator.input.Unit.ID.String())
+	require.Equal(t, "engineering", creator.input.Unit.Name)
+	require.Equal(t, model.AuditEventID(auditor.beginID), creator.input.AuditEventID)
+	require.Equal(t, int64(500), creator.input.AuditAt)
+	require.Equal(t, saved.ID.String(), effects.unitID, "published unit = %q, want %q", effects.unitID, saved.ID)
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "effect")
 }
 
@@ -225,12 +222,8 @@ func TestAcademicUnitCreateReplayDoesNotPublishAgain(t *testing.T) {
 	)
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	got, err := service.CreateAcademicUnit(context.Background(), invocation, CreateAcademicUnitCommand{Name: "engineering", DisplayName: "Engineering", IdempotencyKey: "retry-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != saved {
-		t.Fatalf("Create() = %#v, want replay %#v", got, saved)
-	}
+	require.NoError(t, err)
+	require.Same(t, saved, got, "Create()")
 	assertAcademicUnitCreateEvents(t, events, "audit-begin", "store-idempotent")
 }
 
@@ -258,12 +251,9 @@ func TestAcademicUnitCreateDenialStopsBeforeDurableWork(t *testing.T) {
 		model.NewID,
 	)
 	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{Name: "engineering"})
-	if !apperror.Is(err, "authorization.denied") {
-		t.Fatalf("Create() error = %v, want authorization.denied", err)
-	}
-	if creator.input != nil || len(events) != 0 {
-		t.Fatalf("work after denial: input=%#v events=%v", creator.input, events)
-	}
+	require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v, want authorization.denied", err)
+	require.Nil(t, creator.input, "work after denial: input")
+	require.Empty(t, events, "work after denial: input")
 }
 
 func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
@@ -284,9 +274,8 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 				_ context.Context, _ Invocation, action model.Action, resource model.Resource,
 			) error {
 				events = append(events, "authorize")
-				if action != model.ActionAcademicUnitManage || resource.Type != model.ResourceAcademicUnit {
-					t.Fatalf("authorization = %s %#v", action, resource)
-				}
+				require.Equal(t, model.ActionAcademicUnitManage, action, "authorization = %s %#v", action, resource)
+				require.Equal(t, model.ResourceAcademicUnit, resource.Type, "authorization = %s %#v", action, resource)
 				return nil
 			},
 			installation: func(context.Context) (model.Resource, error) {
@@ -302,12 +291,8 @@ func TestAcademicUnitCreateFailureAuditsAndDoesNotPublish(t *testing.T) {
 	_, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		ParentID: model.AcademicUnitID(parentID), Name: "computing", DisplayName: "Computing",
 	})
-	if !apperror.Is(err, "academic_unit.conflict") {
-		t.Fatalf("Create() error = %v, want academic_unit.conflict", err)
-	}
-	if auditor.failCode != "academic_unit.conflict" {
-		t.Fatalf("failure audit code = %q", auditor.failCode)
-	}
+	require.True(t, apperror.Is(err, "academic_unit.conflict"), "Create() error = %v, want academic_unit.conflict", err)
+	require.Equal(t, "academic_unit.conflict", auditor.failCode)
 	assertAcademicUnitCreateEvents(t, events, "authorize", "audit-begin", "store", "audit-fail")
 }
 
@@ -337,26 +322,17 @@ func TestAcademicUnitCreateIgnoresPostCommitEffectFailure(t *testing.T) {
 	got, err := service.CreateAcademicUnit(context.Background(), Invocation{}, CreateAcademicUnitCommand{
 		Name: "engineering", DisplayName: "Engineering",
 	})
-	if err != nil || got != saved {
-		t.Fatalf("Create() = %#v, %v; want committed result", got, err)
-	}
-	if !errors.Is(reporter.err, effectErr) {
-		t.Fatalf("reported effect error = %v, want %v", reporter.err, effectErr)
-	}
-	if reporter.operation != "academic_unit_created" {
-		t.Fatalf("reported operation = %q", reporter.operation)
-	}
+	require.NoError(t, err, "Create()")
+	require.Same(t, saved, got, "Create()")
+	require.ErrorIs(t, reporter.err, effectErr, "reported effect error")
+	require.Equal(t, "academic_unit_created", reporter.operation)
 	assertAcademicUnitCreateEvents(t, events, "audit-begin", "store", "effect", "effect-report")
 }
 
 func assertAcademicUnitCreateEvents(t *testing.T, got []string, want ...string) {
 	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("events = %v, want %v", got, want)
-	}
+	require.Len(t, got, len(want), "events")
 	for index := range want {
-		if got[index] != want[index] {
-			t.Fatalf("events = %v, want %v", got, want)
-		}
+		require.Equal(t, want[index], got[index], "events = %v, want %v", got, want)
 	}
 }

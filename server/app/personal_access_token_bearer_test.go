@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -34,36 +36,25 @@ func TestPersonalAccessTokenBearerResolverPreservesCredentialCeilings(t *testing
 		PersonalAccessTokenPolicy{LastUsedUpdateInterval: 5 * time.Minute},
 		personalAccessTokenDiagnosticsFake{},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	principal, err := resolver.ResolveBearer(context.Background(), raw, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.hash != model.HashToken(raw) || persistence.hash == raw {
-		t.Fatalf("resolved hash = %q", persistence.hash)
-	}
-	if !persistence.at.Equal(model.TimeUTC(at)) || persistence.at.Location() != time.UTC || persistence.updateInterval != 5*time.Minute {
-		t.Fatalf("resolve timing = %s/%s", persistence.at, persistence.updateInterval)
-	}
-	if principal.CredentialType != model.CredentialPersonalAccessToken ||
-		principal.CredentialID.String() != token.ID.String() ||
-		principal.UserID != user.ID ||
-		principal.AcademicUnitID != unitID ||
-		len(principal.CredentialScopes) != 2 {
-		t.Fatalf("principal = %#v", principal)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.HashToken(raw), persistence.hash)
+	require.NotEqual(t, raw, persistence.hash)
+	require.True(t, persistence.at.Equal(model.TimeUTC(at)), "resolve timing = %s", persistence.at)
+	require.Same(t, time.UTC, persistence.at.Location(), "resolve timing = %s", persistence.at)
+	require.Equal(t, 5*time.Minute, persistence.updateInterval, "resolve timing = %s", persistence.at)
+	require.Equal(t, model.CredentialPersonalAccessToken, principal.CredentialType)
+	require.Equal(t, token.ID.String(), principal.CredentialID.String())
+	require.Equal(t, user.ID, principal.UserID)
+	require.Equal(t, unitID, principal.AcademicUnitID)
+	require.Len(t, principal.CredentialScopes, 2)
 
 	token.AcademicUnitID = model.AcademicUnitID("")
 	unscoped, err := resolver.ResolveBearer(context.Background(), raw, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !unscoped.AcademicUnitID.IsZero() {
-		t.Fatalf("unscoped principal has academic-unit ceiling %q", unscoped.AcademicUnitID)
-	}
+	require.NoError(t, err)
+	require.True(t, unscoped.AcademicUnitID.IsZero())
 }
 
 type personalAccessTokenResolutionStoreFake struct {

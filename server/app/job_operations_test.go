@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type jobOperatorEngineFake struct {
@@ -100,26 +102,22 @@ func TestJobOperationsAuthorizeBeforeEngineInspection(t *testing.T) {
 	engine := &jobOperatorEngineFake{events: &events, view: view}
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	service, err := newJobOperationsService(engine, authorizer, &jobOperationsAuditorFake{events: &events}, time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	page, appErr := service.ListJobs(context.Background(), Invocation{}, ListJobsQuery{Limit: 20})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if len(page.Items) != 1 || page.Items[0].ID != view.ID || engine.listQuery.Limit != 20 || !reflect.DeepEqual(events, []string{"authorize", "list"}) || authorizer.actions[0] != model.ActionJobView {
-		t.Fatalf("page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
-	}
+	require.NoError(t, appErr)
+	require.Len(t, page.Items, 1, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
+	require.Equal(t, view.ID, page.Items[0].ID, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
+	require.Equal(t, 20, engine.listQuery.Limit, "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
+	// Contract: authorization precedes the read.
+	ordertest.RequireInOrder(t, events, "authorize", "list")
+	require.Equal(t, model.ActionJobView, authorizer.actions[0], "page=%#v query=%#v events=%v actions=%v", page, engine.listQuery, events, authorizer.actions)
 
 	events = events[:0]
 	authorizer.err = errors.New("denied")
-	if _, appErr = service.GetJob(context.Background(), Invocation{}, GetJobQuery{ID: view.ID}); appErr == nil {
-		t.Fatal("Get() ignored authorization failure")
-	}
-	if !reflect.DeepEqual(events, []string{"authorize"}) {
-		t.Fatalf("denied events=%v", events)
-	}
+	_, appErr = service.GetJob(context.Background(), Invocation{}, GetJobQuery{ID: view.ID})
+	require.Error(t, appErr, "Get() ignored authorization failure")
+	require.Equal(t, []string{"authorize"}, events)
 }
 
 func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
@@ -130,38 +128,38 @@ func TestJobOperationsAuditAfterPreparationAndBeforeTransition(t *testing.T) {
 	authorizer := &jobOperationsAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewID()}}
 	auditor := &jobOperationsAuditorFake{events: &events}
 	service, err := newJobOperationsService(engine, authorizer, auditor, time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if _, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID}); appErr != nil {
-		t.Fatal(appErr)
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "prepare-cancel", "audit", "cancel"}) || auditor.operation != "cancel" || engine.applyCalls != 1 {
-		t.Fatalf("events=%v operation=%q apply=%d", events, auditor.operation, engine.applyCalls)
-	}
-	if auditor.params["job_id"] != view.ID.String() || auditor.params["type"] != string(view.Type) || auditor.params["status"] != string(view.Status) {
-		t.Fatalf("audit params=%#v", auditor.params)
-	}
+	_, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: view.ID})
+	require.NoError(t, appErr)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit", "cancel")
+	require.Equal(t, "cancel", auditor.operation, "events")
+	require.Equal(t, 1, engine.applyCalls, "events")
+	require.Equal(t, view.ID.String(), auditor.params["job_id"])
+	require.Equal(t, string(view.Type), auditor.params["type"])
+	require.Equal(t, string(view.Status), auditor.params["status"])
 
 	events = events[:0]
 	auditor.err = errors.New("audit unavailable")
-	if _, appErr := service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
-		t.Fatal("Retry() ignored audit failure")
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit"}) || engine.applyCalls != 1 {
-		t.Fatalf("failed-audit events=%v apply=%d", events, engine.applyCalls)
-	}
+	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
+	require.Error(t, appErr, "Retry() ignored audit failure")
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit")
+	require.Equal(t, 1, engine.applyCalls, "failed-audit events")
 
 	events = events[:0]
 	auditor.err = nil
 	engine.applyErr = errors.New("transition unavailable")
-	if _, appErr := service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID}); appErr == nil {
-		t.Fatal("Retry() ignored transition failure")
-	}
-	if !reflect.DeepEqual(events, []string{"authorize", "prepare-retry", "audit", "retry", "audit-fail"}) || auditor.failCalls != 1 {
-		t.Fatalf("failed-transition events=%v audit failures=%d", events, auditor.failCalls)
-	}
+	_, appErr = service.RetryJob(context.Background(), Invocation{}, RetryJobCommand{ID: view.ID})
+	require.Error(t, appErr, "Retry() ignored transition failure")
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize", "audit", "retry", "audit-fail")
+	require.Equal(t, 1, auditor.failCalls, "failed-transition events")
 }
 
 func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
@@ -169,12 +167,9 @@ func TestJobOperationsTranslateEnginePolicyErrors(t *testing.T) {
 	events := make([]string, 0, 2)
 	engine := &jobOperatorEngineFake{events: &events, prepareErr: jobengine.ErrCancelUnsupported}
 	service, err := newJobOperationsService(engine, &jobOperationsAuthorizerFake{events: &events}, &jobOperationsAuditorFake{events: &events}, time.Now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()}); !apperror.Is(appErr, "job.cancel.unsupported") {
-		t.Fatalf("Cancel() error=%#v", appErr)
-	}
+	require.NoError(t, err)
+	_, appErr := service.CancelJob(context.Background(), Invocation{}, CancelJobCommand{ID: model.NewJobID()})
+	require.True(t, apperror.Is(appErr, "job.cancel.unsupported"), "Cancel() error=%#v", appErr)
 }
 
 func TestJobOperationsRequireDependencies(t *testing.T) {
@@ -197,9 +192,8 @@ func TestJobOperationsRequireDependencies(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := newJobOperationsService(test.jobs, test.authorization, test.audit, test.now); err == nil {
-				t.Fatalf("nil %s dependency was accepted", test.name)
-			}
+			_, err := newJobOperationsService(test.jobs, test.authorization, test.audit, test.now)
+			require.Error(t, err, "nil %s dependency was accepted", test.name)
 		})
 	}
 }

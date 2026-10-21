@@ -9,8 +9,9 @@ package apperror_test
 
 import (
 	"errors"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/store"
@@ -59,11 +60,11 @@ func TestStoreTableTranslatesByKindEntityAndConstraint(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := apperror.As(testTable.Translate(test.err))
-			if !ok || got.Code() != test.code || !reflect.DeepEqual(got.Fields(), test.fields) {
-				t.Fatalf("Translate(%v) = %v %v, want %s %v", test.err, got, got.Fields(), test.code, test.fields)
-			}
-			if test.err != nil && !errors.Is(got, test.err) {
-				t.Fatalf("Translate(%v) lost its cause", test.err)
+			require.True(t, ok, "Translate(%v) = %v", test.err, got)
+			require.Equal(t, test.code, got.Code(), "Translate(%v) = %v", test.err, got)
+			require.Equal(t, test.fields, got.Fields(), "Translate(%v) = %v", test.err, got)
+			if test.err != nil {
+				require.ErrorIs(t, got, test.err, "Translate")
 			}
 		})
 	}
@@ -73,21 +74,17 @@ func TestStoreTablePassesApplicationErrorsThrough(t *testing.T) {
 	t.Parallel()
 
 	original := apperror.New("authorization.denied").Wrap(store.NewErrNotFound("widget", "1"))
-	if got, ok := apperror.As(testTable.Translate(original)); !ok || got != original {
-		t.Fatalf("Translate(application error) = %v, want it unchanged", got)
-	}
+	got, ok := apperror.As(testTable.Translate(original))
+	require.True(t, ok, "Translate(application error)")
+	require.Same(t, original, got, "Translate(application error)")
 }
 
 func TestStoreTableWithChecksAddedRulesFirst(t *testing.T) {
 	t.Parallel()
 
 	table := testTable.With(apperror.StoreRule{Kind: apperror.StoreConflict, Entity: "authorization", Code: "widget.not_found"})
-	if !apperror.Is(table.Translate(store.NewErrConflict("authorization", "denied", nil)), "widget.not_found") {
-		t.Fatal("With rule did not take precedence")
-	}
-	if !apperror.Is(testTable.Translate(store.NewErrConflict("authorization", "denied", nil)), "widget.conflict") {
-		t.Fatal("With mutated the original table")
-	}
+	require.True(t, apperror.Is(table.Translate(store.NewErrConflict("authorization", "denied", nil)), "widget.not_found"), "With rule did not take precedence")
+	require.True(t, apperror.Is(testTable.Translate(store.NewErrConflict("authorization", "denied", nil)), "widget.conflict"), "With mutated the original table")
 }
 
 func TestAdministrationStoreTableNamesTheResource(t *testing.T) {
@@ -104,8 +101,8 @@ func TestAdministrationStoreTableNamesTheResource(t *testing.T) {
 		errors.New("driver"):                                        "administration.unavailable",
 	} {
 		got, ok := apperror.As(table.Translate(err))
-		if !ok || got.Code() != want || got.Fields()["resource"] != "class" {
-			t.Fatalf("Translate(%v) = %v %v, want %s naming class", err, got, got.Fields(), want)
-		}
+		require.True(t, ok, "Translate")
+		require.Equal(t, want, got.Code(), "Translate")
+		require.Equal(t, "class", got.Fields()["resource"], "Translate")
 	}
 }

@@ -9,15 +9,16 @@ package exam
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *testing.T) {
@@ -30,18 +31,16 @@ func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *test
 		OwnerUserID: fixture.userID, Title: "Systems", UpdatedAt: updatedAt, Revision: 3, ManagerCount: 2}}
 	page, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{AcademicUnitID: fixture.unitID, Query: "  Systems  ",
 		ArchiveFilter: store.ExamArchiveActive, Limit: 50})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 1 || page.Items[0].Title != "Systems" || page.Items[0].ManagerCount != 2 {
-		t.Fatalf("page = %#v", page)
-	}
-	if fixture.persistence.listOptions.Visibility.ActorUserID != fixture.userID || !reflect.DeepEqual(fixture.persistence.listOptions.Visibility, visibility) || fixture.persistence.listOptions.AcademicUnitID != fixture.unitID || fixture.persistence.listOptions.Query != "Systems" {
-		t.Fatalf("list options = %#v", fixture.persistence.listOptions)
-	}
-	if want := []string{"authorize.list", "store.list"}; !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, "Systems", page.Items[0].Title)
+	require.Equal(t, 2, page.Items[0].ManagerCount)
+	require.Equal(t, fixture.userID, fixture.persistence.listOptions.Visibility.ActorUserID)
+	require.Equal(t, visibility, fixture.persistence.listOptions.Visibility)
+	require.Equal(t, fixture.unitID, fixture.persistence.listOptions.AcademicUnitID)
+	require.Equal(t, "Systems", fixture.persistence.listOptions.Query)
+	// Contract: list visibility is authorized before the Store lists Exams.
+	ordertest.RequireInOrder(t, *fixture.order, "authorize.list", "store.list")
 }
 
 func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
@@ -51,21 +50,21 @@ func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	result, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
 		ExpectedExamRevision: 1, IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsArchived() || result.Revision != 2 || fixture.persistence.archive == nil || fixture.effects.archivedRevision != 2 {
-		t.Fatalf("archive = %#v store=%#v effect=%d", result, fixture.persistence.archive, fixture.effects.archivedRevision)
-	}
-	if fixture.authorizer.action != model.ActionExamManage || len(fixture.auditor.value) != 3 || fixture.auditor.value["exam_id"] != fixture.examID.String() || fixture.auditor.value["expected_exam_revision"] != int64(1) || fixture.auditor.value["exam_revision"] != int64(2) {
-		t.Fatalf("authorization/audit = %s / %#v", fixture.authorizer.action, fixture.auditor.value)
-	}
+	require.NoError(t, err)
+	require.True(t, result.IsArchived(), "archive = %#v store=%#v effect", result, fixture.persistence.archive)
+	require.Equal(t, int64(2), result.Revision, "archive = %#v store=%#v effect", result, fixture.persistence.archive)
+	require.NotNil(t, fixture.persistence.archive, "archive = %#v store=%#v effect", result, fixture.persistence.archive)
+	require.Equal(t, int64(2), fixture.effects.archivedRevision, "archive = %#v store=%#v effect", result, fixture.persistence.archive)
+	require.Equal(t, model.ActionExamManage, fixture.authorizer.action, "authorization/audit")
+	require.Len(t, fixture.auditor.value, 3, "authorization/audit")
+	require.Equal(t, fixture.examID.String(), fixture.auditor.value["exam_id"], "authorization/audit")
+	require.Equal(t, int64(1), fixture.auditor.value["expected_exam_revision"], "authorization/audit")
+	require.Equal(t, int64(2), fixture.auditor.value["exam_revision"], "authorization/audit")
 	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationArchive, "test-key",
 		fmt.Sprintf(`{"exam_id":%q,"expected_exam_revision":1}`, fixture.examID))
-	want := []string{"store.access", "membership", "authorize", "audit.begin", "store.archive", "effect.archived"}
-	if !reflect.DeepEqual(*fixture.order, want) {
-		t.Fatalf("order = %v, want %v", *fixture.order, want)
-	}
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	ordertest.RequireInOrder(t, *fixture.order, "authorize", "audit.begin", "store.archive", "effect.archived")
 }
 
 func TestArchiveReplayAfterCurrentArchiveDoesNotRepublish(t *testing.T) {
@@ -75,13 +74,11 @@ func TestArchiveReplayAfterCurrentArchiveDoesNotRepublish(t *testing.T) {
 	fixture.persistence.archived = true
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
-	if _, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
-		ExpectedExamRevision: 1, IdempotencyKey: "test-key"}); err != nil {
-		t.Fatal(err)
-	}
-	if fixture.persistence.archive == nil || fixture.effects.archivedRevision != 0 {
-		t.Fatalf("replay store/effect = %#v/%d", fixture.persistence.archive, fixture.effects.archivedRevision)
-	}
+	_, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
+		ExpectedExamRevision: 1, IdempotencyKey: "test-key"})
+	require.NoError(t, err)
+	require.NotNil(t, fixture.persistence.archive, "replay store/effect")
+	require.Equal(t, int64(0), fixture.effects.archivedRevision, "replay store/effect")
 }
 
 func TestArchiveNewAttemptRejectsArchivedAndStaleExamThroughAuditedStoreGuard(t *testing.T) {
@@ -100,9 +97,9 @@ func TestArchiveNewAttemptRejectsArchivedAndStaleExamThroughAuditedStoreGuard(t 
 			_, err := fixture.service.ArchiveExam(context.Background(), fixture.invocation, ArchiveCommand{ExamID: fixture.examID,
 				ExpectedExamRevision: test.revision, IdempotencyKey: "test-key"})
 			var fault *apperror.Error
-			if !errors.As(err, &fault) || fault.Code() != test.want || fixture.auditor.failedCode != test.want {
-				t.Fatalf("archive error/audit = %v/%s, want %s", err, fixture.auditor.failedCode, test.want)
-			}
+			require.ErrorAs(t, err, &fault, "archive error/audit")
+			require.Equal(t, test.want, fault.Code(), "archive error/audit")
+			require.Equal(t, test.want, fixture.auditor.failedCode, "archive error/audit")
 		})
 	}
 }
@@ -111,10 +108,9 @@ func TestListExamsDefaultsLimitAndActiveArchiveFilter(t *testing.T) {
 	t.Parallel()
 	fixture := newAuthoringFixture(t)
 	fixture.authorizer.listVisibility = store.ExamListVisibility{ActorUserID: fixture.userID}
-	if _, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{}); err != nil {
-		t.Fatal(err)
-	}
-	if options := fixture.persistence.listOptions; options.Limit != 50 || options.ArchiveFilter != store.ExamArchiveActive {
-		t.Fatalf("list options = %#v, want limit 50 and active archive filter", options)
-	}
+	_, err := fixture.service.ListExams(context.Background(), fixture.invocation, ListQuery{})
+	require.NoError(t, err)
+	options := fixture.persistence.listOptions
+	require.Equal(t, 50, options.Limit, "list options = %#v, want limit 50 and active archive filter", options)
+	require.Equal(t, store.ExamArchiveActive, options.ArchiveFilter, "list options = %#v, want limit 50 and active archive filter", options)
 }

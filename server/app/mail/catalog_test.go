@@ -10,21 +10,26 @@ package mail
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestMailCatalogCoversTheDurableTemplateCatalog(t *testing.T) {
 	t.Parallel()
 	keys := model.AllMailTemplateKeys()
-	if len(mailCatalog) != len(keys) {
-		t.Fatalf("mail catalog size = %d, want %d", len(mailCatalog), len(keys))
-	}
+	require.Len(t, mailCatalog, len(keys), "mail catalog size")
 	for _, key := range keys {
 		definition, ok := definitionFor(key)
 		kind, kindOK := key.OccurrenceKind()
-		if !ok || !kindOK || definition.key != key || definition.kind != kind || definition.jobType == "" {
-			t.Errorf("mail definition %q = %#v, present=%v kind=%q/%v", key, definition, ok, kind, kindOK)
+		if !assert.True(t, ok, "mail definition %q is missing", key) {
+			continue
 		}
+		assert.True(t, kindOK, "mail definition %q has no occurrence kind", key)
+		assert.Equal(t, key, definition.key, "mail definition %q", key)
+		assert.Equal(t, kind, definition.kind, "mail definition %q", key)
+		assert.NotEmpty(t, definition.jobType, "mail definition %q", key)
 	}
 }
 
@@ -36,9 +41,8 @@ func TestMailCatalogRestrictsCredentialAndActionDelivery(t *testing.T) {
 			key == model.MailTemplateIdentityEmailChangeVerifyNew || key == model.MailTemplateAccessStudentClassInvitation ||
 			key == model.MailTemplateAccessTeacherAcademicUnitInvitation || key == model.MailTemplateAccessAcademicUnitRoleInvitation ||
 			key == model.MailTemplateAccessInstitutionRoleInvitation
-		if (definition.jobType == model.JobTypeMailDeliverCredential) != wantCredential || definition.actionRequired != wantCredential ||
-			(definition.defaultLifetime == 0) != wantCredential {
-			t.Errorf("mail definition %q credential/action policy = %#v", key, definition)
-		}
+		assert.Equal(t, wantCredential, definition.jobType == model.JobTypeMailDeliverCredential, "mail definition %q credential/action policy = %#v", key, definition)
+		assert.Equal(t, wantCredential, definition.actionRequired, "mail definition %q credential/action policy = %#v", key, definition)
+		assert.Equal(t, wantCredential, definition.defaultLifetime == 0, "mail definition %q credential/action policy = %#v", key, definition)
 	}
 }

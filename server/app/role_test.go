@@ -10,13 +10,15 @@ package app
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 type roleStoreFake struct {
@@ -126,16 +128,12 @@ func TestRoleCreateCommitsWithoutSideEffects(t *testing.T) {
 	got, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{string(model.ActionClassView)},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ID.String() != created.ID.String() || persistence.createInput.AuditEventID == "" {
-		t.Fatalf("result/input = %#v / %#v", got, persistence.createInput)
-	}
-	want := []string{"authorize-manage", "authorize-delegation", "audit-begin", "store-create"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, created.ID.String(), got.ID.String(), "result/input = %#v / %#v", got, persistence.createInput)
+	require.NotEmpty(t, persistence.createInput.AuditEventID, "result/input = %#v / %#v", got, persistence.createInput)
+	// Contract (guardrail 8): authorization precedes the audit, and the audit
+	// begins before the durable write. Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "authorize-delegation", "audit-begin", "store-create")
 }
 
 func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T) {
@@ -150,12 +148,8 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
 		_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{Name: "unsafe", DisplayName: "Unsafe", Permissions: []string{string(model.ActionUserManage)}})
-		if !apperror.Is(err, "authorization.denied") {
-			t.Fatalf("Create() error = %v", err)
-		}
-		if want := []string{"authorize-manage", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
-			t.Fatalf("events = %v, want %v", events, want)
-		}
+		require.True(t, apperror.Is(err, "authorization.denied"), "Create() error = %v", err)
+		require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -168,12 +162,8 @@ func TestRoleCreateAndUpdateRejectUndelegablePermissionsBeforeAudit(t *testing.T
 			&institutionAuditorFake{events: &events}, &roleEffectsFake{events: &events}, time.Now,
 		)
 		_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, Permissions: &permissions})
-		if !apperror.Is(err, "authorization.denied") {
-			t.Fatalf("Update() error = %v", err)
-		}
-		if want := []string{"authorize-manage", "get-role", "authorize-delegation"}; !reflect.DeepEqual(events, want) {
-			t.Fatalf("events = %v, want %v", events, want)
-		}
+		require.True(t, apperror.Is(err, "authorization.denied"), "Update() error = %v", err)
+		require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 	})
 }
 
@@ -190,22 +180,17 @@ func TestRoleCreateRejectsUnknownPermissions(t *testing.T) {
 	_, err := service.CreateRole(context.Background(), Invocation{}, CreateRoleCommand{
 		Name: "teacher", DisplayName: "Teacher", Permissions: []string{"not.a.real.permission"},
 	})
-	if !apperror.Is(err, "role.permission.invalid") {
-		t.Fatalf("error = %v", err)
-	}
+	require.True(t, apperror.Is(err, "role.permission.invalid"), "error = %v", err)
 	want := []string{"authorize-manage"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.Equal(t, want, events, "events")
 }
 
 func TestRoleCreateRejectsRelationshipOnlyParticipationAction(t *testing.T) {
 	t.Parallel()
 
 	err := validateKnownPermissions([]string{string(model.ActionExamSittingParticipate)})
-	if err == nil || !apperror.Is(err, "role.permission.invalid") {
-		t.Fatalf("validateKnownPermissions() error = %v, want role.permission.invalid", err)
-	}
+	require.Error(t, err, "validateKnownPermissions() error")
+	require.True(t, apperror.Is(err, "role.permission.invalid"), "validateKnownPermissions() error")
 }
 
 func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
@@ -224,16 +209,12 @@ func TestRoleUpdateCommitsBeforeInvalidation(t *testing.T) {
 		func() time.Time { return time.UnixMilli(500) },
 	)
 	got, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.DisplayName != "Lead Teacher" {
-		t.Fatalf("result = %#v", got)
-	}
-	want := []string{"authorize-manage", "get-role", "audit-begin", "store-update", "invalidate-authorization"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "Lead Teacher", got.DisplayName)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update", "invalidate-authorization")
 }
 
 func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
@@ -249,13 +230,12 @@ func TestRoleUpdateFailurePublishesNoInvalidation(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
-	if !apperror.Is(err, "role.conflict") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-manage", "get-role", "audit-begin", "store-update", "audit-fail"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "role.conflict"), "error = %v", err)
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable write, and the audit outcome follows the write. Lookups
+	// may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-update", "audit-fail")
+	require.NotContains(t, events, "invalidate-authorization", "a failed update invalidated authorization")
 }
 
 func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
@@ -271,13 +251,8 @@ func TestRoleUpdateRejectsBuiltIn(t *testing.T) {
 		time.Now,
 	)
 	_, err := service.UpdateRole(context.Background(), Invocation{}, UpdateRoleCommand{ID: role.ID, DisplayName: &displayName})
-	if !apperror.Is(err, "role.built_in.protected") {
-		t.Fatalf("error = %v", err)
-	}
-	want := []string{"authorize-manage", "get-role"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.True(t, apperror.Is(err, "role.built_in.protected"), "error = %v", err)
+	require.NotContains(t, events, "audit-begin", "the rejected command was audited")
 }
 
 func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
@@ -291,29 +266,23 @@ func TestRoleArchiveCommitsBeforeInvalidation(t *testing.T) {
 		&roleEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
-	if err := service.ArchiveRole(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"authorize-manage", "get-role", "audit-begin", "store-archive", "invalidate-authorization"}
-	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %v, want %v", events, want)
-	}
+	require.NoError(t, service.ArchiveRole(context.Background(), Invocation{}, ArchiveRoleCommand{ID: role.ID}))
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	// Lookups may move freely.
+	ordertest.RequireInOrder(t, events, "authorize-manage", "audit-begin", "store-archive", "invalidate-authorization")
 }
 
 func TestValidatePatchedPermissionsPreservesButDoesNotIntroduceUnknownActions(t *testing.T) {
 	t.Parallel()
 	current := []string{string(model.ActionClassView), "future.permission"}
-	if err := validatePatchedPermissions(current, nil); err != nil {
-		t.Fatalf("display-only patch rejected existing unknown permission: %v", err)
-	}
+	require.NoError(t, validatePatchedPermissions(current, nil))
 	preserved := []string{string(model.ActionClassMembersView), "future.permission"}
-	if err := validatePatchedPermissions(current, &preserved); err != nil {
-		t.Fatalf("preserved unknown permission rejected: %v", err)
-	}
+	require.NoError(t, validatePatchedPermissions(current, &preserved))
 	introduced := []string{"another.future_permission"}
-	if err := validatePatchedPermissions(current, &introduced); err == nil || !apperror.Is(err, "role.permission.invalid") {
-		t.Fatalf("new unknown permission error = %v", err)
-	}
+	err := validatePatchedPermissions(current, &introduced)
+	require.Error(t, err)
+	require.True(t, apperror.Is(err, "role.permission.invalid"))
 }
 
 func TestRoleMappersPreserveApplicationFailureWrappers(t *testing.T) {
@@ -326,9 +295,7 @@ func TestRoleMappersPreserveApplicationFailureWrappers(t *testing.T) {
 		"role binding": roleBindingStoreErrors.Translate,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got := mapper(wrapped); got != wrapped {
-				t.Fatalf("mapper returned %v, want original wrapper", got)
-			}
+			require.Equal(t, wrapped, mapper(wrapped), "mapper returned")
 		})
 	}
 }

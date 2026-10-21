@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -91,14 +93,13 @@ func TestAcademicAdministrationBatchRetainsStableSemanticDuplicateDisposition(t 
 			{IdempotencyKey: "b", UserID: userID}, {IdempotencyKey: "a", UserID: userID},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(commands.enrollments) != 2 || commands.enrollments[0].IdempotencyKey != "5:batch:a" ||
-		result.Items[0].ErrorCode != "onboarding_batch.duplicate" || result.Items[1].Status != InvitationBatchItemSucceeded ||
-		result.Succeeded != 1 || result.Failed != 1 {
-		t.Fatalf("duplicate result = %#v, commands=%#v", result, commands.enrollments)
-	}
+	require.NoError(t, err)
+	require.Len(t, commands.enrollments, 2, "duplicate result = %#v, commands", result)
+	require.Equal(t, "5:batch:a", commands.enrollments[0].IdempotencyKey, "duplicate result = %#v, commands", result)
+	require.Equal(t, "onboarding_batch.duplicate", result.Items[0].ErrorCode, "duplicate result = %#v, commands", result)
+	require.Equal(t, InvitationBatchItemSucceeded, result.Items[1].Status, "duplicate result = %#v, commands", result)
+	require.Equal(t, 1, result.Succeeded, "duplicate result = %#v, commands", result)
+	require.Equal(t, 1, result.Failed, "duplicate result = %#v, commands", result)
 }
 
 func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *testing.T) {
@@ -113,10 +114,12 @@ func TestAcademicAdministrationBatchLooksUpRetainedOutcomeBeforeDispatch(t *test
 	result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationClassEnroll,
 		ScopeType: model.RoleScopeClass, ScopeID: model.NewClassID().String(), IdempotencyKey: "batch",
 		Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: model.NewUserID().String()}}})
-	if err != nil || result.Succeeded != 1 || lookup.command == nil || lookup.command.Operation != "class_member.enroll.v1" ||
-		len(commands.enrollments) != 1 || !commands.enrollments[0].batchRetainedOutcome {
-		t.Fatalf("retained lookup result=%#v command=%#v enrollments=%#v error=%v", result, lookup.command, commands.enrollments, err)
-	}
+	require.NoError(t, err, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.Equal(t, 1, result.Succeeded, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.NotNil(t, lookup.command, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.Equal(t, "class_member.enroll.v1", lookup.command.Operation, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.Len(t, commands.enrollments, 1, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
+	require.True(t, commands.enrollments[0].batchRetainedOutcome, "retained lookup result=%#v command=%#v enrollments=%#v error", result, lookup.command, commands.enrollments)
 }
 
 func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testing.T) {
@@ -134,9 +137,10 @@ func TestAcademicAdministrationBatchPreservesDistinctEffectiveHistories(t *testi
 			{IdempotencyKey: "a", UserID: userID, AffiliationKind: model.AffiliationStaff, StartAt: 100, EndAt: 200},
 			{IdempotencyKey: "b", UserID: userID, AffiliationKind: model.AffiliationStaff, StartAt: 300, EndAt: 400},
 		}})
-	if err != nil || result.Succeeded != 2 || result.Failed != 0 || len(commands.operations) != 2 {
-		t.Fatalf("distinct histories result=%#v operations=%#v error=%v", result, commands.operations, err)
-	}
+	require.NoError(t, err, "distinct histories result=%#v operations=%#v error", result, commands.operations)
+	require.Equal(t, 2, result.Succeeded, "distinct histories result=%#v operations=%#v error", result, commands.operations)
+	require.Equal(t, 0, result.Failed, "distinct histories result=%#v operations=%#v error", result, commands.operations)
+	require.Len(t, commands.operations, 2, "distinct histories result=%#v operations=%#v error", result, commands.operations)
 }
 func (f *academicAdministrationBatchCommandsFake) EndClassMember(_ context.Context, _ Invocation, command EndClassMemberCommand) (*model.ClassMember, error) {
 	f.operations = append(f.operations, AcademicAdministrationClassEnd)
@@ -185,19 +189,18 @@ func TestAcademicAdministrationBatchRunsClosedRowsThroughOrdinaryCommands(t *tes
 			{IdempotencyKey: "repeated", UserID: model.NewUserID().String(), RelationshipID: model.NewClassMemberID().String()},
 		},
 	})
-	if err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-	if authorizer.resource != (model.Resource{Type: model.ResourceClass, ID: classID}) {
-		t.Fatalf("batch authorization resource = %#v", authorizer.resource)
-	}
-	if result.Succeeded != 1 || result.Failed != 2 || result.NoOp != 0 || len(commands.enrollments) != 1 {
-		t.Fatalf("Run() = %#v commands=%#v", result, commands.enrollments)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.Resource{Type: model.ResourceClass, ID: classID}, authorizer.resource)
+	require.Equal(t, 1, result.Succeeded, "Run() = %#v commands", result)
+	require.Equal(t, 2, result.Failed, "Run() = %#v commands", result)
+	require.Equal(t, 0, result.NoOp, "Run() = %#v commands", result)
+	require.Len(t, commands.enrollments, 1, "Run() = %#v commands", result)
 	command := commands.enrollments[0]
-	if command.ClassID != model.ClassID(classID) || command.UserID != userID || command.ExpectedPreviousID != previousID || !command.RequireTransfer || command.IdempotencyKey != "9:batch-key:row-1" {
-		t.Fatalf("ordinary transfer command = %#v", command)
-	}
+	require.Equal(t, model.ClassID(classID), command.ClassID)
+	require.Equal(t, userID, command.UserID)
+	require.Equal(t, previousID, command.ExpectedPreviousID)
+	require.True(t, command.RequireTransfer)
+	require.Equal(t, "9:batch-key:row-1", command.IdempotencyKey)
 }
 
 func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T) {
@@ -232,9 +235,10 @@ func TestAcademicAdministrationBatchDispatchesEveryClosedOperation(t *testing.T)
 			testCase.item.IdempotencyKey = "row"
 			result, err := service.RunAcademicAdministrationBatch(context.Background(), invocation, RunAcademicAdministrationBatchCommand{Operation: testCase.operation,
 				ScopeType: testCase.scopeType, ScopeID: model.NewID(), IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{testCase.item}})
-			if err != nil || result.Succeeded != 1 || len(commands.operations) != 1 || commands.operations[0] != testCase.operation {
-				t.Fatalf("Run(%s) = %#v, operations=%#v, error=%v", testCase.operation, result, commands.operations, err)
-			}
+			require.NoError(t, err, "Run(%s) = %#v, operations", testCase.operation, result)
+			require.Equal(t, 1, result.Succeeded, "Run(%s) = %#v, operations", testCase.operation, result)
+			require.Len(t, commands.operations, 1, "Run(%s) = %#v, operations", testCase.operation, result)
+			require.Equal(t, testCase.operation, commands.operations[0], "Run(%s) = %#v, operations", testCase.operation, result)
 		})
 	}
 }
@@ -250,10 +254,6 @@ func TestAcademicAdministrationSensitiveBatchRequiresStrongRecentInteractiveSess
 		CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialPersonalAccessToken}, model.RequestMetadata{}),
 		RunAcademicAdministrationBatchCommand{Operation: AcademicAdministrationUserDisable, ScopeType: model.RoleScopeInstitution,
 			ScopeID: institutionID, IdempotencyKey: "batch", Items: []AcademicAdministrationBatchItemCommand{{IdempotencyKey: "row", UserID: userID}}})
-	if !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("PAT sensitive batch error = %v", err)
-	}
-	if len(commands.disabled) != 0 {
-		t.Fatalf("sensitive batch executed commands: %#v", commands.disabled)
-	}
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "PAT sensitive batch error = %v", err)
+	require.Empty(t, commands.disabled)
 }

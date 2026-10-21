@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
@@ -27,9 +29,7 @@ import (
 
 func TestExamAuthoringIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	ctx := context.Background()
@@ -40,342 +40,278 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		AdministratorDisplayName: "Exam Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
 		Password: password, BootstrapSecret: testlib.BootstrapSecret, Source: "203.0.113.10",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	institution := bootstrap.Institution
 	unit, err := storetest.SaveAcademicUnit(ctx, persistence, &model.AcademicUnit{InstitutionID: bootstrap.Institution.ID, Name: "computing", DisplayName: "Computing"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	teacher, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	login := loginIntegrationUser(t, helper.Handler(), teacher.Username, password, model.SessionClientCLI, "exam-teacher-cli")
 	principal, appErr := helper.App.AuthenticateAccess(ctx, login.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	membership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	role, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-author", DisplayName: "Exam Author", Permissions: []string{string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage)}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	binding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	invocation := app.NewInvocation(*principal, model.RequestMetadata{RequestID: "exam-create-integration"})
 	created, appErr := helper.App.CreateExam(ctx, invocation, app.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if created.Exam.CreatorUserID != teacher.ID || created.Exam.OwnerUserID != teacher.ID || created.Draft.Title != "Systems Programming" || !created.Draft.Policy.Equal(model.DefaultExamPolicySet()) || created.ManagerCount != 1 {
-		t.Fatalf("created = %#v", created)
-	}
+	require.NoError(t, appErr)
+	require.Equal(t, teacher.ID, created.Exam.CreatorUserID)
+	require.Equal(t, teacher.ID, created.Exam.OwnerUserID)
+	require.Equal(t, "Systems Programming", created.Draft.Title)
+	require.True(t, created.Draft.Policy.Equal(model.DefaultExamPolicySet()))
+	require.Equal(t, 1, created.ManagerCount)
 	replayed, appErr := helper.App.CreateExam(ctx, invocation, app.CreateExamCommand{AcademicUnitID: unit.ID, Title: "  Systems Programming  ", InstructionsMarkdown: "Use **Go**.", IdempotencyKey: "exam-create-once"})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if replayed.Exam.ID != created.Exam.ID {
-		t.Fatalf("replay exam = %s, want %s", replayed.Exam.ID, created.Exam.ID)
-	}
+	require.NoError(t, appErr)
+	require.Equal(t, created.Exam.ID, replayed.Exam.ID, "replay exam")
 	editedTitle := "Distributed Systems"
 	clearInstructions := ""
 	edited, appErr := helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if edited.Draft.Title != editedTitle || edited.Draft.InstructionsMarkdown != "" || edited.Draft.Revision != created.Draft.Revision+1 || edited.Exam.Revision != created.Exam.Revision {
-		t.Fatalf("edited = %#v", edited)
-	}
+	require.NoError(t, appErr)
+	require.Equal(t, editedTitle, edited.Draft.Title)
+	require.Empty(t, edited.Draft.InstructionsMarkdown)
+	require.Equal(t, created.Draft.Revision+1, edited.Draft.Revision)
+	require.Equal(t, created.Exam.Revision, edited.Exam.Revision)
 	editedReplay, appErr := helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &editedTitle, InstructionsMarkdown: &clearInstructions, IdempotencyKey: "exam-edit-once",
 	})
-	if appErr != nil || editedReplay.Draft.Revision != edited.Draft.Revision {
-		t.Fatalf("edit replay = %#v, %v", editedReplay, appErr)
-	}
+	require.NoError(t, appErr, "edit replay = %#v", editedReplay)
+	require.Equal(t, edited.Draft.Revision, editedReplay.Draft.Revision, "edit replay = %#v", editedReplay)
 	focusPolicy, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, app.ConfigureExamDraftFocusLossCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
 		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
 		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if focusPolicy.Draft.Revision != edited.Draft.Revision+1 || focusPolicy.Draft.Policy.ConnectionLoss != edited.Draft.Policy.ConnectionLoss || focusPolicy.Draft.Policy.FocusLoss.Enabled || focusPolicy.Draft.Policy.FocusLoss.MinimumDuration != 500*time.Millisecond || focusPolicy.Draft.Policy.FocusLoss.IncidentCount != 1 || focusPolicy.Draft.Policy.FocusLoss.Window != 10*time.Second || focusPolicy.Draft.Policy.FocusLoss.Outcome != model.IntegrityOutcomeFlag || focusPolicy.Draft.Title != editedTitle || focusPolicy.Exam.Revision != edited.Exam.Revision {
-		t.Fatalf("focus policy = %#v", focusPolicy)
-	}
+	require.NoError(t, appErr)
+	require.Equal(t, edited.Draft.Revision+1, focusPolicy.Draft.Revision)
+	require.Equal(t, edited.Draft.Policy.ConnectionLoss, focusPolicy.Draft.Policy.ConnectionLoss)
+	require.False(t, focusPolicy.Draft.Policy.FocusLoss.Enabled)
+	require.Equal(t, 500*time.Millisecond, focusPolicy.Draft.Policy.FocusLoss.MinimumDuration)
+	require.Equal(t, 1, focusPolicy.Draft.Policy.FocusLoss.IncidentCount)
+	require.Equal(t, 10*time.Second, focusPolicy.Draft.Policy.FocusLoss.Window)
+	require.Equal(t, model.IntegrityOutcomeFlag, focusPolicy.Draft.Policy.FocusLoss.Outcome)
+	require.Equal(t, editedTitle, focusPolicy.Draft.Title)
+	require.Equal(t, edited.Exam.Revision, focusPolicy.Exam.Revision)
 	focusReplay, appErr := helper.App.ConfigureExamDraftFocusLoss(ctx, invocation, app.ConfigureExamDraftFocusLossCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: edited.Draft.Revision,
 		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
 		Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlag, IdempotencyKey: "exam-focus-loss-once",
 	})
-	if appErr != nil || focusReplay.Draft.Revision != focusPolicy.Draft.Revision {
-		t.Fatalf("focus policy replay = %#v, %v", focusReplay, appErr)
-	}
+	require.NoError(t, appErr, "focus policy replay = %#v", focusReplay)
+	require.Equal(t, focusPolicy.Draft.Revision, focusReplay.Draft.Revision, "focus policy replay = %#v", focusReplay)
 	staleTitle := "Operating Systems"
 	_, appErr = helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: created.Draft.Revision,
 		Title: &staleTitle, IdempotencyKey: "exam-edit-stale",
 	})
-	if !apperror.Is(appErr, "exam.draft.revision_conflict") {
-		t.Fatalf("stale edit error = %v", appErr)
-	}
+	require.True(t, apperror.Is(appErr, "exam.draft.revision_conflict"), "stale edit error = %v", appErr)
 	got, appErr := helper.App.GetExam(ctx, invocation, app.GetExamQuery{ExamID: created.Exam.ID})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if got.Exam.ID != created.Exam.ID || got.Draft.Title != editedTitle || got.Draft.InstructionsMarkdown != "" || !got.Draft.Policy.Equal(focusPolicy.Draft.Policy) || got.ManagerCount != 1 || got.ResourceCount != 0 || got.HasStarterWorkspace {
-		t.Fatalf("get = %#v", got)
-	}
+	require.NoError(t, appErr)
+	require.Equal(t, created.Exam.ID, got.Exam.ID)
+	require.Equal(t, editedTitle, got.Draft.Title)
+	require.Empty(t, got.Draft.InstructionsMarkdown)
+	require.True(t, got.Draft.Policy.Equal(focusPolicy.Draft.Policy))
+	require.Equal(t, 1, got.ManagerCount)
+	require.Equal(t, 0, got.ResourceCount)
+	require.False(t, got.HasStarterWorkspace)
 	active, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if len(active.Items) != 1 || active.Items[0].ID != created.Exam.ID || active.Items[0].Title != editedTitle || active.Items[0].ArchivedAt.Valid || active.Items[0].ManagerCount != 1 {
-		t.Fatalf("active catalog = %#v", active)
-	}
+	require.NoError(t, appErr)
+	require.Len(t, active.Items, 1)
+	require.Equal(t, created.Exam.ID, active.Items[0].ID)
+	require.Equal(t, editedTitle, active.Items[0].Title)
+	require.False(t, active.Items[0].ArchivedAt.Valid)
+	require.Equal(t, 1, active.Items[0].ManagerCount)
 	managerUser, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-manager", Email: "exam-manager@example.edu", DisplayName: "Exam Manager"}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	managerMembership, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	managerAdded, appErr := helper.App.AddExamManager(ctx, invocation, app.AddExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: managerUser.ID, ExpectedExamRevision: 1, IdempotencyKey: "exam-manager-add",
 	})
-	if appErr != nil || managerAdded.Exam.Revision != 2 || managerAdded.Manager.UserID != managerUser.ID {
-		t.Fatalf("manager addition = %#v, %v", managerAdded, appErr)
-	}
+	require.NoError(t, appErr, "manager addition = %#v", managerAdded)
+	require.Equal(t, int64(2), managerAdded.Exam.Revision, "manager addition = %#v", managerAdded)
+	require.Equal(t, managerUser.ID, managerAdded.Manager.UserID, "manager addition = %#v", managerAdded)
 	managerLogin := loginIntegrationUser(t, helper.Handler(), managerUser.Username, password, model.SessionClientCLI, "exam-manager-cli")
 	managerPrincipal, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	managerInvocation := app.NewInvocation(*managerPrincipal, model.RequestMetadata{RequestID: "exam-manager-integration"})
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
-		t.Fatalf("Manager without role error = %v", appErr)
-	}
+	_, appErr = helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	require.True(t, apperror.Is(appErr, "resource.not_found"), "Manager without role error = %v", appErr)
 	managerBinding, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	managers, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
-	if appErr != nil || len(managers.Items) != 2 {
-		t.Fatalf("Manager list = %#v, %v", managers, appErr)
-	}
+	require.NoError(t, appErr, "Manager list = %#v", managers)
+	require.Len(t, managers.Items, 2, "Manager list = %#v", managers)
 	managerBindingEndedAt := model.GetMillis() - 500
-	if _, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, managerBindingEndedAt); err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
-		t.Fatalf("Manager after role revocation error = %v", appErr)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100); err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50}); !apperror.Is(appErr, "resource.not_found") {
-		t.Fatalf("Manager after membership loss error = %v", appErr)
-	}
-	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50)}); err != nil {
-		t.Fatal(err)
-	}
+	_, err = storetest.EndRoleBinding(ctx, persistence, managerBinding.ID, managerBindingEndedAt)
+	require.NoError(t, err)
+	_, appErr = helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	require.True(t, apperror.Is(appErr, "resource.not_found"), "Manager after role revocation error = %v", appErr)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: managerUser.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(managerBindingEndedAt)})
+	require.NoError(t, err)
+	_, err = storetest.EndAcademicUnitMember(ctx, persistence, managerMembership.ID, managerMembership.Revision, model.GetMillis()-100)
+	require.NoError(t, err)
+	_, appErr = helper.App.ListExamManagers(ctx, managerInvocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	require.True(t, apperror.Is(appErr, "resource.not_found"), "Manager after membership loss error = %v", appErr)
+	_, err = persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{AcademicUnitID: unit.ID, UserID: managerUser.ID, StartsAt: model.TimeFromMillis(model.GetMillis() - 50)})
+	require.NoError(t, err)
 	accountManagerRole, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-account-manager", DisplayName: "Exam Account Manager", Permissions: []string{string(model.ActionUserManage)}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)}); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{UserID: teacher.ID, RoleID: accountManagerRole.ID, ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000)})
+	require.NoError(t, err)
 	disabledManager, appErr := helper.App.SetUserEnabled(ctx, invocation, app.SetUserEnabledCommand{ID: managerUser.ID, Enabled: false})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if _, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken); !apperror.Is(appErr, "authentication.token_invalid") {
-		t.Fatalf("disabled Manager authentication error = %v", appErr)
-	}
+	require.NoError(t, appErr)
+	_, appErr = helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
+	require.True(t, apperror.Is(appErr, "authentication.token_invalid"), "disabled Manager authentication error = %v", appErr)
 	reenabledAt := model.GetMillis()
 	reenableAudit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
 		ActorID: teacher.ID, Action: string(model.ActionUserManage), Resource: model.Resource{Type: model.ResourceUser, ID: managerUser.ID.String()},
 		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "exam-authoring-integration",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+	require.NoError(t, err)
+	_, err = persistence.User().SetDisabled(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledManager.ID, ExpectedRevision: disabledManager.Revision, Disabled: false,
 		ChangedAt: reenabledAt, AuditEventID: reenableAudit.ID, AuditAt: reenabledAt,
-	})); err != nil {
-		t.Fatal(err)
-	}
+	}))
+	require.NoError(t, err)
 	transferred, appErr := helper.App.TransferExamOwnership(ctx, invocation, app.TransferExamOwnershipCommand{
 		ExamID: created.Exam.ID, UserID: managerUser.ID, ExpectedExamRevision: 2, IdempotencyKey: "exam-owner-transfer",
 	})
-	if appErr != nil || transferred.Exam.OwnerUserID != managerUser.ID || transferred.Exam.Revision != 3 {
-		t.Fatalf("ownership transfer = %#v, %v", transferred, appErr)
-	}
+	require.NoError(t, appErr, "ownership transfer = %#v", transferred)
+	require.Equal(t, managerUser.ID, transferred.Exam.OwnerUserID, "ownership transfer = %#v", transferred)
+	require.Equal(t, int64(3), transferred.Exam.Revision, "ownership transfer = %#v", transferred)
 	afterTransfer, appErr := helper.App.ListExamManagers(ctx, invocation, app.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
-	if appErr != nil || len(afterTransfer.Items) != 2 {
-		t.Fatalf("Manager relationships after ownership transfer = %#v, %v", afterTransfer, appErr)
-	}
+	require.NoError(t, appErr, "Manager relationships after ownership transfer = %#v", afterTransfer)
+	require.Len(t, afterTransfer.Items, 2, "Manager relationships after ownership transfer = %#v", afterTransfer)
 	relationships := map[model.UserID]bool{}
 	for _, item := range afterTransfer.Items {
 		relationships[item.Manager.UserID] = item.IsOwner
 	}
-	if owner, remainsManager := relationships[teacher.ID]; !remainsManager || owner || !relationships[managerUser.ID] {
-		t.Fatalf("ownership transfer relationships = %#v", afterTransfer.Items)
-	}
+	owner, remainsManager := relationships[teacher.ID]
+	require.True(t, remainsManager)
+	require.False(t, owner)
+	require.True(t, relationships[managerUser.ID])
 	removedCreator, appErr := helper.App.RemoveExamManager(ctx, managerInvocation, app.RemoveExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: teacher.ID, ExpectedExamRevision: 3, IdempotencyKey: "exam-manager-remove-creator",
 	})
-	if appErr != nil || removedCreator.Exam.Revision != 4 || removedCreator.Manager.UserID != teacher.ID {
-		t.Fatalf("creator relationship removal = %#v, %v", removedCreator, appErr)
-	}
+	require.NoError(t, appErr, "creator relationship removal = %#v", removedCreator)
+	require.Equal(t, int64(4), removedCreator.Exam.Revision, "creator relationship removal = %#v", removedCreator)
+	require.Equal(t, teacher.ID, removedCreator.Manager.UserID, "creator relationship removal = %#v", removedCreator)
 	currentExamRevision := int64(4)
 	membershipEndedAt := model.GetMillis() - 100
-	if _, err = storetest.EndAcademicUnitMember(ctx, persistence, membership.ID, membership.Revision, membershipEndedAt); err != nil {
-		t.Fatal(err)
-	}
+	_, err = storetest.EndAcademicUnitMember(ctx, persistence, membership.ID, membership.Revision, membershipEndedAt)
+	require.NoError(t, err)
 	withoutMembership, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
-	if appErr != nil || len(withoutMembership.Items) != 0 {
-		t.Fatalf("catalog after exact membership ended = %#v, %v", withoutMembership, appErr)
-	}
-	if _, err := persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+	require.NoError(t, appErr, "catalog after exact membership ended = %#v", withoutMembership)
+	require.Empty(t, withoutMembership.Items, "catalog after exact membership ended = %#v", withoutMembership)
+	_, err = persistence.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
 		AcademicUnitID: unit.ID, UserID: teacher.ID, StartsAt: model.TimeFromMillis(membershipEndedAt),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	bindingEndedAt := model.GetMillis() - 50
-	if _, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, bindingEndedAt); err != nil {
-		t.Fatal(err)
-	}
-	if _, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID}); !apperror.Is(appErr, "authorization.denied") {
-		t.Fatalf("catalog after role ended error = %v", appErr)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	_, err = storetest.EndRoleBinding(ctx, persistence, binding.ID, bindingEndedAt)
+	require.NoError(t, err)
+	_, appErr = helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
+	require.True(t, apperror.Is(appErr, "authorization.denied"), "catalog after role ended error = %v", appErr)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: teacher.ID, RoleID: role.ID, ScopeType: model.RoleScopeAcademicUnit,
 		ScopeID: unit.ID.String(), StartsAt: model.TimeFromMillis(bindingEndedAt),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	outsider, appErr := helper.App.CreateLocalUser(ctx, app.CreateLocalUserCommand{User: &model.User{Username: "exam-outsider", Email: "exam-outsider@example.edu", DisplayName: "Exam Outsider"}, Password: password})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	outsiderLogin := loginIntegrationUser(t, helper.Handler(), outsider.Username, password, model.SessionClientCLI, "exam-outsider-cli")
 	outsiderPrincipal, appErr := helper.App.AuthenticateAccess(ctx, outsiderLogin.Tokens.AccessToken)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	outsiderInvocation := app.NewInvocation(*outsiderPrincipal, model.RequestMetadata{RequestID: "exam-get-denied-integration"})
 	_, appErr = helper.App.GetExam(ctx, outsiderInvocation, app.GetExamQuery{ExamID: created.Exam.ID})
-	if !apperror.Is(appErr, "resource.not_found") {
-		t.Fatalf("outsider get error = %v, want concealed resource.not_found", appErr)
-	}
+	require.True(t, apperror.Is(appErr, "resource.not_found"), "outsider get error = %v, want concealed resource.not_found", appErr)
 	_, appErr = helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: created.Exam.Revision, IdempotencyKey: "exam-archive-denied",
 	})
-	if !apperror.Is(appErr, "resource.not_found") {
-		t.Fatalf("outsider archive error = %v, want concealed resource.not_found", appErr)
-	}
+	require.True(t, apperror.Is(appErr, "resource.not_found"), "outsider archive error = %v, want concealed resource.not_found", appErr)
 	overrideRole, err := storetest.SaveRole(ctx, persistence, &model.Role{Name: "exam-system-override", DisplayName: "Exam System Override", Permissions: []string{
 		string(model.ActionExamViewOverride), string(model.ActionExamManageOverride),
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
+	require.NoError(t, err)
+	_, err = storetest.SaveRoleBinding(ctx, persistence, &model.RoleBinding{
 		UserID: outsider.ID, RoleID: overrideRole.ID, ScopeType: model.RoleScopeInstitution,
 		ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(model.GetMillis() - 1_000),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
+	require.NoError(t, err)
 	overrideAdded, appErr := helper.App.AddExamManager(ctx, outsiderInvocation, app.AddExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: teacher.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-manager-override-add",
 	})
-	if appErr != nil || overrideAdded.Exam.Revision != currentExamRevision+1 || overrideAdded.Manager.UserID != teacher.ID {
-		t.Fatalf("override Manager addition = %#v, %v", overrideAdded, appErr)
-	}
+	require.NoError(t, appErr, "override Manager addition = %#v", overrideAdded)
+	require.Equal(t, currentExamRevision+1, overrideAdded.Exam.Revision, "override Manager addition = %#v", overrideAdded)
+	require.Equal(t, teacher.ID, overrideAdded.Manager.UserID, "override Manager addition = %#v", overrideAdded)
 	currentExamRevision = overrideAdded.Exam.Revision
 	overridePage, appErr := helper.App.ListExams(ctx, outsiderInvocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
-	if appErr != nil || len(overridePage.Items) != 1 || overridePage.Items[0].ID != created.Exam.ID {
-		t.Fatalf("override catalog = %#v, %v", overridePage, appErr)
-	}
+	require.NoError(t, appErr, "override catalog = %#v", overridePage)
+	require.Len(t, overridePage.Items, 1, "override catalog = %#v", overridePage)
+	require.Equal(t, created.Exam.ID, overridePage.Items[0].ID, "override catalog = %#v", overridePage)
 	viewOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: outsider.ID, Action: string(model.ActionExamViewOverride),
 		Resource: &model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil || len(viewOverrideAudits) != 1 || viewOverrideAudits[0].Status != model.AuditStatusSuccess || viewOverrideAudits[0].ScopeType != model.RoleScopeInstitution || viewOverrideAudits[0].ScopeID != institution.ID.String() {
-		t.Fatalf("override list audits = %#v, %v", viewOverrideAudits, err)
-	}
+	require.NoError(t, err, "override list audits")
+	require.Len(t, viewOverrideAudits, 1, "override list audits")
+	require.Equal(t, model.AuditStatusSuccess, viewOverrideAudits[0].Status, "override list audits")
+	require.Equal(t, model.RoleScopeInstitution, viewOverrideAudits[0].ScopeType, "override list audits")
+	require.Equal(t, institution.ID.String(), viewOverrideAudits[0].ScopeID, "override list audits")
 	archived, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-archive-once",
 	})
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
-	if !archived.IsArchived() || archived.Revision != currentExamRevision+1 {
-		t.Fatalf("archived Exam = %#v", archived)
-	}
+	require.NoError(t, appErr)
+	require.True(t, archived.IsArchived())
+	require.Equal(t, currentExamRevision+1, archived.Revision)
 	manageOverrideAudits, err := persistence.Audit().List(ctx, store.AuditListOptions{
 		ActorID: outsider.ID, Action: string(model.ActionExamManageOverride),
 		Resource: &model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, Limit: 10,
 		Visibility: store.AuditVisibilityScope{InstitutionWide: true},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	manageStatuses := map[model.AuditStatus]int{}
 	for _, event := range manageOverrideAudits {
 		manageStatuses[event.Status]++
-		if event.ScopeType != model.RoleScopeAcademicUnit || event.ScopeID != unit.ID.String() {
-			t.Fatalf("override archive audit scope = %#v", event)
-		}
+		require.Equal(t, model.RoleScopeAcademicUnit, event.ScopeType)
+		require.Equal(t, unit.ID.String(), event.ScopeID)
 	}
-	if len(manageOverrideAudits) != 5 || manageStatuses[model.AuditStatusSuccess] != 4 || manageStatuses[model.AuditStatusFail] != 1 {
-		t.Fatalf("override archive audits = %#v, %v", manageOverrideAudits, err)
-	}
+	require.Len(t, manageOverrideAudits, 5, "override archive audits = %#v, %v", manageOverrideAudits, err)
+	require.Equal(t, 4, manageStatuses[model.AuditStatusSuccess], "override archive audits = %#v, %v", manageOverrideAudits, err)
+	require.Equal(t, 1, manageStatuses[model.AuditStatusFail], "override archive audits = %#v, %v", manageOverrideAudits, err)
 	archiveReplay, appErr := helper.App.ArchiveExam(ctx, outsiderInvocation, app.ArchiveExamCommand{
 		ExamID: created.Exam.ID, ExpectedExamRevision: currentExamRevision, IdempotencyKey: "exam-archive-once",
 	})
-	if appErr != nil || archiveReplay.Revision != archived.Revision || !archiveReplay.ArchivedAt.Time.Equal(archived.ArchivedAt.Time) {
-		t.Fatalf("archive replay = %#v, %v", archiveReplay, appErr)
-	}
+	require.NoError(t, appErr, "archive replay = %#v", archiveReplay)
+	require.Equal(t, archived.Revision, archiveReplay.Revision, "archive replay = %#v", archiveReplay)
+	require.True(t, archiveReplay.ArchivedAt.Time.Equal(archived.ArchivedAt.Time), "archive replay = %#v", archiveReplay)
 	active, appErr = helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID})
-	if appErr != nil || len(active.Items) != 0 {
-		t.Fatalf("active catalog after archive = %#v, %v", active, appErr)
-	}
+	require.NoError(t, appErr, "active catalog after archive = %#v", active)
+	require.Empty(t, active.Items, "active catalog after archive = %#v", active)
 	archivedPage, appErr := helper.App.ListExams(ctx, invocation, app.ListExamsQuery{AcademicUnitID: unit.ID, ArchiveFilter: app.ExamArchiveArchived})
-	if appErr != nil || len(archivedPage.Items) != 1 || archivedPage.Items[0].ID != archived.ID || !archivedPage.Items[0].ArchivedAt.Valid || archivedPage.Items[0].Revision != archived.Revision {
-		t.Fatalf("archived catalog = %#v, %v", archivedPage, appErr)
-	}
+	require.NoError(t, appErr, "archived catalog = %#v", archivedPage)
+	require.Len(t, archivedPage.Items, 1, "archived catalog = %#v", archivedPage)
+	require.Equal(t, archived.ID, archivedPage.Items[0].ID, "archived catalog = %#v", archivedPage)
+	require.True(t, archivedPage.Items[0].ArchivedAt.Valid, "archived catalog = %#v", archivedPage)
+	require.Equal(t, archived.Revision, archivedPage.Items[0].Revision, "archived catalog = %#v", archivedPage)
 	archivedView, appErr := helper.App.GetExam(ctx, invocation, app.GetExamQuery{ExamID: created.Exam.ID})
-	if appErr != nil || !archivedView.Exam.IsArchived() || archivedView.Draft.Title != editedTitle {
-		t.Fatalf("archived exact Get = %#v, %v", archivedView, appErr)
-	}
+	require.NoError(t, appErr, "archived exact Get = %#v", archivedView)
+	require.True(t, archivedView.Exam.IsArchived(), "archived exact Get = %#v", archivedView)
+	require.Equal(t, editedTitle, archivedView.Draft.Title, "archived exact Get = %#v", archivedView)
 	postArchiveTitle := "Cannot edit archived Exam"
 	_, appErr = helper.App.EditExamDraftText(ctx, invocation, app.EditExamDraftTextCommand{
 		ExamID: created.Exam.ID, ExpectedDraftRevision: focusPolicy.Draft.Revision,
 		Title: &postArchiveTitle, IdempotencyKey: "exam-edit-after-archive",
 	})
-	if !apperror.Is(appErr, "exam.archived") {
-		t.Fatalf("post-archive edit error = %v", appErr)
-	}
+	require.True(t, apperror.Is(appErr, "exam.archived"), "post-archive edit error = %v", appErr)
 
 	startIntegrationServer(t, helper)
 	managerMailKeys := []model.MailTemplateKey{
@@ -388,9 +324,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	var managerDeliveries []*model.MailDelivery
 	for {
 		managerDeliveries, err = persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: managerMailKeys, Limit: 20})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		accepted := len(managerDeliveries) == 5
 		for _, delivery := range managerDeliveries {
 			accepted = accepted && delivery.State == model.MailDeliveryAccepted && len(delivery.EncryptedPayload) == 0
@@ -398,9 +332,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 		if accepted {
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("Exam Manager notices did not reach accepted: %#v", managerDeliveries)
-		}
+		require.False(t, time.Now().After(deadline), "Exam Manager notices did not reach accepted: %#v", managerDeliveries)
 		time.Sleep(20 * time.Millisecond)
 	}
 	wantTargets := map[model.MailTemplateKey]map[model.UserID]int{
@@ -414,9 +346,7 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	}
 	for key, targets := range wantTargets {
 		for target, remaining := range targets {
-			if remaining != 0 {
-				t.Fatalf("Exam Manager delivery %s/%s remaining = %d; deliveries=%#v", key, target, remaining, managerDeliveries)
-			}
+			require.Equal(t, 0, remaining, "Exam Manager delivery %s/%s remaining = %d; deliveries=%#v", key, target, remaining, managerDeliveries)
 		}
 	}
 	var managerMessages int
@@ -426,14 +356,10 @@ func TestExamAuthoringIntegration(t *testing.T) {
 			continue
 		}
 		managerMessages++
-		if !bytes.Contains(delivery.Data, []byte(editedTitle)) {
-			t.Fatalf("Exam Manager mail omitted safe Exam identity: %s", delivery.Data)
-		}
-		if strings.Contains(data, "private-reason") || strings.Contains(data, "role.manage") || strings.Contains(data, outsider.Email) {
-			t.Fatal("Exam Manager mail exposed actor or private authorization detail")
-		}
+		require.True(t, bytes.Contains(delivery.Data, []byte(editedTitle)), "Exam Manager mail omitted safe Exam identity: %s", delivery.Data)
+		require.NotContains(t, data, "private-reason", "Exam Manager mail exposed actor or private authorization detail")
+		require.NotContains(t, data, "role.manage", "Exam Manager mail exposed actor or private authorization detail")
+		require.NotContains(t, data, outsider.Email, "Exam Manager mail exposed actor or private authorization detail")
 	}
-	if managerMessages != 5 {
-		t.Fatalf("captured Exam Manager messages = %d, want 5", managerMessages)
-	}
+	require.Equal(t, 5, managerMessages, "captured Exam Manager messages")
 }

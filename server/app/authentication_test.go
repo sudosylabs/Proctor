@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -110,9 +112,7 @@ func testAuthenticationDesktopDependencies(t *testing.T, cache authenticationCac
 	t.Helper()
 	dpop, err := newDPoPSecurity(cache, dpopPolicy{Origin: "https://proctor.test", NonceLifetime: 5 * time.Minute,
 		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: time.Now})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return authenticationDesktopDependencies{registrations: authenticationDesktopRegistrationLookupFake{}, dpop: dpop}
 }
 
@@ -543,9 +543,7 @@ func newTestAuthenticationServiceWithEffects(
 	t.Helper()
 	settings := testPasswordPolicy()
 	hasher, err := newPasswordHasher(settings, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service, err := newAuthenticationService(
 		persistence.User(),
 		persistence.PasswordCredential(),
@@ -579,9 +577,7 @@ func newTestAuthenticationServiceWithEffects(
 		now,
 		testAuthenticationDesktopDependencies(t, cache),
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return service
 }
 
@@ -591,9 +587,7 @@ func mustAuthenticationAttemptAccounting(
 ) *authenticationAttemptAccounting {
 	t.Helper()
 	accounting, err := newAuthenticationAttemptAccounting(cache)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return accounting
 }
 
@@ -621,18 +615,14 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
 	}
-	if err := service.validatePrincipal(context.Background(), principal); err != nil {
-		t.Fatalf("valid principal rejected: %v", err)
-	}
+	require.NoError(t, service.validatePrincipal(context.Background(), principal))
 	persistence.userGetErr = errors.New("database unavailable")
-	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.internal") {
-		t.Fatalf("dependency error = %v", err)
-	}
+	err := service.validatePrincipal(context.Background(), principal)
+	require.True(t, apperror.Is(err, "authentication.internal"), "dependency error = %v", err)
 	persistence.userGetErr = nil
 	session.UserID = model.NewUserID()
-	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("mismatched session error = %v", err)
-	}
+	err = service.validatePrincipal(context.Background(), principal)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "mismatched session error = %v", err)
 }
 
 func TestAuthenticationExpiryEnforcementClosesEstablishedWebSocketSession(t *testing.T) {
@@ -660,13 +650,11 @@ func TestAuthenticationExpiryEnforcementClosesEstablishedWebSocketSession(t *tes
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
 	}
-	if err := service.validatePrincipal(context.Background(), principal); !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("ValidatePrincipal(expired) error = %v", err)
-	}
-	if effects.last != "sessions" || !session.RevokedAt.Valid ||
-		session.RevocationReason != model.SessionRevocationExpired {
-		t.Fatalf("expiry effects=%q session=%#v", effects.last, session)
-	}
+	err := service.validatePrincipal(context.Background(), principal)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "ValidatePrincipal(expired) error = %v", err)
+	require.Equal(t, "sessions", effects.last, "expiry effects=%q session=%#v", effects.last, session)
+	require.True(t, session.RevokedAt.Valid, "expiry effects=%q session=%#v", effects.last, session)
+	require.Equal(t, model.SessionRevocationExpired, session.RevocationReason, "expiry effects=%q session=%#v", effects.last, session)
 }
 
 func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T) {
@@ -694,13 +682,11 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 		discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
 		model.NewCredentialToken, func() time.Time { return at },
 	)
-	if principal, err := service.authenticateAccess(context.Background(), accessRaw); principal != nil ||
-		!apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("authenticateAccess(expired) = %#v, %v", principal, err)
-	}
-	if effects.last != "sessions" || accessSession.RevocationReason != model.SessionRevocationExpired {
-		t.Fatalf("access expiry effects=%q session=%#v", effects.last, accessSession)
-	}
+	principal, err := service.authenticateAccess(context.Background(), accessRaw)
+	require.Nil(t, principal, "authenticateAccess(expired) = %#v, %v", principal, err)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "authenticateAccess(expired) = %#v, %v", principal, err)
+	require.Equal(t, "sessions", effects.last, "access expiry effects=%q session=%#v", effects.last, accessSession)
+	require.Equal(t, model.SessionRevocationExpired, accessSession.RevocationReason, "access expiry effects=%q session=%#v", effects.last, accessSession)
 
 	refreshSession := &model.Session{
 		ID: model.NewSessionID(), UserID: user.ID, ClientType: model.SessionClientWeb,
@@ -711,14 +697,13 @@ func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T
 		RevokedAccessHashes: []string{model.HashToken(model.NewCredentialToken())},
 	}
 	effects.last = ""
-	if session, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{
+	session, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{
 		RefreshToken: model.NewCredentialToken(),
-	}); session != nil || tokens != nil || !apperror.Is(err, "authentication.token_invalid") {
-		t.Fatalf("refresh(expired) = %#v, %#v, %v", session, tokens, err)
-	}
-	if effects.last != "sessions" {
-		t.Fatalf("refresh expiry effect = %q", effects.last)
-	}
+	})
+	require.Nil(t, session, "refresh(expired) = %#v, %#v, %v", session, tokens, err)
+	require.Nil(t, tokens, "refresh(expired) = %#v, %#v, %v", session, tokens, err)
+	require.True(t, apperror.Is(err, "authentication.token_invalid"), "refresh(expired) = %#v, %#v, %v", session, tokens, err)
+	require.Equal(t, "sessions", effects.last)
 }
 
 func TestAuthenticationAuthoritativeIdleExtensionOverridesStaleExpiredCache(t *testing.T) {
@@ -753,12 +738,10 @@ func TestAuthenticationAuthoritativeIdleExtensionOverridesStaleExpiredCache(t *t
 	cacheLegacyAuthentication(t, cache, credential, &stale, user)
 
 	principal, err := service.authenticateAccess(context.Background(), accessRaw)
-	if err != nil || principal == nil || principal.SessionID != authoritative.ID {
-		t.Fatalf("authenticateAccess(stale cached expiry) = %#v, %v", principal, err)
-	}
-	if authoritative.RevokedAt.Valid {
-		t.Fatalf("authoritatively extended Session was revoked: %#v", authoritative)
-	}
+	require.NoError(t, err, "authenticateAccess(stale cached expiry)")
+	require.NotNil(t, principal, "authenticateAccess(stale cached expiry)")
+	require.Equal(t, authoritative.ID, principal.SessionID, "authenticateAccess(stale cached expiry)")
+	require.False(t, authoritative.RevokedAt.Valid)
 }
 
 func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *testing.T) {
@@ -798,24 +781,15 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 
 			_, tokens, err := service.RefreshSession(context.Background(), Invocation{}, RefreshSessionCommand{RefreshToken: presentedRefresh})
 			if test.wantCode != "" {
-				if !apperror.Is(err, test.wantCode) {
-					t.Fatalf("refresh error = %v, want %s", err, test.wantCode)
-				}
+				require.True(t, apperror.Is(err, test.wantCode), "refresh error = %v, want %s", err, test.wantCode)
 			} else {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if tokens.AccessToken != access || tokens.RefreshToken != refresh {
-					t.Fatalf("tokens = %#v, want controlled credentials", tokens)
-				}
+				require.NoError(t, err)
+				require.Equal(t, access, tokens.AccessToken, "tokens = %#v, want controlled credentials", tokens)
+				require.Equal(t, refresh, tokens.RefreshToken, "tokens = %#v, want controlled credentials", tokens)
 			}
-			if !persistence.rotatedAt.Equal(at) ||
-				!persistence.rotatedIdleExpiry.Equal(at.Add(2*time.Hour)) {
-				t.Fatalf("rotation time = %v idle = %v", persistence.rotatedAt, persistence.rotatedIdleExpiry)
-			}
-			if effects.last != test.wantEffect {
-				t.Fatalf("effect = %q, want %q", effects.last, test.wantEffect)
-			}
+			require.True(t, persistence.rotatedAt.Equal(at), "rotation time = %v idle = %v", persistence.rotatedAt, persistence.rotatedIdleExpiry)
+			require.True(t, persistence.rotatedIdleExpiry.Equal(at.Add(2*time.Hour)), "rotation time = %v idle = %v", persistence.rotatedAt, persistence.rotatedIdleExpiry)
+			require.Equal(t, test.wantEffect, effects.last, "effect")
 		})
 	}
 }
@@ -867,17 +841,12 @@ func TestAuthenticationUsesControlledClockAndCredentialGenerator(t *testing.T) {
 			AuditEventID:           model.NewAuditEventID(),
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tokens.AccessToken != credentials[0] || tokens.RefreshToken != credentials[1] {
-		t.Fatalf("tokens = %#v, want controlled credentials", tokens)
-	}
-	if resultSession.LastActivityAt != at ||
-		!tokens.AccessExpiresAt.Equal(at.Add(time.Hour)) ||
-		!tokens.RefreshExpiresAt.Equal(at.Add(24*time.Hour)) {
-		t.Fatalf("session/tokens did not use controlled clock: session=%#v tokens=%#v", resultSession, tokens)
-	}
+	require.NoError(t, err)
+	require.Equal(t, credentials[0], tokens.AccessToken, "tokens = %#v, want controlled credentials", tokens)
+	require.Equal(t, credentials[1], tokens.RefreshToken, "tokens = %#v, want controlled credentials", tokens)
+	require.Equal(t, at, resultSession.LastActivityAt, "session/tokens did not use controlled clock: session=%#v tokens=%#v", resultSession, tokens)
+	require.True(t, tokens.AccessExpiresAt.Equal(at.Add(time.Hour)), "session/tokens did not use controlled clock: session=%#v tokens=%#v", resultSession, tokens)
+	require.True(t, tokens.RefreshExpiresAt.Equal(at.Add(24*time.Hour)), "session/tokens did not use controlled clock: session=%#v tokens=%#v", resultSession, tokens)
 }
 
 func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
@@ -911,9 +880,7 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 		User:     &model.User{Username: "behavior-port-user", Email: "behavior-port@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	login, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
@@ -921,21 +888,15 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 		MFACode:    "123456",
 		Source:     "127.0.0.1:1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mfa.calls != 1 || login.Session.AuthenticationStrength != model.AuthenticationMultiFactor {
-		t.Fatalf("MFA calls=%d session=%#v", mfa.calls, login.Session)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, mfa.calls, "MFA calls=%d session=%#v", mfa.calls, login.Session)
+	require.Equal(t, model.AuthenticationMultiFactor, login.Session.AuthenticationStrength, "MFA calls=%d session=%#v", mfa.calls, login.Session)
 
 	app := &App{authenticationService: service}
 	resolved, err := app.AuthenticateBearer(context.Background(), model.NewCredentialToken())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pat.calls != 1 || resolved.UserID != patPrincipal.UserID {
-		t.Fatalf("PAT calls=%d principal=%#v", pat.calls, resolved)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, pat.calls, "PAT calls=%d principal=%#v", pat.calls, resolved)
+	require.Equal(t, patPrincipal.UserID, resolved.UserID, "PAT calls=%d principal=%#v", pat.calls, resolved)
 }
 
 type authenticationMFAVerifierFake struct {
@@ -1005,21 +966,13 @@ func TestLoginReturnsTransportNeutralInvalidCredentials(t *testing.T) {
 		ClientType: model.SessionClientCLI,
 		Source:     "127.0.0.1:1",
 	})
-	if result != nil {
-		t.Fatalf("result = %#v", result)
-	}
+	require.Nil(t, result)
 	failure, ok := apperror.As(err)
-	if !ok {
-		t.Fatalf("expected *apperror.Error, got %T %v", err, err)
-	}
-	if failure.Code() != "authentication.credentials_invalid" {
-		t.Fatalf("code = %q", failure.Code())
-	}
+	require.True(t, ok, "expected *apperror.Error, got %T %v", err, err)
+	require.Equal(t, "authentication.credentials_invalid", failure.Code())
 	type httpStatuser interface{ HTTPStatus() int }
 	var asHTTP httpStatuser
-	if errors.As(err, &asHTTP) {
-		t.Fatal("login error must not expose HTTP status")
-	}
+	require.NotErrorAs(t, err, &asHTTP, "login error must not expose HTTP status")
 }
 
 func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
@@ -1033,9 +986,8 @@ func TestLoginRejectsUnknownUserWithGenericFailure(t *testing.T) {
 		Source:     "127.0.0.1:2",
 	})
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.credentials_invalid" {
-		t.Fatalf("err = %v", err)
-	}
+	require.True(t, ok)
+	require.Equal(t, "authentication.credentials_invalid", failure.Code())
 }
 
 func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(t *testing.T) {
@@ -1046,19 +998,14 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "policy-user", Email: "policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service.accessPolicy = authenticationAccessPolicyFake{local: false}
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.5",
 	})
-	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-	if len(persistence.sessions) != 0 {
-		t.Fatalf("disabled local login created %d sessions", len(persistence.sessions))
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "result=%#v err=%v", result, err)
+	require.Empty(t, persistence.sessions, "disabled local login created")
 }
 
 func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
@@ -1074,18 +1021,18 @@ func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
 			user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "disabled-user", Email: "disabled@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
 			mfa := &authenticationMFAVerifierFake{recoveryErr: errors.New("disabled User has no active MFA recovery state")}
 			service.mfa = mfa
 			result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
 			})
-			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") || mfa.recoveryCalls != 0 || mfa.calls != 0 || len(persistence.sessions) != 0 {
-				t.Fatalf("disabled login reached MFA or issued a Session: %v; recovery reads=%d, MFA calls=%d", err, mfa.recoveryCalls, mfa.calls)
-			}
+			require.Nil(t, result, "disabled login reached MFA or issued a Session: %v; recovery reads", err)
+			require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "disabled login reached MFA or issued a Session: %v; recovery reads", err)
+			require.Equal(t, 0, mfa.recoveryCalls, "disabled login reached MFA or issued a Session: %v; recovery reads", err)
+			require.Equal(t, 0, mfa.calls, "disabled login reached MFA or issued a Session: %v; recovery reads", err)
+			require.Empty(t, persistence.sessions, "disabled login reached MFA or issued a Session: %v; recovery reads", err)
 		})
 	}
 }
@@ -1099,9 +1046,7 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 			user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 				User: &model.User{Username: "capacity-user", Email: "capacity-user@example.edu"}, Password: password,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			credential := *persistence.passwords[user.ID.String()]
 			command := LoginCommand{LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.7"}
 			switch account {
@@ -1122,20 +1067,19 @@ func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
 			}
 			saturatePasswordWork(t, service.hasher)
 			result, err := service.Login(context.Background(), Invocation{}, command)
-			if result != nil || !apperror.Is(err, "service.busy") {
-				t.Fatalf("saturated login = %#v/%v, want service.busy", result, err)
-			}
+			require.Nil(t, result, "saturated login = %#v/%v, want service.busy", result, err)
+			require.True(t, apperror.Is(err, "service.busy"), "saturated login = %#v/%v, want service.busy", result, err)
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			result, err = service.Login(ctx, Invocation{}, command)
-			if result != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
-				t.Fatalf("cancelled login = %#v/%v", result, err)
-			}
-			if len(persistence.sessions) != 0 || len(persistence.accessByHash) != 0 {
-				t.Fatal("rejected password work issued Session credentials")
-			}
-			if current := persistence.passwords[user.ID.String()]; current != nil && *current != credential {
-				t.Fatal("rejected password work mutated the password credential")
+			require.Nil(t, result, "cancelled login")
+			require.True(t, apperror.Is(err, "authentication.internal"), "cancelled login")
+			require.ErrorIs(t, err, context.Canceled, "cancelled login")
+			require.Empty(t, persistence.sessions, "rejected password work issued Session credentials")
+			require.Empty(t, persistence.accessByHash, "rejected password work issued Session credentials")
+			current := persistence.passwords[user.ID.String()]
+			if current != nil {
+				require.Equal(t, credential, *current, "rejected password work mutated the password credential")
 			}
 		})
 	}
@@ -1146,17 +1090,18 @@ func TestLocalUserCreationRejectsPasswordWorkBeforePersistence(t *testing.T) {
 	service := newTestAuthenticationService(t, persistence)
 	saturatePasswordWork(t, service.hasher)
 	command := CreateLocalUserCommand{User: &model.User{Username: "new-user", Email: "new-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!"}
-	if user, err := service.CreateLocalUser(context.Background(), command); user != nil || !apperror.Is(err, "service.busy") {
-		t.Fatalf("saturated creation = %#v/%v", user, err)
-	}
+	user, err := service.CreateLocalUser(context.Background(), command)
+	require.Nil(t, user, "saturated creation = %#v/%v", user, err)
+	require.True(t, apperror.Is(err, "service.busy"), "saturated creation = %#v/%v", user, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if user, err := service.CreateLocalUser(ctx, command); user != nil || !apperror.Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled creation = %#v/%v", user, err)
-	}
-	if len(persistence.users) != 0 || len(persistence.passwords) != 0 || persistence.createdJob != nil {
-		t.Fatal("rejected password work created account state")
-	}
+	user, err = service.CreateLocalUser(ctx, command)
+	require.Nil(t, user, "cancelled creation")
+	require.True(t, apperror.Is(err, "authentication.internal"), "cancelled creation")
+	require.ErrorIs(t, err, context.Canceled, "cancelled creation")
+	require.Empty(t, persistence.users, "rejected password work created account state")
+	require.Empty(t, persistence.passwords, "rejected password work created account state")
+	require.Nil(t, persistence.createdJob, "rejected password work created account state")
 }
 
 func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testing.T) {
@@ -1166,9 +1111,7 @@ func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testi
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "rehash-capacity", Email: "rehash-capacity@example.edu"}, Password: password,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	credential := *persistence.passwords[user.ID.String()]
 	service.hasher.parameters.iterations++
 	recorder := &passwordWorkRecorderFake{}
@@ -1187,12 +1130,12 @@ func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testi
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
 		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.8",
 	})
-	if proof != nil || !apperror.Is(err, "service.busy") || recorder.rejected.Load() != 1 || mfa.calls != 0 {
-		t.Fatalf("saturated rehash = %#v/%v, rejected work %d, MFA calls %d", proof, err, recorder.rejected.Load(), mfa.calls)
-	}
-	if *persistence.passwords[user.ID.String()] != credential || len(persistence.sessions) != 0 {
-		t.Fatal("rejected rehash changed credentials or created a Session")
-	}
+	require.Nil(t, proof, "saturated rehash = %#v/%v, rejected work", proof, err)
+	require.True(t, apperror.Is(err, "service.busy"), "saturated rehash = %#v/%v, rejected work", proof, err)
+	require.Equal(t, int64(1), recorder.rejected.Load(), "saturated rehash = %#v/%v, rejected work", proof, err)
+	require.Equal(t, 0, mfa.calls, "saturated rehash = %#v/%v, rejected work", proof, err)
+	require.Equal(t, credential, *persistence.passwords[user.ID.String()], "rejected rehash changed credentials or created a Session")
+	require.Empty(t, persistence.sessions, "rejected rehash changed credentials or created a Session")
 }
 
 type passwordWorkBoundaryContext struct {
@@ -1211,9 +1154,8 @@ func TestLoginRejectsDirectDesktopSessionIssuance(t *testing.T) {
 	service := newTestAuthenticationService(t, newAuthenticationStoreFake())
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{LoginID: "user@example.edu",
 		Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientDesktop, Source: "127.0.0.1:3"})
-	if result != nil || !apperror.Is(err, "authentication.client_type.invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.client_type.invalid"), "result=%#v err=%v", result, err)
 }
 
 func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testing.T) {
@@ -1224,16 +1166,13 @@ func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testin
 	user, err := service.CreateLocalUser(context.Background(), CreateLocalUserCommand{
 		User: &model.User{Username: "terminal-policy-user", Email: "terminal-policy-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	persistence.saveErr = store.ErrAuthenticationMethodDisabled
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID: user.Email, Password: "CorrectHorseBatteryStaple1!", ClientType: model.SessionClientWeb, Source: "192.0.2.6",
 	})
-	if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
+	require.Nil(t, result, "result=%#v err=%v", result, err)
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "result=%#v err=%v", result, err)
 }
 
 func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
@@ -1251,17 +1190,13 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 			user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 				User: &model.User{Username: "password-race", Email: "password-race@example.edu"}, Password: oldPassword,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if rehash {
 				service.hasher.parameters.iterations++
 			}
 			replacement := *persistence.passwords[user.ID.String()]
 			replacement.PasswordHash, err = service.hasher.Hash(context.Background(), "ReplacementPasswordForReset1!")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			replacement.Revision++
 			replacement.PasswordChangedAt = replacement.PasswordChangedAt.Add(time.Microsecond)
 			replacement.UpdatedAt = replacement.PasswordChangedAt
@@ -1274,15 +1209,11 @@ func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
 			result, err := service.Login(ctx, Invocation{}, LoginCommand{
 				LoginID: user.Email, Password: oldPassword, ClientType: model.SessionClientWeb, Source: "192.0.2.10",
 			})
-			if result != nil || !apperror.Is(err, "authentication.credentials_invalid") {
-				t.Fatalf("login after reset = %#v, %v", result, err)
-			}
-			if len(persistence.sessions) != 0 || len(persistence.accessByHash) != 0 {
-				t.Fatal("stale password proof created a Session or access credential")
-			}
-			if *persistence.passwords[user.ID.String()] != replacement {
-				t.Fatal("stale login changed the replacement password credential")
-			}
+			require.Nil(t, result, "login after reset = %#v, %v", result, err)
+			require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "login after reset = %#v, %v", result, err)
+			require.Empty(t, persistence.sessions, "stale password proof created a Session or access credential")
+			require.Empty(t, persistence.accessByHash, "stale password proof created a Session or access credential")
+			require.Equal(t, replacement, *persistence.passwords[user.ID.String()], "stale login changed the replacement password credential")
 		})
 	}
 }
@@ -1296,9 +1227,7 @@ func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing
 	user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 		User: &model.User{Username: "removed-password", Email: "removed-password@example.edu"}, Password: password,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	service.hasher.parameters.iterations++
 	service.mfa = &authenticationMFAVerifierFake{
 		strength:    model.AuthenticationSingleFactor,
@@ -1307,12 +1236,9 @@ func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
 		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.11",
 	})
-	if proof != nil || !apperror.Is(err, "authentication.credentials_invalid") {
-		t.Fatalf("authenticate removed password = %#v, %v", proof, err)
-	}
-	if persistence.passwords[user.ID.String()] != nil {
-		t.Fatal("rehash resurrected removed password credential")
-	}
+	require.Nil(t, proof, "authenticate removed password = %#v, %v", proof, err)
+	require.True(t, apperror.Is(err, "authentication.credentials_invalid"), "authenticate removed password = %#v, %v", proof, err)
+	require.Nil(t, persistence.passwords[user.ID.String()], "rehash resurrected removed password credential")
 }
 
 func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
@@ -1324,9 +1250,7 @@ func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
 	user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{
 		User: &model.User{Username: "rehash-proof", Email: "rehash-proof@example.edu"}, Password: password,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	before := *persistence.passwords[user.ID.String()]
 	service.hasher.parameters.iterations++
 	recorder := &passwordWorkRecorderFake{}
@@ -1334,28 +1258,22 @@ func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
 	base := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return base.Add(time.Duration(recorder.finished.Load()) * time.Second) }
 	service.mfa = &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor, afterVerify: func() {
-		if recorder.finished.Load() != 2 || len(service.hasher.work) != 0 {
-			t.Fatal("MFA ran before password work completed and released its permits")
-		}
+		require.Equal(t, int64(2), recorder.finished.Load(), "MFA ran before password work completed and released its permits")
+		require.Empty(t, service.hasher.work, "MFA ran before password work completed and released its permits")
 	}}
 	proof, err := service.authenticateLocal(ctx, LoginCommand{
 		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.12",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if proof.AuthenticatedAt != base.Add(2*time.Second).UnixMilli() {
-		t.Fatalf("authentication time = %d, want time after both password operations", proof.AuthenticatedAt)
-	}
+	require.NoError(t, err)
+	require.Equal(t, base.Add(2*time.Second).UnixMilli(), proof.AuthenticatedAt, "authentication time")
 	after := persistence.passwords[user.ID.String()]
-	if proof.PasswordProof.ID != before.ID || proof.PasswordProof.Revision != before.Revision ||
-		after.Revision != before.Revision || after.PasswordChangedAt != before.PasswordChangedAt {
-		t.Fatal("rehash changed the proved password identity or revision")
-	}
-	if after.PasswordHash == before.PasswordHash || service.hasher.NeedsRehash(after.PasswordHash) ||
-		service.hasher.Verify(context.Background(), after.PasswordHash, password) != nil {
-		t.Fatal("rehash did not preserve password verification under the new parameters")
-	}
+	require.Equal(t, before.ID, proof.PasswordProof.ID, "rehash changed the proved password identity or revision")
+	require.Equal(t, before.Revision, proof.PasswordProof.Revision, "rehash changed the proved password identity or revision")
+	require.Equal(t, before.Revision, after.Revision, "rehash changed the proved password identity or revision")
+	require.Equal(t, before.PasswordChangedAt, after.PasswordChangedAt, "rehash changed the proved password identity or revision")
+	require.NotEqual(t, before.PasswordHash, after.PasswordHash, "rehash did not preserve password verification under the new parameters")
+	require.False(t, service.hasher.NeedsRehash(after.PasswordHash), "rehash did not preserve password verification under the new parameters")
+	require.NoError(t, service.hasher.Verify(context.Background(), after.PasswordHash, password), "rehash did not preserve password verification under the new parameters")
 }
 
 func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
@@ -1368,18 +1286,14 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 		User:     &model.User{Username: "auth-user", Email: "auth-user@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persistence.createdJob == nil || persistence.createdJob.DedupeKey != user.ID.String() ||
-		persistence.createdJob.Type != model.JobTypeProfilePictureGenerateDefault {
-		t.Fatalf("local user default-picture job = %#v", persistence.createdJob)
-	}
-	if persistence.createdSettings == nil || persistence.createdSettings.UserID != user.ID ||
-		persistence.createdSettings.Source != model.UserSettingsInitialSource ||
-		persistence.createdSettings.FormatVersion != model.UserSettingsFormatVersion1 {
-		t.Fatalf("local user settings = %#v", persistence.createdSettings)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, persistence.createdJob)
+	require.Equal(t, user.ID.String(), persistence.createdJob.DedupeKey)
+	require.Equal(t, model.JobTypeProfilePictureGenerateDefault, persistence.createdJob.Type)
+	require.NotNil(t, persistence.createdSettings)
+	require.Equal(t, user.ID, persistence.createdSettings.UserID)
+	require.Equal(t, model.UserSettingsInitialSource, persistence.createdSettings.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, persistence.createdSettings.FormatVersion)
 
 	result, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Email,
@@ -1388,26 +1302,17 @@ func TestLoginAndAuthenticateAccessConstructPrincipal(t *testing.T) {
 		DeviceID:   "device-1",
 		Source:     "127.0.0.1:3",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Session == nil || result.Tokens == nil || result.Tokens.AccessToken == "" {
-		t.Fatalf("incomplete result %#v", result)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result.Session)
+	require.NotNil(t, result.Tokens)
+	require.NotEmpty(t, result.Tokens.AccessToken)
 
 	principal, err := service.authenticateAccess(context.Background(), result.Tokens.AccessToken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if principal.UserID != user.ID || principal.SessionID != result.Session.ID {
-		t.Fatalf("principal = %#v", principal)
-	}
-	if principal.CredentialType != model.CredentialSessionAccess {
-		t.Fatalf("credential type = %q", principal.CredentialType)
-	}
-	if principal.AuthenticationMethod != "password" {
-		t.Fatalf("method = %q", principal.AuthenticationMethod)
-	}
+	require.NoError(t, err)
+	require.Equal(t, user.ID, principal.UserID)
+	require.Equal(t, result.Session.ID, principal.SessionID)
+	require.Equal(t, model.CredentialSessionAccess, principal.CredentialType)
+	require.Equal(t, "password", principal.AuthenticationMethod)
 }
 
 func TestAuthenticateAccessRejectsUnknownToken(t *testing.T) {
@@ -1417,9 +1322,8 @@ func TestAuthenticateAccessRejectsUnknownToken(t *testing.T) {
 	raw := model.NewCredentialToken()
 	_, err := service.authenticateAccess(context.Background(), raw)
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.token_invalid" {
-		t.Fatalf("err = %v", err)
-	}
+	require.True(t, ok)
+	require.Equal(t, "authentication.token_invalid", failure.Code())
 }
 
 func TestLoginRejectsInvalidClientType(t *testing.T) {
@@ -1431,9 +1335,7 @@ func TestLoginRejectsInvalidClientType(t *testing.T) {
 		User:     &model.User{Username: "client-type-user", Email: "client-type@example.edu"},
 		Password: "CorrectHorseBatteryStaple1!",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    user.Username,
 		Password:   "CorrectHorseBatteryStaple1!",
@@ -1441,9 +1343,8 @@ func TestLoginRejectsInvalidClientType(t *testing.T) {
 		Source:     "127.0.0.1:4",
 	})
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.client_type.invalid" {
-		t.Fatalf("err = %v", err)
-	}
+	require.True(t, ok)
+	require.Equal(t, "authentication.client_type.invalid", failure.Code())
 }
 
 func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
@@ -1467,9 +1368,8 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 			Source:     "10.0.0.8:9",
 		})
 		failure, ok := apperror.As(err)
-		if !ok || failure.Code() != "authentication.credentials_invalid" {
-			t.Fatalf("attempt %d: err = %v", attempt, err)
-		}
+		require.True(t, ok, "attempt %d: err = %v", attempt, err)
+		require.Equal(t, "authentication.credentials_invalid", failure.Code(), "attempt %d: err = %v", attempt, err)
 	}
 	_, err := service.Login(context.Background(), Invocation{}, LoginCommand{
 		LoginID:    "rate-user",
@@ -1478,9 +1378,8 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 		Source:     "10.0.0.8:9",
 	})
 	failure, ok := apperror.As(err)
-	if !ok || failure.Code() != "authentication.rate_limited" {
-		t.Fatalf("err = %v", err)
-	}
+	require.True(t, ok)
+	require.Equal(t, "authentication.rate_limited", failure.Code())
 }
 
 func (discardAuthenticationMFAVerifier) recoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {

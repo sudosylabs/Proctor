@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateUserSettingsSourceAcceptsVersionOneJSONC(t *testing.T) {
@@ -24,9 +26,7 @@ func TestValidateUserSettingsSourceAcceptsVersionOneJSONC(t *testing.T) {
 		"}\n"
 
 	diagnostics := validateUserSettingsSource(source)
-	if len(diagnostics) != 0 {
-		t.Fatalf("validateUserSettingsSource() diagnostics = %#v, want none", diagnostics)
-	}
+	require.Empty(t, diagnostics, "validateUserSettingsSource() diagnostics")
 }
 
 func TestValidateUserSettingsSourceRejectsUnsafeGrammar(t *testing.T) {
@@ -53,15 +53,10 @@ func TestValidateUserSettingsSourceRejectsUnsafeGrammar(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			diagnostics := validateUserSettingsSource(test.source)
-			if len(diagnostics) != 1 {
-				t.Fatalf("validateUserSettingsSource() diagnostics = %#v, want one", diagnostics)
-			}
-			if diagnostics[0].Code != test.code {
-				t.Fatalf("diagnostic code = %q, want %q", diagnostics[0].Code, test.code)
-			}
-			if diagnostics[0].Line < 1 || diagnostics[0].Column < 1 {
-				t.Fatalf("diagnostic location = %d:%d, want positive", diagnostics[0].Line, diagnostics[0].Column)
-			}
+			require.Len(t, diagnostics, 1, "validateUserSettingsSource() diagnostics")
+			require.Equal(t, test.code, diagnostics[0].Code, "diagnostic code")
+			require.GreaterOrEqual(t, diagnostics[0].Line, 1, "diagnostic location")
+			require.GreaterOrEqual(t, diagnostics[0].Column, 1, "diagnostic location")
 		})
 	}
 }
@@ -122,9 +117,8 @@ func TestValidateUserSettingsSourceEnforcesBounds(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			diagnostics := validateUserSettingsSource(test.source)
-			if len(diagnostics) != 1 || diagnostics[0].Code != test.code {
-				t.Fatalf("validateUserSettingsSource() diagnostics = %#v, want %q", diagnostics, test.code)
-			}
+			require.Len(t, diagnostics, 1, "validateUserSettingsSource() diagnostics")
+			require.Equal(t, test.code, diagnostics[0].Code, "validateUserSettingsSource() diagnostics")
 		})
 	}
 }
@@ -132,9 +126,8 @@ func TestValidateUserSettingsSourceEnforcesBounds(t *testing.T) {
 func TestValidateUserSettingsSourceAcceptsBoundaryValues(t *testing.T) {
 	value := strings.Repeat("v", userSettingsStringMaxBytes)
 	source := `{"setting.value":"` + value + `"}`
-	if diagnostics := validateUserSettingsSource(source); len(diagnostics) != 0 {
-		t.Fatalf("validateUserSettingsSource() diagnostics = %#v, want none", diagnostics)
-	}
+	diagnostics := validateUserSettingsSource(source)
+	require.Empty(t, diagnostics, "validateUserSettingsSource() diagnostics")
 }
 
 func FuzzValidateUserSettingsSourceNeverPanics(f *testing.F) {
@@ -145,13 +138,11 @@ func FuzzValidateUserSettingsSourceNeverPanics(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, source string) {
 		diagnostics := validateUserSettingsSource(source)
-		if len(diagnostics) > 32 {
-			t.Fatalf("diagnostic count = %d, want at most 32", len(diagnostics))
-		}
+		require.LessOrEqual(t, len(diagnostics), 32, "diagnostic count")
 		for _, diagnostic := range diagnostics {
-			if diagnostic.Code == "" || diagnostic.Line < 1 || diagnostic.Column < 1 {
-				t.Fatalf("unsafe diagnostic = %#v", diagnostic)
-			}
+			require.NotEmpty(t, diagnostic.Code)
+			require.GreaterOrEqual(t, diagnostic.Line, 1)
+			require.GreaterOrEqual(t, diagnostic.Column, 1)
 		}
 	})
 }

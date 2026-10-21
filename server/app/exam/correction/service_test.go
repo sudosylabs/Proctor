@@ -15,10 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/testlib/ordertest"
 )
 
 func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthoritativeMetadata(t *testing.T) {
@@ -30,35 +33,33 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: sha, IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.StageID.IsZero() || got.ResourceID.IsZero() || got.MediaType != model.ExamResourceMediaText || got.Size != 5 || got.SHA256 != sha || got.ExpiresAt.IsZero() {
-		t.Fatalf("stage=%#v", got)
-	}
-	if want := "access,membership,authorize,audit.begin,reserve,content.store,ready"; strings.Join(f.order, ",") != want {
-		t.Fatalf("order=%v want=%s", f.order, want)
-	}
-	if f.persistence.reservation.AuditEventID == "" || f.persistence.reservation.AuditAt < 1 {
-		t.Fatalf("reservation audit=%#v", f.persistence.reservation)
-	}
-	if f.authorizer.action != model.ActionExamSittingManage || f.authorizer.resource != (model.Resource{Type: model.ResourceExamSitting, ID: f.sittingID.String()}) || f.persistence.reservation.ManagerOverride {
-		t.Fatalf("authorization=%s %#v override=%v", f.authorizer.action, f.authorizer.resource, f.persistence.reservation.ManagerOverride)
-	}
+	require.NoError(t, err)
+	require.False(t, got.StageID.IsZero())
+	require.False(t, got.ResourceID.IsZero())
+	require.Equal(t, model.ExamResourceMediaText, got.MediaType)
+	require.Equal(t, int64(5), got.Size)
+	require.Equal(t, sha, got.SHA256)
+	require.False(t, got.ExpiresAt.IsZero())
+	// Contract (guardrail 8): authorization precedes the audit, the audit begins
+	// before the durable reservation, and bytes are stored only inside the
+	// reservation before it becomes ready.
+	ordertest.RequireInOrder(t, f.order, "authorize", "audit.begin", "reserve", "content.store", "ready")
+	require.NotEmpty(t, f.persistence.reservation.AuditEventID)
+	require.GreaterOrEqual(t, f.persistence.reservation.AuditAt, int64(1))
+	require.Equal(t, model.ActionExamSittingManage, f.authorizer.action, "authorization")
+	require.Equal(t, model.Resource{Type: model.ResourceExamSitting, ID: f.sittingID.String()}, f.authorizer.resource, "authorization")
+	require.False(t, f.persistence.reservation.ManagerOverride, "authorization")
 	for _, forbidden := range []string{"media_type", "size", "sha256", "stage_id", "private_reason", "display_name"} {
-		if _, ok := f.auditor.value[forbidden]; ok {
-			t.Fatalf("unsafe audit field %q in %#v", forbidden, f.auditor.value)
-		}
+		_, ok := f.auditor.value[forbidden]
+		require.False(t, ok, "unsafe audit field %q in %#v", forbidden, f.auditor.value)
 	}
 	wantIdempotency, prepareErr := prepareStageIdempotency(f.invocation, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Size: 5, ExpectedSHA256: sha, IdempotencyKey: "test-key",
 	})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestStageResourceContentReadyReplaySkipsContentWrite(t *testing.T) {
@@ -66,12 +67,9 @@ func TestStageResourceContentReadyReplaySkipsContentWrite(t *testing.T) {
 	f := newCorrectionFixture(t)
 	f.persistence.returnReady = true
 	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.content.calls != 0 || f.persistence.readyCalls != 0 {
-		t.Fatalf("content=%d ready=%d", f.content.calls, f.persistence.readyCalls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, f.content.calls, "content")
+	require.Equal(t, 0, f.persistence.readyCalls, "content")
 }
 
 type correctionCapacityError struct{}
@@ -89,15 +87,16 @@ func TestStageResourceContentCapacityRefusalLeavesOnlyPendingReservation(t *test
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
 	})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "service.busy" || !errors.Is(err, f.content.err) {
-		t.Fatalf("capacity outcome=%v", err)
-	}
-	if f.persistence.reservation == nil || f.persistence.readyCalls != 0 || f.persistence.application != nil || f.effects.calls != 0 {
-		t.Fatalf("refused content became ready or published: store=%#v effects=%d", f.persistence, f.effects.calls)
-	}
-	if want := "access,membership,authorize,audit.begin,reserve,content.store"; strings.Join(f.order, ",") != want {
-		t.Fatalf("order=%v want=%s", f.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "service.busy", fault.Code())
+	require.ErrorIs(t, err, f.content.err)
+	require.NotNil(t, f.persistence.reservation, "refused content became ready or published: store=%#v effects", f.persistence)
+	require.Equal(t, 0, f.persistence.readyCalls, "refused content became ready or published: store=%#v effects", f.persistence)
+	require.Nil(t, f.persistence.application, "refused content became ready or published: store=%#v effects", f.persistence)
+	require.Equal(t, 0, f.effects.calls, "refused content became ready or published: store=%#v effects", f.persistence)
+	// Contract (guardrail 8): the audit begins before the durable reservation that
+	// the refused bytes were stored under.
+	ordertest.RequireInOrder(t, f.order, "audit.begin", "reserve", "content.store")
 }
 
 func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
@@ -109,12 +108,8 @@ func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
 		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !f.content.createdAt.Equal(f.persistence.stageCreatedAt) {
-		t.Fatalf("rendition created_at=%s want reserved %s", f.content.createdAt, f.persistence.stageCreatedAt)
-	}
+	require.NoError(t, err)
+	require.True(t, f.content.createdAt.Equal(f.persistence.stageCreatedAt), "rendition created_at=%s want reserved", f.content.createdAt)
 }
 
 func TestStageResourceContentUsesExplicitOverrideWithoutCurrentUnitMembership(t *testing.T) {
@@ -122,12 +117,9 @@ func TestStageResourceContentUsesExplicitOverrideWithoutCurrentUnitMembership(t 
 	f := newCorrectionFixture(t)
 	f.memberships.empty = true
 	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.authorizer.action != model.ActionExamSittingManageOverride || !f.persistence.reservation.ManagerOverride {
-		t.Fatalf("action=%s reservation=%#v", f.authorizer.action, f.persistence.reservation)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.ActionExamSittingManageOverride, f.authorizer.action, "action=%s reservation=%#v", f.authorizer.action, f.persistence.reservation)
+	require.True(t, f.persistence.reservation.ManagerOverride, "action=%s reservation=%#v", f.authorizer.action, f.persistence.reservation)
 }
 
 func TestStageResourceContentStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
@@ -137,12 +129,12 @@ func TestStageResourceContentStopsWhenCurrentManagerMembershipCannotBeRead(t *te
 	f.memberships.err = failure
 	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.unavailable" || !errors.Is(err, failure) {
-		t.Fatalf("error = %v, want unavailable membership failure", err)
-	}
-	if want := "access,membership"; strings.Join(f.order, ",") != want {
-		t.Fatalf("order = %v, want %s", f.order, want)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.sitting.correction.unavailable", fault.Code())
+	require.ErrorIs(t, err, failure)
+	// Without current membership nothing is authorized or reserved.
+	require.Empty(t, f.authorizer.action, "authorized without current membership")
+	require.Nil(t, f.persistence.reservation, "reserved without current membership")
 }
 
 func TestStageReplacementPinsFileEntryFromExactBaseRevision(t *testing.T) {
@@ -151,12 +143,10 @@ func TestStageReplacementPinsFileEntryFromExactBaseRevision(t *testing.T) {
 	resourceID, entryID := model.NewExamResourceID(), model.NewFileEntryID()
 	f.revisions.snapshot = &model.ExamRevision{ID: f.baseRevisionID, ExamID: f.examID, Resources: []model.ExamRevisionResource{{ResourceID: resourceID, FileEntryID: entryID}}}
 	_, err := f.service.StageExamSittingCorrectionResourceContent(context.Background(), f.invocation, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.persistence.reservation.Entry != nil || f.persistence.reservation.FileEntryID != entryID || f.persistence.reservation.ResourceID != resourceID {
-		t.Fatalf("reservation=%#v", f.persistence.reservation)
-	}
+	require.NoError(t, err)
+	require.Nil(t, f.persistence.reservation.Entry)
+	require.Equal(t, entryID, f.persistence.reservation.FileEntryID)
+	require.Equal(t, resourceID, f.persistence.reservation.ResourceID)
 }
 
 func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) {
@@ -164,33 +154,28 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	f := newCorrectionFixture(t)
 	f.persistence.applyReplayed = true
 	result, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.PreviousRevisionID != f.baseRevisionID || result.RevisionID.IsZero() || result.SittingRevision != 4 ||
-		!result.EffectiveAt.Equal(f.at.Add(-time.Minute)) || f.effects.calls != 0 {
-		t.Fatalf("result=%#v", result)
-	}
-	if f.persistence.application == nil || f.persistence.application.InstructionsMarkdown == nil || *f.persistence.application.InstructionsMarkdown != "Updated" || f.persistence.application.PrivateReason == "" {
-		t.Fatalf("application=%#v", f.persistence.application)
-	}
-	if f.effects.calls != 0 {
-		t.Fatalf("replay effects=%d", f.effects.calls)
-	}
+	require.NoError(t, err)
+	require.Equal(t, f.baseRevisionID, result.PreviousRevisionID)
+	require.False(t, result.RevisionID.IsZero())
+	require.Equal(t, int64(4), result.SittingRevision)
+	require.True(t, result.EffectiveAt.Equal(f.at.Add(-time.Minute)))
+	require.Equal(t, 0, f.effects.calls)
+	require.NotNil(t, f.persistence.application)
+	require.NotNil(t, f.persistence.application.InstructionsMarkdown)
+	require.Equal(t, "Updated", *f.persistence.application.InstructionsMarkdown)
+	require.NotEmpty(t, f.persistence.application.PrivateReason)
+	require.Equal(t, 0, f.effects.calls, "replay effects")
 	for _, forbidden := range []string{"instructions_markdown", "resources", "private_reason", "stage_id", "sha256"} {
-		if _, ok := f.auditor.value[forbidden]; ok {
-			t.Fatalf("unsafe audit field %q", forbidden)
-		}
+		_, ok := f.auditor.value[forbidden]
+		require.False(t, ok, "unsafe audit field %q", forbidden)
 	}
 	wantIdempotency, prepareErr := prepareApplyIdempotency(f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID,
 		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID,
 		Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{},
 		AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
-	if prepareErr != nil {
-		t.Fatal(prepareErr)
-	}
-	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	require.NoError(t, prepareErr)
+	require.Equal(t, wantIdempotency, f.persistence.idempotency)
 }
 
 func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
@@ -198,12 +183,13 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	f := newCorrectionFixture(t)
 	f.effects.err = errors.New("realtime unavailable")
 	_, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, AffectedCapabilities: []model.CandidateCapability{model.CandidateCapabilityBrowser, model.CandidateCapabilitySubmission, model.CandidateCapabilityWorkspace}, CandidateSummary: "The instructions were corrected.", PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.persistence.application == nil || f.effects.calls != 1 || f.effects.reportCalls != 1 || strings.Join(f.order, ",") != "access,membership,authorize,audit.begin,apply,effect" {
-		t.Fatalf("application=%#v effects=%#v order=%v", f.persistence.application, f.effects, f.order)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, f.persistence.application, "application=%#v effects=%#v order=%v", f.persistence.application, f.effects, f.order)
+	require.Equal(t, 1, f.effects.calls, "application=%#v effects=%#v order=%v", f.persistence.application, f.effects, f.order)
+	require.Equal(t, 1, f.effects.reportCalls, "application=%#v effects=%#v order=%v", f.persistence.application, f.effects, f.order)
+	// Contract (guardrails 8 and 14): authorization precedes the audit, the audit
+	// begins before the durable write, and the write commits before its effect.
+	ordertest.RequireInOrder(t, f.order, "authorize", "audit.begin", "apply", "effect")
 }
 
 func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) {
@@ -211,9 +197,9 @@ func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) 
 	f := newCorrectionFixture(t)
 	_, err := f.service.ApplyExamSittingCorrection(context.Background(), f.invocation, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", IdempotencyKey: "test-key"})
 	var fault *apperror.Error
-	if !errors.As(err, &fault) || fault.Code() != "exam.sitting.correction.invalid" || len(f.order) != 0 {
-		t.Fatalf("error=%v order=%v", err, f.order)
-	}
+	require.ErrorAs(t, err, &fault)
+	require.Equal(t, "exam.sitting.correction.invalid", fault.Code())
+	require.Empty(t, f.order)
 }
 
 type correctionFixture struct {
@@ -267,9 +253,7 @@ func newCorrectionFixture(t *testing.T) *correctionFixture {
 		NewExamRevisionID: model.NewExamRevisionID,
 		InstitutionOrigin: "https://institution.example",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.service = service
 	f.invocation = invocation.New(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: f.at}, model.RequestMetadata{})
 	return f

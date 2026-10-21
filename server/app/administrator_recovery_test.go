@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -30,19 +32,17 @@ func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testi
 	result, err := service.RecoverAdministratorAccess(context.Background(), AdministratorRecoveryCommand{
 		InstitutionID: institutionID.String(), UserID: userID.String(), Password: "private-password",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || !result.PasswordRotated || persistence.recoveryInput == nil {
-		t.Fatalf("result/input = %#v / %#v", result, persistence.recoveryInput)
-	}
-	if persistence.recoveryInput.InstitutionID != institutionID || persistence.recoveryInput.UserID != userID ||
-		persistence.recoveryInput.RotatePasswordHash != "encoded-private-password" || persistence.recoveryInput.EnableLocalLogin {
-		t.Fatalf("recovery input = %#v", persistence.recoveryInput)
-	}
-	if len(events) != 2 || events[0] != "hash-password" || events[1] != "recover-administrator" {
-		t.Fatalf("events = %#v", events)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result, "result/input")
+	require.True(t, result.PasswordRotated, "result/input")
+	require.NotNil(t, persistence.recoveryInput, "result/input")
+	require.Equal(t, institutionID, persistence.recoveryInput.InstitutionID)
+	require.Equal(t, userID, persistence.recoveryInput.UserID)
+	require.Equal(t, "encoded-private-password", persistence.recoveryInput.RotatePasswordHash)
+	require.False(t, persistence.recoveryInput.EnableLocalLogin)
+	require.Len(t, events, 2)
+	require.Equal(t, "hash-password", events[0])
+	require.Equal(t, "recover-administrator", events[1])
 }
 
 func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
@@ -56,9 +56,9 @@ func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing
 			InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String(),
 			Password: "correct horse battery staple",
 		})
-		if result != nil || persistence.recoveryInput != nil || len(events) != 0 {
-			t.Fatal("failed password work reached offline administrator recovery")
-		}
+		require.Nil(t, result, "failed password work reached offline administrator recovery")
+		require.Nil(t, persistence.recoveryInput, "failed password work reached offline administrator recovery")
+		require.Empty(t, events, "failed password work reached offline administrator recovery")
 		return err
 	})
 }
@@ -76,14 +76,11 @@ func TestAdministratorRecoveryRejectsInvalidCommandBeforeHashing(t *testing.T) {
 		"invalid user":        {InstitutionID: model.NewInstitutionID().String(), UserID: "wrong", EnableLocalLogin: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := service.RecoverAdministratorAccess(context.Background(), command); err == nil {
-				t.Fatal("RecoverAdministratorAccess() error = nil")
-			}
+			_, err := service.RecoverAdministratorAccess(context.Background(), command)
+			require.Error(t, err, "RecoverAdministratorAccess() error = nil")
 		})
 	}
-	if len(events) != 0 {
-		t.Fatalf("invalid commands reached dependencies: %#v", events)
-	}
+	require.Empty(t, events)
 }
 
 func TestAdministratorRecoveryStartupReconciliationFailsClosed(t *testing.T) {
@@ -96,10 +93,7 @@ func TestAdministratorRecoveryStartupReconciliationFailsClosed(t *testing.T) {
 		bootstrapProtection(), "node-recovery", time.Now, administratorRecoveryPolicy{})
 
 	err := service.ReconcileAdministratorRecovery(context.Background())
-	if !errors.Is(err, persistenceErr) {
-		t.Fatalf("ReconcileAdministratorRecovery() = %v, want %v", err, persistenceErr)
-	}
-	if persistence.recoveryReconcileInput == nil || persistence.recoveryReconcileInput.NodeID != "node-recovery" {
-		t.Fatalf("reconciliation input = %#v", persistence.recoveryReconcileInput)
-	}
+	require.ErrorIs(t, err, persistenceErr, "ReconcileAdministratorRecovery()")
+	require.NotNil(t, persistence.recoveryReconcileInput)
+	require.Equal(t, "node-recovery", persistence.recoveryReconcileInput.NodeID)
 }

@@ -11,6 +11,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
@@ -26,13 +28,10 @@ func TestConcealmentPresentsUnexpectedFailuresAsUnavailable(t *testing.T) {
 	for name, present := range map[string]func(error) error{
 		"present": testConcealment.Present, "conceal": testConcealment.Conceal,
 	} {
-		if err := present(nil); err != nil {
-			t.Fatalf("%s(nil) = %v", name, err)
-		}
+		require.NoError(t, present(nil), "%s(nil)", name)
 		err := present(cause)
-		if !apperror.Is(err, "widget.unavailable") || !errors.Is(err, cause) {
-			t.Fatalf("%s(cause) = %v, want wrapped widget.unavailable", name, err)
-		}
+		require.True(t, apperror.Is(err, "widget.unavailable"), "%s(cause)", name)
+		require.ErrorIs(t, err, cause, "%s(cause)", name)
 	}
 }
 
@@ -41,16 +40,15 @@ func TestConcealmentHidesOnlyDenialAndDeclaredCodes(t *testing.T) {
 
 	for _, code := range []apperror.Code{"authorization.denied", "widget.not_found"} {
 		failure := apperror.New(code)
-		if err := testConcealment.Present(failure); !apperror.Is(err, code) || !errors.Is(err, failure) {
-			t.Fatalf("Present(%s) = %v, want unchanged", code, err)
-		}
-		err := testConcealment.Conceal(failure)
-		if !apperror.Is(err, "resource.not_found") || !errors.Is(err, failure) {
-			t.Fatalf("Conceal(%s) = %v, want wrapped resource.not_found", code, err)
-		}
+		err := testConcealment.Present(failure)
+		require.True(t, apperror.Is(err, code), "Present(%s)", code)
+		require.ErrorIs(t, err, failure, "Present(%s)", code)
+		err = testConcealment.Conceal(failure)
+		require.True(t, apperror.Is(err, "resource.not_found"), "Conceal(%s)", code)
+		require.ErrorIs(t, err, failure, "Conceal(%s)", code)
 	}
 	visible := apperror.New("widget.conflict")
-	if err := testConcealment.Conceal(visible); !apperror.Is(err, "widget.conflict") || !errors.Is(err, visible) {
-		t.Fatalf("Conceal(widget.conflict) = %v, want unchanged", err)
-	}
+	err := testConcealment.Conceal(visible)
+	require.True(t, apperror.Is(err, "widget.conflict"), "Conceal(widget.conflict)")
+	require.ErrorIs(t, err, visible, "Conceal(widget.conflict)")
 }

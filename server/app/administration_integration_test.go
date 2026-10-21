@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app"
 
 	"github.com/sudosylabs/proctor/server/config"
@@ -33,9 +35,7 @@ import (
 
 func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	encryptionKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{17}, 32))
 	helper := testlib.Setup(
@@ -52,10 +52,8 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	status := performJSONRequest(
 		handler, http.MethodGet, "/api/v1/bootstrap", nil, "",
 	)
-	if status.Code != http.StatusOK ||
-		status.Body.String() != "{\"initialized\":false}\n" {
-		t.Fatalf("pristine bootstrap status = %d: %s", status.Code, status.Body.String())
-	}
+	require.Equal(t, http.StatusOK, status.Code, "pristine bootstrap status")
+	require.Equal(t, "{\"initialized\":false}\n", status.Body.String(), "pristine bootstrap status")
 	bootstrapRequest := map[string]any{
 		"bootstrap_secret": testlib.BootstrapSecret,
 		"institution": map[string]any{
@@ -74,9 +72,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		bootstrapRequest,
 		"",
 	)
-	if bootstrap.Code != http.StatusCreated {
-		t.Fatalf("bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, bootstrap.Code, "bootstrap status = %d: %s", bootstrap.Code, bootstrap.Body.String())
 	var created model.InstallationBootstrapResult
 	var createdWire struct {
 		Institution *struct {
@@ -102,49 +98,36 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			DesktopAuthorizationEnabled      bool  `json:"desktop_authorization_enabled"`
 		} `json:"access_policy"`
 	}
-	if err := json.Unmarshal(bootstrap.Body.Bytes(), &createdWire); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &createdWire))
 	created.Institution = &model.Institution{ID: model.InstitutionID(createdWire.Institution.ID)}
 	created.Administrator = createdWire.Administrator.model()
 	created.Role = &model.Role{ID: model.RoleID(createdWire.Role.ID), Name: createdWire.Role.Name, Permissions: createdWire.Role.Permissions, BuiltIn: createdWire.Role.BuiltIn}
 	created.RoleBinding = &model.RoleBinding{ID: model.RoleBindingID(createdWire.RoleBinding.ID), ScopeType: createdWire.RoleBinding.ScopeType}
-	if created.Role == nil ||
-		created.Role.Name != model.SystemAdministratorRoleName ||
-		!created.Role.BuiltIn ||
-		created.RoleBinding == nil ||
-		created.RoleBinding.ScopeType != model.RoleScopeInstitution {
-		t.Fatalf("bootstrap result = %#v", created)
-	}
-	if createdWire.AccessPolicy == nil || createdWire.AccessPolicy.Revision != 1 ||
-		!createdWire.AccessPolicy.LocalLoginEnabled || createdWire.AccessPolicy.PublicRegistrationEnabled ||
-		!createdWire.AccessPolicy.InvitationAdmissionEnabled ||
-		!createdWire.AccessPolicy.InvitationLocalCredentialEnabled ||
-		!createdWire.AccessPolicy.DesktopAuthorizationEnabled {
-		t.Fatalf("initial access policy = %#v", createdWire.AccessPolicy)
-	}
-	if len(created.Role.Permissions) != len(model.AllActions()) {
-		t.Fatalf("system administrator permissions = %#v", created.Role.Permissions)
-	}
+	require.NotNil(t, created.Role)
+	require.Equal(t, model.SystemAdministratorRoleName, created.Role.Name)
+	require.True(t, created.Role.BuiltIn)
+	require.NotNil(t, created.RoleBinding)
+	require.Equal(t, model.RoleScopeInstitution, created.RoleBinding.ScopeType)
+	require.NotNil(t, createdWire.AccessPolicy)
+	require.Equal(t, int64(1), createdWire.AccessPolicy.Revision)
+	require.True(t, createdWire.AccessPolicy.LocalLoginEnabled)
+	require.False(t, createdWire.AccessPolicy.PublicRegistrationEnabled)
+	require.True(t, createdWire.AccessPolicy.InvitationAdmissionEnabled)
+	require.True(t, createdWire.AccessPolicy.InvitationLocalCredentialEnabled)
+	require.True(t, createdWire.AccessPolicy.DesktopAuthorizationEnabled)
+	require.Len(t, created.Role.Permissions, len(model.AllActions()))
 	replay := performJSONRequest(
 		handler, http.MethodPost, "/api/v1/bootstrap", bootstrapRequest, "",
 	)
-	if replay.Code != http.StatusCreated || replay.Body.String() != bootstrap.Body.String() {
-		t.Fatalf(
-			"exact bootstrap replay = %d: %s, want retained %d: %s",
-			replay.Code, replay.Body.String(), bootstrap.Code, bootstrap.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusCreated, replay.Code, "exact bootstrap replay = %d: %s, want retained %d", replay.Code, replay.Body.String(), bootstrap.Code)
+	require.Equal(t, bootstrap.Body.String(), replay.Body.String(), "exact bootstrap replay = %d: %s, want retained %d", replay.Code, replay.Body.String(), bootstrap.Code)
 	settings, err := persistence.UserSettings().Get(context.Background(), created.Administrator.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if settings.Source != model.UserSettingsInitialSource ||
-		settings.FormatVersion != model.UserSettingsFormatVersion1 ||
-		settings.UserID != created.Administrator.ID || !settings.Revision.IsValid() {
-		t.Fatalf("bootstrap administrator settings = %#v", settings)
-	}
-	if second := performJSONRequest(
+	require.NoError(t, err)
+	require.Equal(t, model.UserSettingsInitialSource, settings.Source)
+	require.Equal(t, model.UserSettingsFormatVersion1, settings.FormatVersion)
+	require.Equal(t, created.Administrator.ID, settings.UserID)
+	require.True(t, settings.Revision.IsValid())
+	second := performJSONRequest(
 		handler,
 		http.MethodPost,
 		"/api/v1/bootstrap",
@@ -155,14 +138,11 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			"password":         password,
 		},
 		"",
-	); second.Code != http.StatusConflict {
-		t.Fatalf("second bootstrap status = %d: %s", second.Code, second.Body.String())
-	}
+	)
+	require.Equal(t, http.StatusConflict, second.Code, "second bootstrap status = %d: %s", second.Code, second.Body.String())
 	status = performJSONRequest(handler, http.MethodGet, "/api/v1/bootstrap", nil, "")
-	if status.Body.String() != "{\"initialized\":true}\n" ||
-		containsAny(status.Body.String(), created.Administrator.ID.String(), created.Institution.ID.String()) {
-		t.Fatalf("initialized bootstrap status leaked identifiers: %s", status.Body.String())
-	}
+	require.Equal(t, "{\"initialized\":true}\n", status.Body.String())
+	require.False(t, containsAny(status.Body.String(), created.Administrator.ID.String(), created.Institution.ID.String()))
 
 	administratorLogin := loginIntegrationUser(
 		t, handler, created.Administrator.Username, password,
@@ -177,13 +157,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	listResponse := httptest.NewRecorder()
 	handler.ServeHTTP(listResponse, listRequest)
 	authorizedRoleListRequestID := listResponse.Header().Get("X-Request-ID")
-	if listResponse.Code != http.StatusOK {
-		t.Fatalf(
-			"authorized role list status = %d: %s",
-			listResponse.Code,
-			listResponse.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusOK, listResponse.Code, "authorized role list status = %d: %s", listResponse.Code, listResponse.Body.String())
 	rejectServerOwnedRoleFields := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -195,13 +169,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if rejectServerOwnedRoleFields.Code != http.StatusBadRequest {
-		t.Fatalf(
-			"server-owned role field status = %d: %s",
-			rejectServerOwnedRoleFields.Code,
-			rejectServerOwnedRoleFields.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusBadRequest, rejectServerOwnedRoleFields.Code, "server-owned role field status = %d: %s", rejectServerOwnedRoleFields.Code, rejectServerOwnedRoleFields.Body.String())
 	createRole := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -212,16 +180,10 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if createRole.Code != http.StatusCreated {
-		t.Fatalf("create role status = %d: %s", createRole.Code, createRole.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, createRole.Code, "create role status = %d: %s", createRole.Code, createRole.Body.String())
 	var customRole model.Role
-	if err := json.Unmarshal(createRole.Body.Bytes(), &customRole); err != nil {
-		t.Fatal(err)
-	}
-	if customRole.BuiltIn {
-		t.Fatal("client created a built-in role")
-	}
+	require.NoError(t, json.Unmarshal(createRole.Body.Bytes(), &customRole))
+	require.False(t, customRole.BuiltIn, "client created a built-in role")
 	unknownPermission := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -232,13 +194,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if unknownPermission.Code != http.StatusBadRequest {
-		t.Fatalf(
-			"unknown permission status = %d: %s",
-			unknownPermission.Code,
-			unknownPermission.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusBadRequest, unknownPermission.Code, "unknown permission status = %d: %s", unknownPermission.Code, unknownPermission.Body.String())
 	renamed := "Class Observer Updated"
 	patchRole := performJSONRequest(
 		handler,
@@ -247,9 +203,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		map[string]any{"display_name": renamed},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if patchRole.Code != http.StatusOK {
-		t.Fatalf("patch role status = %d: %s", patchRole.Code, patchRole.Body.String())
-	}
+	require.Equal(t, http.StatusOK, patchRole.Code, "patch role status = %d: %s", patchRole.Code, patchRole.Body.String())
 	protected := performJSONRequest(
 		handler,
 		http.MethodPatch,
@@ -257,9 +211,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		map[string]any{"display_name": "Unsafe"},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if protected.Code != http.StatusConflict {
-		t.Fatalf("patch built-in role status = %d: %s", protected.Code, protected.Body.String())
-	}
+	require.Equal(t, http.StatusConflict, protected.Code, "patch built-in role status = %d: %s", protected.Code, protected.Body.String())
 
 	secondAdministrator, appErr := helper.App.CreateLocalUser(
 		context.Background(),
@@ -268,9 +220,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			DisplayName: "Second Administrator",
 		}, Password: password},
 	)
-	if appErr != nil {
-		t.Fatal(appErr)
-	}
+	require.NoError(t, appErr)
 	unprivilegedLogin := loginIntegrationUser(
 		t, handler, secondAdministrator.Username, password,
 		model.SessionClientCLI, "unprivileged-cli",
@@ -289,13 +239,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 	handler.ServeHTTP(malformedResponse, malformedRequest)
 	// Malformed bodies are rejected at the transport decode boundary before
 	// the application-owned authorization boundary runs.
-	if malformedResponse.Code != http.StatusBadRequest {
-		t.Fatalf(
-			"malformed role create status = %d: %s",
-			malformedResponse.Code,
-			malformedResponse.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusBadRequest, malformedResponse.Code, "malformed role create status = %d: %s", malformedResponse.Code, malformedResponse.Body.String())
 	createBinding := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -307,13 +251,9 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if createBinding.Code != http.StatusCreated {
-		t.Fatalf("create binding status = %d: %s; logs=%s", createBinding.Code, createBinding.Body.String(), helper.Logs.String())
-	}
+	require.Equal(t, http.StatusCreated, createBinding.Code, "create binding status = %d: %s; logs=%s", createBinding.Code, createBinding.Body.String(), helper.Logs.String())
 	var customBinding model.RoleBinding
-	if err := json.Unmarshal(createBinding.Body.Bytes(), &customBinding); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(createBinding.Body.Bytes(), &customBinding))
 	listBindings := performJSONRequest(
 		handler,
 		http.MethodGet,
@@ -321,9 +261,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
-	if listBindings.Code != http.StatusOK {
-		t.Fatalf("list bindings status = %d: %s", listBindings.Code, listBindings.Body.String())
-	}
+	require.Equal(t, http.StatusOK, listBindings.Code, "list bindings status = %d: %s", listBindings.Code, listBindings.Body.String())
 	endBinding := performJSONRequest(
 		handler,
 		http.MethodDelete,
@@ -331,9 +269,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
-	if endBinding.Code != http.StatusOK {
-		t.Fatalf("end binding status = %d: %s", endBinding.Code, endBinding.Body.String())
-	}
+	require.Equal(t, http.StatusOK, endBinding.Code, "end binding status = %d: %s", endBinding.Code, endBinding.Body.String())
 	archiveRole := performJSONRequest(
 		handler,
 		http.MethodDelete,
@@ -341,9 +277,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
-	if archiveRole.Code != http.StatusNoContent {
-		t.Fatalf("archive role status = %d: %s", archiveRole.Code, archiveRole.Body.String())
-	}
+	require.Equal(t, http.StatusNoContent, archiveRole.Code, "archive role status = %d: %s", archiveRole.Code, archiveRole.Body.String())
 
 	secondAdminBinding := performJSONRequest(
 		handler,
@@ -356,17 +290,9 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		},
 		administratorLogin.Tokens.AccessToken,
 	)
-	if secondAdminBinding.Code != http.StatusCreated {
-		t.Fatalf(
-			"create second administrator binding status = %d: %s",
-			secondAdminBinding.Code,
-			secondAdminBinding.Body.String(),
-		)
-	}
+	require.Equal(t, http.StatusCreated, secondAdminBinding.Code, "create second administrator binding status = %d: %s", secondAdminBinding.Code, secondAdminBinding.Body.String())
 	var secondBinding model.RoleBinding
-	if err := json.Unmarshal(secondAdminBinding.Body.Bytes(), &secondBinding); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(secondAdminBinding.Body.Bytes(), &secondBinding))
 	removeFirst := performJSONRequest(
 		handler,
 		http.MethodDelete,
@@ -374,19 +300,12 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		nil,
 		administratorLogin.Tokens.AccessToken,
 	)
-	if removeFirst.Code != http.StatusOK {
-		t.Fatalf("remove first administrator status = %d: %s", removeFirst.Code, removeFirst.Body.String())
-	}
-	if lostImmediately := performJSONRequest(
+	require.Equal(t, http.StatusOK, removeFirst.Code, "remove first administrator status = %d: %s", removeFirst.Code, removeFirst.Body.String())
+	lostImmediately := performJSONRequest(
 		handler, http.MethodGet, "/api/v1/roles", nil,
 		administratorLogin.Tokens.AccessToken,
-	); lostImmediately.Code != http.StatusForbidden {
-		t.Fatalf(
-			"ended administrator authorization status = %d: %s",
-			lostImmediately.Code,
-			lostImmediately.Body.String(),
-		)
-	}
+	)
+	require.Equal(t, http.StatusForbidden, lostImmediately.Code, "ended administrator authorization status = %d: %s", lostImmediately.Code, lostImmediately.Body.String())
 	secondLogin := loginIntegrationUser(
 		t, handler, secondAdministrator.Username, password,
 		model.SessionClientCLI, "second-administrator-cli",
@@ -399,17 +318,13 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		nil,
 		secondLogin.Tokens.AccessToken,
 	)
-	if removeLast.Code != http.StatusConflict {
-		t.Fatalf("remove last administrator status = %d: %s", removeLast.Code, removeLast.Body.String())
-	}
+	require.Equal(t, http.StatusConflict, removeLast.Code, "remove last administrator status = %d: %s", removeLast.Code, removeLast.Body.String())
 
 	events, err := persistence.Audit().List(
 		context.Background(),
 		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var roleSuccesses, bindingSuccesses, bindingFailures, requestDecisionAudits int
 	for _, event := range events {
 		if event.Action == string(model.ActionRoleView) && event.RequestID == authorizedRoleListRequestID {
@@ -429,20 +344,10 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 			}
 		}
 	}
-	if roleSuccesses == 0 || bindingSuccesses == 0 || bindingFailures == 0 {
-		t.Fatalf(
-			"role administration audit statuses role_successes=%d binding_successes=%d binding_failures=%d",
-			roleSuccesses,
-			bindingSuccesses,
-			bindingFailures,
-		)
-	}
-	if requestDecisionAudits != 1 {
-		t.Fatalf(
-			"application use case wrote %d authorization decisions for one request",
-			requestDecisionAudits,
-		)
-	}
+	require.NotEqual(t, 0, roleSuccesses, "role administration audit statuses role_successes")
+	require.NotEqual(t, 0, bindingSuccesses, "role administration audit statuses role_successes")
+	require.NotEqual(t, 0, bindingFailures, "role administration audit statuses role_successes")
+	require.Equal(t, 1, requestDecisionAudits, "application use case wrote")
 }
 
 func strengthenRoleAdministratorSession(t *testing.T, handler http.Handler, accessToken string) {
@@ -454,15 +359,11 @@ func strengthenRoleAdministratorSession(t *testing.T, handler http.Handler, acce
 		nil,
 		accessToken,
 	)
-	if setupResponse.Code != http.StatusCreated {
-		t.Fatalf("MFA setup status = %d: %s", setupResponse.Code, setupResponse.Body.String())
-	}
+	require.Equal(t, http.StatusCreated, setupResponse.Code, "MFA setup status = %d: %s", setupResponse.Code, setupResponse.Body.String())
 	var setup struct {
 		Secret string `json:"secret"`
 	}
-	if err := json.Unmarshal(setupResponse.Body.Bytes(), &setup); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(setupResponse.Body.Bytes(), &setup))
 	activation := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -470,18 +371,12 @@ func strengthenRoleAdministratorSession(t *testing.T, handler http.Handler, acce
 		map[string]any{"code": integrationTOTP(t, setup.Secret, time.Now().UTC().Unix()/30)},
 		accessToken,
 	)
-	if activation.Code != http.StatusOK {
-		t.Fatalf("MFA activation status = %d: %s", activation.Code, activation.Body.String())
-	}
+	require.Equal(t, http.StatusOK, activation.Code, "MFA activation status = %d: %s", activation.Code, activation.Body.String())
 	var recovery struct {
 		Codes []string `json:"recovery_codes"`
 	}
-	if err := json.Unmarshal(activation.Body.Bytes(), &recovery); err != nil {
-		t.Fatal(err)
-	}
-	if len(recovery.Codes) == 0 {
-		t.Fatal("MFA activation returned no recovery codes")
-	}
+	require.NoError(t, json.Unmarshal(activation.Body.Bytes(), &recovery))
+	require.NotEmpty(t, recovery.Codes, "MFA activation returned no recovery codes")
 	rechallenge := performJSONRequest(
 		handler,
 		http.MethodPost,
@@ -489,9 +384,7 @@ func strengthenRoleAdministratorSession(t *testing.T, handler http.Handler, acce
 		map[string]any{"code": recovery.Codes[0]},
 		accessToken,
 	)
-	if rechallenge.Code != http.StatusOK {
-		t.Fatalf("MFA challenge status = %d: %s", rechallenge.Code, rechallenge.Body.String())
-	}
+	require.Equal(t, http.StatusOK, rechallenge.Code, "MFA challenge status = %d: %s", rechallenge.Code, rechallenge.Body.String())
 }
 
 type unknownBootstrapOutcomeStore struct {
@@ -552,9 +445,7 @@ func (s unknownBootstrapOutcomeInstallation) ResetAdministratorMFA(ctx context.C
 
 func TestBootstrapUnknownCommitOutcomeReconcilesThroughRealGraph(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
-	if dataSource == "" {
-		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
-	}
+	require.NotEmpty(t, dataSource, "PROCTOR_TEST_DATABASE_URL is not set")
 	persistence := openAuthenticationStore(t, dataSource)
 	uncertain := &unknownBootstrapOutcomeStore{Store: persistence}
 	uncertain.failNext.Store(true)
@@ -566,20 +457,16 @@ func TestBootstrapUnknownCommitOutcomeReconcilesThroughRealGraph(t *testing.T) {
 		"administrator":    map[string]any{"username": "unknown-owner", "email": "unknown-owner@example.edu"},
 		"password":         "correct horse battery staple",
 	}, "")
-	if response.Code != http.StatusCreated || uncertain.calls.Load() < 2 {
-		t.Fatalf("bootstrap response=%d %s calls=%d", response.Code, response.Body.String(), uncertain.calls.Load())
-	}
+	require.Equal(t, http.StatusCreated, response.Code, "bootstrap response=%d %s calls", response.Code, response.Body.String())
+	require.GreaterOrEqual(t, uncertain.calls.Load(), int32(2), "bootstrap response=%d %s calls", response.Code, response.Body.String())
 	var result struct {
 		AccessPolicy *struct {
 			Revision int64 `json:"revision"`
 		} `json:"access_policy"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.AccessPolicy == nil || result.AccessPolicy.Revision != 1 {
-		t.Fatalf("bootstrap result = %#v", result)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &result))
+	require.NotNil(t, result.AccessPolicy)
+	require.Equal(t, int64(1), result.AccessPolicy.Revision)
 }
 
 func containsAny(value string, candidates ...string) bool {

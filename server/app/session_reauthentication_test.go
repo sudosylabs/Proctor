@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -59,9 +61,7 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			persistence := newAuthenticationStoreFake()
 			service := newTestAuthenticationService(t, persistence)
 			user, err := service.CreateLocalUser(ctx, CreateLocalUserCommand{User: &model.User{Username: "reauthentication", Email: "reauthentication@example.edu"}, Password: "CorrectHorseBatteryStaple1!"})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			now := time.Now().UTC()
 			principal := model.Principal{UserID: user.ID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewSessionCredentialID()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: test.method, AuthenticationStrength: model.AuthenticationMultiFactor, ClientType: model.SessionClientWeb, AuthenticatedAt: now.Add(-time.Hour), MFACompletedAt: model.OptionalTimeFrom(now.Add(-30 * time.Minute))}
 			if test.method != "password" {
@@ -77,24 +77,24 @@ func TestPasswordReauthenticationBindsCurrentIdentityAndRequiresCommit(t *testin
 			service.mfa = mfa
 			actual, err := service.ReauthenticatePassword(ctx, NewInvocation(principal, model.RequestMetadata{}), ReauthenticatePasswordCommand{Password: test.password, Source: "192.0.2.45"})
 			if test.code != "" {
-				if !apperror.Is(err, test.code) || actual != nil {
-					t.Fatalf("result=%v err=%v", actual, err)
-				}
-			} else if err != nil || actual != session {
-				t.Fatalf("result=%v err=%v", actual, err)
+				require.True(t, apperror.Is(err, test.code), "result=%v err=%v", actual, err)
+				require.Nil(t, actual, "result=%v err=%v", actual, err)
+			} else {
+				require.NoError(t, err)
+				require.Same(t, session, actual)
 			}
-			if (fake.input != nil) != test.commit {
-				t.Fatalf("unexpected commit: %v", events)
-			}
+			require.Equal(t, test.commit, fake.input != nil, "unexpected commit: %v", events)
 			if fake.input != nil {
 				credential := persistence.passwords[user.ID.String()]
-				if fake.input.UserID != user.ID || fake.input.SessionID != principal.SessionID || fake.input.CredentialID.String() != principal.CredentialID.String() || fake.input.PasswordProof.ID != credential.ID || fake.input.PasswordProof.Revision != credential.Revision || !fake.input.AuditEventID.IsValid() {
-					t.Fatalf("unbound proof: %#v", fake.input)
-				}
+				require.Equal(t, user.ID, fake.input.UserID)
+				require.Equal(t, principal.SessionID, fake.input.SessionID)
+				require.Equal(t, principal.CredentialID.String(), fake.input.CredentialID.String())
+				require.Equal(t, credential.ID, fake.input.PasswordProof.ID)
+				require.Equal(t, credential.Revision, fake.input.PasswordProof.Revision)
+				require.True(t, fake.input.AuditEventID.IsValid())
 			}
-			if !session.AuthenticatedAt.Equal(principal.AuthenticatedAt) || session.MFACompletedAt != principal.MFACompletedAt {
-				t.Fatal("primary refresh changed original authentication or MFA history")
-			}
+			require.True(t, session.AuthenticatedAt.Equal(principal.AuthenticatedAt), "primary refresh changed original authentication or MFA history")
+			require.Equal(t, principal.MFACompletedAt, session.MFACompletedAt, "primary refresh changed original authentication or MFA history")
 		})
 	}
 }

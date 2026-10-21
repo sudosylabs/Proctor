@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/apperror"
 )
 
@@ -26,23 +28,14 @@ func TestErrorCarriesStableCodeSafeFieldsAndCause(t *testing.T) {
 		Wrap(cause)
 
 	fields["field"] = "mutated"
-	if err.Code() != "academic_unit.invalid" {
-		t.Fatalf("Code() = %q", err.Code())
-	}
-	if err.Fields()["field"] != "name" || err.Fields()["resource_id"] != "abc" {
-		t.Fatalf("Fields() = %#v", err.Fields())
-	}
+	require.Equal(t, "academic_unit.invalid", err.Code())
+	require.Equal(t, "name", err.Fields()["field"])
+	require.Equal(t, "abc", err.Fields()["resource_id"])
 	public := err.Fields()
 	public["field"] = "changed"
-	if err.Fields()["field"] != "name" {
-		t.Fatal("Fields() exposed mutable state")
-	}
-	if !errors.Is(err, cause) {
-		t.Fatal("Error does not preserve its wrapped cause")
-	}
-	if !strings.Contains(err.Error(), "academic_unit.invalid") {
-		t.Fatalf("Error() = %q, want code", err.Error())
-	}
+	require.Equal(t, "name", err.Fields()["field"], "Fields() exposed mutable state")
+	require.ErrorIs(t, err, cause, "Error does not preserve its wrapped cause")
+	require.Contains(t, err.Error(), "academic_unit.invalid", "Error()")
 	if strings.Contains(err.Error(), "private database detail") == false {
 		// Operator-facing Error() may include the cause; public mapping must not.
 		// Presence is allowed; the contract is that transports never serialize Error().
@@ -53,9 +46,7 @@ func TestErrorRejectsEmptyCode(t *testing.T) {
 	t.Parallel()
 
 	defer func() {
-		if recover() == nil {
-			t.Fatal("NewError(\"\") did not panic")
-		}
+		require.NotNil(t, recover(), "NewError(\"\") did not panic")
 	}()
 	_ = apperror.New("")
 }
@@ -67,26 +58,16 @@ func TestErrorMatchingHelpers(t *testing.T) {
 	err := apperror.New("class.enrollment_conflict").Wrap(cause)
 	wrapped := errors.Join(errors.New("context"), err)
 
-	if !apperror.Is(err, "class.enrollment_conflict") {
-		t.Fatal("Is() missed direct application error")
-	}
-	if !apperror.Is(wrapped, "class.enrollment_conflict") {
-		t.Fatal("Is() missed wrapped application error")
-	}
-	if apperror.Is(err, "class.not_found") {
-		t.Fatal("Is() matched the wrong code")
-	}
-	if apperror.Is(cause, "class.enrollment_conflict") {
-		t.Fatal("Is() matched a non-application error")
-	}
+	require.True(t, apperror.Is(err, "class.enrollment_conflict"), "Is() missed direct application error")
+	require.True(t, apperror.Is(wrapped, "class.enrollment_conflict"), "Is() missed wrapped application error")
+	require.False(t, apperror.Is(err, "class.not_found"), "Is() matched the wrong code")
+	require.False(t, apperror.Is(cause, "class.enrollment_conflict"), "Is() matched a non-application error")
 
 	got, ok := apperror.As(wrapped)
-	if !ok || got.Code() != "class.enrollment_conflict" {
-		t.Fatalf("As() = (%#v, %v)", got, ok)
-	}
-	if _, ok := apperror.As(cause); ok {
-		t.Fatal("As() matched a non-application error")
-	}
+	require.True(t, ok, "As() = (%#v, %v)", got, ok)
+	require.Equal(t, "class.enrollment_conflict", got.Code(), "As() = (%#v, %v)", got, ok)
+	_, ok = apperror.As(cause)
+	require.False(t, ok, "As() matched a non-application error")
 }
 
 func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
@@ -108,9 +89,8 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 		"ErrorCode",
 	}
 	for _, name := range forbidden {
-		if _, ok := errorType.MethodByName(name); ok {
-			t.Fatalf("apperror.Error exposes transport-facing method %s", name)
-		}
+		_, ok := errorType.MethodByName(name)
+		require.False(t, ok, "apperror.Error exposes transport-facing method %s", name)
 	}
 
 	// Ensure the concrete type cannot acquire transport-facing presentation
@@ -123,7 +103,5 @@ func TestErrorHasNoHTTPOrTransportMetadata(t *testing.T) {
 		SafeFields() map[string]string
 	}
 	var asLegacy legacyApplicationError
-	if errors.As(apperror.New("resource.not_found"), &asLegacy) {
-		t.Fatal("apperror.Error must not implement the legacy HTTP applicationError surface")
-	}
+	require.NotErrorAs(t, apperror.New("resource.not_found"), &asLegacy, "apperror.Error must not implement the legacy HTTP applicationError surface")
 }

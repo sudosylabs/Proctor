@@ -11,6 +11,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/app/invocation"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -44,15 +46,17 @@ func TestNativeConditionsRequireCurrentDetailedReviewAuthority(t *testing.T) {
 	f.service.deps.Authorizer = auth
 	f.service.deps.Persistence = p
 	query := NativeConditionListQuery{SubmissionID: f.submissionID, Limit: 100}
-	if _, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); !errors.Is(err, denied) || p.calls != 0 {
-		t.Fatal("private conditions read before authorization")
-	}
+	_, err := f.service.ListNativeConditions(context.Background(), f.invocation, query)
+	require.ErrorIs(t, err, denied, "private conditions read before authorization")
+	require.Equal(t, 0, p.calls, "private conditions read before authorization")
 	auth.err = nil
-	if page, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); err != nil || page.Items == nil || p.calls != 1 || auth.calls != 2 {
-		t.Fatal("authorized condition read failed")
-	}
+	page, err := f.service.ListNativeConditions(context.Background(), f.invocation, query)
+	require.NoError(t, err, "authorized condition read failed")
+	require.NotNil(t, page.Items, "authorized condition read failed")
+	require.Equal(t, 1, p.calls, "authorized condition read failed")
+	require.Equal(t, 2, auth.calls, "authorized condition read failed")
 	query.Limit = 101
-	if _, err := f.service.ListNativeConditions(context.Background(), f.invocation, query); err == nil || p.calls != 1 {
-		t.Fatal("unbounded review read")
-	}
+	_, err = f.service.ListNativeConditions(context.Background(), f.invocation, query)
+	require.Error(t, err, "unbounded review read")
+	require.Equal(t, 1, p.calls, "unbounded review read")
 }

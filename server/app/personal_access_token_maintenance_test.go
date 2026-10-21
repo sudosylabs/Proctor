@@ -12,6 +12,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -38,25 +40,19 @@ func TestPersonalAccessTokenMaintenancePeriodicRunnerIsBounded(t *testing.T) {
 		results[index] = &store.PersonalAccessTokenPreparationMaintenanceResult{Failed: 1, More: true}
 	}
 	maintainer := &personalAccessTokenMaintainerFake{results: results}
-	if err := (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()); err != nil || len(maintainer.limits) != personalAccessTokenMaintenanceMaximumPages {
-		t.Fatalf("Run() error=%v limits=%#v", err, maintainer.limits)
-	}
+	require.NoError(t, (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()), "Run() error")
+	require.Len(t, maintainer.limits, personalAccessTokenMaintenanceMaximumPages, "Run() error")
 	for _, limit := range maintainer.limits {
-		if limit != personalAccessTokenMaintenancePageSize {
-			t.Fatalf("MaintainMutationPreparations() limit=%d", limit)
-		}
+		require.Equal(t, personalAccessTokenMaintenancePageSize, limit, "MaintainMutationPreparations() limit")
 	}
 }
 
 func TestPersonalAccessTokenMaintenancePeriodicRunnerReportsFailure(t *testing.T) {
 	t.Parallel()
 	maintainer := &personalAccessTokenMaintainerFake{results: []*store.PersonalAccessTokenPreparationMaintenanceResult{{}}}
-	if err := (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()); err != nil || len(maintainer.limits) != 1 {
-		t.Fatalf("completed Run() error=%v limits=%#v", err, maintainer.limits)
-	}
+	require.NoError(t, (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()), "completed Run() error")
+	require.Len(t, maintainer.limits, 1, "completed Run() error")
 	want := errors.New("database unavailable")
 	maintainer = &personalAccessTokenMaintainerFake{err: want}
-	if err := (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()); !errors.Is(err, want) {
-		t.Fatalf("failed Run() error=%v", err)
-	}
+	require.ErrorIs(t, (personalAccessTokenMaintenancePeriodicRunner{tokens: maintainer}).Run(context.Background()), want)
 }

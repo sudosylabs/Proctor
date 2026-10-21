@@ -8,9 +8,10 @@
 package app
 
 import (
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -20,33 +21,25 @@ func TestSittingMailPreparerFreezesAllFourSafeRenderVariants(t *testing.T) {
 	at := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), model.NewExamID(), model.NewExamRevisionID(), model.NewClassID(),
 		at.Add(24*time.Hour), at.Add(26*time.Hour), at)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	renderer := sittingMailRendererFake{}
 	preparer, err := newSittingMailPreparer(renderer, &mailSenderFake{enabled: true,
 		from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, mailTestSealer(t), func() time.Time { return at })
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	prepared, err := preparer.Prepare(model.NewUserID(), sitting, store.ExamSittingMailScheduled,
 		SittingScheduleMailDetails{ExamTitle: "Algorithms", ClassDisplayName: "Class A"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Occurrence.Kind != model.MailOccurrenceSittingSchedule || prepared.Bundle == nil ||
-		prepared.ExpansionJob.Type != model.JobTypeMailExpandSitting || prepared.ExpansionJob.DedupePolicy != model.JobDedupePermanent {
-		t.Fatalf("Prepare()=%#v", prepared)
-	}
+	require.NoError(t, err)
+	require.Equal(t, model.MailOccurrenceSittingSchedule, prepared.Occurrence.Kind)
+	require.NotNil(t, prepared.Bundle)
+	require.Equal(t, model.JobTypeMailExpandSitting, prepared.ExpansionJob.Type)
+	require.Equal(t, model.JobDedupePermanent, prepared.ExpansionJob.DedupePolicy)
 	for _, forbidden := range []string{"Algorithms", "Class A", "no-reply@example.test"} {
-		if strings.Contains(string(prepared.Bundle.EncryptedPayload), forbidden) {
-			t.Fatalf("encrypted bundle exposed %q", forbidden)
-		}
+		require.NotContains(t, string(prepared.Bundle.EncryptedPayload), forbidden)
 	}
 	opened, err := preparer.OpenBundle(prepared.Bundle)
-	if err != nil || len(opened.Messages) != 1 || opened.Messages["en"][model.MailTemplateExamSittingCancelled].Subject == "" {
-		t.Fatalf("opened bundle=(%#v,%v)", opened, err)
-	}
+	require.NoError(t, err, "opened bundle=(%#v,%v)", opened, err)
+	require.Len(t, opened.Messages, 1, "opened bundle=(%#v,%v)", opened, err)
+	require.NotEmpty(t, opened.Messages["en"][model.MailTemplateExamSittingCancelled].Subject, "opened bundle=(%#v,%v)", opened, err)
 }
 
 type sittingMailRendererFake struct{}

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -22,18 +24,16 @@ func TestCurrentAuthenticationAccessPolicyReturnsExactExternalProviderAdmission(
 	reader, err := newCurrentAuthenticationAccessPolicy(&accessPolicyStoreFake{
 		snapshot: &store.AccessPolicySnapshot{Policy: policy},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	admission, err := reader.ExternalProviderAdmission(context.Background(), " CAMPUS ")
-	if err != nil || admission.Mode != model.ProviderAdmissionInvitationRequired || !admission.InvitationAdmissionEnabled {
-		t.Fatalf("ExternalProviderAdmission() = %#v, %v", admission, err)
-	}
+	require.NoError(t, err, "ExternalProviderAdmission() = %#v", admission)
+	require.Equal(t, model.ProviderAdmissionInvitationRequired, admission.Mode, "ExternalProviderAdmission() = %#v", admission)
+	require.True(t, admission.InvitationAdmissionEnabled, "ExternalProviderAdmission() = %#v", admission)
 	admission, err = reader.ExternalProviderAdmission(context.Background(), "removed")
-	if err != nil || admission.Mode != "" || !admission.InvitationAdmissionEnabled {
-		t.Fatalf("ExternalProviderAdmission(removed) = %#v, %v", admission, err)
-	}
+	require.NoError(t, err, "ExternalProviderAdmission(removed) = %#v", admission)
+	require.Empty(t, admission.Mode, "ExternalProviderAdmission(removed) = %#v", admission)
+	require.True(t, admission.InvitationAdmissionEnabled, "ExternalProviderAdmission(removed) = %#v", admission)
 }
 
 type authenticationAccessPolicyFake struct {

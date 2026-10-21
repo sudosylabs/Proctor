@@ -8,8 +8,9 @@
 package app_test
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -32,24 +33,16 @@ func TestInvocationCarriesPrincipalAndSafeMetadataImmutably(t *testing.T) {
 	}
 
 	invocation := app.NewInvocation(principal, metadata)
-	if !reflect.DeepEqual(invocation.Principal(), principal) {
-		t.Fatalf("Principal() = %#v", invocation.Principal())
-	}
+	require.Equal(t, principal, invocation.Principal())
 	got := invocation.RequestMetadata()
-	if got != metadata {
-		t.Fatalf("RequestMetadata() = %#v, want %#v", got, metadata)
-	}
+	require.Equal(t, metadata, got, "RequestMetadata()")
 
 	// Mutating the source metadata after construction must not affect the
 	// invocation; the value is a snapshot.
 	metadata.RequestID = "mutated"
 	principal.CredentialScopes[0] = "mutated"
-	if invocation.RequestMetadata().RequestID != "req-1" {
-		t.Fatal("Invocation retained a live reference to caller metadata")
-	}
+	require.Equal(t, "req-1", invocation.RequestMetadata().RequestID, "Invocation retained a live reference to caller metadata")
 	gotPrincipal := invocation.Principal()
 	gotPrincipal.CredentialScopes[0] = "returned-value-mutated"
-	if invocation.Principal().CredentialScopes[0] != "scope-a" {
-		t.Fatal("Invocation exposed mutable principal scope storage")
-	}
+	require.Equal(t, "scope-a", invocation.Principal().CredentialScopes[0], "Invocation exposed mutable principal scope storage")
 }
