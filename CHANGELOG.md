@@ -87,6 +87,9 @@ module when a change is not server-only. No module has been released yet.
 - Server: profile-picture and Exam Resource JPEGs with more than 32 scans are
   rejected before decoding, so a small progressive file can no longer hold a
   content permit for minutes.
+- Server: a retention policy preview counts audit expiry in one set-based pass
+  instead of probing every side table per audit event, so previews finish
+  within the query timeout at any audit volume.
 - Server: re-allowing a focus-loss suspension no longer reports a committed
   re-allow as unavailable.
 - Server: a failed audit completion is joined with, not substituted for, the

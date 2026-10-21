@@ -65,6 +65,64 @@ const auditExpiryFacts = `SELECT a.id,a.created_at AS scan_at, (` + terminalClea
  LEFT JOIN exam_sittings sit ON sit.id=CASE WHEN a.resource_type='exam_sitting' THEN a.resource_id ELSE attempt.exam_sitting_id END
  LEFT JOIN exams e ON e.id=CASE WHEN a.resource_type='exam' THEN a.resource_id ELSE sit.exam_id END`
 
+// auditExpiryCountFacts classifies every audit event with the same facts as
+// auditExpiryFacts, but set-based: each side table is read once and joined
+// instead of probed by correlated subqueries per audit event, so a preview
+// stays a linear audit scan. Exam, Sitting and Submission blockers are
+// resolved once per distinct audited resource through semi-joins. An
+// integration test keeps the two definitions in agreement.
+const auditExpiryCountFacts = `audited_resources AS (SELECT DISTINCT resource_type,resource_id FROM audit_events WHERE resource_type IN ('exam','exam_sitting','submission')),
+resource_scopes AS (SELECT r.resource_type,r.resource_id,e.id AS exam_id,sit.id AS sitting_id,sub.id AS submission_id
+ FROM audited_resources r
+ LEFT JOIN exam_submissions sub ON r.resource_type='submission' AND sub.id=r.resource_id
+ LEFT JOIN exam_attempts attempt ON attempt.id=sub.exam_attempt_id
+ LEFT JOIN exam_sittings sit ON sit.id=CASE WHEN r.resource_type='exam_sitting' THEN r.resource_id ELSE attempt.exam_sitting_id END
+ JOIN exams e ON e.id=CASE WHEN r.resource_type='exam' THEN r.resource_id ELSE sit.exam_id END),
+pending_sittings AS (SELECT id,exam_id FROM exam_sittings WHERE state NOT IN ('closed','canceled')
+ UNION ALL SELECT pending_sitting.id,pending_sitting.exam_id FROM exam_sittings pending_sitting WHERE pending_sitting.state IN ('closed','canceled')
+  AND EXISTS(SELECT 1 FROM exam_submissions us JOIN exam_attempts ua ON ua.id=us.exam_attempt_id WHERE ua.exam_sitting_id=pending_sitting.id AND us.integrity_retired_at IS NULL)
+  AND NOT EXISTS(SELECT 1 FROM exam_sitting_records_completions c WHERE c.exam_sitting_id=pending_sitting.id AND c.completed_at IS NOT NULL AND c.stale_at IS NULL AND c.evidence_revision=c.completed_evidence_revision)),
+active_protections AS (SELECT ea.exam_id,ea.exam_sitting_id,es.id AS submission_id FROM retention_source_protections sp
+ JOIN exam_submissions es ON es.id=sp.submission_id JOIN exam_attempts ea ON ea.id=es.exam_attempt_id CROSS JOIN bounds WHERE sp.expires_at>bounds.at),
+resource_blockers AS (SELECT r.resource_type,r.resource_id,'unfinished' AS blocker FROM resource_scopes r
+  WHERE r.sitting_id IS NULL AND EXISTS(SELECT 1 FROM pending_sittings p WHERE p.exam_id=r.exam_id)
+ UNION ALL SELECT r.resource_type,r.resource_id,'unfinished' FROM resource_scopes r
+  WHERE EXISTS(SELECT 1 FROM pending_sittings p WHERE p.id=r.sitting_id AND p.exam_id=r.exam_id)
+ UNION ALL SELECT r.resource_type,r.resource_id,'held' FROM resource_scopes r
+  WHERE EXISTS(SELECT 1 FROM retention_holds h WHERE h.exam_id=r.exam_id AND h.released_at IS NULL AND
+   (r.sitting_id IS NULL OR h.exam_sitting_id IS NULL OR h.exam_sitting_id=r.sitting_id) AND
+   (r.submission_id IS NULL OR h.submission_id IS NULL OR h.submission_id=r.submission_id))
+ UNION ALL SELECT r.resource_type,r.resource_id,'source_protected' FROM resource_scopes r
+  WHERE EXISTS(SELECT 1 FROM active_protections p WHERE p.submission_id=r.submission_id AND p.exam_sitting_id=r.sitting_id AND p.exam_id=r.exam_id)
+ UNION ALL SELECT r.resource_type,r.resource_id,'source_protected' FROM resource_scopes r
+  WHERE r.submission_id IS NULL AND EXISTS(SELECT 1 FROM active_protections p WHERE p.exam_sitting_id=r.sitting_id AND p.exam_id=r.exam_id)
+ UNION ALL SELECT r.resource_type,r.resource_id,'source_protected' FROM resource_scopes r
+  WHERE r.sitting_id IS NULL AND r.submission_id IS NULL AND EXISTS(SELECT 1 FROM active_protections p WHERE p.exam_id=r.exam_id)),
+resource_facts AS (SELECT resource_type,resource_id,bool_or(blocker='unfinished') AS unfinished,bool_or(blocker='held') AS held,
+  bool_or(blocker='source_protected') AS source_protected FROM resource_blockers GROUP BY resource_type,resource_id),
+hold_audits AS (SELECT ref.id,h.released_at,(` + releasedHoldExpiry + `) AS expired
+ FROM retention_holds h CROSS JOIN bounds CROSS JOIN LATERAL (VALUES (h.creation_audit_event_id),(h.release_audit_event_id)) ref(id) WHERE ref.id IS NOT NULL),
+audit_references AS (SELECT audit_event_id AS id FROM external_login_states WHERE audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM exam_attempt_manager_end_actions WHERE audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM exam_sitting_private_actions WHERE audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM exam_sitting_live_corrections WHERE audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM exam_attempt_correction_acknowledgements WHERE audit_event_id IS NOT NULL
+ UNION SELECT original_audit_event_id FROM command_outcomes WHERE original_audit_event_id IS NOT NULL
+ UNION SELECT retired_by_audit_event_id FROM exam_starter_workspace_objects WHERE retired_by_audit_event_id IS NOT NULL
+ UNION SELECT retired_by_audit_event_id FROM exam_attempt_workspace_objects WHERE retired_by_audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM submission_review_waivers WHERE audit_event_id IS NOT NULL
+ UNION SELECT audit_event_id FROM administrator_recovery_records WHERE reconciled_at IS NULL AND audit_event_id IS NOT NULL
+ UNION SELECT id FROM hold_audits WHERE NOT expired),
+audit_late_events AS (SELECT id,max(at) AS at FROM (SELECT audit_event_id AS id,reconciled_at AS at FROM administrator_recovery_records
+  UNION ALL SELECT id,released_at FROM hold_audits) late GROUP BY id),
+facts AS (SELECT (` + terminalCleanupAudit + `) AS cleanup_audit,GREATEST(a.updated_at,late.at) AS event_at,
+  (a.status='attempt' OR COALESCE(resource.unfinished,false)) AS unfinished,(reference.id IS NOT NULL) AS referenced,
+  COALESCE(resource.held,false) AS held,false AS purge_pending,COALESCE(resource.source_protected,false) AS source_protected
+ FROM audit_events a
+ LEFT JOIN resource_facts resource ON resource.resource_type=a.resource_type AND resource.resource_id=a.resource_id
+ LEFT JOIN audit_references reference ON reference.id=a.id
+ LEFT JOIN audit_late_events late ON late.id=a.id)`
+
 const receiptExpiryFacts = `SELECT r.id,r.scheduled_at AS scan_at,false AS cleanup_audit,COALESCE(r.retired_at,r.canceled_at,r.scheduled_at) AS event_at,
  r.exam_id,r.exam_sitting_id AS sitting_id,r.submission_id,
  (r.state='grace' OR (r.state='retired' AND CASE r.category WHEN 'work' THEN sub.work_retired_at IS NULL WHEN 'integrity' THEN sub.integrity_retired_at IS NULL WHEN 'browser_activity' THEN (SELECT browser_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) ELSE (SELECT security_retired_at IS NULL FROM exam_attempt_delivery_budgets WHERE exam_attempt_id=sub.exam_attempt_id) END)) AS unfinished,
@@ -332,21 +390,38 @@ func expireRetentionRecord(ctx context.Context, tx *sqlxTxWrapper, kind model.Re
 	return err
 }
 
+// expiryCountQuery classifies every record of one kind into its first
+// blocker. Audit facts use the set-based definition; receipts are bounded by
+// Submissions and keep the per-record facts.
+func expiryCountQuery(kind model.RetentionExpiryKind) string {
+	if kind == model.RetentionExpiryAudit {
+		return expiryClassificationQuery(auditExpiryCountFacts)
+	}
+	return expiryClassificationQuery(`facts AS (` + receiptExpiryFacts + `)`)
+}
+
+func expiryClassificationQuery(facts string) string {
+	return expiryBounds + `, ` + facts + `, classified AS (SELECT CASE
+   WHEN unfinished THEN 'unfinished' WHEN held THEN 'held' WHEN purge_pending THEN 'purge_pending'
+   WHEN referenced THEN 'referenced' WHEN source_protected THEN 'source_protected'
+   WHEN ?=0 THEN 'unconfigured' WHEN event_at>? THEN 'deadline' ELSE 'eligible' END AS reason FROM facts)
+   SELECT reason,count(*) AS count FROM classified GROUP BY reason`
+}
+
+func expiryCountArguments(policy *model.RetentionPolicy, at time.Time) []any {
+	return []any{at, expiryCutoff(policy, at), policy.AuditRetentionDays, expiryCutoff(policy, at)}
+}
+
 func countRetentionExpiry(ctx context.Context, tx *sqlxTxWrapper, policy *model.RetentionPolicy, at time.Time) (model.RetentionExpiryCounts, model.RetentionExpiryCounts, error) {
 	var result [2]model.RetentionExpiryCounts
 	for i, kind := range []model.RetentionExpiryKind{model.RetentionExpiryAudit, model.RetentionExpiryReceipt} {
 		// PostgreSQL counts the bounded scalar reasons; no application allocation
 		// scales with audit volume and no audit JSON is fetched for a preview.
-		query := expiryBounds + `, facts AS (` + expiryFactsQuery(kind) + `), classified AS (SELECT CASE
-   WHEN unfinished THEN 'unfinished' WHEN held THEN 'held' WHEN purge_pending THEN 'purge_pending'
-   WHEN referenced THEN 'referenced' WHEN source_protected THEN 'source_protected'
-   WHEN ?=0 THEN 'unconfigured' WHEN event_at>? THEN 'deadline' ELSE 'eligible' END AS reason FROM facts)
-   SELECT reason,count(*) AS count FROM classified GROUP BY reason`
 		var rows []struct {
 			Reason string `db:"reason"`
 			Count  int64  `db:"count"`
 		}
-		if err := tx.Select(ctx, &rows, query, at, expiryCutoff(policy, at), policy.AuditRetentionDays, expiryCutoff(policy, at)); err != nil {
+		if err := tx.Select(ctx, &rows, expiryCountQuery(kind), expiryCountArguments(policy, at)...); err != nil {
 			return result[0], result[1], err
 		}
 		c := &result[i]
