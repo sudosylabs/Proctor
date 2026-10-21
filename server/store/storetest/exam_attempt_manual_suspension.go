@@ -10,6 +10,7 @@ package storetest
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -215,4 +216,63 @@ func TestExamAttemptManualSuspensionBounds(t *testing.T, ss store.Store, probe E
 	probe.PassSittingScheduledEnd(t, ctx, late.sitting.ID)
 	requireConflictConstraint(t, kick(late, connected, "kick-late"), "exam_sitting_deadline_reached")
 	requireUnkicked(late, connected)
+}
+
+// ExamAttemptManagementLockSQLProbe holds the Attempt and Sitting locks that a
+// kick or re-allow takes while contender runs, and returns contender's result.
+type ExamAttemptManagementLockSQLProbe func(t *testing.T, ctx context.Context, input *store.ExamAttemptReallow,
+	contender func(context.Context) error) error
+
+// TestExamAttemptManagementLockAdmitsSittingRenewals verifies that a kick or
+// re-allow of one Attempt does not queue renewals of other Attempts in the
+// same Sitting: it locks the Sitting row only against state changes.
+func TestExamAttemptManagementLockAdmitsSittingRenewals(t *testing.T, ss store.Store, hold ExamAttemptManagementLockSQLProbe) {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	kicked := &store.ExamAttemptConnect{
+		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID, AuditAt: model.GetMillis(),
+	}
+	prepareExamAttemptConnect(t, ctx, ss, kicked)
+	_, err := ss.ExamAttempt().Connect(ctx, kicked,
+		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "lock-kicked", "lock-kicked"))
+	require.NoError(t, err)
+
+	candidate := saveUser(t, ctx, ss)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: model.NowUTC().Add(-time.Hour)})
+	require.NoError(t, err)
+	_, err = ss.ClassMember().SeedEnroll(ctx, &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		StartsAt: model.NowUTC().Add(-time.Minute)})
+	require.NoError(t, err)
+	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, fixture.institutionID)
+	peer := fixture
+	peer.candidate, peer.session = candidate, session
+	credentialHash := model.HashToken(model.NewCredentialToken())
+	renewing := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
+		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, peer).ID, AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, renewing)
+	connected, err := ss.ExamAttempt().Connect(ctx, renewing,
+		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "lock-renewing", "lock-renewing"))
+	require.NoError(t, err)
+	renewal := &store.ExamAttemptParticipationRenewal{DesktopCompatibilityPolicyRevision: 1, AttemptID: connected.Attempt.ID,
+		ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID, CandidateUserID: candidate.ID,
+		SessionID: session.ID, DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
+		Generation: connected.Participation.Generation, Sequence: 1, ContinuityCredentialHash: credentialHash}
+	prepareParticipationRenewalCoverage(t, ctx, ss, renewal)
+
+	err = hold(t, ctx, &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: kicked.AttemptID,
+		ActorUserID: fixture.manager.ID}, func(ctx context.Context) error {
+		_, renewErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
+		return renewErr
+	})
+	require.NoError(t, err, "a renewal in the Sitting queued behind another Attempt's management lock")
 }

@@ -822,7 +822,12 @@ func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, in
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		WHERE a.id=? AND a.exam_id=? AND a.exam_sitting_id=?`
 	if lock {
-		query += ` FOR UPDATE OF a,s`
+		// The Sitting row is only fenced against state changes: FOR SHARE
+		// still conflicts with Sitting transitions but not with the FOR SHARE
+		// that every renewal in the Sitting takes, so a kick or re-allow of
+		// one Attempt never queues the others' renewals. FOR NO KEY UPDATE
+		// would still conflict with that FOR SHARE.
+		query += ` FOR UPDATE OF a FOR SHARE OF s`
 	}
 	err := tx.Get(ctx, &guard, query, input.ActorUserID.String(), input.AttemptID.String(), input.ExamID.String(), input.SittingID.String())
 	if err != nil {

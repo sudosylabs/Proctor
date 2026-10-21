@@ -1497,6 +1497,31 @@ func TestExamAttemptManualSuspensionStore(t *testing.T) {
 	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestExamAttemptManualSuspensionStore)
 }
 
+func TestExamAttemptManagementLockAdmitsSittingRenewals(t *testing.T) {
+	StoreTestWithAuthenticationPolicy(t, nil, func(t *testing.T, ss store.Store) {
+		sqlStore, ok := ss.(*SQLStore)
+		require.True(t, ok)
+		storetest.TestExamAttemptManagementLockAdmitsSittingRenewals(t, ss, func(t *testing.T, ctx context.Context,
+			input *store.ExamAttemptReallow, contender func(context.Context) error,
+		) error {
+			t.Helper()
+			var contenderErr error
+			_, err := runSQLTransaction(ctx, sqlStore.GetMaster().Begin, "hold Attempt management lock", func(ctx context.Context, tx *sqlxTxWrapper) (struct{}, error) {
+				if guardErr := guardExamAttemptReallowAuthority(ctx, tx, input, true); guardErr != nil {
+					return struct{}{}, guardErr
+				}
+				// A contender queued behind the held lock times out here.
+				contenderCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				contenderErr = contender(contenderCtx)
+				return struct{}{}, nil
+			})
+			require.NoError(t, err)
+			return contenderErr
+		})
+	})
+}
+
 func TestExamAttemptManualSuspensionBounds(t *testing.T) {
 	StoreTestWithAuthenticationPolicy(t, nil, func(t *testing.T, ss store.Store) {
 		sqlStore, ok := ss.(*SQLStore)
